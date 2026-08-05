@@ -1,0 +1,1365 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>GARA - Visual-Reference ENGINE</title>
+<meta name="viewport" content="width=device-width,initial-scale=1">
+  <!-- 検索エンジン避け -->
+  <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+  <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
+  <meta name="referrer" content="no-referrer">
+<link rel="stylesheet" href="style.css?v=1785894844">
+<script>
+// 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
+(function(){
+  function show(msg){
+    var d=document.getElementById('__err');
+    if(!d){ d=document.createElement('div'); d.id='__err';
+      d.style.cssText='position:fixed;left:0;top:0;right:0;max-height:60%;z-index:999999;background:rgba(60,0,0,.95);color:#fff;font:12px/1.4 monospace;padding:12px;white-space:pre-wrap;overflow:auto;-webkit-overflow-scrolling:touch';
+      (document.body||document.documentElement).appendChild(d);
+    }
+    d.textContent += msg + '\n\n';
+  }
+  window.addEventListener('error', function(e){
+    show('ERROR: ' + (e.message||e) + '\n@ ' + (e.filename||'') + ':' + (e.lineno||0) + ':' + (e.colno||0) + (e.error&&e.error.stack?('\n'+e.error.stack):''));
+  });
+  window.addEventListener('unhandledrejection', function(e){
+    var r=e.reason; show('PROMISE: ' + ((r&&(r.stack||r.message))||r));
+  });
+})();
+</script>
+<script>
+// ローディング画面の進捗表示。app.js より前に定義し、初期表示から「今読み込んでいるもの」を出す。
+(function(){
+  window.__vjLoad = function(msg, pct){                  // 進捗テキスト + バー(%)更新
+    var t = document.getElementById('__loadmsg');
+    if(t && msg != null) t.textContent = msg;
+    var b = document.getElementById('__loadbar');
+    if(b && pct != null) b.style.width = Math.max(0, Math.min(100, pct)) + '%';
+  };
+  window.__vjLoadDone = function(){                      // 準備完了 → バー100% → フェードして除去
+    var b = document.getElementById('__loadbar');
+    if(b) b.style.width = '100%';
+    var o = document.getElementById('__loading');
+    if(!o || o.__done) return;
+    o.__done = true;
+    setTimeout(function(){
+      o.style.opacity = '0';
+      setTimeout(function(){ if(o && o.parentNode) o.parentNode.removeChild(o); }, 450);
+    }, 200);
+  };
+})();
+</script>
+</head>
+<body>
+<!-- 初期ローディング画面 (#3f00ff 背景に白字。app.js が進捗を流し込み、準備完了で消える) -->
+<div id="__loading">
+  <div class="__l-inner">
+    <div class="__l-title">GARA</div>
+    <div class="__l-sub">Visual-Reference ENGINE</div>
+    <div id="__loadmsg" class="__l-msg">Starting…</div>
+    <div class="__l-bar"><div id="__loadbar" class="__l-fill"></div></div>
+  </div>
+</div>
+<script>
+// Save(restore) が ON のときはローディング画面を出さず、原状復帰を最優先で即表示する。
+try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElementById('__loading'); if(__o) __o.style.display='none'; } }catch(_){}
+</script>
+<style>
+/* フォントは本番と同一 (Aratana + 日本語は Hiragino Sans)。style.css の @font-face を利用 */
+#__loading{
+  position:fixed; inset:0; z-index:999998;
+  display:flex; align-items:center; justify-content:center;
+  background:#3f00ff;
+  color:#fff; font-family:"Aratana", -apple-system, "Helvetica Neue", "Hiragino Sans", system-ui, sans-serif;
+  transition:opacity .45s ease; opacity:1;
+}
+/* anon-press.com 準拠: 全て weight 400、字間は控えめ、ロゴ(大)＋本文(均一)の2段階スケール */
+#__loading .__l-inner{ text-align:center; padding:24px; }
+#__loading .__l-title{ font-size:30px; font-weight:400; letter-spacing:.025em; line-height:1; margin-bottom:10px; }
+#__loading .__l-sub{ font-size:11px; font-weight:400; letter-spacing:.02em; color:rgba(255,255,255,.6); margin-bottom:28px; }
+#__loading .__l-msg{ font-size:11px; font-weight:400; letter-spacing:.02em; color:rgba(255,255,255,.9); min-height:1.4em; }
+/* プログレスバー: 中央ブロック内(画面中央)に横 100vw (breakout でビューポート全幅) */
+#__loading .__l-bar{ position:relative; left:50%; margin-left:-50vw; width:100vw; height:2px; margin-top:26px; background:rgba(255,255,255,.20); }
+#__loading .__l-fill{ height:100%; width:0; background:#fff; transition:width .35s ease; }
+</style>
+<div id="app">
+
+  <!-- top bar -->
+  <header id="topbar">
+    <span class="title">GARA</span>
+    <button id="btnProj" title="別ウィンドウに出力"><span class="ic">🖥</span><span class="lb">Projector</span></button>
+    <button id="btnRec" title="録画。画面音声ON時は音声も保存"><span class="ic">⏺</span><span class="lb">Record</span></button>
+    <button id="btnShot" title="スクリーンショットをPNG保存"><span class="ic">📷</span><span class="lb">Shot</span></button>
+    <button id="btnLoadAll" title="ON中は動画・画像・シェーダを端末へ保存し、全動画の逆再生用RGBAフレームバッファもIndexedDBへ永続保存します。"><span class="ic">⬇</span><span class="lb">Load</span></button>
+    <button id="btnRestore" title="ONのとき、起動時に前回の状態を復元します(3秒ごとに自動保存)。OFFで毎回クリーン起動。"><span class="ic">💾</span><span class="lb">Save</span></button>
+    <button id="btnHelp" title="ホットキー一覧"><span class="ic">❔</span><span class="lb">Help</span></button>
+    <span class="grow"></span>
+    <span class="stat">
+      <select id="resSel" title="描画解像度 (表示枠も追従)" style="font-size:10px;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px">
+        <optgroup label="横長">
+          <option value="3840x2160">3840×2160 16:9</option>
+          <option value="2560x1440">2560×1440 16:9</option>
+          <option value="1920x1080">1920×1080 16:9</option>
+          <option value="1600x1200">1600×1200 4:3</option>
+          <option value="1280x720">1280×720 16:9</option>
+          <option value="1280x670">1280×670 note</option>
+          <option value="960x540">960×540 16:9</option>
+          <option value="800x600">800×600 4:3</option>
+        </optgroup>
+        <optgroup label="正方形">
+          <option value="1080x1080">1080×1080 1:1</option>
+        </optgroup>
+        <optgroup label="縦長">
+          <option value="2160x3840">2160×3840 9:16</option>
+          <option value="1440x2560">1440×2560 9:16</option>
+          <option value="1080x1920">1080×1920 9:16</option>
+          <option value="1200x1600">1200×1600 3:4</option>
+          <option value="720x1280">720×1280 9:16</option>
+          <option value="540x960">540×960 9:16</option>
+          <option value="600x800">600×800 3:4</option>
+        </optgroup>
+      </select>
+    </span>
+    <span class="stat">FPS <b id="statFps">—</b></span>
+    <span class="stat">CPU <b id="statCpu">—</b></span>
+    <span class="stat">GPU <b id="statGpu">—</b></span>
+    <span class="stat">Atk <b id="statAtk">—</b></span>
+    <span class="stat">MIDI <b id="statMidi">—</b></span>
+  </header>
+
+  <!-- ホットキー一覧 (CLAUDE.md のホットキー節が正。変更したらここも合わせて更新する) -->
+  <div id="helpModal" class="modal-overlay" style="display:none">
+    <div class="modal-box">
+      <div class="modal-head"><b>ホットキー</b><button id="btnHelpClose" class="modal-close">×</button></div>
+      <div class="modal-body">
+        <table class="help-table">
+          <tr><td><kbd>Space</kbd></td><td>Draw フリーズ (シェーダ類の時間更新 ON/OFF。描画は継続)</td></tr>
+          <tr><td><kbd>T</kbd></td><td>Tap tempo</td></tr>
+          <tr><td><kbd>Cmd/Ctrl + R</kbd></td><td>Record ON / OFF</td></tr>
+          <tr><td><kbd>Cmd/Ctrl + S</kbd></td><td>スクリーンショットを PNG 保存</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Post / Mix / Transition / mode / Overlay / Pan・Zoom を保存値・初期値へリセット (スロットは保持)</td></tr>
+          <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Crossfade ± / <kbd>\</kbd> フリップ</td></tr>
+          <tr><td><kbd>A</kbd></td><td>Auto Map トグル (アクティブスロットへ適用 — A なら A ← B / B なら B ← A)</td></tr>
+          <tr><td><kbd>P</kbd></td><td>Grad / Blend プレビューバーの表示トグル (負荷対策)</td></tr>
+          <tr><td><kbd>D</kbd></td><td>beat / drone 切替</td></tr>
+          <tr><td><kbd>O</kbd></td><td>Overlay トグル</td></tr>
+          <tr><td><kbd>U</kbd></td><td>色相反転 (+180°。押すたびに半周、2回で元へ)</td></tr>
+          <tr><td><kbd>I</kbd></td><td>Invert トグル (hue も180°回転)</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>全スロットを「なし(透明)」に + 各パラメータを保存値/初期値へリセット</td></tr>
+          <tr><td>プレビュークリック</td><td>合成=Slot A / 下段 A/B タイル=そのスロットをアクティブに (タイルダブルクリックで表示切替、タイルをもう一方へドラッグで A ⇄ B 交換)</td></tr>
+          <tr><td><kbd>1</kbd>〜<kbd>9</kbd></td><td>プリセット呼出</td></tr>
+          <tr><td><kbd>F</kbd></td><td>Audio Direction 切替 (Flip → Flip Charge → Off)</td></tr>
+          <tr><td><kbd>Shift</kbd>+<kbd>F</kbd></td><td>フルスクリーン</td></tr>
+          <tr><td><kbd>C</kbd></td><td>Overlay キャンバスをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
+          <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>beat scale (×倍率) 上げ/下げ</td></tr>
+          <tr><td><kbd>←</kbd></td><td>visual 逆再生 / <kbd>→</kbd> 順再生 (GL.clock を反転)</td></tr>
+          <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td>ズーム (iZoom 経由)</td></tr>
+          <tr><td><kbd>Tab</kbd></td><td>パネルのタブ送り (Preset → Visual → Mix → … / Shift+Tab で逆順)</td></tr>
+          <tr><td><kbd>Enter</kbd></td><td>表示中パネルの検索バーへフォーカス (もう一度押すと解除)</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- stage: 合成プレビュー(2/3) + Slot A/B プレビュー(1/3)。横長出力=上下 / 縦長出力=左右 -->
+  <div id="stage">
+    <div id="stageMain">
+      <div id="stageInner">
+        <canvas id="glcanvas"></canvas>
+        <span class="prevLabel" id="mainPrevLabel">A + B</span>
+        <div class="fxBadges" id="fxBadgesMain"></div>
+        <div id="overlay"></div>
+        <pre id="errbox"></pre>
+      </div>
+    </div>
+    <!-- Grad Preset 1〜0 のクイックバー (キー 1〜9/0 と同じ順。クリックで適用) -->
+    <div id="gradQuickBar" title="Grad Preset (キー 1〜9 = パレット / 0 = 通常色。クリックで適用)"></div>
+    <!-- 同じ 1〜0 を Invert ON で見たプレビュー (クリック = パレット適用 + Invert ON) -->
+    <div id="gradQuickBarInv" title="Grad Preset + Invert (クリックでパレット適用 + Invert ON)"></div>
+    <div id="blendPrevBar" title="Blend Mode プレビュー (クリックで適用)"></div>
+    <div id="slotPrevRow">
+      <div class="slotPrev" id="slotPrevA" data-slot="A" title="Slot A (クリックで操作対象に / ダブルクリックで表示切替)">
+        <span class="prevLabel">A</span>
+        <div class="fxBadges" id="fxBadgesA"></div>
+        <canvas id="prevA"></canvas>
+      </div>
+      <div class="slotPrev" id="slotPrevB" data-slot="B" title="Slot B (クリックで操作対象に / ダブルクリックで表示切替)">
+        <span class="prevLabel">B</span>
+        <div class="fxBadges" id="fxBadgesB"></div>
+        <canvas id="prevB"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- side panel -->
+  <aside id="side">
+    <!-- global slot selector (always visible) -->
+    <div id="slotSel">
+      <button data-slot="A" class="shown editing">Slot A</button>
+      <button data-slot="B">Slot B</button>
+    </div>
+
+    <div class="tabs">
+      <div class="tab on" data-tab="preset">Preset</div>
+      <div class="tab" data-tab="shader">Visual</div>
+      <div class="tab" data-tab="mix">Mix</div>
+      <div class="tab" data-tab="post">Post</div>
+      <div class="tab" data-tab="overlay">Overlay</div>
+      <div class="tab" data-tab="tempo">Timing</div>
+    </div>
+    <div class="panes">
+
+      <!-- PRESET (プリセットライブラリ: 1-0 + 追加/削除) -->
+      <div class="pane on" data-pane="preset">
+        <div style="position:sticky;top:-10px;margin:-10px -10px 0;z-index:5;background:var(--panel);padding:8px 10px 6px;border-bottom:1px solid var(--line)">
+          <h3 style="margin:0 0 6px;display:flex;align-items:center;gap:6px;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim)">Preset <span class="pill" id="presetCount" style="font-size:9px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;color:var(--fg)">0</span><span class="pill" style="font-size:9px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;color:var(--fg)">クリックで呼出</span>
+            <span style="flex:1"></span>
+            <button id="btnPresetAdd" title="現在の全状態を新規プリセットとして追加" style="font-size:10px;padding:2px 8px">+ 現在を保存</button>
+            <button id="btnPresetHistory" title="サーバーに残っている保存履歴から、今は無いプリセットを復元する" style="font-size:10px;padding:2px 8px;margin-left:4px">履歴</button>
+          </h3>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+            <input type="search" id="presetSearch" placeholder="検索…" style="flex:1;min-width:70px;font-size:11px;padding:3px 6px;background:#111;border:1px solid #444;border-radius:4px;color:#ccc">
+            <button class="preFilter on" data-cat="all"    style="font-size:10px;padding:2px 7px">All</button>
+            <button class="preFilter"    data-cat="mode"   style="font-size:10px;padding:2px 7px">Mode</button>
+            <button class="preFilter"    data-cat="movie"  style="font-size:10px;padding:2px 7px">Movie</button>
+            <button class="preFilter"    data-cat="shader" style="font-size:10px;padding:2px 7px">Shader</button>
+          </div>
+        </div>
+        <div class="section" style="margin-top:8px">
+          <div id="presetList" style="display:grid;gap:6px;margin-top:4px"></div>
+          <div class="help" style="margin-top:6px;font-size:10px">クリック=<b>呼出</b> / <b>⟳</b>=現在の状態で更新 / <b>✎</b>=名前変更 / <b>×</b>=削除 <span style="color:var(--dim)">(数字キー <kbd>1</kbd>〜<kbd>9</kbd> = Grad Preset / <kbd>0</kbd> = 解除)</span></div>
+        </div>
+      </div>
+
+      <!-- SHADER (was Code) -->
+      <div class="pane" data-pane="shader">
+        <div style="position:sticky;top:-10px;margin:-10px -10px 0;z-index:5;background:var(--panel);padding:8px 10px 6px;border-bottom:1px solid var(--line)">
+          <h3 style="margin:0 0 6px">Visual
+            <span class="pill" id="thumbCount">0</span>
+            <span class="grow"></span>
+            <span id="fmtBadge" class="pill" title="アクティブスロットの形式" style="color:var(--dim)">—</span>
+          </h3>
+          <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
+            <input type="search" id="visualSearch" placeholder="検索…" style="flex:1;min-width:70px;font-size:11px;padding:3px 6px;background:#111;border:1px solid #444;border-radius:4px;color:#ccc">
+            <button class="visFilter on" data-cat="all"    style="font-size:10px;padding:2px 7px">All</button>
+            <button class="visFilter"    data-cat="mode"   style="font-size:10px;padding:2px 7px">Code</button>
+            <button class="visFilter"    data-cat="movie"  style="font-size:10px;padding:2px 7px">Movie</button>
+            <button class="visFilter"    data-cat="shader" style="font-size:10px;padding:2px 7px">Shader</button>
+          </div>
+        </div>
+        <div class="section" style="margin-top:8px">
+          <div id="thumbGrid"></div>
+          <div class="help" style="margin-top:6px;font-size:10px">
+            Code / Movie / Shader をまとめて表示。ホバーでライブプレビュー / クリックで現スロットにロード。
+          </div>
+        </div>
+
+        <!-- IMAGE: images/ 傘下のフォルダをスライドショー表示 -->
+        <div class="section" id="imageSection" style="margin-top:8px">
+          <h3 style="margin:0 0 6px 0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:6px">Image
+            <span class="pill" style="font-size:9px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:1px 6px;color:var(--fg)">folder</span>
+            <span id="imageCurInfo" style="font:600 10px var(--mono);color:var(--dim);text-transform:none;letter-spacing:0"></span>
+            <span class="default-actions"><button class="resetDefBtn" data-kind="image" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="image" title="現在のフォルダ・送り拍・順序・フィットをデフォルトとして保存">Save</button></span>
+          </h3>
+          <div class="row"><label>Advance</label>
+            <input type="range" id="imgEveryBeats" min="1" max="32" step="1" value="4" title="beat モード時に何拍ごとに次の画像へ送るか (drone モードでは自動送りなし)">
+            <div class="val" id="imgEveryBeatsVal">4拍</div>
+          </div>
+          <div class="row"><label>Order</label>
+            <select id="imgOrder" style="flex:1" title="Sequential/Random=自動送り / Single=自動送りなし (Prev/Next で選んだ 1 枚を固定表示)">
+              <option value="seq">Sequential</option>
+              <option value="random">Random</option>
+              <option value="single">Single (固定)</option>
+            </select>
+            <select id="imgFit" style="flex:1" title="Contain=全体表示(余白透過) / Cover=画面いっぱい / Drone=ゆっくり寄り引きしながら漂う">
+              <option value="contain">Contain</option>
+              <option value="cover">Cover</option>
+              <option value="drone">Drone (寄り引き)</option>
+            </select>
+          </div>
+          <div class="row"><label>Trans</label>
+            <select id="imgTrans" style="flex:1" title="画像切替のトランジション: Trans 連動=Mix パネルの Trans Beats 設定 / カット=即時 / 拍数=その長さで全画面トランジション">
+              <option value="-1">Trans 連動</option>
+              <option value="0">カット (即時)</option>
+              <option value="0.25">1/4 拍</option>
+              <option value="0.5">1/2 拍</option>
+              <option value="1">1 拍</option>
+              <option value="2">2 拍</option>
+              <option value="4">4 拍</option>
+              <option value="8">8 拍</option>
+            </select>
+          </div>
+          <div class="row"><label>Style</label>
+            <select id="imgTransStyle" style="flex:1" title="画像切替の演出: Style 連動=Mix パネルの Trans Style / なし=素の Crossfade">
+              <option value="-1">Style 連動</option>
+              <option value="0">なし (Crossfade)</option>
+              <option value="1">Black Fade (暗転)</option>
+              <option value="2">Add Glow (発光)</option>
+              <option value="3">Wipe → (左右)</option>
+              <option value="4">Wipe ↓ (上下)</option>
+              <option value="5">Glitch: Slice (横スライスずれ)</option>
+              <option value="9">Glitch: Noise Dissolve</option>
+              <option value="11">Barcode (バーコード化)</option>
+            </select>
+          </div>
+          <div class="row"><label>Manual</label>
+            <button id="imgPrev" style="flex:1" title="前の画像">◀ Prev</button>
+            <button id="imgNext" style="flex:1" title="次の画像 (C キーでも送り)">Next ▶</button>
+          </div>
+          <div id="imageFolderGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px"></div>
+          <div class="btnrow" style="margin-top:6px">
+            <button id="imgFolderSave" style="flex:2" title="いまの設定 (Order / Beats / Fit / Trans / Style) を選択中のフォルダ/画像に保存。次に選んだとき自動で適用される (md と同方式)">Save ▸ フォルダ設定</button>
+            <button id="imgFolderClear" style="flex:1" title="このフォルダ/画像の保存設定を削除">Clear</button>
+          </div>
+          <div class="help" style="margin-top:6px;font-size:10px">フォルダをクリックで Slot にロード。サムネは中身を 3×2 表示。beat モードで自動送り / <kbd>C</kbd> で次へ。drone は送りなし。<br>画像ファイルをここへドラッグ&ドロップすると<b>臨時フォルダ</b>として追加 (セッション限り。リロードで消える)。</div>
+        </div>
+
+        <details id="editorDetails" class="section">
+          <summary>Editor</summary>
+          <div class="codebar" style="padding:6px 0">
+            <button id="btnNewShader" title="新規">New</button>
+            <span class="grow"></span>
+            <button id="btnCompile" class="acc" title="コンパイル (Cmd+Enter)">Compile</button>
+          </div>
+          <div id="editor" style="height:320px;border:1px solid var(--line);border-radius:4px;overflow:hidden">
+            <div class="gutter" id="gutter">1</div>
+            <textarea id="code" spellcheck="false" autocomplete="off" autocorrect="off" autocapitalize="off"></textarea>
+          </div>
+        </details>
+      </div>
+
+      <!-- MIX -->
+      <div class="pane" data-pane="mix">
+        <div class="section" id="mixXfadeSec">
+          <h3>Mix <span class="default-actions"><button class="resetDefBtn" data-kind="mix" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="mix" title="Crossfade / Blend / Auto mode の現在値をデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>Blend</label>
+            <select id="cfBlend" style="flex:1" title="Mix=通常クロスフェード, 他はブレンドモード (Mix で適用強度)">
+              <option value="mix" selected>Mix (crossfade)</option>
+              <option value="add">Add (加算)</option>
+              <option value="multiply">Multiply (乗算)</option>
+              <option value="screen">Screen (スクリーン)</option>
+              <option value="darken">暗い色 Darker Color</option>
+              <option value="lighten">明るい色 Lighter Color</option>
+              <option value="difference">Difference (差の絶対値)</option>
+              <option value="overlay">Overlay (オーバーレイ)</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Opacity</label>
+            <input type="range" id="cf" min="0" max="1" step="0.001" value="1">
+            <div class="val" id="cfVal">1.00</div>
+          </div>
+          <div class="row">
+            <label>B Offset</label>
+            <input type="range" id="mixBOffset" min="0" max="8" step="0.25" value="0" title="Slot B のシェーダ位相ずらし (拍)。A/B に同じシェーダを入れて周期をずらして重ねる用">
+            <div class="val" id="mixBOffsetVal">0.00</div>
+          </div>
+          <div class="row">
+            <label>Auto</label>
+            <input type="checkbox" id="cfAuto">
+            <select id="cfAutoMode" style="font-size:11px" title="Crossfade=なめらか, Switch=パチンと切替">
+              <option value="crossfade" selected>Fade</option>
+              <option value="switch">Switch</option>
+            </select>
+            <span style="font-size:11px;color:var(--dim)">every</span>
+            <input type="number" id="cfBeats" value="8" min="1" max="64" style="width:60px">
+            <span style="font-size:11px;color:var(--dim)">beats</span>
+            <button id="cfMidiLearn" class="midi" style="font-size:10px;padding:2px 6px">MIDI</button>
+          </div>
+          <div class="help" style="margin-top:6px">ホットキー: <kbd>[</kbd> = Slot A 表示/非表示, <kbd>]</kbd> = Slot B 表示/非表示, <kbd>Backspace</kbd> = アクティブスロットを透明に, <kbd>Shift</kbd> 単押し = Visualごとの操作 (CYBER UI 背景切替など), <kbd>\</kbd> = フリップ</div>
+        </div>
+
+        <div class="section textdeform-mode" style="display:none">
+          <h3>Type Deformer <span class="pill section-tag">md</span> <span class="default-actions"><button class="resetDefBtn" data-kind="textdeformMd" id="tdMdResetDefault" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="textdeformMd" id="tdMdSaveDefault" title="選択中のmdの色・書体・組版・変形をデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>MD</label>
+            <select id="tdMdSelect" style="flex:1"></select>
+          </div>
+          <div class="row"><label>Randomize</label>
+            <button id="tdMdRandOne" title="配色・書体・組版・変形をランダム生成 (保存は右上の Save)" style="flex:1">Random 🎲</button>
+          </div>
+          <div class="row"><label>Paper</label>
+            <input type="color" id="tdMdPaper" value="#050507">
+            <div class="val" id="tdMdPaperVal">#050507</div>
+          </div>
+          <div class="row"><label>Ink</label>
+            <input type="color" id="tdMdInk" value="#e8fff5">
+            <div class="val" id="tdMdInkVal">#e8fff5</div>
+          </div>
+          <div class="row"><label>Accent</label>
+            <input type="color" id="tdMdAccent" value="#ff2b6d">
+            <div class="val" id="tdMdAccentVal">#ff2b6d</div>
+          </div>
+          <div class="row"><label>Accent %</label>
+            <input type="range" id="tdMdAccentRatio" min="0" max="0.5" step="0.01" value="0.06">
+            <div class="val" id="tdMdAccentRatioVal">6%</div>
+          </div>
+          <div class="row"><label>Typeface</label>
+            <select id="tdMdFont" style="flex:1">
+              <option value='"yu-mincho-pr6n","dnp-shuei-nmincho-std","Zen Old Mincho","Hiragino Mincho ProN","Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol",serif'>DNP / Yu Mincho</option>
+              <option value='"yu-mincho-pr6n","Yu Mincho Pr6N","Zen Old Mincho","Hiragino Mincho ProN","Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol",serif'>Yu Mincho Pr6N</option>
+              <option value='"dnp-shuei-nmincho-std","Zen Old Mincho","Hiragino Mincho ProN","Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol",serif'>DNP Shuei Mincho</option>
+              <option value='"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Zen Kaku Gothic New","Noto Sans JP","Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol",sans-serif'>DNP Shuei Gothic</option>
+              <option value='"Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol",sans-serif'>Lucida Unicode</option>
+              <option value='"Zen Old Mincho", "Hiragino Mincho ProN", "Lucida Sans Unicode VJ", "Lucida Sans Unicode", serif'>Zen Old Mincho</option>
+              <option value='"Noto Sans JP", "Lucida Sans Unicode VJ", "Lucida Sans Unicode", sans-serif'>Noto Sans JP</option>
+              <option value='"Zen Kaku Gothic New", "Lucida Sans Unicode VJ", "Lucida Sans Unicode", sans-serif'>Zen Kaku Gothic</option>
+              <option value='"MS Gothic", "ＭＳ ゴシック", "Osaka-Mono", "Lucida Sans Unicode VJ", "Lucida Sans Unicode", monospace'>MS Gothic</option>
+              <option value='"Space Mono", "Lucida Sans Unicode VJ", "Lucida Sans Unicode", monospace'>Space Mono</option>
+              <option value='"EB Garamond", "Lucida Sans Unicode VJ", "Lucida Sans Unicode", serif'>EB Garamond</option>
+            </select>
+          </div>
+          <div class="row"><label>Size</label>
+            <input type="range" id="tdMdFontSize" min="24" max="120" step="1" value="60">
+            <div class="val" id="tdMdFontSizeVal">60</div>
+          </div>
+          <div class="row"><label>Leading</label>
+            <input type="range" id="tdMdLineHeight" min="0.7" max="1.8" step="0.01" value="1.15">
+            <div class="val" id="tdMdLineHeightVal">1.15</div>
+          </div>
+          <div class="row"><label>Track</label>
+            <input type="range" id="tdMdLetterSpacing" min="-0.25" max="0.2" step="0.01" value="-0.02">
+            <div class="val" id="tdMdLetterSpacingVal">-0.02</div>
+          </div>
+          <div class="row"><label>Dir</label>
+            <select id="tdMdDirection" style="flex:1">
+              <option value="horizontal">Horizontal</option>
+              <option value="vertical">Vertical</option>
+            </select>
+          </div>
+          <div class="row"><label>Frame</label>
+            <select id="tdMdFitMode" style="flex:1">
+              <option value="fit">Fit</option>
+              <option value="crop">Crop</option>
+              <option value="actual">Actual</option>
+            </select>
+          </div>
+          <div class="row"><label>Zoom</label>
+            <input type="range" id="tdMdZoom" min="0.2" max="4" step="0.01" value="1">
+            <div class="val" id="tdMdZoomVal">1.00</div>
+          </div>
+          <div class="row"><label>Pan X</label>
+            <input type="range" id="tdMdPanX" min="-1" max="1" step="0.01" value="0">
+            <div class="val" id="tdMdPanXVal">0.00</div>
+          </div>
+          <div class="row"><label>Pan Y</label>
+            <input type="range" id="tdMdPanY" min="-1" max="1" step="0.01" value="0">
+            <div class="val" id="tdMdPanYVal">0.00</div>
+          </div>
+          <div class="row"><label>Wrap</label>
+            <input type="range" id="tdMdStageW" min="420" max="2600" step="10" value="960">
+            <div class="val" id="tdMdStageWVal">960</div>
+          </div>
+          <div class="row"><label>Margin</label>
+            <input type="range" id="tdMdMarginPct" min="0" max="20" step="1" value="6">
+            <div class="val" id="tdMdMarginPctVal">6</div>
+          </div>
+          <div class="row"><label>Law</label>
+            <select id="tdMdRandomLaw" style="flex:1">
+              <option value="paste">Paste</option>
+              <option value="collage">Collage</option>
+              <option value="scatter">Scatter</option>
+              <option value="calm">Calm</option>
+              <option value="wave">Wave</option>
+              <option value="grid">Grid</option>
+              <option value="pulse">Pulse</option>
+              <option value="glitch">Glitch</option>
+            </select>
+          </div>
+          <div class="row"><label>Tilt</label>
+            <input type="range" id="tdMdRotation" min="0" max="24" step="0.5" value="0">
+            <div class="val" id="tdMdRotationVal">0deg</div>
+          </div>
+          <div class="row"><label>Random</label>
+            <input type="range" id="tdMdRandomness" min="0" max="1.8" step="0.01" value="1">
+            <div class="val" id="tdMdRandomnessVal">1.00</div>
+          </div>
+          <div class="row"><label>Geo</label>
+            <input type="range" id="tdMdGeoRatio" min="0" max="1" step="0.01" value="0.32">
+            <div class="val" id="tdMdGeoRatioVal">32%</div>
+          </div>
+          <div class="row"><label>Stretch X</label>
+            <input type="range" id="tdMdStretchX" min="0" max="3" step="0.01" value="1">
+            <div class="val" id="tdMdStretchXVal">1.00</div>
+          </div>
+          <div class="row"><label>Stretch Y</label>
+            <input type="range" id="tdMdStretchY" min="0" max="3" step="0.01" value="1">
+            <div class="val" id="tdMdStretchYVal">1.00</div>
+          </div>
+          <div class="row"><label>Speed</label>
+            <input type="range" id="tdMdFlipRate" min="0" max="6" step="0.05" value="1.4">
+            <div class="val" id="tdMdFlipRateVal">1.40</div>
+          </div>
+          <div class="row"><label>Rotate Op</label>
+            <input type="range" id="tdMdRotateAngle" min="0" max="180" step="1" value="0" title="Operator: 文字ごとの回転量 (0で無効)">
+            <div class="val" id="tdMdRotateAngleVal">0deg</div>
+          </div>
+          <div class="row"><label>Skew X</label>
+            <input type="range" id="tdMdSkewX" min="-70" max="70" step="1" value="0" title="Operator: 横シアー (0で無効)">
+            <div class="val" id="tdMdSkewXVal">0deg</div>
+          </div>
+          <div class="row"><label>Skew Y</label>
+            <input type="range" id="tdMdSkewY" min="-70" max="70" step="1" value="0" title="Operator: 縦シアー (0で無効)">
+            <div class="val" id="tdMdSkewYVal">0deg</div>
+          </div>
+          <div class="row"><label>Baseline</label>
+            <input type="range" id="tdMdBaselineShift" min="-3" max="3" step="0.05" value="0" title="Operator: ベースラインずらし em (縦組では左右)">
+            <div class="val" id="tdMdBaselineShiftVal">0.00</div>
+          </div>
+          <div class="row"><label>Mirror X</label>
+            <input type="range" id="tdMdMirrorX" min="0" max="1" step="0.05" value="0" title="Operator: 左右鏡映量 (1で完全反転)">
+            <div class="val" id="tdMdMirrorXVal">0%</div>
+          </div>
+          <div class="row"><label>Mirror Y</label>
+            <input type="range" id="tdMdMirrorY" min="0" max="1" step="0.05" value="0" title="Operator: 上下鏡映量 (1で完全反転)">
+            <div class="val" id="tdMdMirrorYVal">0%</div>
+          </div>
+          <div class="row"><label>Misreg X</label>
+            <input type="range" id="tdMdMisregX" min="-40" max="40" step="0.5" value="0" title="Operator: 版ずれ2色刷りの横オフセット px (0で無効)">
+            <div class="val" id="tdMdMisregXVal">0px</div>
+          </div>
+          <div class="row"><label>Misreg Y</label>
+            <input type="range" id="tdMdMisregY" min="-40" max="40" step="0.5" value="0" title="Operator: 版ずれ2色刷りの縦オフセット px (0で無効)">
+            <div class="val" id="tdMdMisregYVal">0px</div>
+          </div>
+          <div class="row"><label>Misreg Ink</label>
+            <input type="color" id="tdMdMisregColorA" value="#c41f1f" title="版ずれ A 色">
+            <label style="min-width:auto">B</label>
+            <input type="color" id="tdMdMisregColorB" value="#1767a6" title="版ずれ B 色">
+          </div>
+          <div class="row"><label>Confuse</label>
+            <input type="range" id="tdMdConfuseDepth" min="0" max="1" step="0.01" value="0" title="Operator: 類字置換の深さ (浅=旧字体/濁点 → 深=異スクリプト。0で無効)">
+            <div class="val" id="tdMdConfuseDepthVal">0%</div>
+          </div>
+          <div class="row"><label>Op Rate</label>
+            <input type="range" id="tdMdOpChance" min="0" max="1" step="0.01" value="0.6" title="文字が動くとき各Operatorが乗る確率">
+            <div class="val" id="tdMdOpChanceVal">60%</div>
+          </div>
+          <div class="row"><label>Grid</label>
+            <select id="tdMdGrid" style="flex:1" title="グリッド組版 (原稿用紙状のマスに1文字ずつ配置)">
+              <option value="off">Off</option>
+              <option value="on">On</option>
+            </select>
+          </div>
+          <div class="row"><label>Grid Cols</label>
+            <input type="range" id="tdMdGridCols" min="2" max="40" step="1" value="12" title="横組=1行のマス数 / 縦組=1列のマス数">
+            <div class="val" id="tdMdGridColsVal">12</div>
+          </div>
+          <div class="row"><label>Grid Cell</label>
+            <input type="range" id="tdMdGridCell" min="0" max="240" step="2" value="0" title="マスの大きさ px (0=文字サイズから自動)">
+            <div class="val" id="tdMdGridCellVal">Auto</div>
+          </div>
+          <div class="row"><label>Grid Gap</label>
+            <input type="range" id="tdMdGridGap" min="0" max="80" step="1" value="0" title="マスの間隔 px">
+            <div class="val" id="tdMdGridGapVal">0</div>
+          </div>
+          <div class="row"><label>Comp</label>
+            <select id="tdCompType" style="flex:1" title="Composition Engine v6: テキストから生成シーンを合成 (md 単位。デフォルト保存で永続化、保存の無い md では Off に戻る)">
+              <option value="off">Off</option>
+              <option value="field">Field</option>
+              <option value="fluxRows">Flux Rows</option>
+              <option value="cascade">Cascade</option>
+              <option value="contourAtlas">Contour Atlas</option>
+              <option value="feedbackChamber">Feedback Chamber</option>
+            </select>
+            <button id="tdCompReseed" title="Composition の乱数シードを引き直す">🎲</button>
+          </div>
+          <div class="row"><label>C Speed</label>
+            <input type="range" id="tdCompSpeed" min="0.01" max="1" step="0.01" value="0.18" title="Composition のループ速度 (1周/秒)">
+            <div class="val" id="tdCompSpeedVal">0.18</div>
+          </div>
+          <div class="row"><label>C Intens</label>
+            <input type="range" id="tdCompIntensity" min="0" max="1" step="0.01" value="0.65" title="Composition マクロ: 変形の強さ">
+            <div class="val" id="tdCompIntensityVal">65%</div>
+          </div>
+          <div class="row"><label>C Dens</label>
+            <input type="range" id="tdCompDensity" min="0" max="1" step="0.01" value="0.6" title="Composition マクロ: 密度 (インスタンス数)">
+            <div class="val" id="tdCompDensityVal">60%</div>
+          </div>
+          <div class="row"><label>C Unstab</label>
+            <input type="range" id="tdCompInstability" min="0" max="1" step="0.01" value="0.35" title="Composition マクロ: 不安定さ (ノイズ量)">
+            <div class="val" id="tdCompInstabilityVal">35%</div>
+          </div>
+          <div class="row"><label>C Depth</label>
+            <input type="range" id="tdCompDepth" min="0" max="1" step="0.01" value="0.45" title="Composition マクロ: 奥行き/スケール変調">
+            <div class="val" id="tdCompDepthVal">45%</div>
+          </div>
+          <div class="row"><label>C Legib</label>
+            <input type="range" id="tdCompLegibility" min="0" max="1" step="0.01" value="0.85" title="Composition マクロ: 可読性の下限 (低いほど崩れる)">
+            <div class="val" id="tdCompLegibilityVal">85%</div>
+          </div>
+          <div class="row"><label>FX Echo</label>
+            <input type="range" id="tdCompEcho" min="0" max="1" step="0.01" value="0" title="FXラック: 残像トレイル (0で無効)">
+            <div class="val" id="tdCompEchoVal">Off</div>
+          </div>
+          <div class="row"><label>FX Feedb</label>
+            <input type="range" id="tdCompFeedback" min="0" max="1" step="0.01" value="0" title="FXラック: フィードバック (ズーム/回転の再帰。0で無効)">
+            <div class="val" id="tdCompFeedbackVal">Off</div>
+          </div>
+          <div class="row"><label>FX Chroma</label>
+            <input type="range" id="tdCompChroma" min="0" max="1" step="0.01" value="0" title="FXラック: 色収差スプリット (0で無効)">
+            <div class="val" id="tdCompChromaVal">Off</div>
+          </div>
+          <div class="row"><label>FX Raster</label>
+            <input type="range" id="tdCompRaster" min="0" max="1" step="0.01" value="0" title="FXラック: ラスタ質感 (スキャンライン/ノイズ。0で無効)">
+            <div class="val" id="tdCompRasterVal">Off</div>
+          </div>
+        </div>
+
+        <!-- Moji Type (文字アニメーション) -->
+        <div class="section ugomeki-mode" style="display:none">
+          <h3>Ugomeki <span class="pill section-tag">md</span> <span class="default-actions"><button class="resetDefBtn" data-kind="ugomekiMd" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="ugomekiMd" title="選択中のmdに現在のパラメータをデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>MD</label>
+            <select id="mtMdSelect" style="flex:1"></select>
+          </div>
+          <div class="row"><label>Randomize</label>
+            <button id="mtSeedRand" title="ランダムにアニメ設定一式＋組版を生成" style="flex:1">Random 🎲</button>
+            <button id="mtReseed" title="揺れの乱数パターンだけ変更">Reseed</button>
+          </div>
+          <div class="row"><label>Typeface</label>
+            <select id="mtFont" style="flex:1"></select>
+          </div>
+          <div class="row"><label>Direction</label>
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="mtVertical">Vertical</label>
+            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="mtBold">Bold</label>
+          </div>
+          <div class="row"><label>Align</label>
+            <select id="mtAlign" style="flex:1">
+              <option value="start">Left / Top</option>
+              <option value="center" selected>Center</option>
+              <option value="end">Right / Bottom</option>
+              <option value="justify">Justify</option>
+            </select>
+          </div>
+          <div class="row"><label>Spacing</label>
+            <select id="mtSpacing" style="flex:1">
+              <option value="grid" selected>Grid (monospace)</option>
+              <option value="metrics">Metrics (proportional)</option>
+            </select>
+          </div>
+          <div class="row"><label>Overflow</label>
+            <select id="mtOverflow" style="flex:1" title="表示量を超えたとき: Page=画面リセットして次ページ / Scroll=1行ずつスクロール">
+              <option value="page" selected>Page (reset &amp; redraw)</option>
+              <option value="scroll">Scroll (line by line)</option>
+            </select>
+          </div>
+          <div class="row"><label>Paper</label>
+            <input type="color" id="mtPaper" value="#f4f3ef">
+            <label style="min-width:auto">Ink</label>
+            <input type="color" id="mtInk" value="#17140f">
+          </div>
+          <div id="mtParams"></div>
+        </div>
+
+        <div class="section spacetype-mode" style="display:none">
+          <h3>Space Type <span class="pill section-tag">md</span> <span class="default-actions"><button class="resetDefBtn" data-kind="spacetypeMd" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="spacetypeMd" title="選択中のmdに現在のパラメータをデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>MD</label>
+            <select id="stMdSelect" style="flex:1"></select>
+          </div>
+          <div class="row"><label>Randomize</label>
+            <button id="stRandom" title="シーンと動きのパラメータをランダム生成 (Scene=Randomのままなら自動切替も継続)" style="flex:1">Random 🎲</button>
+          </div>
+          <div class="row"><label>Scene</label>
+            <select id="stScene" style="flex:1" title="Saved=呼び出したmdにデフォルト保存したsceneを再生(既定) / Random=サイクルごとにランダム抽選 / 具体名=固定。シーン: wave=波打つ文字面 / wall=文字の壁 / arc=弧 / tunnel=トンネル / cylinder=円筒 / helix=螺旋 / sphere=球 / rings=同心円 / ribbon=3D曲線帯 / lissajous=リサージュ / vortex=渦 / burst=放射 / scatter=散布 / fall=雨"></select>
+          </div>
+          <div class="row"><label></label>
+            <div id="stCycleInfo" style="flex:1;font:600 10px var(--mono);color:var(--dim);letter-spacing:0.5px" title="現在のシーンと、次のサイクルまでの残り。next が減らないときは拍が進んでいない(逆再生・フリーズ等)"></div>
+          </div>
+          <div class="row"><label>Typeface</label>
+            <select id="stFont" style="flex:1"></select>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto"><input type="checkbox" id="stBold">Bold</label>
+          </div>
+          <div class="row"><label>Auto</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="所定の拍数ごとにシーンとmdを自動で送る (beat モード限定。drone モードでは切り替わらない)"><input type="checkbox" id="stAutoCycle">Cycle</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="カメラを自動で周回させる (tunnelでは視線の揺れ)"><input type="checkbox" id="stCamOrbit">Orbit</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="ON=サイクルでmdを送るたび、初期値へ戻してからそのmdの保存デフォルトを適用(保存が無いmdは初期値) / OFF=保存デフォルトがあるmdだけ読み込み、無いmdは今のパラメータを維持"><input type="checkbox" id="stCycleReload">Reload</label>          </div>
+          <div class="row"><label>Look</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="tunnel/cylinderでも文字を常にカメラへ向ける"><input type="checkbox" id="stBillboard">Billboard</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="奥/端で文字をフェード (tunnel/fall)"><input type="checkbox" id="stDepthFade">Fade</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="Slot Aでも背景を透過 (下のレイヤーが透ける)"><input type="checkbox" id="stTransBg">BG透過</label>
+          </div>
+          <div class="row"><label>Emoji</label>
+            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="絵文字を元の色のまま描く (OFF=Ink色のシルエット)"><input type="checkbox" id="stEmojiColor">カラー絵文字</label>
+          </div>
+          <div class="row" style="align-items:flex-start"><label style="padding-top:5px">Color</label>
+            <div style="display:grid;grid-template-columns:repeat(2,auto);gap:6px 18px;justify-content:start">
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:40px;color:var(--dim);font-size:11px" title="背景色">Paper</span><input type="color" id="stPaper" value="#0a0a10" title="背景色"></span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:40px;color:var(--dim);font-size:11px" title="文字色">Ink</span><input type="color" id="stInk" value="#f2f0ea" title="文字色"></span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:40px;color:var(--dim);font-size:11px" title="差し色 (Accent % の割合の文字に付く)">Acc</span><input type="color" id="stAccent" value="#ff4530" title="差し色 (Accent % の割合の文字に付く)"></span>
+              <span style="display:flex;align-items:center;gap:6px"><span style="width:40px;color:var(--dim);font-size:11px" title="押し出し面の色">Side</span><input type="color" id="stSideColor" value="#303030" title="押し出し面の色。既定=文字の縁の色をそのまま引き延ばす (Ink/Accent/絵文字のフチ)。色を選ぶと専用色になり、ダブルクリックで既定に戻る"></span>
+            </div>
+          </div>
+          <div id="stParams"></div>
+        </div>
+
+        <!-- アクティブスロットのシェーダ @param 一覧 (パラメータのあるシェーダのみ表示) -->
+        <div class="section" id="shaderParamsSec" style="display:none">
+          <h3>Shader Params <span class="pill" id="paramsSlotPill">A</span><span class="default-actions"><button class="resetDefBtn" data-kind="sparam" title="保存したデフォルトを削除してシェーダ本来の値へ戻す">Reset</button><button class="saveDefBtn" data-kind="sparam" title="現在のパラメータ値をこのシェーダのデフォルトとして保存(次回そのシェーダを呼ぶと反映)">Save</button></span></h3>
+          <div id="params" class="params"></div>
+        </div>
+
+        <div class="section">
+          <h3>Slot <span class="pill" id="slotPill">A</span> <span class="pill" id="slotKindPill" style="background:var(--panel);color:var(--dim)">shader</span></h3>
+          <div class="btnrow shader-mode">
+            <button id="btnLoadImg">画像/動画読込</button>
+            <input type="file" id="fileImg" accept="image/*,video/*" multiple hidden>
+            <button id="btnWebcam">Webcam</button>
+          </div>
+        </div>
+
+        <!-- Layer-mode sections (hidden when slot is shader mode) -->
+        <div class="section layer-mode" style="display:none">
+          <h3>Layer Images</h3>
+          <div class="btnrow">
+            <button id="btnLayerLoad">Image</button>
+            <input type="file" id="fileLayerImg" accept="image/*" multiple hidden>
+            <button id="btnLayerLoadDir">Folder</button>
+            <input type="file" id="fileLayerDir" accept="image/*" webkitdirectory multiple hidden>
+            <button id="btnLayerClear">Clear</button>
+            <button id="btnLayerReseed">Reseed</button>
+          </div>
+          <div id="layerStatus" style="font-size:10px;color:var(--dim);margin-top:6px">no images</div>
+        </div>
+
+        <div class="section layer-mode" style="display:none">
+          <h3>Layer Options <span class="default-actions"><button class="resetDefBtn" data-kind="layer" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="layer" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div id="layerParams"></div>
+        </div>
+
+        <!-- PhotoPlane-mode (3D crop collage) -->
+        <div class="section photoplane-mode" style="display:none">
+          <h3>PhotoPlane <span class="pill section-tag">3D crop</span> <span class="default-actions"><button class="resetDefBtn" data-kind="photoplane" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="photoplane" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="btnrow">
+            <button id="btnPhotoRescan" title="images/photo/ を再スキャン">⟳ Rescan</button>
+            <button id="btnPhotoReseed" title="配置とトリミングを引き直す">Reseed</button>
+          </div>
+          <div id="photoStatus" style="font-size:10px;color:var(--dim);margin-top:6px">images/photo/</div>
+          <div class="help" style="font-size:10px;margin-top:4px">images/photo/ の写真をランダムな長方形にトリミングして 3D プレーン化。回転/曲げ/ワープ。</div>
+          <div id="photoParams" style="margin-top:6px"></div>
+        </div>
+
+        <div class="section shredder-mode" style="display:none">
+          <h3>Shredder <span class="pill section-tag">polygon flock</span> <span class="default-actions"><button class="resetDefBtn" data-kind="shredder" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="shredder" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">カール(渦)ノイズで流れる粒に、原点を貫いて互いに交差する三角形の刃を生やした群れ。表=ブルー / 裏=クローム。</div>
+          <div id="shredParams" style="margin-top:6px"></div>
+        </div>
+
+        <div class="section pen-mode" style="display:none">
+          <h3>Pen Options <span class="default-actions"><button class="resetDefBtn" data-kind="pen" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="pen" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div id="penParams"></div>
+        </div>
+
+        <div class="section novel-mode" style="display:none">
+          <h3>Novel Options <span class="default-actions"><button class="resetDefBtn" data-kind="novel" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="novel" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div id="novelParams"></div>
+        </div>
+
+        <div class="section cyberui-mode" style="display:none">
+          <h3>CYBER UI Options <span class="default-actions"><button class="resetDefBtn" data-kind="cyberui" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="cyberui" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div id="cyberParams"></div>
+        </div>
+
+                                        <!-- Movie-mode (mp4/webm ループ素材) 設定 -->
+        <div class="section video-mode" style="display:none">
+          <h3>Movie <span class="pill section-tag">mp4 / webm</span> <span class="default-actions"><button class="resetDefBtn" data-kind="video" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="video" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>Fit</label>
+            <select id="vidFit" style="flex:1">
+              <option value="auto" selected>Auto (縦長=Contain / 横長=Cover)</option>
+              <option value="cover">Cover (画面いっぱい)</option>
+              <option value="contain">Contain (全体表示)</option>
+              <option value="stretch">Stretch (引き伸ばし)</option>
+            </select>
+          </div>
+          <div class="row"><label>Rate</label><input type="range" id="vidRate" min="0.1" max="4.0" step="0.05" value="1.0"><div class="val" id="vidRateVal">1.00</div></div>
+          <div class="help" style="margin-top:6px">D&D でも読込可。&lt;&gt; でズーム。方向は矢印 ←→ (順/逆)。Motion Mode = Beat では拍ごとにランダム位置へジャンプ (常時 ON)。常にミュート再生。</div>
+        </div>
+
+        <!-- Slicer-mode (3D Shatter) -->
+        <div class="section slicer-mode" style="display:none">
+          <h3>Slicer <span class="pill section-tag">image</span> <span class="default-actions"><button class="resetDefBtn" data-kind="slicerImg" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="slicerImg" title="選択中の画像に現在のパラメータをデフォルトとして保存">Save</button></span></h3>
+          <div class="btnrow">
+            <button id="btnSlicerLoad">画像読込</button>
+            <input type="file" id="fileSlicerLoad" accept="image/*" hidden>
+            <button id="btnSlicerRescan" title="images/slicer/ を再スキャン">⟳</button>
+          </div>
+          <div id="slicerStatus" style="font-size:10px;color:var(--dim);margin-top:6px">no image</div>
+          <div id="slicerLibGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px"></div>
+          <div class="row"><label>Randomize</label>
+            <button id="btnSlSeedRand" title="画像とシードをランダムに選び直す (保存は右上の Save)" style="flex:1">Random 🎲</button>
+          </div>
+          <div class="row"><label>Img Beats</label><input type="range" id="slImgBeats" min="0" max="32" step="1" value="8" title="Random スロット選択時に画像を切り替える拍数 (0=自動切替なし)"><div class="val" id="slImgBeatsVal">8</div></div>
+          <div class="row" style="margin-top:8px"><label>Pieces</label><input type="range" id="slPieces" min="10" max="2000" step="10" value="150"><div class="val" id="slPiecesVal">150</div></div>
+          <div class="row"><label>Points</label><input type="range" id="slSides" min="3" max="20" step="1" value="3"><div class="val" id="slSidesVal">3</div></div>
+          <div class="row"><label>Max Points</label><input type="range" id="slMaxSides" min="0" max="20" step="1" value="8"><div class="val" id="slMaxSidesVal">8</div></div>
+          <div class="row"><label>Seed</label><input type="range" id="slSeed" min="0" max="9999" step="1" value="0"><div class="val" id="slSeedVal">0</div></div>
+          <div class="row"><label>Explode</label><input type="range" id="slExplode" min="0" max="5" step="0.05" value="2.5"><div class="val" id="slExplodeVal">2.50</div></div>
+          <div class="row"><label>Bend</label><input type="range" id="slBend" min="0" max="15" step="0.05" value="0.8"><div class="val" id="slBendVal">0.80</div></div>
+          <div class="row"><label>Curl</label><input type="range" id="slCurl" min="0" max="12" step="0.05" value="0.4"><div class="val" id="slCurlVal">0.40</div></div>
+          <div class="row"><label>Warp Amp</label><input type="range" id="slWarpAmp" min="0" max="1.5" step="0.01" value="0" title="空間全体を波打たせる (M006 相当・アニメ)"><div class="val" id="slWarpAmpVal">0.00</div></div>
+          <div class="row"><label>Warp Freq</label><input type="range" id="slWarpFreq" min="0.3" max="12" step="0.1" value="2.0"><div class="val" id="slWarpFreqVal">2.0</div></div>
+          <div class="row"><label>Auto</label><input type="checkbox" id="slAutoMode" checked title="パラメータ + カメラを自動変調"><span style="font-size:10px;color:var(--dim);margin-left:6px">params/cam/zoom</span></div>
+          <div class="row"><label>Auto Rebuild</label>
+            <select id="slAutoBeats" style="flex:1">
+              <option value="0.03125">32× / beat</option>
+              <option value="0.0625">16× / beat</option>
+              <option value="0.125">8× / beat</option>
+              <option value="0.25">4× / beat</option>
+              <option value="0.5">2× / beat</option>
+              <option value="1" selected>every beat</option>
+              <option value="2">1 / 2 beats</option>
+              <option value="4">1 / 4 beats</option>
+              <option value="8">1 / 8 beats</option>
+              <option value="16">1 / 16 beats</option>
+              <option value="32">1 / 32 beats</option>
+            </select>
+          </div>
+          <div class="row"><label>Auto Zoom</label><input type="range" id="slAutoZoom" min="0" max="0.95" step="0.01" value="0.75"><div class="val" id="slAutoZoomVal">0.75</div></div>
+          <div class="row"><label>Auto Elev</label><input type="range" id="slAutoEl" min="0" max="1.5" step="0.01" value="0.65"><div class="val" id="slAutoElVal">0.65</div></div>
+          <div class="row"><label>AutoRot</label><input type="range" id="slAutorot" min="0" max="4" step="0.01" value="1.2"><div class="val" id="slAutorotVal">1.20</div></div>
+          <div class="row"><label>Cam Elev</label><input type="range" id="slCamEl" min="-1.2" max="1.2" step="0.01" value="0.3"><div class="val" id="slCamElVal">0.30</div></div>
+          <div class="row"><label>FOV</label><input type="range" id="slFov" min="20" max="120" step="1" value="60"><div class="val" id="slFovVal">60</div></div>
+          <div class="row"><label>Overlap Shadow</label><input type="checkbox" id="slOverlapShadow" checked></div>
+          <div class="row"><label>Shadow Str</label><input type="range" id="slShadowStr" min="0" max="1.5" step="0.01" value="0.45"><div class="val" id="slShadowStrVal">0.45</div></div>
+          <div class="row"><label>Shadow Length</label><input type="range" id="slShadowRad" min="0.5" max="6" step="0.1" value="2.2"><div class="val" id="slShadowRadVal">2.2</div></div>
+          <div class="row"><label>Shadow Depth</label><input type="range" id="slShadowBias" min="0.0005" max="0.03" step="0.0005" value="0.006"><div class="val" id="slShadowBiasVal">0.006</div></div>
+          <div class="row"><label>BG</label>
+            <select id="slBgMode" style="flex:1">
+              <option value="black">Black</option>
+              <option value="white">White</option>
+              <option value="image" selected>Image (平均色)</option>
+            </select>
+          </div>
+          <div class="row"><label>Render Scale</label><input type="range" id="slPostScale" min="0.25" max="1.0" step="0.05" value="0.75" title="低いほど高速 (0.5=1/4 pixel)"><div class="val" id="slPostScaleVal">0.75</div></div>
+          <div class="help" style="margin-top:6px">画像は images/slicer/ から自動列挙。カーソルキーでオービット、&lt;&gt;でズーム。</div>
+        </div>
+
+        <div class="section inkelly-mode" style="display:none">
+          <h3>Inkelly <span class="pill section-tag">feedback ink</span> <span class="default-actions"><button class="resetDefBtn" data-kind="inkelly" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="inkelly" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>Beat Sync</label><input type="checkbox" id="ikBeatSync" checked title="インク場の切替を拍に同期"></div>
+          <div class="row"><label>Spawn Beats</label><input type="range" id="ikSpawnBeats" min="0.5" max="16" step="0.5" value="4" title="何拍ごとにインク場を切替 (Beat Sync 時)"><div class="val" id="ikSpawnBeatsVal">4</div></div>
+          <div class="row"><label>Delay (s)</label><input type="range" id="ikDelay" min="0.5" max="12" step="0.1" value="4" title="切替周期 (Beat Sync OFF 時)"><div class="val" id="ikDelayVal">4.0</div></div>
+          <div class="row"><label>Radius</label><input type="range" id="ikSpawnR" min="0.1" max="1.6" step="0.01" value="0.9" title="インク発生リングの半径"><div class="val" id="ikSpawnRVal">0.90</div></div>
+          <div class="row"><label>Ring Width</label><input type="range" id="ikSpawnW" min="0.002" max="0.1" step="0.002" value="0.012"><div class="val" id="ikSpawnWVal">0.012</div></div>
+          <div class="row"><label>Size</label><input type="range" id="ikSize" min="0.5" max="3" step="0.05" value="1.6" title="形の大きさ(弧の長さ)"><div class="val" id="ikSizeVal">1.60</div></div>
+          <div class="row"><label>Pointiness</label><input type="range" id="ikSharp" min="0" max="1" step="0.02" value="0.5" title="尖り具合(大きいほど尖る)"><div class="val" id="ikSharpVal">0.50</div></div>
+          <div class="row"><label>Curl</label><input type="range" id="ikCurl" min="0" max="0.2" step="0.005" value="0.05" title="発生形状の歪み"><div class="val" id="ikCurlVal">0.050</div></div>
+          <div class="row"><label>Flow</label><input type="range" id="ikDisplace" min="0" max="0.02" step="0.0005" value="0.02" title="フィードバック変位(流れの強さ)"><div class="val" id="ikDisplaceVal">0.0200</div></div>
+          <div class="row"><label>Decay</label><input type="range" id="ikFade" min="0.1" max="6" step="0.1" value="1.0" title="軌跡が消える速さ"><div class="val" id="ikFadeVal">1.0</div></div>
+          <div class="row"><label>Drift</label><input type="range" id="ikFlow" min="0" max="3" step="0.05" value="3.0" title="インク場の連続ドリフト"><div class="val" id="ikFlowVal">3.00</div></div>
+          <div class="row"><label>Breath Bars</label><input type="range" id="ikBreathBars" min="1" max="16" step="1" value="4" title="ブリージング(密度増減)の周期(小節)"><div class="val" id="ikBreathBarsVal">4</div></div>
+          <div class="row"><label>Feather</label><input type="range" id="ikFeather" min="0.002" max="0.1" step="0.002" value="0.02" title="エッジ検出の柔らかさ"><div class="val" id="ikFeatherVal">0.020</div></div>
+          <div class="row"><label>Black</label><input type="checkbox" id="ikBlack" title="濃い黒い絵の具版 (低明度 / 鈍いウェット反射)"></div>
+          <div class="row"><label>Hue</label><input type="range" id="ikBgHue" class="huebar" min="0" max="1" step="0.005" value="0" title="白(左端)→ ドラッグで色相環を回す (Slot A クローム & Slot B ライン共通)"><div class="val" id="ikBgHueVal">0.000</div></div>
+          <div class="row"><label>Auto Hue</label><input type="checkbox" id="ikAutoHue" title="ON: Slot A の最も鮮やかで支配的な色相を自動で Hue に適用"></div>
+          <div class="help" style="margin-top:6px">フィードバック式インク流体 (Inkelly by leon denise)。Beat Sync で拍に合わせてインク場が切替。</div>
+        </div>
+
+              </div>
+
+      <!-- POST FX -->
+      <div class="pane" data-pane="post">
+        <div class="section">
+          <h3>Post FX <button id="btnPostReset" style="float:right;font-size:10px;padding:2px 8px">Reset</button></h3>
+          <div class="row"><label>Invert</label><input type="checkbox" id="pxInv" title="色反転 (hue も180°回転)"></div>
+          <div class="row"><label>Gamma</label><input type="range" id="pxGamma" min="0.5" max="2.5" step="0.01" value="1"><div class="val" id="pxGammaVal">1.00</div></div>
+          <div class="row"><label>Brightness</label><input type="range" id="pxBri" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxBriVal">0.00</div></div>
+          <div class="row"><label>Contrast</label><input type="range" id="pxCon" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxConVal">0.00</div></div>
+          <div class="row"><label>Saturation</label><input type="range" id="pxSat" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxSatVal">0.00</div></div>
+          <div class="row"><label style="color:#9be" title="抽出色でもう片方のスロットを再彩色 (Grad Map より先に適用)">Auto Map</label><input type="range" id="pxPaletteAmt" min="-1" max="1" step="0.01" value="0" title="正=B を A のパレットへ / 負=A を B のパレットへ / 0=なし (ホットキー: A = アクティブスロットへ適用)"><div class="val" id="pxPaletteAmtVal">0.00</div></div>
+          <div class="row"><label>Grad Map</label><input type="range" id="pxGradMix" min="-1" max="1" step="0.01" value="0" title="輝度→2色グラデーション (中央0、負値で反転)"><div class="val" id="pxGradMixVal">0.00</div></div>
+          <div class="row" style="align-items:flex-start">
+            <label>· Preset</label>
+            <div id="pxGradList" style="flex:1" title="クリック or 数字キー 1〜9,0 で適用"></div>
+          </div>
+          <div class="row" style="align-items:stretch"><label>Grad Edit</label><div id="pxGradEditor" style="flex:1"><div id="pxGradBar" title="バー=ストップ追加 / つまみ: ドラッグ=移動・クリック=色変更・バー外(下)へドラッグ=削除" style="position:relative;height:22px;border-radius:4px;border:1px solid var(--line);cursor:copy"></div><div id="pxGradHandles" style="position:relative;height:13px;margin-top:2px"></div></div><button id="pxGradReverse" title="グラデの向きを反転(左右入れ替え)" style="flex:0 0 auto;align-self:flex-start;margin-left:6px;width:28px;height:22px;padding:0;font-size:14px;line-height:20px">⇄</button></div>
+          <div class="row"><label>Hue Shift</label><input type="range" id="pxHue" min="-1" max="1" step="0.001" value="0"><div class="val" id="pxHueVal">0.00</div></div>
+          <div class="row"><label>Hue Rotate</label><input type="range" id="pxHueRot" min="0" max="2" step="0.01" value="0" title="自動で色相が左右にランダムに揺れる"><div class="val" id="pxHueRotVal">0.00</div></div>
+        </div>
+        <div class="section">
+          <h3>Quality <span class="pill" style="font-size:9px">画質補完</span></h3>
+          <div class="row"><label>Clarity</label><input type="range" id="pxClarity" min="0" max="1" step="0.01" value="0" title="CAS風の適応シャープ: 局所コントラストが低い所ほど強く輪郭を立てる(ノイズを増幅しにくい)"><div class="val" id="pxClarityVal">0.00</div></div>
+          <div class="row"><label>Denoise</label><input type="range" id="pxDenoise" min="0" max="1" step="0.01" value="0" title="エッジ保存平滑: 輪郭を残して面のノイズ/圧縮の粗れを均す(バイラテラル風)"><div class="val" id="pxDenoiseVal">0.00</div></div>
+          <div class="row"><label>Deband</label><input type="range" id="pxDeband" min="0" max="1" step="0.01" value="0" title="バンディング除去: グラデーションの段差を溶かして微細ディザで均す"><div class="val" id="pxDebandVal">0.00</div></div>
+          <div class="row"><label>Vibrance</label><input type="range" id="pxVibrance" min="-1" max="1" step="0.01" value="0" title="自然な彩度: 低彩度ほど強く持ち上げ、既に鮮やかな色とハイライトは保護(負で控えめに脱色)"><div class="val" id="pxVibranceVal">0.00</div></div>
+          <div class="row"><label>Unsharp</label><input type="range" id="pxUnsharp" min="-1" max="1" step="0.01" value="0" title="中央0=無効。負=ぼかし / 正=シャープ"><div class="val" id="pxUnsharpVal">0.00</div></div>
+          <div class="row"><label>FXAA</label><input type="checkbox" id="pxFxaa"></div>
+        </div>
+        <div class="section">
+          <h3>Material <span class="pill" style="font-size:9px">質感</span></h3>
+          <div class="row"><label>Relief</label><input type="range" id="pxSdfChrome" min="0" max="1" step="0.01" value="0" title="Relief (旧Chrome Relief): 輝度勾配法線に金属スペキュラ+フレネル。プラスチック/金属のレリーフ"><div class="val" id="pxSdfChromeVal">0.00</div></div>
+          <div class="row"><label>Bleed</label><input type="range" id="pxBleed" min="0" max="1" step="0.01" value="0" title="水彩/インクのにじみ。輪郭が滲んで溶け、エッジに顔料の暗溜まりが出る"><div class="val" id="pxBleedVal">0.00</div></div>
+          <div class="row"><label>Impasto</label><input type="range" id="pxImpasto" min="0" max="1" step="0.01" value="0" title="油絵の厚塗り。絵の具の盛り上がり・筆すじ・艶が乗る(色は保持)"><div class="val" id="pxImpastoVal">0.00</div></div>
+          <div class="row"><label>Chrome</label><input type="range" id="pxChrome" min="0" max="1" step="0.01" value="0" title="液体金属(マットキャップ)。スタジオ照明の映り込みで全体を金属質に。光源はゆっくり回転"><div class="val" id="pxChromeVal">0.00</div></div>
+          <div class="row"><label>Rain</label><input type="range" id="pxRain" min="0" max="1" step="0.01" value="0" title="Rain Screen: ガラスに付いた雨粒で映像を屈折 (4ljXDy)"><div class="val" id="pxRainVal">0.00</div></div>
+          <div class="row"><label>Water</label><input type="range" id="pxSketch" min="0" max="1" step="0.01" value="0" title="Water: fBMノイズで画面を水面のように歪ませる (lt33zn)"><div class="val" id="pxSketchVal">0.00</div></div>
+          <div class="row"><label>Pollock Gloss</label><input type="range" id="pxPollockGloss" min="0" max="1" step="0.01" value="0" title="光沢(gloss)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockGlossVal">0.0</div></div>
+          <div class="row"><label>Pollock Matt</label><input type="range" id="pxPollockMatt" min="0" max="1" step="0.01" value="0" title="マット(matt)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockMattVal">0.0</div></div>
+          <div class="row"><label>Pollock Flat</label><input type="range" id="pxPollockFlat" min="0" max="1" step="0.01" value="0" title="フラット(単色+エンボスのみ)ポロック。0=off"><div class="val" id="pxPollockFlatVal">0.0</div></div>
+        </div>
+        <div class="section">
+          <h3>Texture</h3>
+          <div class="row"><label>Scanlines</label><input type="range" id="pxScn" min="-1" max="1" step="0.01" value="0" title="中央0=無効。正=黒い走査線、負=白い走査線"><div class="val" id="pxScnVal">0.00</div></div>
+          <div class="row"><label>Grain</label><input type="range" id="pxGrn" min="0" max="0.5" step="0.005" value="0"><div class="val" id="pxGrnVal">0.00</div></div>
+          <div class="row"><label>Tex Noise</label><input type="range" id="pxTexN" min="-1" max="1" step="0.01" value="0" title="正=黒みがかったノイズ / 負=白みがかったノイズ (静的)"><div class="val" id="pxTexNVal">0.00</div></div>
+          <div class="row"><label>Posterize</label><input type="range" id="pxPos" min="0" max="16" step="1" value="0"><div class="val" id="pxPosVal">0</div></div>
+          <div class="row"><label>Bloom</label><input type="range" id="pxBlm" min="0" max="2" step="0.01" value="0"><div class="val" id="pxBlmVal">0.00</div></div>
+          <div class="row"><label>Voxel</label><input type="range" id="pxVoxel" min="0" max="1" step="0.01" value="0" title="画面を立方体ボクセル状にピクセル化"><div class="val" id="pxVoxelVal">0.00</div></div>
+        </div>
+        <div class="section">
+          <h3>Audio FX <span class="pill" style="font-size:9px">要マイク/ライン入力</span></h3>
+          <div class="row"><label>Audio → FX</label><input type="range" id="pxAudioFx" min="0" max="1" step="0.01" value="0" title="【これを上げないと Atk / Rel は効きません】Distortion / Blur・Feedback / Glitch FX を音で持ち上げる。値が 0 の FX は鳴らない。色調補正・Grad / Auto Map・Material・Texture・Quality は対象外"><div class="val" id="pxAudioFxVal">0.00</div></div>
+          <div class="row"><label>Audio → FX Atk</label><input type="range" id="pxAudioFxAtk" min="0" max="1" step="0.01" value="0.6" title="0=音の持続 (energy) 寄り / 1=打点 (hit/onset) 寄り"><div class="val" id="pxAudioFxAtkVal">0.60</div></div>
+          <div class="row"><label>Audio → FX Rel</label><input type="range" id="pxAudioFxRel" min="0.05" max="1.5" step="0.01" value="0.28" title="打点で跳ねたあと元に戻るまでの秒数。長いほどアタックの余韻が残る"><div class="val" id="pxAudioFxRelVal">0.28</div></div>
+          <div class="row"><label>Scanline</label><input type="range" id="pxAScan" min="0" max="1" step="0.01" value="0" title="オンセットで走査線ずらし"><div class="val" id="pxAScanVal">0.00</div></div>
+          <div class="row"><label>RGB</label><input type="range" id="pxARgb" min="0" max="1" step="0.01" value="0" title="音量で色収差(RGB分離)"><div class="val" id="pxARgbVal">0.00</div></div>
+          <div class="row"><label>Strobe</label><input type="range" id="pxAStrobe" min="0" max="1" step="0.01" value="0" title="アタックで一瞬フラッシュ (発火ごとに白/反転がランダム)"><div class="val" id="pxAStrobeVal">0.00</div></div>
+          <div class="row"><label>Shockwave</label><input type="range" id="pxAShock" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)で中心から屈折の衝撃波リング"><div class="val" id="pxAShockVal">0.00</div></div>
+          <div class="row"><label>Pixel Expl</label><input type="range" id="pxAExplode" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)でセルが粒子状に飛散→吸い戻し"><div class="val" id="pxAExplodeVal">0.00</div></div>
+          <div class="row"><label>Mosaic</label><input type="range" id="pxMos" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダムなブロック色swap"><div class="val" id="pxMosVal">0.00</div></div>
+          <div class="row"><label>Shake</label><input type="range" id="pxShake" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダム方向へ画面シェイク"><div class="val" id="pxShakeVal">0.00</div></div>
+          <div class="row"><label>Slice</label><input type="range" id="pxSlice" min="0" max="1" step="0.01" value="0" title="強い音で発火: ブロック状にUVを切り裂く"><div class="val" id="pxSliceVal">0.00</div></div>
+          <div class="row"><label>Mondrian</label><input type="range" id="pxSplit" min="0" max="1" step="0.01" value="0" title="Mondrian: 画面を再帰分割した矩形ごとに変位。値が大きいほど取り出し座標が大きくジャンプ。音/拍で増幅"><div class="val" id="pxSplitVal">0.00</div></div>
+          <div class="row"><label>Pixelsort</label><input type="range" id="pxPixsort" min="0" max="1" step="0.01" value="0" title="Freeangle Pixelsort: 明るい部分を角度方向にソート。音量で閾値(ソート量)が変化 (NdGXWD)"><div class="val" id="pxPixsortVal">0.00</div></div>
+          <div class="row"><label>Rings</label><input type="range" id="pxRings" min="0" max="1" step="0.01" value="0" title="Twisting Rings: 同心円リングごとに映像をねじる。時間経過で常時回転し、Audioヒット時に大きく動く。低値は少ない広いリング"><div class="val" id="pxRingsVal">0.00</div></div>
+          <div class="row"><label>Gain</label><input type="range" id="pxGain" min="-1" max="1" step="0.01" value="0" title="拍/音に同期した明滅。正=フラッシュ / 負=ダーク"><div class="val" id="pxGainVal">0.00</div></div>
+        </div>
+        <div class="section">
+          <h3>Distortion</h3>
+          <div class="row"><label>Vignette</label><input type="range" id="pxVig" min="0" max="2" step="0.01" value="0"><div class="val" id="pxVigVal">0.00</div></div>
+          <div class="row"><label>Chroma Ab</label><input type="range" id="pxChr" min="0" max="0.05" step="0.0005" value="0"><div class="val" id="pxChrVal">0.000</div></div>
+          <div class="row"><label>Pixelate</label><input type="range" id="pxPix" min="0" max="300" step="1" value="0"><div class="val" id="pxPixVal">0</div></div>
+          <div class="row"><label>Mirror</label>
+            <select id="pxMir" style="flex:1">
+              <option value="0">Off</option><option value="1">Horizontal</option><option value="2">Vertical</option>
+              <option value="3">Both (Quad)</option><option value="4">Kaleido x3</option>
+              <option value="5">Kaleido x4</option><option value="6">Kaleido x6</option>
+              <option value="7">Kaleido x8</option>
+            </select>
+          </div>
+          <div class="row"><label>Tunnel</label><input type="range" id="pxCandy" min="0" max="1" step="0.01" value="0" title="Tunnel: 映像をトンネル壁にマップ。値=分割数(タイル反復)。0=OFF"><div class="val" id="pxCandyVal">0.00</div></div>
+          <div class="row"><label>Twist</label><input type="range" id="pxTwist" min="0" max="1" step="0.01" value="0" title="ランダム方向・長周期サイン波のうねり変位。1/X拍(beat×X)で上限→シード変更で別パターン。指数カーブ"><div class="val" id="pxTwistVal">0.00</div></div>
+          <div class="row"><label>Needle</label><input type="range" id="pxOrigami" min="0" max="1" step="0.01" value="0" title="三角錐主峰が拍頭のEase Outで大きく変形し、重なった裾野だけが峰間のブリッジを形成。Droneでは緩やかに成長し、元映像を内部反射へ使用"><div class="val" id="pxOrigamiVal">0.00</div></div>
+          <div class="row"><label>Origami</label><input type="range" id="pxKaiser" min="0" max="1" step="0.01" value="0" title="Origami: 一枚のキャンバスを実際の折り紙のように層ごと折りたたむ(ベクター折り)。周期で平面へ戻り再抽選。高パラメータで引き"><div class="val" id="pxKaiserVal">0.00</div></div>
+          <div class="row"><label>Kaiser</label><input type="range" id="pxKaiserOld" min="0" max="1" step="0.01" value="0" title="Kaiser: 折り線が前の折りを横切りフラップがリボン状に裂けるダイナミックな折り紙(旧Origami)。鋭い折り目"><div class="val" id="pxKaiserOldVal">0.00</div></div>
+          <div class="row"><label>Flames</label><input type="range" id="pxRiver" min="0" max="1" step="0.01" value="0" title="Flames (VitalRiverFlames l3sXW4): 映像をねじれた3D構造にマップ。マウス/キー操作は除去済み。重め"><div class="val" id="pxRiverVal">0.00</div></div>
+          <div class="row"><label>Boltzmann</label><input type="range" id="pxBoltz" min="0" max="1" step="0.01" value="0" title="0=off。値で運動の強弱・速さ。攪拌の向きはランダム"><div class="val" id="pxBoltzVal">0.0</div></div>
+        </div>
+        <div class="section">
+          <h3>Blur / Feedback</h3>
+          <div class="row"><label>Gaussian Blur</label><input type="range" id="pxSlit2" min="0" max="1" step="0.01" value="0" title="〜0.5は輪郭を残しつつぼかし、0.5以降で完全にぼかす"><div class="val" id="pxSlit2Val">0.00</div></div>
+          <div class="row"><label>Hipass</label><input type="range" id="pxGlass" min="0" max="1" step="0.01" value="0" title="Hipass: 初速から高域強調が強く効き、後段でブラー範囲が広がる。補色は弱めに抑えつつ残す"><div class="val" id="pxGlassVal">0.00</div></div>
+          <div class="row"><label>Dither Blur</label><input type="range" id="pxDither" min="0" max="1" step="0.01" value="0" title="Kawase Jitter Blur: ジッター付き 2 半径 Kawase ブラー。指数カーブ"><div class="val" id="pxDitherVal">0.00</div></div>
+          <div class="row"><label>Motion Blur</label><input type="range" id="pxMblur" min="0" max="1" step="0.01" value="0"><div class="val" id="pxMblurVal">0.00</div></div>
+          <div class="row"><label>FB Add</label><input type="range" id="pxFbAdd" min="0" max="1" step="0.01" value="0" title="前フレームの明るい部分を残すFeedback"><div class="val" id="pxFbAddVal">0.00</div></div>
+          <div class="row"><label>FB Multiply</label><input type="range" id="pxFbMultiply" min="0" max="1" step="0.01" value="0" title="前フレームの暗い部分を残すFeedback"><div class="val" id="pxFbMultiplyVal">0.00</div></div>
+          <div class="row"><label>· Fb Zoom</label><input type="range" id="pxFbZoom" min="-1" max="1" step="0.01" value="0" title="フィードバックのズーム: 正=外へ広がるトンネル / 負=内へ吸い込み"><div class="val" id="pxFbZoomVal">0.00</div></div>
+          <div class="row"><label>· Fb Rot</label><input type="range" id="pxFbRot" min="-1" max="1" step="0.01" value="0" title="フィードバックの回転(渦巻きトレイル)"><div class="val" id="pxFbRotVal">0.00</div></div>
+        </div>
+        <div class="section">
+          <h3>Glitch FX <span class="pill" style="font-size:9px">beat-sync</span></h3>
+          <div class="row"><label>Slit-scan</label><input type="range" id="pxSlitScan" min="0" max="1" step="0.01" value="0" title="時間が縦に流れるスクロール型slit-scan。値=分割数。上下方向はランダムなタイミングで反転。0=OFF"><div class="val" id="pxSlitScanVal">0.0</div></div>
+          <div class="row"><label>Outline</label><input type="range" id="pxOutline" min="0" max="1" step="0.01" value="0" title="Outline: 色差対応Scharr + Canny細線化で、白地にAAなしの1pxドット輪郭を引き直す"><div class="val" id="pxOutlineVal">0.00</div></div>
+          <div class="row"><label>Barcode</label><input type="range" id="pxBarcode" min="0" max="1" step="0.01" value="0" title="ランダムなピクセルを横に引き延ばし、ランダムな周期・高さのバーコード状の行に。行ごとに違う速さで変異する"><div class="val" id="pxBarcodeVal">0.00</div></div>
+          <div class="row"><label>Datamosh</label><input type="range" id="pxGlitchTrail" min="0" max="1" step="0.01" value="0" title="細面ほど1/16〜1/4拍で速く動き、未分割の大面を遅く残しながら分節スキャンを刻むデータモッシュ。0=OFF"><div class="val" id="pxGlitchTrailVal">0.00</div></div>
+          <div class="help" style="margin-top:6px">visual.frag の glitchMode 1/2/3/4 + 5 を移植。BPM/Tap でテンポを合わせると拍に同期します。</div>
+        </div>
+      </div>
+
+      <!-- OVERLAY -->
+      <div class="pane" data-pane="overlay">
+        <div class="section">
+          <h3>Overlay <span class="pill section-tag">stroke / beat-sync</span> <span class="default-actions"><button class="resetDefBtn" data-kind="overlay" title="現在のブラシモードを初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="overlay" title="現在のブラシモードの値をデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>Enabled</label><input type="checkbox" id="ovEnable"></div>
+          <div class="row"><label>Brush</label>
+            <select id="ovBrush" style="flex:1">
+              <option value="warp">Warp</option>
+              <option value="rise">Rise</option>
+              <option value="smear" selected>Smear</option>
+              <option value="spike">Spike</option>
+	              <option value="swoosh">Swoosh</option>
+	              <option value="curve">Curve</option>
+	              <option value="smudge">Smudge</option>
+	              <option value="random">Random</option>
+	            </select>
+          </div>
+          <div class="row" id="ovFinishRow"><label>Finish</label>
+            <select id="ovFinish" style="flex:1">
+              <option value="gloss" selected>Gloss</option>
+              <option value="matt">Matt</option>
+            </select>
+          </div>
+          <div class="row" id="ovTipShapeRow"><label title="筆先の形状(丸筆 / 平筆=ランダム角のリボン / Gペン / 指先)">Tip Shape</label>
+            <select id="ovTipShape" style="flex:1">
+              <option value="round">丸筆 (等方)</option>
+              <option value="flat">平筆 (ランダム角・リボン状)</option>
+              <option value="gpen">Gペン (進行方向に細長・尖り)</option>
+              <option value="finger">指先 (やや幅広の柔らかい丸)</option>
+            </select>
+          </div>
+          <div class="row"><label>Paint Mode</label><input type="checkbox" id="ovPersist"><span style="font-size:10px;color:var(--dim);margin-left:6px">フェードせず蓄積</span></div>
+          <div class="row"><label>Max Strokes</label><input type="range" id="ovMaxStr" min="20" max="1000" step="10" value="300"><div class="val" id="ovMaxStrVal">300</div></div>
+          <div class="btnrow" style="margin-top:6px">
+            <button id="btnOverlayClear" style="flex:1">Clear Canvas</button>
+            <button id="btnOverlayRandom" style="flex:1" title="ストローク・形状・モーションのパラメータをランダム生成 (Brush の選択と Trigger は変えない。保存は右上の Save)">Random 🎲</button>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Trigger</h3>
+          <div class="row"><label>Trigger</label>
+            <select id="ovSubdiv" style="flex:1">
+              <option value="0.03125">1 / 32× (32 beats)</option>
+              <option value="0.0625">1 / 16× (16 beats)</option>
+              <option value="0.125">1 / 8× (8 beats)</option>
+              <option value="0.25">1 / 4× (4 beats)</option>
+              <option value="0.5">1 / 2× (2 beats)</option>
+              <option value="1">1× (every beat)</option>
+              <option value="2">2× / beat</option>
+              <option value="4">4× / beat</option>
+              <option value="8" selected>8× / beat</option>
+              <option value="16">16× / beat</option>
+              <option value="32">32× / beat</option>
+            </select>
+          </div>
+          <div class="row"><label>Spawn /tr</label><input type="range" id="ovSpawnCnt" min="1" max="8" step="1" value="1"><div class="val" id="ovSpawnCntVal">1</div></div>
+          <div class="row" id="ovDrawBeatsRow"><label>Draw Beat</label>
+            <select id="ovDrawBeats" style="flex:1">
+              <option value="0">Trigger 連動</option>
+              <option value="0.03125">1 / 32 拍</option>
+              <option value="0.0625">1 / 16 拍</option>
+              <option value="0.125">1 / 8 拍</option>
+              <option value="0.25">1 / 4 拍</option>
+              <option value="0.5">1 / 2 拍</option>
+              <option value="1">1 拍</option>
+              <option value="2">2 拍</option>
+              <option value="4">4 拍</option>
+              <option value="8">8 拍</option>
+              <option value="16">16 拍</option>
+              <option value="32">32 拍</option>
+            </select>
+          </div>
+          <div class="help" id="ovDrawBeatsHelp" style="font-size:10px">SMUDGE の描画時間を拍単位で選択。<b>Trigger 連動</b>=発生間隔と同じ / それ以外で発生と描画を分離</div>
+        </div>
+
+        <div class="section">
+          <h3>Stroke Path</h3>
+          <div class="row"><label>Anchor</label>
+            <select id="ovCenter" style="flex:1">
+              <option value="random" selected>Random (どこでも)</option>
+              <option value="center">◎ 中心付近</option>
+              <option value="grid">▦ 3×3 グリッド</option>
+              <option value="edge">□ 外周 (画面の縁)</option>
+            </select>
+          </div>
+          <div class="row"><label>Direction</label>
+            <select id="ovDirection" style="flex:1">
+              <option value="random" selected>Random (自由)</option>
+              <option value="horizontal">↔ 横 (左右)</option>
+              <option value="vertical">↕ 縦 (上下)</option>
+              <option value="rising">↗ 右上がり 45°</option>
+              <option value="falling">↘ 右下がり 45°</option>
+              <option value="radial">◎→ 放射 (中心→外)</option>
+              <option value="inward">→◎ 収束 (外→中心)</option>
+              <option value="spin">↻ 回転 (角度が変化)</option>
+            </select>
+          </div>
+          <div class="row"><label>Stroke Len</label><input type="range" id="ovStrokeLen" min="0.1" max="5.0" step="0.05" value="2.5"><div class="val" id="ovStrokeLenVal">2.50</div></div>
+          <div class="row"><label>Len Var</label><input type="range" id="ovStrokeLenVar" min="0" max="1" step="0.05" value="0.25"><div class="val" id="ovStrokeLenVarVal">0.25</div></div>
+          <div class="row"><label>Curve</label><input type="range" id="ovCurve" min="-1" max="1" step="0.05" value="1.0"><div class="val" id="ovCurveVal">1.00</div></div>
+          <div class="row"><label>Stamps</label><input type="range" id="ovStamps" min="2" max="300" step="1" value="40"><div class="val" id="ovStampsVal">40</div></div>
+          <div class="row" id="ovSmudgeSpeedRow"><label>Finger Speed</label><input type="range" id="ovSmudgeSpeed" min="0.05" max="4" step="0.01" value="0.5"><div class="val" id="ovSmudgeSpeedVal">0.50</div></div>
+        </div>
+
+        <div class="section">
+          <h3>Probe Motion</h3>
+          <div class="help" style="margin-bottom:6px">始点を固定したまま終点を「探る」モーション → 確定 → フェード</div>
+          <div class="row"><label>Search Time</label><input type="range" id="ovSearchPhase" min="0.05" max="0.9" step="0.01" value="0.05"><div class="val" id="ovSearchPhaseVal">0.05</div></div>
+          <div class="row"><label>Search Amp</label><input type="range" id="ovSearchAmp" min="0" max="1" step="0.01" value="0.35"><div class="val" id="ovSearchAmpVal">0.35</div></div>
+          <div class="row"><label>Search Freq</label><input type="range" id="ovSearchFreq" min="0.5" max="20" step="0.1" value="5"><div class="val" id="ovSearchFreqVal">5.0</div></div>
+          <div class="row"><label>Fade Time</label><input type="range" id="ovFadePhase" min="0.05" max="0.9" step="0.01" value="0.35"><div class="val" id="ovFadePhaseVal">0.35</div></div>
+        </div>
+
+        <div class="section">
+          <h3>Brush Shape</h3>
+          <div class="help" style="margin-bottom:6px">元 polygon ツールと同じ Delaunay 三角化 + ブラシ別アルゴリズム</div>
+          <div class="row"><label>Points</label><input type="range" id="ovSides" min="3" max="40" step="1" value="15"><div class="val" id="ovSidesVal">15</div></div>
+          <div class="row"><label>Max Points</label><input type="range" id="ovMaxSides" min="0" max="40" step="1" value="0"><div class="val" id="ovMaxSidesVal">0</div></div>
+          <div class="row"><label>Size</label><input type="range" id="ovSize" min="0.001" max="0.6" step="0.001" value="0.15"><div class="val" id="ovSizeVal">0.150</div></div>
+          <div class="row"><label>Size Var</label><input type="range" id="ovSizeVar" min="0" max="1" step="0.01" value="1.0"><div class="val" id="ovSizeVarVal">1.00</div></div>
+          <div class="row"><label>Warp</label><input type="range" id="ovWarp" min="0" max="1" step="0.01" value="0.5"><div class="val" id="ovWarpVal">0.50</div></div>
+          <div class="row"><label>Explode</label><input type="range" id="ovExplode" min="0" max="1" step="0.01" value="0.5"><div class="val" id="ovExplodeVal">0.50</div></div>
+          <div class="row"><label>Focal</label><input type="range" id="ovFocal" min="5" max="300" step="5" value="5"><div class="val" id="ovFocalVal">5</div></div>
+          <div class="row"><label>Rot /stamp</label><input type="range" id="ovRotStep" min="-1.5" max="1.5" step="0.05" value="0.0"><div class="val" id="ovRotStepVal">0.00</div></div>
+          <div class="row"><label>Spin</label><input type="range" id="ovSpin" min="-4" max="4" step="0.05" value="0"><div class="val" id="ovSpinVal">0.00</div></div>
+          <div class="row"><label>Life (beats)</label><input type="range" id="ovLife" min="0.1" max="8" step="0.1" value="1.5"><div class="val" id="ovLifeVal">1.5</div></div>
+          <div class="row"><label>Fade</label>
+            <select id="ovFade" style="flex:1">
+              <option value="linear">Linear</option>
+              <option value="easeOut">Ease Out</option>
+              <option value="pulse" selected>Pulse</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="help">
+            ブラシは <b>始点周辺の画面ピクセル</b> をテクスチャとして拾い、ブラシ形状で歪めて再投影します。<br>
+            <b>Search Time/Amp/Freq</b> で「探る」モーションの長さ・ぶれ幅・速さを制御。<br>
+            <b>Paint Mode</b> ON でフェードせず蓄積、シェーダ下のアニメは継続。<br>
+            <b>Trigger</b> で 1 拍あたりの発生頻度を細分化。<br>
+            キャンバス消去: <kbd>C</kbd> キー or <b>Clear Canvas</b> ボタン
+          </div>
+        </div>
+      </div>
+
+      <!-- TEMPO -->
+      <div class="pane" data-pane="tempo">
+        <div class="section">
+          <h3>Motion Mode</h3>
+          <div class="btnrow">
+            <button id="btnModeDrone" class="on">DRONE (時間駆動)</button>
+            <button id="btnModeBeat">BEAT (拍同期)</button>
+          </div>
+          <div class="help" style="margin-top:6px">Layer モードなど独自パラメータを持つエンジンの動きを切替えます。</div>
+          <div class="row" style="margin-top:8px"><label>Speed</label><input type="range" id="globalSpeed" min="0" max="4" step="0.01" value="1" title="全体の再生速度 (シェーダ time / 動画 playbackRate に乗算)"><div class="val" id="globalSpeedVal">1.00</div></div>
+        </div>
+
+        <div class="section">
+          <h3>Audio Transport <span class="pill" style="font-size:9px">要マイク/ライン入力</span> <span class="default-actions"><button class="resetDefBtn" data-kind="audioTransport" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="audioTransport" title="Direction / Speed / Depth / Threshold の現在値を起動時のデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>Direction</label>
+            <select id="atDirMode" style="flex:1" title="音で再生方向 (順/逆) を制御。発火判定は Audio Detect の Target / Sensitivity / Attack と Threshold を使用">
+              <option value="off" selected>Off (矢印キーのみ)</option>
+              <option value="flip">Flip (アタックで反転)</option>
+              <option value="flipAcc">Flip Charge (アタック累積で反転)</option>
+              <option value="revHit">Reverse on Hit (音の間だけ逆)</option>
+              <option value="fwdHit">Forward on Hit (通常は逆)</option>
+            </select>
+          </div>
+          <div class="row"><label>Speed</label>
+            <select id="atSpeedMode" style="flex:1" title="音で再生速度を変調 (Speed スライダーの値に乗算)。シェーダ time / mode / 動画 playbackRate 全てに掛かる">
+              <option value="off" selected>Off</option>
+              <option value="energy">Energy (音量→速度)</option>
+              <option value="hit">Hit Boost (アタックで加速)</option>
+              <option value="duck">Hit Duck (アタックでスロー)</option>
+            </select>
+          </div>
+          <div class="row"><label>Depth</label><input type="range" id="atDepth" min="0" max="1" step="0.01" value="0.5" title="Speed 変調の深さ。Energy: 無音〜大音量で ×1/(1+3d)〜×(1+3d) / Hit Boost: 最大 ×(1+3d) / Hit Duck: 最小 ×(1-0.95d)"><div class="val" id="atDepthVal">0.50</div></div>
+          <div class="row"><label>Threshold</label><input type="range" id="atThr" min="0" max="1" step="0.01" value="0.5" title="Direction の発火閾値 (Audio hit がこの値以上で発火)。低いほど敏感。Flip Charge では反転に必要なアタック累積量 (低いほど頻繁に反転)"><div class="val" id="atThrVal">0.50</div></div>
+          <div class="help" style="margin-top:6px">音の検知は Tempo タブ下部の Audio Detect (Target / Sensitivity / Attack) を共用。マイク / 画面音声を ON にしてから使用。</div>
+        </div>
+
+        <div class="section">
+          <h3>MIDI Relative <span class="default-actions"><button class="resetDefBtn" data-kind="midiRelative" title="Enabled / Mode / Clicks を初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="midiRelative" title="Enabled / Mode / Clicks の現在値を起動時のデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label title="全Visual・全Slot共通。無限回転エンコーダの増分値を蓄積して連続パラメータを動かす">Enabled</label>
+            <input type="checkbox" id="midiRelative">
+          </div>
+          <div class="row"><label>Mode</label>
+            <select id="midiRelMode" style="flex:1;min-width:0;font-size:10px" title="お使いのエンコーダの送出方式。Launch Control XL 3 は受信値を自動変換します。">
+              <option value="lcxl3" selected>LaunchControl XL3</option>
+              <option value="absdelta">Absolute Delta</option>
+              <option value="offset">Offset (65=CW / 63=CCW)</option>
+              <option value="twos">2の補数 (1..63=CW / 127..65=CCW)</option>
+              <option value="signed">符号ビット (1..63=CW / 65..127=CCW)</option>
+            </select>
+          </div>
+          <div class="row" style="margin-top:4px">
+            <label>Clicks / turn</label>
+            <input type="range" id="midiRelStep" min="4" max="960" step="1" value="48" title="指定したクリック数で0からMAXまで変化します">
+            <div class="val" id="midiRelStepVal">48</div>
+          </div>
+          <div class="btnrow" style="margin-top:6px">
+            <button id="btnMidiPush" style="flex:2" title="この端末の MIDI マップ (learn 差分) をサーバーへ送り、他の端末 (ブラウザ / デスクトップアプリ) に反映する">MIDI マップを共有 ▸ Push</button>
+            <button id="btnMidiPull" style="flex:1" title="サーバーの MIDI マップをこの端末へ取り込む (リロードで反映)">Pull</button>
+          </div>
+          <div class="help" style="font-size:10px;margin-top:4px">MIDI マップは端末ごとに保存されます。正にしたい端末で <b>Push</b> → 反映したい端末で <b>Pull</b>。</div>
+        </div>
+
+        <div class="section">
+          <h3>Transition <span class="default-actions"><button class="resetDefBtn" data-kind="transition" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="transition" title="Beat拍数 / Style / Param Fade の現在値をデフォルトとして保存">Save</button></span></h3>
+          <div class="row">
+            <label>Beat</label>
+            <select id="mixTransBeats" style="flex:1" title="シェーダ切替時に何拍かけて転換するか (0=即時)">
+              <option value="0" selected>0 beat (即時)</option>
+              <option value="0.03125">1/32 beat</option>
+              <option value="0.0625">1/16 beat</option>
+              <option value="0.125">1/8 beat</option>
+              <option value="0.25">1/4 beat</option>
+              <option value="0.5">1/2 beat</option>
+              <option value="1">1 beat</option>
+              <option value="2">2 beat</option>
+              <option value="4">4 beat</option>
+              <option value="8">8 beat</option>
+              <option value="16">16 beat</option>
+              <option value="32">32 beat</option>
+            </select>
+            <span style="font-size:11px;color:var(--dim)" title="CC28 に割当済み">CC28</span>
+          </div>
+          <div class="row">
+            <label>Style</label>
+            <select id="transStyle" style="flex:1" title="切替演出のスタイル (shader/mode 共通)">
+              <option value="0" selected>Crossfade / Dissolve</option>
+              <option value="1">Black Fade (暗転)</option>
+              <option value="2">Add Glow (発光)</option>
+              <option value="3">Wipe → (左右)</option>
+              <option value="4">Wipe ↓ (上下)</option>
+              <option value="5">Glitch: Slice (横スライスずれ)</option>
+              <option value="9">Glitch: Noise Dissolve</option>
+              <option value="11">Barcode (バーコード化)</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Param Fade</label>
+            <select id="transParamFade" style="flex:1" title="プリセット適用や Grad Preset 切替 (1-9/0/-/G キー) 時に、Post の数値パラメータを何拍かけて補間するか (0=即時 / Sync=上の Beat 拍数に追従)">
+              <option value="0">0 (即時)</option>
+              <option value="-1">Sync (Trans Beats と同じ)</option>
+              <option value="0.03125">1/32 beat</option>
+              <option value="0.0625">1/16 beat</option>
+              <option value="0.125">1/8 beat</option>
+              <option value="0.25">1/4 beat</option>
+              <option value="0.5" selected>1/2 beat</option>
+              <option value="1">1 beat</option>
+              <option value="2">2 beat</option>
+              <option value="4">4 beat</option>
+              <option value="8">8 beat</option>
+              <option value="16">16 beat</option>
+              <option value="32">32 beat</option>
+            </select>
+          </div>
+          <div class="row">
+            <label>Fade 対象</label>
+            <select id="transParamFadeScope" style="flex:1" title="All=プリセット切替もMIDI/スライダー操作もフェード / Preset only=プリセット・状態の切替だけフェードし、MIDIコンやスライダーの操作は即反映">
+              <option value="all">All (プリセット + ライブ操作)</option>
+              <option value="preset">Preset only (ライブ操作は即反映)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>BPM</h3>
+          <div class="bpmBig" id="bpmBig">120.0</div>
+          <div class="bpmDots"><div></div><div></div><div></div><div></div></div>
+          <div class="row">
+            <label>BPM</label>
+            <input type="number" id="bpmInput" min="20" max="300" step="0.1" value="120" style="flex:1">
+          </div>
+          <div class="btnrow">
+            <button id="btnTap" class="acc" title="タップテンポ (T)">Tap</button>
+            <button id="btnReset" title="位相リセット">Reset Φ</button>
+            <button id="bpmHalf">½</button>
+            <button id="bpmDouble">×2</button>
+            <button id="bpmMidiLearn" class="midi" style="flex:0 0 60px" title="BPM値にCC割当">MIDI</button>
+          </div>
+          <div class="btnrow" style="margin-top:6px">
+            <button id="tapMidiLearn" class="midi" title="Tapボタンにmidiコンのボタンを割当">Tap ← MIDI</button>
+            <button id="resetMidiLearn" class="midi" title="Reset Φ にmidiコンのボタンを割当">Reset Φ ← MIDI</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label>Auto</label>
+            <input type="checkbox" id="bpmAuto" checked>
+            <span style="font-size:11px;color:var(--dim)">音から自動検出（要マイク/オーディオ）</span>
+          </div>
+          <div class="row">
+            <label>Detect</label>
+            <select id="bpmTarget" style="flex:1" title="BPM検知に使うアタック音。Auto Spectrumは曲全体の音域と音量へ自動追従">
+              <option value="auto" selected>Auto Spectrum</option>
+              <option value="kick">Kick</option>
+              <option value="snare">Snare / Clap</option>
+              <option value="drum">Drum Mix</option>
+              <option value="full">Full Range</option>
+            </select>
+          </div>
+          <div class="row">
+            <label></label>
+            <span id="autoBpmStat" style="font-size:11px;color:var(--dim)">—</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Audio Detect <span class="default-actions"><button class="resetDefBtn" data-kind="audioDetect" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="audioDetect" title="Target / Sensitivity / Band / Attack の現在値を起動時のデフォルトとして保存">Save</button></span></h3>
+          <div class="row"><label>Target</label>
+            <select id="pxATarget" style="flex:1" title="Audio FX が反応する音の種類。Manual は Band スライダーで任意の帯域を選択">
+              <option value="manual" selected>Manual</option>
+              <optgroup label="Instrument">
+                <option value="kick">Kick</option>
+                <option value="snare">Snare / Clap</option>
+                <option value="hat">Hi-Hat</option>
+                <option value="drum">Drum Mix</option>
+                <option value="bass">Bass</option>
+                <option value="vocal">Vocal / Mid</option>
+              </optgroup>
+              <optgroup label="Genre">
+                <option value="house">House / Techno</option>
+                <option value="hiphop">Hip-Hop</option>
+                <option value="rock">Rock</option>
+              </optgroup>
+            </select>
+          </div>
+          <div class="row"><label>Sensitivity</label><input type="range" id="pxAGain" min="0" max="1" step="0.005" value="0.5" title="音声検知の感度(FFT入力倍率)。中央=0.5、上げるほど指数関数的に強く(0.03〜中央0.5〜最大8)。棘/energy/onset/hit 全体に効く"><div class="val" id="pxAGainVal">0.50</div></div>
+          <div class="row"><label>Band</label><input type="range" id="pxABand" min="0" max="1" step="0.01" value="0" title="Manual時の拾う音域: 0=低音(キック/ベース) → 1=高音(ハイハット等)。Targetプリセット時は表示上の微調整用"><div class="val" id="pxABandVal">0.00</div></div>
+          <div class="row"><label>Attack</label><input type="range" id="pxAAttack" min="0" max="1" step="0.01" value="0.5" title="0=持続(サステインで滑らかに) / 1=トランジェント強調(アタックで鋭く発火)"><div class="val" id="pxAAttackVal">0.50</div></div>
+          <div class="row" style="align-items:flex-start"><label>Bands</label><div id="pxATargetInfo" style="flex:1;font-size:10px;color:var(--dim);line-height:1.35;min-height:28px;padding-top:2px">Manual: Band slider</div></div>
+        </div>
+
+        <div class="section">
+          <h3>Audio Input</h3>
+          <div class="btnrow">
+            <button id="btnAudioMic" title="クリックでON / 点灯中に再クリックでOFF">マイク</button>
+            <button id="btnAudioDisp" title="クリックでON / 点灯中に再クリックでOFF">画面音声</button>
+          </div>
+          <div class="help" style="margin-top:8px">
+            <b>画面音声 (Chrome 系):</b> ピッカーで <b>「Chrome タブ」を選択</b> → 下部の <b>「タブの音声を共有」にチェック</b> → Share。<br>
+            ※ 「ウィンドウ」「画面全体」を選ぶと音声が取れず Permission denied になります。<br>
+            ※ macOS では初回 System Settings → Privacy → Screen Recording で Chrome を許可。<br>
+            <br>
+            シェーダ側: <code>texture(iChannel?, vec2(x, 0.25))</code> でFFT、<code>vec2(x, 0.75)</code> で波形、<code>iEnergy</code> で低〜中域のパワー (0..1)。
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Diagnostics <span class="pill" id="diagStat" style="font-size:9px">—</span></h3>
+          <div class="btnrow">
+            <button id="btnDiagDownload" title="診断ログ(エラー/メモリ/FPS)をJSONで保存">ログ保存</button>
+            <button id="btnDiagShow" title="コンソールに表示">表示</button>
+            <button id="btnDiagClear" title="ログ消去">クリア</button>
+          </div>
+          <div class="help" style="margin-top:6px;font-size:10px">エラー・WebGLコンテキストロスト・メモリ/FPSを記録（リロード後も保持）。落ちた後にここから保存して原因を確認できます。</div>
+        </div>
+      </div>
+
+    </div>
+  </aside>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="presets.js?v=1785894844"></script>
+<script src="mode/layer.js?v=1785894844"></script>
+<script src="vendor/iro.min.js?v=1785894844"></script>
+<script src="mode/textdeform.js?v=1785894844"></script>
+<script src="mode/textdeform-comp.js?v=1785894844"></script>
+<script src="mode/ugomeki.js?v=1785894844"></script>
+<script src="mode/slicer.js?v=1785894844"></script>
+<script src="mode/video.js?v=1785894844"></script>
+<script src="mode/aratanagara.js?v=1785894844"></script>
+<script src="vendor/p5.min.js?v=1785894844"></script>
+<script src="mode/cyberui.js?v=1785894844"></script>
+<script src="mode/novel.js?v=1785894844"></script>
+<script src="shaders/inkelly.js?v=1785894844"></script>
+<script src="sketchfx.js?v=1785894844"></script>
+<script src="pixelsortfx.js?v=1785894844"></script>
+<script src="shaders/boltzmann.js?v=1785894844"></script>
+<script src="mode/pen.js?v=1785894844"></script>
+<script src="shaders/caverns.js?v=1785894844"></script>
+<script src="mode/shelf.js?v=1785894844"></script>
+<script src="shaders/ribbon.js?v=1785894844"></script>
+<script src="mode/photoplane.js?v=1785894844"></script>
+<script src="mode/shredder.js?v=1785894844"></script>
+<script src="mode/image.js?v=1785894844"></script>
+<script src="mode/spacetype.js?v=1785894844"></script>
+<script src="pollockfx.js?v=1785894844"></script>
+<script src="overlay.js?v=1785894844"></script>
+<script src="gif.js?v=1785894844"></script>
+<script src="app.js?v=1785894844"></script>
+<script src="camroll.js?v=1785894844" defer></script>
+</body>
+</html>
