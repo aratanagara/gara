@@ -1,0 +1,78 @@
+{
+  "name": "gara-vj",
+  "version": "1.0.0",
+  "description": "GARA — Fragment Shader VJ Tool (desktop)",
+  "main": "desktop/main.js",
+  "author": "aratanagara",
+  "license": "UNLICENSED",
+  "private": true,
+  "scripts": {
+    "start": "electron .",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist": "electron-builder --mac --win"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.aratanagara.vj",
+    "productName": "GARA",
+    "asar": false,
+    "directories": {
+      "output": "dist_app"
+    },
+    "files": [
+      "desktop/**/*",
+      "index.html",
+      "novel_terminal_proto.html",
+      "style.css",
+      "*.js",
+      "*.json",
+      "!package.json",
+      "!package-lock.json",
+      "vendor/**/*",
+      "mode/**/*",
+      "images/**/*",
+      "movies/**/*",
+      "!movies/_src/**",
+      "shaders/**/*",
+      "fonts/**/*",
+      "!dist_app/**",
+      "!grad_backups/**",
+      "!scripts/**",
+      "!.firecrawl/**"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "category": "public.app-category.music",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
+      "entitlements": "build/entitlements.mac.plist",
+      "entitlementsInherit": "build/entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "オーディオリアクティブ用にマイク入力を使用します。"
+      }
+    },
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "portable": {
+      "artifactName": "GARA-VJ-${version}.exe",
+      "unpackDirName": "gara-vj"
+    },
+    "dmg": {
+      "artifactName": "GARA-VJ-${version}.dmg"
+    }
+  }
+}

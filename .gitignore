@@ -1,0 +1,14 @@
+.DS_Store
+node_modules/
+dist_app/
+*.zip
+*.bak
+
+# メディア素材 (リポジトリには含めない)
+movies/
+images/*
+!images/etc/
+
+# サーバ上のプリセットデータ
+presets/presets.json
+presets/history/

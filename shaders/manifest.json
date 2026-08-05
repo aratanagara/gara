@@ -1,0 +1,333 @@
+{
+ "_doc": "起動時に各 bgMode を個別シェーダとして自動登録する。type=perBg のグループは helpers を共通ヘッダとして使い、bgs の各エントリごとに 1 プリセットを生成する。",
+ "groups": [
+  {
+   "name": "Shaders",
+   "dir": "shaders",
+   "type": "perBg",
+   "helpers": [
+    "constants.frag",
+    "utils.frag",
+    "beat.frag",
+    "smooth_random.frag",
+    "free_zoom.frag",
+    "camera.frag",
+    "palette.frag",
+    "color_beat.frag",
+    "free_motion.frag",
+    "drone_seamless.frag"
+   ],
+   "bgs": [
+    {
+     "file": "bg_futurist.frag",
+     "func": "bg_futurist",
+     "name": "Futurist"
+    },
+    {
+     "file": "bg_vangogh.frag",
+     "func": "bg_vangogh",
+     "name": "Vangogh"
+    },
+    {
+     "file": "bg_meguru.frag",
+     "func": "bg_meguru",
+     "name": "Meguru"
+    },
+    {
+     "file": "bg_7sKSDd.frag",
+     "func": "bg_7sKSDd",
+     "name": "Hinotori_03"
+    },
+    {
+     "file": "bg_sdjGWR.frag",
+     "func": "bg_sdjGWR",
+     "name": "Hinotori_01"
+    },
+    {
+     "file": "bg_7sSGWD.frag",
+     "func": "bg_7sSGWD",
+     "name": "Hinotori_02"
+    },
+    {
+     "file": "bg_NdsSzl.frag",
+     "func": "bg_NdsSzl",
+     "name": "NdsSzl"
+    },
+    {
+     "file": "bg_sinFBM.frag",
+     "func": "bg_sinFBM",
+     "name": "sinFBM"
+    },
+    {
+     "file": "bg_newSinFract.frag",
+     "func": "bg_newSinFract",
+     "name": "newSinFract"
+    },
+    {
+     "file": "bg_cos20.frag",
+     "func": "bg_cos20",
+     "name": "cos20"
+    },
+    {
+     "file": "bg_moreFract.frag",
+     "func": "bg_moreFract",
+     "name": "moreFract"
+    },
+    {
+     "file": "bg_crystalPath.frag",
+     "func": "bg_crystalPath",
+     "name": "crystalPath"
+    },
+    {
+     "file": "bg_mandelbaum.frag",
+     "func": "bg_mandelbaum",
+     "name": "mandelbaum"
+    },
+    {
+     "file": "bg_metalSlab.frag",
+     "func": "bg_metalSlab",
+     "name": "metalSlab"
+    },
+    {
+     "file": "bg_iridiscious.frag",
+     "func": "bg_iridiscious",
+     "name": "Iridiscious"
+    },
+    {
+     "file": "bg_liquid.frag",
+     "func": "bg_liquid",
+     "name": "Liquid"
+    },
+    {
+     "file": "bg_rainbowWater.frag",
+     "func": "bg_rainbowWater",
+     "name": "Rainbow Water"
+    },
+    {
+     "file": "bg_flowingMetal.frag",
+     "func": "bg_flowingMetal",
+     "name": "Flowing Metal"
+    },
+    {
+     "file": "bg_water.frag",
+     "func": "bg_water",
+     "name": "Water"
+    },
+    {
+     "file": "bg_rain.frag",
+     "func": "bg_rain",
+     "name": "Rain (B/W)"
+    },
+    {
+     "file": "bg_watercolors.frag",
+     "func": "bg_watercolors",
+     "name": "Watercolors"
+    },
+    {
+     "file": "bg_flowers.frag",
+     "func": "bg_flowers",
+     "name": "Flowers (CPPN)"
+    },
+    {
+     "file": "bg_flower.frag",
+     "func": "bg_flower",
+     "name": "fLOWER"
+    },
+    {
+     "file": "bg_marble.frag",
+     "func": "bg_marble",
+     "name": "Voronoi Marble"
+    },
+    {
+     "file": "bg_ravecube.frag",
+     "func": "bg_ravecube",
+     "name": "Rave Cube (Chrome)"
+    },
+    {
+     "file": "bg_echeveria.frag",
+     "func": "bg_echeveria",
+     "name": "Echeveria (Chrome)"
+    },
+    {
+     "file": "bg_decon.frag",
+     "func": "bg_decon",
+     "name": "Matrix Decon"
+    },
+    {
+     "file": "bg_ghost.frag",
+     "func": "bg_ghost",
+     "name": "Ghost Chamber"
+    },
+    {
+     "file": "bg_matrixjulia.frag",
+     "func": "bg_matrixjulia",
+     "name": "Matrix Julia (R/B/Silver)"
+    },
+    {
+     "file": "bg_tronclouds.frag",
+     "func": "bg_tronclouds",
+     "name": "TRON Clouds"
+    },
+    {
+     "file": "bg_spell.frag",
+     "func": "bg_spell",
+     "name": "Spell Demon Souls"
+    },
+    {
+     "file": "bg_liquicolor.frag",
+     "func": "bg_liquicolor",
+     "name": "Liquicolor"
+    },
+    {
+     "file": "bg_crystalice.frag",
+     "func": "bg_crystalice",
+     "name": "Crystal Ice Flight"
+    },
+    {
+     "file": "bg_ribpillar.frag",
+     "func": "bg_ribpillar",
+     "name": "Noise Racer"
+    },
+    {
+     "file": "bg_bonetunnel.frag",
+     "func": "bg_bonetunnel",
+     "name": "Bone Tunnel"
+    },
+    {
+     "file": "bg_sinedeform.frag",
+     "func": "bg_sinedeform",
+     "name": "Sine Deform"
+    },
+    {
+     "file": "bg_paperfractal.frag",
+     "func": "bg_paperfractal",
+     "name": "Paper Fractal (Blue)"
+    },
+    {
+     "file": "bg_formation.frag",
+     "func": "bg_formation",
+     "name": "Formation"
+    },
+    {
+     "file": "bg_origami.frag",
+     "func": "bg_origami",
+     "name": "Origami"
+    },
+    {
+     "file": "bg_abstract.frag",
+     "func": "bg_abstract",
+     "name": "Another Abstract"
+    },
+    {
+     "file": "bg_ribbon.frag",
+     "func": "bg_ribbon",
+     "name": "Reflective Ribbon"
+    },
+    {
+     "file": "bg_greyliquid.frag",
+     "func": "bg_greyliquid",
+     "name": "Grey Liquid"
+    },
+    {
+     "file": "bg_slimeframe.frag",
+     "func": "bg_slimeframe",
+     "name": "Slime Frame (Chrome)"
+    },
+    {
+     "file": "bg_patchsdf.frag",
+     "func": "bg_patchsdf",
+     "name": "Patch SDF (Chrome)"
+    },
+    {
+     "file": "bg_spiky.frag",
+     "func": "bg_spiky",
+     "name": "Spiky (Chrome)"
+    },
+    {
+     "file": "bg_twistors.frag",
+     "func": "bg_twistors",
+     "name": "Twistors (Chrome)"
+    },
+    {
+     "file": "bg_kuko.frag",
+     "func": "bg_kuko",
+     "name": "KuKo Helix"
+    },
+    {
+     "file": "bg_cpuffs.frag",
+     "func": "bg_cpuffs",
+     "name": "Color Puffs"
+    },
+    {
+     "file": "bg_spikeball.frag",
+     "func": "bg_spikeball",
+     "name": "Spike Ball (Audio Chrome)"
+    },
+    {
+     "file": "bg_juice.frag",
+     "func": "bg_juice",
+     "name": "Space Shield (Asagi)"
+    },
+    {
+     "file": "bg_storming.frag",
+     "func": "bg_storming",
+     "name": "Storming Pixels"
+    },
+    {
+     "file": "bg_liqmount.frag",
+     "func": "bg_liqmount",
+     "name": "Liquid Mountains (Chrome)"
+    },
+    {
+     "file": "bg_discharge.frag",
+     "func": "bg_discharge",
+     "name": "Discharge"
+    },
+    {
+     "file": "bg_crystalnoise.frag",
+     "func": "bg_crystalnoise",
+     "name": "Crystal Noise"
+    },
+    {
+     "file": "bg_romhack.frag",
+     "func": "bg_romhack",
+     "name": "ROMHACK (CD)"
+    },
+    {
+     "file": "bg_nebula.frag",
+     "func": "bg_nebula",
+     "name": "Nebula"
+    },
+    {
+     "file": "bg_nitro.frag",
+     "func": "bg_nitro",
+     "name": "Nitrostasis"
+    },
+    {
+     "file": "bg_fragile.frag",
+     "func": "bg_fragile",
+     "name": "Fragile (Glass)"
+    },
+    {
+     "file": "bg_stractium.frag",
+     "func": "bg_stractium",
+     "name": "Stractium"
+    },
+    {
+     "file": "bg_ngray.frag",
+     "func": "bg_ngray",
+     "name": "ngRay (Morph Blobs)"
+    },
+    {
+     "file": "bg_jflow.frag",
+     "func": "bg_jflow",
+     "name": "Crystal Flow (Julia)"
+    }
+   ],
+   "exclude": [
+    "bg_inkelly.frag",
+    "bg_photo.frag"
+   ]
+  }
+ ]
+}
