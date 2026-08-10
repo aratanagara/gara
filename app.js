@@ -8894,9 +8894,7 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
       for(const n of names) locs[n.replace('[0]','')] = gl.getUniformLocation(prog, n);
       const customLocs = {};
       for(const p of pp.params) customLocs[p.name] = gl.getUniformLocation(prog, p.name);
-      // uCosGrad を自前で使うシェーダは Post FX をかけない (色補正が二重に走るのを避ける)
-      const cosGradInShader = (src.match(/uCosGrad/g) || []).length > 1;
-      this.cache.set(src, {prog, locs, customLocs, params: pp.params, format: pp.format, cosGradInShader});
+      this.cache.set(src, {prog, locs, customLocs, params: pp.params, format: pp.format});
     }
   },
 
@@ -8906,11 +8904,10 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
     const e = this._compile(src);
     if(!e || e.err || e.pending) return false;   // pending = コンパイル中(呼び出し側が再試行)
     const gl = this.gl;
-    const useFx = !!this.fxProg && !e.cosGradInShader;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, useFx ? this.srcFBO.fbo : null);
+    // Visual タブのサムネ/ホバーは元シェーダの素の絵を出す (Grad Map / Hue 等の色補正は掛けない)
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.W, this.H);
     this._drawShader(e, paramValues);
-    if(useFx) this._applyFX();           // 単一シェーダ + 色補正(App.post)
     return true;
   },
   // コンパイル済み 1 シェーダを現在の FBO/viewport へ描画 (FBO/FX/BLEND は呼び出し側が管理)
@@ -9043,41 +9040,13 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
   // ライブ描画できるプリセット = フラグメントシェーダのみ (mode 系 / 動画 / 画像はプレースホルダのまま)
   _isLive(p){ return !!(p && p.src && (!p.kind || p.kind === 'shader')); },
 
-  // Visual タブ表示中は、表示中のサムネを一定間隔で再描画して Hue Shift / Grad Map を反映する。
-  // 色設定が変わったときは間隔を待たずに即キューへ積む。
-  _refreshAt: 0,
-  _colorSig(){
-    const p = (typeof App !== 'undefined' && App.post) ? App.post : {};
-    const st = (p.gradStops && p.gradStops.length)
-      ? p.gradStops.map(s => s.t.toFixed(3) + ':' + s.rgb.map(v => v.toFixed(3)).join(',')).join('|')
-      : (p.gradA || []).join(',') + '>' + (p.gradB || []).join(',');
-    return [p.hue||0, p.hueAuto||0, p.gradMix||0, p.bri||0, p.con, p.sat, p.gamma, st].join('/');
-  },
-  _queueVisibleRefresh(){
-    if(this.staticQueue.length) return;                     // 初回描画/前回の周回が終わってから
-    const pane = document.querySelector('.pane[data-pane="shader"]');
-    if(!pane || !pane.classList.contains('on')) return;      // Visual タブ表示中のみ
-    const sig = this._colorSig(), t = now();
-    if(sig === this._lastSig && t - this._refreshAt < 3.0) return;
-    this._lastSig = sig; this._refreshAt = t;
-    const grid = UI.thumbCanvases; if(!grid) return;
-    const pr = pane.getBoundingClientRect();
-    for(let i = 0; i < PRESETS.length; i++){
-      if(!this._isLive(PRESETS[i])) continue;
-      const c = grid[i]; if(!c || !c.__hasThumb) continue;
-      const r = c.getBoundingClientRect();                   // 画面内のタイルだけ (スクロールで随時入れ替わる)
-      if(r.bottom < pr.top - 40 || r.top > pr.bottom + 40) continue;
-      this.staticQueue.push(i);
-    }
-  },
-
   // called every frame from App.tick
   tick(){
     if(!this.gl) return;
     const grid = UI.thumbCanvases;
     if(!grid || grid.length===0) return;
 
-    // hovered → シェーダ単体の絵に色調補正だけを掛けてライブプレビュー
+    // hovered → シェーダ単体の素の絵をライブプレビュー
     //   (スロットへはめたときの合成結果は出さない = 元シェーダが判別できるように)
     if(this.hoveredIdx >= 0 && this.hoveredIdx < PRESETS.length){
       const p = PRESETS[this.hoveredIdx];
@@ -9089,7 +9058,6 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
       return;
     }
 
-    this._queueVisibleRefresh();
 
     // else process static queue (one per frame)
     while(this.staticQueue.length > 0){
