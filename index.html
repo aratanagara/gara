@@ -239,6 +239,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <span class="pill" id="thumbCount">0</span>
             <span class="grow"></span>
             <span id="fmtBadge" class="pill" title="アクティブスロットの形式" style="color:var(--dim)">—</span>
+            <button id="btnMediaImport" style="font-size:10px;padding:2px 8px;margin-left:6px">＋ 画像/動画</button>
+            <button id="btnMediaClear" title="ブラウザに保存した取り込み画像/動画をすべて削除" style="font-size:10px;padding:2px 6px;display:none">✕</button>
+            <input type="file" id="fileMedia" accept="image/*,video/*" multiple hidden>
           </h3>
           <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
             <input type="search" id="visualSearch" placeholder="検索…" style="flex:1;min-width:70px;font-size:11px;padding:3px 6px;background:#111;border:1px solid #444;border-radius:4px;color:#ccc">
@@ -251,7 +254,8 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <div class="section" style="margin-top:8px">
           <div id="thumbGrid"></div>
           <div class="help" style="margin-top:6px;font-size:10px">
-            Code / Movie / Shader をまとめて表示。ホバーでライブプレビュー / クリックで現スロットにロード。
+            Code / Movie / Shader をまとめて表示。ホバーでライブプレビュー / クリックで現スロットにロード。<br>
+            画像 / 動画はこのタブへ<b>ドラッグ&amp;ドロップ</b>でも読み込めます (ローカル起動時は images/drop/ ・ movies/ へ取り込み、次回以降も残ります)。
           </div>
         </div>
 
@@ -1354,12 +1358,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 <script src="shaders/ribbon.js?v=1785894844"></script>
 <script src="mode/photoplane.js?v=1785894844"></script>
 <script src="mode/shredder.js?v=1785894844"></script>
-<script src="mode/image.js?v=1785894844"></script>
+<script src="mode/image.js?v=1786343053"></script>
 <script src="mode/spacetype.js?v=1785894844"></script>
 <script src="pollockfx.js?v=1785894844"></script>
 <script src="overlay.js?v=1785894844"></script>
 <script src="gif.js?v=1785894844"></script>
-<script src="app.js?v=1785894844"></script>
+<script src="app.js?v=1786343053"></script>
 <script src="camroll.js?v=1785894844" defer></script>
 </body>
 </html>

@@ -138,6 +138,209 @@ const Inputs = {
 };
 
 /* ===================================================================
+   MediaImport — 画像 / 動画をスロット素材として読み込む
+   ローカル起動 (デスクトップ版 / scripts/local.sh) では内蔵サーバの /__media へ
+   POST して images/drop/ ・ movies/ に実ファイルとして取り込む (manifest も再生成
+   されるので次回起動でも残る)。本番など書き込めない配信ではセッション限りの
+   blob URL として読み込む (リロードで消える)。
+=================================================================== */
+const MediaImport = {
+  IMG_RE: /\.(png|jpe?g|webp|gif|bmp)$/i,
+  VID_RE: /\.(mp4|webm|mov|m4v|ogv|ogg)$/i,
+  _probe: null,
+  storedVideos: [],   // 書き込み不可配信で IndexedDB から復元した動画 [{url(blob), name}] — Visual グリッドへ足す
+
+  // ── 書き込み不可の配信 (github.io / 本番) 用の永続化: IndexedDB に blob 保存 ──
+  //   実ファイル取り込みができない環境でも「次回起動でも読み込んだまま」を成立させる。
+  _dbP: null,
+  _openDb(){
+    if(this._dbP) return this._dbP;
+    this._dbP = new Promise((res, rej)=>{
+      const rq = indexedDB.open('gara.media', 1);
+      rq.onupgradeneeded = ()=>{ rq.result.createObjectStore('files', {keyPath:'id', autoIncrement:true}); };
+      rq.onsuccess = ()=> res(rq.result);
+      rq.onerror = ()=> rej(rq.error);
+    });
+    return this._dbP;
+  },
+  async _dbAll(){ const db = await this._openDb(); return new Promise((res, rej)=>{ const rq = db.transaction('files').objectStore('files').getAll(); rq.onsuccess = ()=>res(rq.result || []); rq.onerror = ()=>rej(rq.error); }); },
+  async _dbPut(rec){ const db = await this._openDb(); return new Promise((res, rej)=>{ const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put(rec); tx.oncomplete = res; tx.onerror = ()=>rej(tx.error); }); },
+  async _dbClear(){ const db = await this._openDb(); return new Promise((res, rej)=>{ const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').clear(); tx.oncomplete = res; tx.onerror = ()=>rej(tx.error); }); },
+
+  // 起動時: IndexedDB に保存した素材を復元して一覧へ戻す (取り込みサーバがある環境では実ファイル側を使うので何もしない)
+  async restore(){
+    if(await this.local()) return;
+    let recs = [];
+    try{ recs = await this._dbAll(); }catch(e){ return; }
+    if(!recs.length) return;
+    const imgs = recs.filter(r => r.kind === 'image' && r.blob);
+    const vids = recs.filter(r => r.kind === 'video' && r.blob);
+    if(imgs.length && typeof ImageMode !== 'undefined'){
+      if(!ImageMode.initialized && GL.gl) ImageMode.init(GL.gl);
+      // addDroppedFiles はアクティブスロットへ即ロードするので、復元では登録だけ行う
+      let f = ImageMode._folderByDir(ImageMode.DROP_DIR);
+      if(!f){ f = { name:'ドロップ (臨時)', dir:ImageMode.DROP_DIR, count:0, images:[], _urls:[] }; ImageMode.folders.unshift(f); }
+      for(const r of imgs){ f._urls.push(URL.createObjectURL(r.blob)); f.images.push(r.name || ('drop ' + f._urls.length)); }
+      f.count = f._urls.length;
+    }
+    for(const r of vids) this.storedVideos.push({ url: URL.createObjectURL(r.blob), name: r.name || 'drop' });
+    if(typeof UI !== 'undefined'){
+      if(vids.length && UI.populatePresets) UI.populatePresets();
+      if(imgs.length && UI.refreshImageMode) UI.refreshImageMode();
+    }
+    toast('取り込み済み素材 ' + recs.length + ' 件を復元しました');
+  },
+
+  async clearStored(){
+    try{ await this._dbClear(); }catch(e){}
+    this.storedVideos = [];
+    toast('ブラウザ保存の取り込み素材を削除しました (リロードで一覧から消えます)');
+  },
+
+  // 内蔵サーバ (取り込み可能) かどうか。1 セッションに 1 回だけ問い合わせる
+  local(){
+    if(!this._probe) this._probe = (async ()=>{
+      try{
+        const r = await fetch('__media', { cache:'no-store' });
+        if(!r.ok) return false;
+        const d = await r.json();
+        return !!(d && d.ok && d.writable);
+      }catch(e){ return false; }
+    })();
+    return this._probe;
+  },
+
+  kindOf(file){
+    const n = (file && file.name) || '';
+    const t = (file && file.type) || '';
+    if(/^image\//.test(t) || this.IMG_RE.test(n)) return 'image';
+    if(/^video\//.test(t) || this.VID_RE.test(n)) return 'video';
+    return '';
+  },
+
+  async put(file){
+    const r = await fetch('__media?name=' + encodeURIComponent(file.name || ''), { method:'POST', body:file });
+    const d = await r.json().catch(()=>null);
+    if(!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    return d;   // {kind, dir, name, url}
+  },
+
+  // ドロップ / ファイル選択の入口。取り込んだ最後の 1 件をアクティブスロットへ載せる
+  async accept(files){
+    const list = Array.from(files || []).filter(f => this.kindOf(f));
+    if(!list.length){ toast('画像 / 動画ファイルがありません'); return 0; }
+    if(await this.local()) return this._importLocal(list);
+    return this._importBlob(list);
+  },
+
+  async _importLocal(list){
+    const done = [];
+    for(const f of list){
+      toast('取り込み中… ' + f.name);
+      try{ done.push(await this.put(f)); }
+      catch(e){ console.warn('media import failed:', f.name, e); toast('取り込み失敗: ' + f.name); }
+    }
+    if(!done.length) return 0;
+    const vids = done.filter(d => d.kind === 'video');
+    const imgs = done.filter(d => d.kind === 'image');
+    if(imgs.length && typeof ImageMode !== 'undefined'){
+      if(!ImageMode.initialized && GL.gl) ImageMode.init(GL.gl);
+      await ImageMode.loadFolderIndex(true);
+    }
+    // 動画があれば動画を優先してスロットへ (画像は Image モードのフォルダに積むだけでも見える)
+    if(vids.length){
+      const v = vids[vids.length - 1];
+      if(typeof Movie !== 'undefined'){
+        if(!Movie.initialized && GL.gl) Movie.init(GL.gl);
+        await Movie.scanFolder();
+      }
+      App.transitionVideo(v.url, v.name);
+    } else if(imgs.length){
+      const im = imgs[imgs.length - 1];
+      this._toImageSlot(im.dir, im.name);
+    }
+    if(typeof UI !== 'undefined'){
+      if(vids.length && UI.populatePresets) UI.populatePresets();   // Visual グリッドの Movie 一覧を作り直す
+      if(UI.refreshImageMode) UI.refreshImageMode();
+      if(UI.refreshMix) UI.refreshMix();
+    }
+    toast(done.length + ' 件を取り込みました (' + (vids.length ? 'movies/ ' : '') + (imgs.length ? 'images/drop/' : '') + ')');
+    return done.length;
+  },
+
+  // 書き込めない配信 (本番 / github.io): blob として読み込み + IndexedDB へ保存して次回起動でも復元
+  _importBlob(list){
+    const vids = list.filter(f => this.kindOf(f) === 'video');
+    const imgs = list.filter(f => this.kindOf(f) === 'image');
+    let n = 0;
+    if(imgs.length && typeof ImageMode !== 'undefined'){
+      if(!ImageMode.initialized && GL.gl) ImageMode.init(GL.gl);
+      n += ImageMode.addDroppedFiles(imgs);
+      const f = ImageMode._folderByDir(ImageMode.DROP_DIR);
+      if(!vids.length && f) this._toImageSlot(ImageMode.DROP_DIR, f.images[f.images.length - 1] || '');
+    }
+    if(vids.length && typeof Movie !== 'undefined'){
+      if(!Movie.initialized && GL.gl) Movie.init(GL.gl);
+      for(const f of vids) this.storedVideos.push({ url: URL.createObjectURL(f), name: f.name || 'drop' });
+      const last = this.storedVideos[this.storedVideos.length - 1];
+      App.transitionVideo(last.url, last.name);
+      n += vids.length;
+    }
+    // 次回起動でも復元できるよう IndexedDB へ保存 (容量超過などの失敗はセッション限りに落ちるだけ)
+    (async ()=>{
+      let saved = true;
+      for(const f of list){
+        try{ await this._dbPut({ name: f.name || '', kind: this.kindOf(f), blob: f, t: Date.now() }); }
+        catch(e){ saved = false; console.warn('media store failed:', f.name, e); }
+      }
+      toast(n + ' 件を読み込みました' + (saved ? ' (ブラウザに保存。次回起動でも残ります)' : ' (保存失敗: このセッション限り)'));
+    })();
+    if(typeof UI !== 'undefined'){
+      if(vids.length && UI.populatePresets) UI.populatePresets();
+      if(UI.refreshAll) UI.refreshAll();
+    }
+    return n;
+  },
+
+  // アクティブスロットを Image モードにして dir / name を表示する
+  _toImageSlot(dir, name){
+    if(typeof ImageMode === 'undefined') return;
+    const slot = GL.slots[App.activeSlot];
+    if(!slot || slot.kind !== 'image'){
+      const idx = PRESETS.findIndex(p => p.kind === 'image');
+      if(idx >= 0) App.loadPreset(idx, App.activeSlot);
+    }
+    ImageMode.showImage(dir, name);
+    App.crossfade = (App.activeSlot === 'A') ? 0 : 1;
+  },
+
+  // 要素をドロップ受け皿にする (Visual タブ全体 / Image フォルダグリッド)
+  bindDropZone(el){
+    if(!el || el.dataset.mediaDrop) return;
+    el.dataset.mediaDrop = '1';
+    const hasFiles = (e)=>{
+      const t = e.dataTransfer;
+      return !!(t && t.types && Array.prototype.indexOf.call(t.types, 'Files') >= 0);
+    };
+    const off = ()=>{ el.style.outline = ''; el.style.outlineOffset = ''; };
+    el.addEventListener('dragover', (e)=>{
+      if(!hasFiles(e)) return;
+      e.preventDefault();
+      try{ e.dataTransfer.dropEffect = 'copy'; }catch(_){}
+      el.style.outline = '2px dashed var(--acc, #7c4dff)';
+      el.style.outlineOffset = '-3px';
+    });
+    el.addEventListener('dragleave', off);
+    el.addEventListener('drop', (e)=>{
+      if(!hasFiles(e)) return;
+      e.preventDefault();
+      off();
+      this.accept(e.dataTransfer.files);
+    });
+  }
+};
+
+/* ===================================================================
    GL  — WebGL2 renderer
 =================================================================== */
 const GL = {
@@ -10105,6 +10308,7 @@ const App = {
     }
     Preview.init();
     // Built-in な特殊プリセットを先頭に追加
+    PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
     PRESETS.unshift({ name:'★ VIDEO (Loop Player)', kind:'video', ch:[], src:'' });
     PRESETS.unshift({ name:'(なし / 透明)', kind:'none', ch:[], src:'' });   // 一番左上: 無選択=透過
     LOAD('Loading settings…', 28);
@@ -15427,6 +15631,8 @@ void mainImage(out vec4 o, in vec2 f){
     (async ()=>{
       let movies = [];
       try{ if(typeof Movie !== 'undefined'){ if(!Movie.initialized && typeof GL !== 'undefined' && GL.gl) Movie.init(GL.gl); movies = await Movie.scanFolder(); } }catch(e){}
+      // 書き込み不可配信でブラウザ保存 (IndexedDB) した取り込み動画も一覧へ足す
+      movies = (movies || []).concat((typeof MediaImport !== 'undefined') ? MediaImport.storedVideos : []);
       if(shaderLbl.parentNode !== grid) return;   // await 中に再ビルドされたら旧ラベルは detach 済み → insertBefore 例外を防ぐ
       if(!movies || !movies.length){
         // Movie セクションごと畳む (先頭の「なし」タイルも残さない)
@@ -15731,34 +15937,24 @@ void mainImage(out vec4 o, in vec2 f){
     if(next) next.addEventListener('click', ()=>{ const m = ensure(); if(m) m.advance(1); });
     const m0 = ensure();
     if(m0) m0.loadFolderIndex().then(()=>{ this.applyImageDefault(); this.refreshImageMode(); });
-    // フォルダグリッドへのドラッグ&ドロップ: 画像ファイルを臨時フォルダ (blob URL) として追加。
-    // セッション限り (リロードで消える)。サーバーへはアップロードしない。
-    const grid = $('#imageFolderGrid');
-    if(grid){
-      grid.addEventListener('dragover', (e)=>{
-        e.preventDefault();
-        try{ e.dataTransfer.dropEffect = 'copy'; }catch(_){}
-        grid.style.outline = '2px dashed var(--acc, #7c4dff)';
-      });
-      grid.addEventListener('dragleave', ()=>{ grid.style.outline = ''; });
-      grid.addEventListener('drop', (e)=>{
-        e.preventDefault();
-        grid.style.outline = '';
-        const m = ensure(); if(!m) return;
-        const n = m.addDroppedFiles(e.dataTransfer ? e.dataTransfer.files : null);
-        if(!n){ toast('画像ファイルがありません'); return; }
-        // タイルクリックと同じ挙動でアクティブスロットへロード
-        const slot = GL.slots[App.activeSlot];
-        if(!slot || slot.kind !== 'image'){
-          const idx = PRESETS.findIndex(p => p.kind === 'image');
-          if(idx >= 0) App.loadPreset(idx, App.activeSlot);
-        }
-        App.crossfade = (App.activeSlot === 'A') ? 0 : 1;
-        this.refreshImageMode();
-        if(this.refreshMix) this.refreshMix();
-        toast('ドロップ画像 ' + n + ' 枚を臨時フォルダへ追加 (リロードで消えます)');
+    // 画像 / 動画のドロップ: Visual タブ全体とフォルダグリッドの両方で受ける。
+    // ローカル起動なら images/drop/ ・ movies/ へ実ファイルとして取り込む (MediaImport)。
+    MediaImport.bindDropZone(document.querySelector('.pane[data-pane="shader"]'));
+    MediaImport.bindDropZone($('#imageFolderGrid'));
+    const mBtn = $('#btnMediaImport'), mFile = $('#fileMedia'), mClr = $('#btnMediaClear');
+    if(mBtn && mFile){
+      mBtn.addEventListener('click', ()=> mFile.click());
+      mFile.addEventListener('change', async ()=>{ await MediaImport.accept(mFile.files); mFile.value = ''; });
+      MediaImport.local().then(ok=>{
+        mBtn.title = ok ? '画像 / 動画を images/drop/ ・ movies/ へ取り込む (次回起動でも残る)'
+                        : '画像 / 動画を読み込む (ブラウザに保存され、次回起動でも残ります)';
+        if(mClr) mClr.style.display = ok ? 'none' : '';   // 実ファイル取り込み環境では Finder で消せるので不要
       });
     }
+    if(mClr) mClr.addEventListener('click', ()=>{
+      if(confirm('ブラウザに保存した取り込み画像 / 動画をすべて削除しますか?')) MediaImport.clearStored();
+    });
+    MediaImport.restore();   // 書き込み不可配信: IndexedDB に保存した素材を復元
   },
 
   _imageDefKey: 'vj.def.image',

@@ -138,14 +138,15 @@ void main(){
     st.curTex = st.texA; st.prevTex = st.texB;
   },
 
-  // images/folders.json を読む (キャッシュバスト)
-  async loadFolderIndex(){
-    if(this.folders.length) return this.folders;
+  // images/folders.json を読む (キャッシュバスト)。force=true で再取得 (ローカル取り込み直後)
+  async loadFolderIndex(force){
+    if(this.folders.length && !force) return this.folders;
     try{
       const r = await fetch('images/folders.json?t=' + Date.now(), { cache:'no-store' });
       if(r.ok){
         const d = await r.json();
-        if(Array.isArray(d)) this.folders = d;
+        // 再取得時もセッション限りのドロップフォルダ (blob URL) は残す
+        if(Array.isArray(d)) this.folders = this.folders.filter(f => f && f._urls).concat(d);
       }
     }catch(e){ console.warn('ImageMode: folders.json load failed', e); }
     // 一覧より先に state 復元で P.folder が入っていたスロットへ再適用 (復元値を優先)
@@ -177,6 +178,13 @@ void main(){
     f.count = f._urls.length;
     if(added) this.setFolder(this.DROP_DIR);   // アクティブスロットへ
     return added;
+  },
+
+  // フォルダ内の特定の画像を選んで表示 (ローカル取り込み直後に、取り込んだ 1 枚を出す)
+  showImage(dir, name, key){
+    const st = this._slot(key || this._uiKey());
+    st.P.image = name || '';
+    this.setFolder(dir, key);
   },
 
   // ================= フォルダ/画像ごとの設定保存 (md の mdParams と同方式) =================

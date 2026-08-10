@@ -1,11 +1,11 @@
 // GARA VJ デスクトップアプリ (Electron)
-// 内蔵の静的 HTTP サーバでアプリ一式を配信し、BrowserWindow で開く。
+// 内蔵の静的 HTTP サーバ (desktop/server.js) でアプリ一式を配信し、BrowserWindow で開く。
 // file:// だと fetch(manifest.json 等) が失敗するため必ず HTTP で配信する。
 // プリセット/グラデ等の store.php 同期は app.js 側が本番サーバを参照する(既存動作)。
 const { app, BrowserWindow, session, Menu, dialog, desktopCapturer } = require('electron');
-const http = require('http');
 const fs = require('fs');
 const path = require('path');
+const { createServer } = require('./server');
 
 // ハイブリッド GPU 機で必ず高性能側 GPU を使う (内蔵GPU割当による TDR/クラッシュ対策)
 // force_high_performance_gpu は macOS 専用のため、Windows ではレジストリ
@@ -34,58 +34,6 @@ app.commandLine.appendSwitch('disable-background-media-suspend');
 app.commandLine.appendSwitch('disable-features', 'BackgroundVideoPauseOptimization,MediaSuspend');
 
 const ROOT = path.join(__dirname, '..');   // アプリ一式のルート (開発時もパッケージ後も同じ相対位置)
-
-const MIME = {
-  '.html':'text/html; charset=utf-8', '.js':'text/javascript; charset=utf-8',
-  '.css':'text/css; charset=utf-8', '.json':'application/json; charset=utf-8',
-  '.png':'image/png', '.jpg':'image/jpeg', '.jpeg':'image/jpeg', '.webp':'image/webp',
-  '.gif':'image/gif', '.svg':'image/svg+xml', '.ico':'image/x-icon',
-  '.mp4':'video/mp4', '.webm':'video/webm', '.mov':'video/quicktime',
-  '.m4v':'video/x-m4v', '.ogv':'video/ogg',
-  '.woff2':'font/woff2', '.woff':'font/woff', '.ttf':'font/ttf', '.otf':'font/otf',
-  '.frag':'text/plain; charset=utf-8', '.glsl':'text/plain; charset=utf-8', '.txt':'text/plain; charset=utf-8',
-};
-
-function serve(req, res){
-  // DNS リバインディング対策: ループバック以外の Host を名乗るリクエストは拒否
-  const host = String(req.headers.host || '');
-  if(!/^(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/.test(host)){ res.writeHead(403); res.end(); return; }
-  let urlPath;
-  try{ urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname); }
-  catch(e){ res.writeHead(400); res.end(); return; }
-  if(urlPath === '/') urlPath = '/index.html';
-  const file = path.normalize(path.join(ROOT, urlPath));
-  if(!file.startsWith(ROOT + path.sep)){ res.writeHead(403); res.end(); return; }   // ルート外は拒否
-  fs.stat(file, (err, st) => {
-    if(err || !st.isFile()){ res.writeHead(404); res.end(); return; }
-    const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
-    const range = req.headers.range;
-    if(range){
-      // 動画シーク用の Range 対応 (bytes=start-end)
-      const m = /bytes=(\d*)-(\d*)/.exec(range);
-      let start = m && m[1] ? parseInt(m[1], 10) : 0;
-      let end = m && m[2] ? parseInt(m[2], 10) : st.size - 1;
-      if(isNaN(start) || start >= st.size) start = 0;
-      if(isNaN(end) || end >= st.size) end = st.size - 1;
-      res.writeHead(206, {
-        'Content-Type': mime,
-        'Content-Range': `bytes ${start}-${end}/${st.size}`,
-        'Content-Length': end - start + 1,
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'no-cache',
-      });
-      fs.createReadStream(file, {start, end}).pipe(res);
-    } else {
-      res.writeHead(200, {
-        'Content-Type': mime,
-        'Content-Length': st.size,
-        'Accept-Ranges': 'bytes',
-        'Cache-Control': 'no-cache',
-      });
-      fs.createReadStream(file).pipe(res);
-    }
-  });
-}
 
 let win = null;
 let shaderProbeDone = false;
@@ -137,7 +85,7 @@ process.on('uncaughtException', (err) => {
 });
 
 async function createWindow(){
-  const server = http.createServer(serve);
+  const server = createServer(ROOT);
   // ポートは固定する。ランダム割当だとオリジンが起動ごとに変わり、localStorage
   // (プリセットキャッシュ / デフォルト / MIDI learn / 前回状態) が毎回空になる。
   // 使用中なら +1 しながら数ポート試し、全滅時のみランダムへフォールバック。
