@@ -5811,16 +5811,22 @@ void main(){
   _updateFxLineColor(){
     const src = this._finalFBO;   // 表示中の合成キャンバス(前フレーム)から支配色を拾う
     if(!src || !src.fbo){ this._fxLineOn = 0; return; }
+    if(this._fxHuePending) return;                       // 前回の非同期読み戻しが飛行中
     const gl = this.gl, S = 16;
     if(!this._fxHueFBO) this._fxHueFBO = this._mkRGBA8FBO(S, S);
-    if(!this._fxHuePix) this._fxHuePix = new Uint8Array(S*S*4);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src.fbo);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._fxHueFBO.fbo);
     gl.blitFramebuffer(0,0, src.w, src.h, 0,0, S, S, gl.COLOR_BUFFER_BIT, gl.LINEAR);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._fxHueFBO.fbo);
-    gl.readPixels(0,0, S, S, gl.RGBA, gl.UNSIGNED_BYTE, this._fxHuePix);
+    this._fxHuePending = true;
+    this.asyncReadPixels(S, S, (px)=>{                   // 非同期: 数フレーム遅れの線色更新で十分
+      this._fxHuePending = false;
+      if(px) this._applyFxLineColor(px, S);
+    });
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    const px = this._fxHuePix, BINS = 36, hist = new Float32Array(BINS);
+  },
+  _applyFxLineColor(px, S){
+    const BINS = 36, hist = new Float32Array(BINS);
     let rSum = 0, gSum = 0, bSum = 0;
     for(let i=0;i<S*S;i++){
       const r=px[i*4]/255, g=px[i*4+1]/255, b=px[i*4+2]/255;
@@ -5858,7 +5864,7 @@ void main(){
     if(!this._sprev) this._sprev = {};
     if(!this._sprev[key]){
       const cvs = document.getElementById('prev' + key);
-      this._sprev[key] = { cvs, ctx: cvs ? cvs.getContext('2d') : null, fbo:null, w:0, h:0, buf:null, img:null };
+      this._sprev[key] = { cvs, ctx: cvs ? cvs.getContext('2d') : null, fbo:null, w:0, h:0, img:null };
     }
     const p = this._sprev[key];
     if(!p.ctx) return null;
@@ -5867,7 +5873,6 @@ void main(){
       p.fbo = this._mkRGBA8FBO(PW, PH);
       p.w = PW; p.h = PH;
       p.cvs.width = PW; p.cvs.height = PH;
-      p.buf = new Uint8Array(PW * PH * 4);
       p.img = p.ctx.createImageData(PW, PH);
     }
     return p;
@@ -5894,6 +5899,48 @@ void main(){
     ctx.restore();
   },
 
+  // ── 非同期 readPixels (PBO + fence) ──
+  //   同期 readPixels は呼んだ時点で GPU パイプライン全体の完了を CPU が待ってしまい、
+  //   フレーム時間を支配していた (A/B プレビュー / Auto Palette / FX 線色)。
+  //   PBO へ積んで即リターンし、数フレーム後の fence 完了時にコールバックへ渡す。
+  //   呼び出し側は READ_FRAMEBUFFER をバインドした状態で呼ぶこと。
+  _asyncReads: [],
+  asyncReadPixels(w, h, cb){
+    const gl = this.gl;
+    if(!gl || this._ctxLost || this._asyncReads.length > 8){ cb(null); return; }   // 溢れ保険 (タブ非表示等)
+    const pbo = gl.createBuffer();
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, pbo);
+    gl.bufferData(gl.PIXEL_PACK_BUFFER, w * h * 4, gl.STREAM_READ);
+    gl.readPixels(0, 0, w, h, gl.RGBA, gl.UNSIGNED_BYTE, 0);
+    gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+    const sync = gl.fenceSync(gl.SYNC_GPU_COMMANDS_COMPLETE, 0);
+    this._asyncReads.push({ pbo, sync, size: w * h * 4, cb });
+  },
+  _pollAsyncReads(){
+    if(!this._asyncReads.length) return;
+    const gl = this.gl;
+    if(!gl || this._ctxLost || (gl.isContextLost && gl.isContextLost())){
+      for(const r of this._asyncReads){ try{ r.cb(null); }catch(e){} }
+      this._asyncReads.length = 0;
+      return;
+    }
+    for(let i = 0; i < this._asyncReads.length; ){
+      const r = this._asyncReads[i];
+      const st = gl.clientWaitSync(r.sync, 0, 0);
+      if(st === gl.TIMEOUT_EXPIRED){ i++; continue; }
+      this._asyncReads.splice(i, 1);
+      let buf = null;
+      if(st === gl.ALREADY_SIGNALED || st === gl.CONDITION_SATISFIED){
+        buf = new Uint8Array(r.size);
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, r.pbo);
+        try{ gl.getBufferSubData(gl.PIXEL_PACK_BUFFER, 0, buf); }catch(e){ buf = null; }
+        gl.bindBuffer(gl.PIXEL_PACK_BUFFER, null);
+      }
+      gl.deleteSync(r.sync); gl.deleteBuffer(r.pbo);
+      try{ r.cb(buf); }catch(e){}
+    }
+  },
+
   drawSlotPreviews(){
     if(this._ctxLost) return;
     const gl = this.gl;
@@ -5904,7 +5951,7 @@ void main(){
     const src = s && s.fbos[s.fbIdx ^ 1];
     if(!src || src.w < 2) return;
     const p = this._ensureSlotPrev(key);
-    if(!p) return;
+    if(!p || p._pending) return;   // 前回の非同期読み戻しがまだ飛行中ならスキップ
     // slot tex → 小 RGBA8 FBO へ素通し転写 (Y 反転は FS 側)。
     // A/B プレビューは Post FX を掛けない = スロット単体の生の絵を見せる (中立 post override)。
     gl.bindFramebuffer(gl.FRAMEBUFFER, p.fbo.fbo);
@@ -5917,22 +5964,28 @@ void main(){
     _applyMiniFxUniforms(gl, this.pipProg, p.w, p.h, true, {});
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
-    gl.readPixels(0, 0, p.w, p.h, gl.RGBA, gl.UNSIGNED_BYTE, p.buf);
+    // 非同期読み戻し: 数フレーム遅れてプレビューに反映される (同期ストールの主因だった)
+    const kind = s.kind;
+    p._pending = true;
+    this.asyncReadPixels(p.w, p.h, (buf)=>{
+      p._pending = false;
+      if(!buf || !p.img || buf.length !== p.img.data.length) return;
+      p.img.data.set(buf);
+      // 透明部分には市松模様を敷く。putImageData は alpha ごと上書きしてしまうので、
+      // 一度オフスクリーンに置いてから drawImage で市松の上へ alpha 合成する。
+      this._fillChecker(p.ctx, p.w, p.h);
+      if(kind !== 'none'){
+        if(!p._tmp){
+          p._tmp = document.createElement('canvas');
+          p._tmp.width = p.w; p._tmp.height = p.h;
+          p._tmpCtx = p._tmp.getContext('2d');
+        }
+        p._tmpCtx.putImageData(p.img, 0, 0);
+        p.ctx.drawImage(p._tmp, 0, 0);
+      }
+    });
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.canvas.width, this.canvas.height);
-    p.img.data.set(p.buf);
-    // 透明部分には市松模様を敷く。putImageData は alpha ごと上書きしてしまうので、
-    // 一度オフスクリーンに置いてから drawImage で市松の上へ alpha 合成する。
-    this._fillChecker(p.ctx, p.w, p.h);
-    if(s.kind !== 'none'){
-      if(!p._tmp){
-        p._tmp = document.createElement('canvas');
-        p._tmp.width = p.w; p._tmp.height = p.h;
-        p._tmpCtx = p._tmp.getContext('2d');
-      }
-      p._tmpCtx.putImageData(p.img, 0, 0);
-      p.ctx.drawImage(p._tmp, 0, 0);
-    }
   },
 
   // Blend Mode 一覧プレビュー (グラデーションバーの下)。A/B スロットプレビューのバッファを
@@ -6305,7 +6358,7 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.viewport(0,0,this.canvas.width,this.canvas.height);
     }
-    // PiP は readPixels で重いので間引いて更新 (~10fps)
+    this._pollAsyncReads();                             // 非同期 readPixels (PBO) の完了分を回収
     if(this.frame % 3 === 0) this.drawSlotPreviews();   // 3フレームごとに A/B 交互 = 各6フレーム周期
     this.drawMixPreviews();                             // Grad / Blend 一覧 (2 秒ごと / 1 フレーム 2 枚ずつ)
     // FX バッジ (MIDI / キー / Param Fade でも値は動くので描画ループから追従。変化時のみ DOM 更新)
@@ -6360,17 +6413,31 @@ void main(){
       slot._scaledBeat += dBeat * (App.beatScale || 1);
     }
   },
-  // [ / ] で非表示にしたスロットも、内部の描画/時間進行は止めない。
-  //   合成出力からの除外は composite 側の uShowA/uShowB (slotVisibleAmount) が担うので、
-  //   ここで render をスキップすると裏で FBO が更新されなくなり、下段の A/B プレビュー
-  //   タイル(prevA/prevB)が非表示中ずっと静止画になってしまう。
+  // 合成出力に一切寄与しないスロットは 3 フレームに 1 回だけ描画する (GPU 負荷をほぼ半減)。
+  //   時間進行 (_advanceSlotClock) は毎フレーム行うので、再表示時も時刻は連続する。
+  //   下段の A/B プレビュータイルが ~1/3 fps になるだけで本編への影響はない。
+  //   誤判定すると見えているスロットがカクつくため、判定 (_slotOccluded) は保守的に。
   _renderVisibleSlot(slotKey, dt, realDt){
     this._advanceSlotClock(slotKey, dt, realDt);
     this._syncSlotVisibility(slotKey);
+    if(this._slotOccluded(slotKey) && (this.frame + (slotKey === 'B' ? 1 : 0)) % 3 !== 0) return;
     this._renderAnySlot(slotKey);
     this._applySlotTrans(slotKey);
     const slot = this.slots[slotKey];
     if(slot && typeof slot._frame === 'number') slot._frame++;
+  },
+  // 合成に寄与しない (完全に隠れている) スロットか。確実に不可視のときだけ true を返す。
+  _slotOccluded(slotKey){
+    if(typeof App === 'undefined') return false;
+    if(App.slotVisibleAmount && App.slotVisibleAmount(slotKey) <= 0.001) return true;   // [ / ] の非表示トグル
+    const cf = App.crossfade;
+    // B の寄与は全ブレンド/トランジション/透過経路で uMix 倍 → crossfade 0 なら完全不可視
+    if(slotKey === 'B') return cf <= 0.001;
+    // A は crossfade 1 でも B が透過だと透ける (image contain の余白 / 実 alpha シェーダ / none)。
+    // B が常に不透明と分かる video のときだけ、通常 Mix + 演出なしに限って間引く。
+    const b = this.slots.B;
+    return cf >= 0.999 && App.blendModeIdx && App.blendModeIdx() === 0 && (App.transStyle || 0) === 0
+        && !!(b && b.kind === 'video' && b.ready);
   },
   _syncSlotVisibility(slotKey){
     const slot = this.slots[slotKey];
@@ -11040,8 +11107,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       //   毎フレームは避け、8フレーム間引き(約7.5fps 更新) + 失敗(暗いフレーム等)時は次フレーム即リトライ。
       if(this.post && this.post.palette === 8){
         this._autoPalTick = (this._autoPalTick || 0) + 1;
-        if(this._autoPalRetry || (this._autoPalTick % 8 === 0)){
-          this._autoPalRetry = !this.extractSlotAPalette();
+        if(!this._palPending && (this._autoPalRetry || (this._autoPalTick % 8 === 0))){
+          this._autoPalRetry = !this.extractSlotAPalette();   // 成否は非同期読み戻し側でも更新される
         }
       }
       Preview.tick();
@@ -12324,11 +12391,20 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, d.fbo);
       gl.blitFramebuffer(0, 0, src.w, src.h, 0, 0, tw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, d.fbo);
-      const px = new Uint8Array(tw*th*4);
-      gl.readPixels(0, 0, tw, th, gl.RGBA, gl.UNSIGNED_BYTE, px);
+      this._palPending = true;
+      GL.asyncReadPixels(tw, th, (px)=>{   // 非同期: パレットが数フレーム遅れて更新されるだけ
+        this._palPending = false;
+        this._autoPalRetry = !(px && this._applyExtractedPalette(px));
+      });
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      return true;
+    }catch(e){ return false; }
+  },
+  // 読み戻した縮小ピクセルから 4 色パレットを構築 (成功時 true)
+  _applyExtractedPalette(px){
+    try{
       const sum = [[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];
       let total = 0;
       for(let i=0;i<px.length;i+=4){
@@ -17695,6 +17771,8 @@ void mainImage(out vec4 o, in vec2 f){
     };
     const hovered = arr.find(t => t.hover && t.canvas);
     if(hovered){ render(hovered); return; }                 // ホバー中はそのタイルを毎フレーム
+    this._presetAnimTick = (this._presetAnimTick || 0) + 1;
+    if(this._presetAnimTick % 3) return;                    // 非ホバーのラウンドロビンは 3 フレームに 1 枚 (負荷対策)
     const n = arr.length;                                   // ラウンドロビンで次のシェーダタイル1枚
     for(let step = 0; step < n; step++){
       this._presetAnimI = (this._presetAnimI + 1) % n;
