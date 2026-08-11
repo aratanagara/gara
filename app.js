@@ -8461,9 +8461,24 @@ const Record = {
     this.ext = chosen.ext;
     this.mime = chosen.mime || 'video/webm';
     this.mr.ondataavailable = e=>{ if(e.data.size) this.chunks.push(e.data); };
+    // 異常検知: エンコーダエラー / canvas トラック終了は録画が沈黙死する経路 → 記録して自動保存
+    this.mr.addEventListener('error', (e)=>{
+      const m = (e.error && e.error.message) || 'unknown';
+      try{ Diag.log('record', 'MediaRecorder error: ' + m); }catch(_){}
+      try{ toast('録画エラー: ' + m + ' (ここまでを保存します)', 5000); }catch(_){}
+      if(this.mr) this.stop();
+    });
+    { const vt = this.stream.getVideoTracks()[0];
+      if(vt) vt.onended = ()=>{
+        try{ Diag.log('record', 'canvas video track ended'); }catch(_){}
+        try{ toast('録画の映像トラックが終了しました (ここまでを保存します)', 5000); }catch(_){}
+        if(this.mr) this.stop();
+      };
+    }
     this.mr.onstop = ()=>{
       try{
         const blob = new Blob(this.chunks, {type:this.mime});
+        try{ Diag.log('record', 'stop bytes=' + blob.size + ' framesDelivered=' + (this._watchTotal || 0)); }catch(_){}
         const url = URL.createObjectURL(blob);
         const fname = `vj-${Date.now()}.${this.ext}`;
         const a = document.createElement('a');
@@ -8490,10 +8505,57 @@ const Record = {
       toast('録画開始に失敗: '+(err.message||err));
       return false;
     }
+    this._watchStart();
+    try{ Diag.log('record', 'start ' + this.ext + ' ' + (chosen.mime || 'default') + ' vbps=' + Math.round(vbps/1e6) + 'M' + (hasAudio ? ' +audio' : '')); }catch(_){}
     toast(`録画開始 (${this.ext}${hasAudio ? '+audio' : ''})`);
     return true;
   },
+  // ── 録画ウォッチドッグ ──
+  //   録画中に「レコーダーへのフレーム供給」が止まると、mov は直前フレームで固まったまま
+  //   時間だけが進む (プリセット切替後に映像が止まる報告の症状)。供給を rvfc で数え、
+  //   4 秒連続ゼロで Diag へ状況を記録し、トーストと Record ボタンの点滅で知らせる。
+  _watchStart(){
+    if(!('requestVideoFrameCallback' in HTMLVideoElement.prototype)) return;
+    const v = document.createElement('video');
+    v.muted = true; v.playsInline = true;
+    try{ v.srcObject = new MediaStream(this.canvasStream.getVideoTracks()); v.play().catch(()=>{}); }catch(e){ return; }
+    this._watchVideo = v;
+    this._watchFrames = 0;
+    this._watchTotal = 0;
+    this._watchStall = 0;          // 連続供給ゼロの秒数
+    const pump = ()=>{ this._watchFrames++; this._watchTotal++; if(this._watchVideo === v) v.requestVideoFrameCallback(pump); };
+    v.requestVideoFrameCallback(pump);
+    this._watchGLFrame = (typeof GL !== 'undefined') ? GL.frame : 0;
+    this._watchTimer = setInterval(()=>{
+      const glAdv = (typeof GL !== 'undefined') ? GL.frame - this._watchGLFrame : -1;
+      if(typeof GL !== 'undefined') this._watchGLFrame = GL.frame;
+      const got = this._watchFrames; this._watchFrames = 0;
+      if(got === 0){
+        this._watchStall += 2;
+        if(this._watchStall === 4){    // 停止イベントにつき一度だけ記録
+          const si = (k)=>{ try{ const s = GL.slots[k]; return k + '=' + (s.kind || '?'); }catch(e){ return k + '=?'; } };
+          const msg = 'frame supply stalled (renderAdv=' + glAdv + '/2s, ' + si('A') + ' ' + si('B')
+                    + ', cf=' + (typeof App !== 'undefined' && App.crossfade != null ? App.crossfade.toFixed(2) : '?') + ')';
+          try{ Diag.log('record', msg); }catch(e){}
+          try{ toast('録画へのフレーム供給が止まっています (Diag に記録)', 5000); }catch(e){}
+          const rb = document.getElementById('btnRec'); if(rb) rb.classList.add('rec-stall');
+        }
+      } else {
+        if(this._watchStall >= 4){
+          try{ Diag.log('record', 'frame supply recovered after ~' + this._watchStall + 's'); }catch(e){}
+          const rb = document.getElementById('btnRec'); if(rb) rb.classList.remove('rec-stall');
+        }
+        this._watchStall = 0;
+      }
+    }, 2000);
+  },
+  _watchStop(){
+    if(this._watchTimer){ clearInterval(this._watchTimer); this._watchTimer = null; }
+    if(this._watchVideo){ try{ this._watchVideo.srcObject = null; }catch(e){} this._watchVideo = null; }
+    const rb = document.getElementById('btnRec'); if(rb) rb.classList.remove('rec-stall');
+  },
   _cleanupStream(){
+    this._watchStop();
     if(this.canvasStream){
       try{ this.canvasStream.getTracks().forEach(t=>t.stop()); }catch(e){}
     }

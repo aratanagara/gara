@@ -300,3 +300,7 @@ kbd{background:#222;border:1px solid var(--line);border-radius:3px;padding:0 4px
 #blendPrevBar .bp canvas{width:100%;height:auto;display:block}
 #blendPrevBar .bp.on{outline:2px solid #ff00aa;outline-offset:-2px}
 #blendPrevBar .bp span{position:absolute;left:0;right:0;bottom:0;line-height:12px;text-align:center;font:bold 9px var(--mono);color:#fff;text-shadow:0 0 2px #000,0 0 3px #000}
+
+/* 録画ウォッチドッグ: フレーム供給停止中は Record ボタンを点滅させる */
+#btnRec.rec-stall{background:#a11 !important;color:#fff !important;animation:recStallBlink 1s steps(2) infinite}
+@keyframes recStallBlink{50%{background:#5c0c0c !important}}
