@@ -6882,11 +6882,16 @@ const Audio = {
         if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
           throw new Error('このブラウザは画面音声キャプチャに非対応');
         }
-        // Chrome 系では:
-        //   1. ピッカーで「Chrome タブ」を選択 (Window/Screen は音声非対応)
-        //   2. 下部の「タブの音声を共有」にチェック
-        // この案内をピッカー前にトーストで出しておく
-        toast('ピッカーで「Chromeタブ」を選び「タブの音声を共有」にチェック', 4500);
+        // アプリ版 (Electron) はピッカーを出さず「画面全体 + システム音声」を自動取得する
+        // (desktop/main.js の setDisplayMediaRequestHandler)。案内とエラー文言を分ける。
+        const isApp = /Electron/i.test(navigator.userAgent || '');
+        if(isApp){
+          toast('画面全体のシステム音声を取得します', 3000);
+        } else {
+          // ブラウザ版 (Chrome 系): ピッカーで「Chrome タブ」を選択 (Window/Screen は音声非対応) +
+          // 下部の「タブの音声を共有」にチェック。この案内をピッカー前にトーストで出しておく
+          toast('ピッカーで「Chromeタブ」を選び「タブの音声を共有」にチェック', 4500);
+        }
         // 少し待ってからピッカーを開く (トーストが見える時間を確保)
         await new Promise(r=>setTimeout(r, 50));
         try{
@@ -6898,7 +6903,9 @@ const Audio = {
         }catch(e){
           // getDisplayMedia の典型的な失敗パターンを分解して報告
           const name = e && e.name;
-          if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
+          if(isApp && (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'NotReadableError')){
+            throw new Error('システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動');
+          } else if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
             throw new Error('権限拒否: ピッカーで「タブ」を選び「タブの音声を共有」にチェック (Window/Screen は音声非対応)');
           } else if(name === 'NotFoundError'){
             throw new Error('共有可能なソースが見つかりません');
@@ -6911,7 +6918,9 @@ const Audio = {
         }
         if(stream.getAudioTracks().length === 0){
           stream.getTracks().forEach(t=>t.stop());
-          throw new Error('音声トラックなし: 「タブの音声を共有」にチェックを入れて再試行');
+          throw new Error(isApp
+            ? 'システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動'
+            : '音声トラックなし: 「タブの音声を共有」にチェックを入れて再試行');
         }
         // video トラックは使わないので即停止 (タブ表示の "共有中" インジケータは残るが、video データは流れない)
         stream.getVideoTracks().forEach(t=>t.stop());
