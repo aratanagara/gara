@@ -6922,8 +6922,10 @@ const Audio = {
             ? 'システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動'
             : '音声トラックなし: 「タブの音声を共有」にチェックを入れて再試行');
         }
-        // video トラックは使わないので即停止 (タブ表示の "共有中" インジケータは残るが、video データは流れない)
-        stream.getVideoTracks().forEach(t=>t.stop());
+        // video トラックは使わない。ブラウザ (タブ共有) では止めて負荷を下げるが、
+        // アプリ版のシステム音声 (SCK loopback) は映像トラックを止めるとキャプチャ
+        // セッションごと終了して音声トラックも即 ended になる → 1fps ダミーのまま保持する
+        if(!isApp) stream.getVideoTracks().forEach(t=>t.stop());
       } else {
         try{
           stream = await navigator.mediaDevices.getUserMedia({audio:true});

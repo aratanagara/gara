@@ -126,9 +126,12 @@ async function createWindow(){
   try{ session.defaultSession.setDevicePermissionHandler(() => true); }catch(_){}
   // 「画面音声」ボタン (getDisplayMedia) は Electron ではこのハンドラが無いと必ず失敗する。
   // ピッカーを出さず画面全体をそのまま渡す (音声も要求。BPM 検出/Audio FX 用)。
+  // 画面収録権限が無いと getSources が返ってこないことがある → タイムアウトで
+  // 空応答にし、レンダラ側が無言で固まらずエラー案内を出せるようにする。
   try{
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
-      desktopCapturer.getSources({ types: ['screen'] }).then(sources => {
+      const timeout = new Promise(res => setTimeout(() => res(null), 5000));
+      Promise.race([desktopCapturer.getSources({ types: ['screen'] }), timeout]).then(sources => {
         callback(sources && sources.length ? { video: sources[0], audio: 'loopback' } : {});
       }).catch(() => callback({}));
     }, { useSystemPicker: false });
