@@ -107,14 +107,16 @@
     Record.__camrollPatched = true;
     var origStart = Record.start;
     Record.start = function(){
-      origStart.call(this);
-      if(!this.mr || !isMobile()) return; // PC は従来どおり (自動ダウンロード)
-      // origStart が同期的に立てた onstop をモバイル用に差し替える
-      this.mr.onstop = function(){
-        var blob = new Blob(Record.chunks, { type: Record.mime });
-        var fname = 'vj-' + Date.now() + '.' + Record.ext;
-        showSaveSheet(blob, fname, Record.mime);
-      };
+      var ok = origStart.call(this);   // 戻り値を握りつぶさない (Record ボタンの Stop 表示切替に必要)
+      if(this.mr && isMobile()){
+        // origStart が同期的に立てた onstop をモバイル用に差し替える (PC は従来どおり自動ダウンロード)
+        this.mr.onstop = function(){
+          var blob = new Blob(Record.chunks, { type: Record.mime });
+          var fname = 'vj-' + Date.now() + '.' + Record.ext;
+          showSaveSheet(blob, fname, Record.mime);
+        };
+      }
+      return ok;
     };
     if(typeof toast === 'function' && isMobile()){
       toast('カメラロール保存パッチ有効');

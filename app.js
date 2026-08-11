@@ -8349,22 +8349,25 @@ const Record = {
     }
     const ua = navigator.userAgent || '';
     const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.maxTouchPoints > 1 && /Mac/.test(ua));
-    // SNS (Twitter/X, Instagram など) 互換を優先: mp4(H.264) を多く試して webm はフォールバック
-    // iOS は 'video/mp4' (codecs なし) しか通らないことが多い → 先頭に
+    // 非劣化優先: H.264 ハードウェアエンコードを解像度連動の最高級ビットレートで回し、
+    // .mov (QuickTime) として保存する (中身は ISO BMFF なので QuickTime/FCP/Premiere はそのまま開ける)。
+    // ブラウザ録画 (MediaRecorder) に数学的ロスレスは無いため、視覚的に劣化が判らないレートを確保する。
     const hasAudio = this.stream.getAudioTracks().length > 0;
     const candidates = hasAudio ? [
-      {mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext:'mp4'},
-      {mime:'video/mp4;codecs=avc1,mp4a.40.2',        ext:'mp4'},
-      {mime:'video/mp4',                              ext:'mp4'},
+      {mime:'video/mp4;codecs=avc1.640034,mp4a.40.2', ext:'mov'},   // High 5.2 (高ビットレート許容)
+      {mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext:'mov'},
+      {mime:'video/mp4;codecs=avc1,mp4a.40.2',        ext:'mov'},
+      {mime:'video/mp4',                              ext:'mov'},
       {mime:'video/webm;codecs=vp9,opus',             ext:'webm'},
       {mime:'video/webm;codecs=vp8,opus',             ext:'webm'},
       {mime:'video/webm;codecs=opus',                 ext:'webm'},
       {mime:'video/webm',                             ext:'webm'},
     ] : [
-      {mime:'video/mp4',                     ext:'mp4'},   // iOS Safari 17+ で通る
-      {mime:'video/mp4;codecs=avc1.42E01E',  ext:'mp4'},   // H.264 Baseline
-      {mime:'video/mp4;codecs=avc1',         ext:'mp4'},
-      {mime:'video/mp4;codecs=h264',         ext:'mp4'},
+      {mime:'video/mp4;codecs=avc1.640034',  ext:'mov'},   // H.264 High 5.2
+      {mime:'video/mp4;codecs=avc1.42E01E',  ext:'mov'},   // H.264 Baseline
+      {mime:'video/mp4;codecs=avc1',         ext:'mov'},
+      {mime:'video/mp4;codecs=h264',         ext:'mov'},
+      {mime:'video/mp4',                     ext:'mov'},   // iOS Safari 17+ はこれのみ通る
       {mime:'video/webm;codecs=vp9',         ext:'webm'},
       {mime:'video/webm;codecs=vp8',         ext:'webm'},
       {mime:'video/webm',                    ext:'webm'},
@@ -8374,7 +8377,10 @@ const Record = {
       if(MediaRecorder.isTypeSupported(c.mime)){ chosen = c; break; }
     }
     if(!chosen) chosen = {mime:'', ext:'webm'};
-    const opts = chosen.mime ? {mimeType:chosen.mime, videoBitsPerSecond:12_000_000} : {videoBitsPerSecond:12_000_000};
+    // 解像度連動 (~0.75 bit/px/frame): 1080p60 ≈ 93 Mbps。下限 50 / 上限 200 Mbps
+    const px = (GL.canvas && GL.canvas.width ? GL.canvas.width * GL.canvas.height : 1920 * 1080);
+    const vbps = Math.min(200_000_000, Math.max(50_000_000, Math.round(px * 60 * 0.75)));
+    const opts = chosen.mime ? {mimeType:chosen.mime, videoBitsPerSecond:vbps} : {videoBitsPerSecond:vbps};
     if(hasAudio) opts.audioBitsPerSecond = 256_000;
     try{
       this.mr = new MediaRecorder(this.stream, opts);
