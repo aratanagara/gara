@@ -32,8 +32,18 @@ app.commandLine.appendSwitch('disable-background-timer-throttling');
 app.commandLine.appendSwitch('disable-backgrounding-occluded-windows');
 app.commandLine.appendSwitch('disable-background-media-suspend');
 app.commandLine.appendSwitch('disable-features', 'BackgroundVideoPauseOptimization,MediaSuspend');
+// 「画面音声」のシステム音声キャプチャ (audio:'loopback') は Windows 以外では既定で無効。
+// macOS 13+ は ScreenCaptureKit 経由のループバックがフラグ付きで使える (これが無いと
+// 映像だけ取れて音声トラックが空になり、Chrome 等の再生音を拾えない)。
+if(process.platform === 'darwin'){
+  app.commandLine.appendSwitch('enable-features', 'MacLoopbackAudioForScreenShare');
+}
 
 const ROOT = path.join(__dirname, '..');   // アプリ一式のルート (開発時もパッケージ後も同じ相対位置)
+
+// デバッグプローブ (AUDIO_PROBE 等) を本番インスタンスと並走させるための userData 切替。
+// 二重起動ロックは userData 単位なので、これが無いと本番アプリ起動中はプローブが即終了する。
+if(process.env.GARA_USERDATA) app.setPath('userData', process.env.GARA_USERDATA);
 
 let win = null;
 let shaderProbeDone = false;
@@ -231,6 +241,22 @@ async function createWindow(){
           if(Date.now() - started > 90000){ clearInterval(poll); console.log('SHADER_PROBE ERR', String(e)); app.quit(); }
         }
       }, 500);
+    });
+  }
+  if(process.env.AUDIO_PROBE){   // デバッグ: AUDIO_PROBE=1 で起動すると画面音声 (getDisplayMedia) の取得結果を stdout に出して終了
+    win.webContents.on('did-finish-load', () => {
+      setTimeout(async () => {
+        try{
+          const r = await win.webContents.executeJavaScript(
+            `navigator.mediaDevices.getDisplayMedia({video:true, audio:true}).then(s=>{` +
+            ` const a = s.getAudioTracks(), v = s.getVideoTracks();` +
+            ` const out = {video: v.length, audio: a.length, audioLabel: a[0] ? a[0].label : null, audioState: a[0] ? a[0].readyState : null};` +
+            ` s.getTracks().forEach(t=>t.stop()); return out; })` +
+            `.catch(e=>({err: String(e && e.message || e)}))`, true);
+          console.log('AUDIO_PROBE', JSON.stringify(r));
+        }catch(e){ console.log('AUDIO_PROBE ERR', String(e)); }
+        app.exit(0);
+      }, 4000);
     });
   }
   if(process.env.MIDI_PROBE){   // デバッグ: MIDI_PROBE=1 で起動すると MIDI 初期化状態を stdout に出す
