@@ -2,13 +2,14 @@
 <html lang="ja">
 <head>
 <meta charset="utf-8">
+<link rel="icon" type="image/png" href="logo.png">
 <title>GARA - Visual-Reference ENGINE</title>
 <meta name="viewport" content="width=device-width,initial-scale=1">
   <!-- 検索エンジン避け -->
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1786449769">
+<link rel="stylesheet" href="style.css?v=1786520645">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -55,7 +56,7 @@
 <!-- 初期ローディング画面 (#3f00ff 背景に白字。app.js が進捗を流し込み、準備完了で消える) -->
 <div id="__loading">
   <div class="__l-inner">
-    <div class="__l-title">GARA</div>
+    <img class="__l-logo" src="logo.png" alt="gara" width="120" height="120">
     <div class="__l-sub">Visual-Reference ENGINE</div>
     <div id="__loadmsg" class="__l-msg">Starting…</div>
     <div class="__l-bar"><div id="__loadbar" class="__l-fill"></div></div>
@@ -76,7 +77,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 }
 /* anon-press.com 準拠: 全て weight 400、字間は控えめ、ロゴ(大)＋本文(均一)の2段階スケール */
 #__loading .__l-inner{ text-align:center; padding:24px; }
-#__loading .__l-title{ font-size:30px; font-weight:400; letter-spacing:.025em; line-height:1; margin-bottom:10px; }
+#__loading .__l-logo{ width:120px; height:120px; margin:0 auto 6px; display:block; }
 #__loading .__l-sub{ font-size:11px; font-weight:400; letter-spacing:.02em; color:rgba(255,255,255,.6); margin-bottom:28px; }
 #__loading .__l-msg{ font-size:11px; font-weight:400; letter-spacing:.02em; color:rgba(255,255,255,.9); min-height:1.4em; }
 /* プログレスバー: 中央ブロック内(画面中央)に横 100vw (breakout でビューポート全幅) */
@@ -87,7 +88,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
   <!-- top bar -->
   <header id="topbar">
-    <span class="title">GARA</span>
+    <img class="title-logo" src="logo.svg" alt="gara">
     <button id="btnProj" title="別ウィンドウに出力"><span class="ic">🖥</span><span class="lb">Projector</span></button>
     <button id="btnRec" title="録画。画面音声ON時は音声も保存"><span class="ic">⏺</span><span class="lb">Record</span></button>
     <button id="btnShot" title="スクリーンショットをPNG保存"><span class="ic">📷</span><span class="lb">Shot</span></button>
