@@ -147,8 +147,11 @@ ec_Model ec_bloom(vec3 p, float t){
 ec_Model ec_map(vec3 p){
   p *= ec_modelMat;
   float t;
-  // バウンディング球を広げる(花びらが咲き切ったとき外に飛び出さないよう、軌跡まで含める)
-  float bound = length(p) - 2.8;
+  // バウンディング球は花本体ぴったりに絞る (旧エコー march 用の余白 2.8 は backbuffer 残像化で不要に)。
+  // 2.8 だとカメラ(2.6)が球内に入り早期打切りが効かず、全ピクセルがフル SDF を行進していた。
+  // 2.1 でカメラが球外に出て空振りレイが巨大ステップで抜ける = 約 44% 高速 (1440x900 実測 11.4→6.4ms)。
+  // 花の最大半径は全周期で <1.9 (2.0/2.1 のピクセル差分はエッジのスパークル量子化のみ)。
+  float bound = length(p) - 2.1;
   if(bound > .01 && !ec_lightingPass){
     return ec_Model(bound, p, vec2(0), vec2(0), 0., 0., 0.);
   }
