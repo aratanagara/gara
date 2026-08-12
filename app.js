@@ -864,7 +864,8 @@ vec2 applySplit(vec2 uv){
     float tr = sg_f(lo*5.7 + hi*9.3 + id*0.71 + 2.0 + BS);
     float bandR = sg_f(lo*2.9 + hi*4.3 + id*1.13 + 5.0 + BS);
     float tBase;
-    if(bandR < 0.18)      tBase = 0.10 + 0.08*tr;
+    // 細帯は低い側(左/下)だけでなく高い側(右/上)からも 50/50 で切る (左寄り偏りの修正)
+    if(bandR < 0.18){     tBase = 0.10 + 0.08*tr; if(bandR >= 0.11) tBase = 1.0 - tBase; }   // 閾値 0.11 = 実測で左右均衡
     else if(tr < 0.5)     tBase = 0.20 + 0.36*tr;
     else                  tBase = 0.62 + 0.36*(tr - 0.5);
     float t = clamp(tBase + 0.03*sin(uTime*0.03 + sg_f(vec2(id*1.7, id*2.1)+BS)*6.2831), 0.07, 0.93);
@@ -981,7 +982,8 @@ float splitEdgeMask(vec2 uv){
     if(i >= 1){ float pStop = (ar > 0.14) ? mix(0.78, 0.60, fine) : mix(0.30, 0.08, fine); if(r < pStop) break; }
     float tr = sg_f(lo*5.7 + hi*9.3 + id*0.71 + 2.0 + BS);
     float bandR = sg_f(lo*2.9 + hi*4.3 + id*1.13 + 5.0 + BS);
-    float tBase = (bandR < 0.18) ? 0.10 + 0.08*tr : ((tr < 0.5) ? 0.20 + 0.36*tr : 0.62 + 0.36*(tr - 0.5));
+    float tBase = (bandR < 0.18) ? ((bandR >= 0.11) ? 0.90 - 0.08*tr : 0.10 + 0.08*tr)
+                 : ((tr < 0.5) ? 0.20 + 0.36*tr : 0.62 + 0.36*(tr - 0.5));   // 細帯は左右 50/50 (applySplit と同一ロジック必須)
     float t = clamp(tBase + 0.03*sin(uTime*0.03 + sg_f(vec2(id*1.7, id*2.1)+BS)*6.2831), 0.07, 0.93);
     bool wide = sz.x > sz.y;
     float axr = sg_f(lo*3.7 + hi*8.1 + id*0.5 + BS);
@@ -6359,10 +6361,12 @@ void main(){
       gl.viewport(0,0,this.canvas.width,this.canvas.height);
     }
     this._pollAsyncReads();                             // 非同期 readPixels (PBO) の完了分を回収
-    if(this.frame % 3 === 0) this.drawSlotPreviews();   // 3フレームごとに A/B 交互 = 各6フレーム周期
+    // 録画中はプレビュー類の更新を間引いて描画・エンコードに帯域を譲る
+    const recActive = (typeof Record !== 'undefined' && Record.active);
+    if(this.frame % (recActive ? 15 : 3) === 0) this.drawSlotPreviews();   // 通常: 3フレームごとに A/B 交互 = 各6フレーム周期
     this.drawMixPreviews();                             // Grad / Blend 一覧 (2 秒ごと / 1 フレーム 2 枚ずつ)
     // FX バッジ (MIDI / キー / Param Fade でも値は動くので描画ループから追従。変化時のみ DOM 更新)
-    if(this.frame % 10 === 0 && typeof UI !== 'undefined' && UI.refreshPreviewBadges) UI.refreshPreviewBadges();
+    if(this.frame % (recActive ? 30 : 10) === 0 && typeof UI !== 'undefined' && UI.refreshPreviewBadges) UI.refreshPreviewBadges();
     this.lastTime = this.clock;
     this.frame++;
   },
@@ -11363,7 +11367,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
           this._autoPalRetry = !this.extractSlotAPalette();   // 成否は非同期読み戻し側でも更新される
         }
       }
-      Preview.tick();
+      if(!(typeof Record !== 'undefined' && Record.active) || (GL.frame % 4 === 0)) Preview.tick();   // 録画中は 1/4 に間引き
       UI.repaintPresetThumbs();
       UI.animatePresetThumbs();
       App._cpuMs = (App._cpuMs||0)*0.85 + (performance.now() - tNow)*0.15;   // メインループの CPU 処理時間 (ms)
@@ -18024,7 +18028,8 @@ void mainImage(out vec4 o, in vec2 f){
     const hovered = arr.find(t => t.hover && t.canvas);
     if(hovered){ render(hovered); return; }                 // ホバー中はそのタイルを毎フレーム
     this._presetAnimTick = (this._presetAnimTick || 0) + 1;
-    if(this._presetAnimTick % 3) return;                    // 非ホバーのラウンドロビンは 3 フレームに 1 枚 (負荷対策)
+    const _recEvery = (typeof Record !== 'undefined' && Record.active) ? 12 : 3;   // 録画中はさらに間引く
+    if(this._presetAnimTick % _recEvery) return;            // 非ホバーのラウンドロビンは 3 フレームに 1 枚 (負荷対策)
     const n = arr.length;                                   // ラウンドロビンで次のシェーダタイル1枚
     for(let step = 0; step < n; step++){
       this._presetAnimI = (this._presetAnimI + 1) % n;
