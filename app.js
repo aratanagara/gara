@@ -8413,42 +8413,210 @@ const MIDI = {
 =================================================================== */
 const Record = {
   mr:null, chunks:[], stream:null, canvasStream:null, audioIncluded:false,
+  _mb:null,   // WebCodecs (Mediabunny) 録画セッション
+
   start(){
-    if(this.mr) return false;
-    this.canvasStream = GL.canvas.captureStream(60);
+    if(this.mr || this._mb) return false;
+    // 既定: WebCodecs + Mediabunny で .mov (QuickTime) を書く。
+    // MediaRecorder の mp4 muxer はプリセット切替時に H.264 ストリームを壊すバグがあり
+    // (フレームは存在するのに切替時点以降デコード不能になる。再現条件は特定できず)、
+    // タイムスタンプと多重化をアプリ管理に置き換えて構造的に回避する。
+    if(typeof Mediabunny !== 'undefined' && typeof VideoEncoder !== 'undefined' && typeof GL !== 'undefined' && GL.canvas){
+      try{ return this._startMB(); }
+      catch(err){ console.warn('WebCodecs record init failed, fallback to MediaRecorder:', err); }
+    }
+    return this._startMR();
+  },
+
+  // ── WebCodecs + Mediabunny 経路 ──
+  _startMB(){
+    const canvas = GL.canvas;
+    // 解像度連動 (~0.25 bit/px/frame): 720p ≈ 17 Mbps / 1080p ≈ 39 Mbps。下限 12 / 上限 45 Mbps。
+    // 高すぎる要求 (旧 50〜200M) は AVE (HW エンコーダ) に巨大バッファを確保させ、メモリ逼迫時に
+    // ドライバの DART/IOMMU 違反 (= カーネルパニック 2026-08-12 実測) を誘発した。実効ビットレートは
+    // 元々 ~18M 程度で頭打ちだったため、この水準でも画質は実質変わらない。
+    const vbps = Math.min(45_000_000, Math.max(12_000_000, Math.round(canvas.width * canvas.height * 60 * 0.25)));
+    const output = new Mediabunny.Output({
+      format: new Mediabunny.MovOutputFormat(),
+      target: new Mediabunny.BufferTarget(),
+    });
+    const videoSource = new Mediabunny.CanvasSource(canvas, { codec: 'avc', bitrate: vbps });
+    output.addVideoTrack(videoSource);
+    let hasAudio = false;
+    let audioSource = null;
+    if(typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio._stream){
+      const at = Audio._stream.getAudioTracks().find(t => t && t.readyState === 'live' && t.enabled !== false);
+      if(at){
+        audioSource = new Mediabunny.MediaStreamAudioTrackSource(at, { codec: 'aac', bitrate: 256_000 });
+        output.addAudioTrack(audioSource);
+        hasAudio = true;
+        audioSource.errorPromise.catch(err => {
+          try{ Diag.log('record', 'audio source error: ' + (err && err.message || err)); }catch(_){}
+          try{ toast('録画の音声にエラー (ここまでを保存します)', 5000); }catch(_){}
+          if(this._mb) this.stop();
+        });
+      }
+    }
+    const mb = this._mb = {
+      output, videoSource, audioSource,
+      t0: 0, raf: 0, lastFrame: -1, frames: 0,
+      stopping: false, started: false,
+    };
+    this.audioIncluded = hasAudio;
+    this.ext = 'mov';
+    this.mime = 'video/quicktime';
+    // フレームポンプ: GL.frame が進んだフレームだけを、開始からの実時間 (単調増加) で追加
+    const pump = ()=>{
+      if(this._mb !== mb || mb.stopping) return;
+      mb.raf = requestAnimationFrame(pump);
+      if(!mb.started) return;
+      if(GL.frame !== mb.lastFrame){
+        mb.lastFrame = GL.frame;
+        const t = (performance.now() - mb.t0) / 1000;
+        mb.frames++;
+        videoSource.add(t).catch(err => {
+          if(mb.stopping || this._mb !== mb) return;
+          try{ Diag.log('record', 'video encode error: ' + (err && err.message || err)); }catch(_){}
+          try{ toast('録画エラー (ここまでを保存します)', 5000); }catch(_){}
+          this.stop();
+        });
+      }
+    };
+    output.start().then(()=>{
+      if(this._mb !== mb) return;
+      mb.t0 = performance.now();
+      mb.started = true;
+    }).catch(err => {
+      console.warn('WebCodecs record start failed:', err);
+      if(this._mb === mb){
+        this._mb = null;
+        try{ toast('録画開始に失敗: ' + (err && err.message || err)); }catch(_){}
+      }
+    });
+    pump();
+    this._watchStartMB(mb);
+    try{ Diag.log('record', 'start mov webcodecs avc vbps=' + Math.round(vbps/1e6) + 'M' + (hasAudio ? ' +aac' : '')); }catch(_){}
+    toast(`録画開始 (mov${hasAudio ? '+audio' : ''})`);
+    return true;
+  },
+
+  // WebCodecs 経路のウォッチドッグ: フレーム追加数を監視 (captureStream 版と同じ通知)
+  _watchStartMB(mb){
+    let last = 0;
+    this._watchStall = 0;
+    this._watchTimer = setInterval(()=>{
+      const got = mb.frames - last; last = mb.frames;
+      if(got === 0 && mb.started){
+        this._watchStall += 2;
+        if(this._watchStall === 4){
+          const si = (k)=>{ try{ const s = GL.slots[k]; return k + '=' + (s.kind || '?'); }catch(e){ return k + '=?'; } };
+          try{ Diag.log('record', 'frame supply stalled (' + si('A') + ' ' + si('B') + ')'); }catch(_){}
+          try{ toast('録画へのフレーム供給が止まっています (Diag に記録)', 5000); }catch(_){}
+          const rb = document.getElementById('btnRec'); if(rb) rb.classList.add('rec-stall');
+        }
+      } else if(got > 0){
+        if(this._watchStall >= 4){
+          try{ Diag.log('record', 'frame supply recovered'); }catch(_){}
+          const rb = document.getElementById('btnRec'); if(rb) rb.classList.remove('rec-stall');
+        }
+        this._watchStall = 0;
+      }
+    }, 2000);
+  },
+
+  async _stopMB(){
+    const mb = this._mb;
+    if(!mb) return false;
+    mb.stopping = true;
+    this._mb = null;
+    if(mb.raf) cancelAnimationFrame(mb.raf);
+    this._watchStop();
+    toast('録画停止 (書き出し中…)');
+    try{
+      await mb.output.finalize();
+      const buf = mb.output.target.buffer;
+      if(!buf || !buf.byteLength) throw new Error('empty output');
+      const blob = new Blob([buf], { type: 'video/quicktime' });
+      try{ Diag.log('record', 'stop bytes=' + blob.size + ' frames=' + mb.frames); }catch(_){}
+      this._saveBlob(blob, `vj-${Date.now()}.mov`);
+    }catch(err){
+      console.warn('record finalize failed:', err);
+      try{ Diag.log('record', 'finalize error: ' + (err && err.message || err)); }catch(_){}
+      toast('録画の書き出しに失敗: ' + (err && err.message || err));
+      return false;
+    }
+    return true;
+  },
+
+  // Blob をダウンロード保存 (Electron は will-download が Downloads へ直接保存する)
+  _saveBlob(blob, fname){
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = fname; a.rel = 'noopener';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    const ua = navigator.userAgent || '';
+    if(/iPad|iPhone|iPod/.test(ua) || (navigator.maxTouchPoints > 1 && /Mac/.test(ua) && !/Electron/i.test(ua))){
+      // iOS Safari は a.download で自動保存できないので、新規タブで開いて「共有→保存」させる
+      setTimeout(()=>{ window.open(url, '_blank'); }, 200);
+      toast('iOS: 開いたページで [共有] → [ビデオを保存] で保存');
+    }
+    setTimeout(()=>URL.revokeObjectURL(url), 60000);
+  },
+
+  // ── 従来の MediaRecorder 経路 (WebCodecs 不可時のフォールバック) ──
+  _startMR(){
+    // captureStream(0) + requestFrame(): フレーム供給をアプリ側で明示制御する。
+    // 自動キャプチャ (60) はタイムスタンプが重複・逆行することがあり、音声トラックと同時に
+    // 記録すると Chromium の mp4 muxer が H.264 ストリームを壊す (実測)。
+    this.canvasStream = GL.canvas.captureStream(0);
     this.stream = new MediaStream(this.canvasStream.getVideoTracks());
     this.audioIncluded = false;
-    if(typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio._stream){
-      const tracks = Audio._stream.getAudioTracks().filter(t=>t && t.readyState === 'live' && t.enabled !== false);
-      for(const t of tracks){
-        this.stream.addTrack(t);
-        this.audioIncluded = true;
-      }
+    {
+      const vt = this.canvasStream.getVideoTracks()[0];
+      let lastFrame = -1;
+      const pace = ()=>{
+        if(!this.mr && this._paceArm !== true){ this._paceRaf = null; return; }
+        if(typeof GL !== 'undefined' && GL.frame !== lastFrame){
+          lastFrame = GL.frame;
+          try{ if(vt.requestFrame) vt.requestFrame(); }catch(e){}
+        }
+        this._paceRaf = requestAnimationFrame(pace);
+      };
+      this._paceArm = true;   // mr 生成前から回し始めるためのアーム (開始失敗時は cleanup で止まる)
+      pace();
+    }
+    // 画面音声: SCK loopback トラックを直接 muxer に渡すと、プリセット切替などで映像フレームが
+    // 揺れた瞬間に mp4 muxer が H.264 ストリームを壊す (Chromium バグ。切替時点以降デコード不能になる。
+    // 実測で再現・特定)。WebAudio (MediaStreamAudioDestinationNode) を経由してクロックを揃えた
+    // トラックを渡すことで回避する。
+    if(typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio.ctx && Audio.src){
+      try{
+        this._audioDest = Audio.ctx.createMediaStreamDestination();
+        Audio.src.connect(this._audioDest);
+        for(const t of this._audioDest.stream.getAudioTracks()){
+          this.stream.addTrack(t);
+          this.audioIncluded = true;
+        }
+      }catch(e){ console.warn('record audio route failed:', e); }
     }
     const ua = navigator.userAgent || '';
     const isIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.maxTouchPoints > 1 && /Mac/.test(ua));
-    // 非劣化優先: H.264 ハードウェアエンコードを解像度連動の最高級ビットレートで回し、
-    // .mov (QuickTime) として保存する (中身は ISO BMFF なので QuickTime/FCP/Premiere はそのまま開ける)。
-    // ブラウザ録画 (MediaRecorder) に数学的ロスレスは無いため、視覚的に劣化が判らないレートを確保する。
+    // フォールバック (WebCodecs 不可時のみ)。MediaRecorder の mp4 muxer は
+    // プリセット切替で H.264 を壊すため mp4/mov 系は使わず、実績のある webm に限定する。
+    // (iOS Safari など webm 不可の環境のみ mp4 を最後の手段として許す)
     const hasAudio = this.stream.getAudioTracks().length > 0;
     const candidates = hasAudio ? [
-      {mime:'video/mp4;codecs=avc1.640034,mp4a.40.2', ext:'mov'},   // High 5.2 (高ビットレート許容)
-      {mime:'video/mp4;codecs=avc1.42E01E,mp4a.40.2', ext:'mov'},
-      {mime:'video/mp4;codecs=avc1,mp4a.40.2',        ext:'mov'},
-      {mime:'video/mp4',                              ext:'mov'},
       {mime:'video/webm;codecs=vp9,opus',             ext:'webm'},
       {mime:'video/webm;codecs=vp8,opus',             ext:'webm'},
-      {mime:'video/webm;codecs=opus',                 ext:'webm'},
       {mime:'video/webm',                             ext:'webm'},
+      {mime:'video/mp4',                              ext:'mp4'},
     ] : [
-      {mime:'video/mp4;codecs=avc1.640034',  ext:'mov'},   // H.264 High 5.2
-      {mime:'video/mp4;codecs=avc1.42E01E',  ext:'mov'},   // H.264 Baseline
-      {mime:'video/mp4;codecs=avc1',         ext:'mov'},
-      {mime:'video/mp4;codecs=h264',         ext:'mov'},
-      {mime:'video/mp4',                     ext:'mov'},   // iOS Safari 17+ はこれのみ通る
       {mime:'video/webm;codecs=vp9',         ext:'webm'},
       {mime:'video/webm;codecs=vp8',         ext:'webm'},
       {mime:'video/webm',                    ext:'webm'},
+      {mime:'video/mp4',                     ext:'mp4'},   // iOS Safari 17+ はこれのみ通る
     ];
     let chosen = null;
     for(const c of candidates){
@@ -8457,7 +8625,7 @@ const Record = {
     if(!chosen) chosen = {mime:'', ext:'webm'};
     // 解像度連動 (~0.75 bit/px/frame): 1080p60 ≈ 93 Mbps。下限 50 / 上限 200 Mbps
     const px = (GL.canvas && GL.canvas.width ? GL.canvas.width * GL.canvas.height : 1920 * 1080);
-    const vbps = Math.min(200_000_000, Math.max(50_000_000, Math.round(px * 60 * 0.75)));
+    const vbps = Math.min(45_000_000, Math.max(12_000_000, Math.round(px * 60 * 0.25)));   // _startMB と同基準 (AVE 過負荷 = パニック対策)
     const opts = chosen.mime ? {mimeType:chosen.mime, videoBitsPerSecond:vbps} : {videoBitsPerSecond:vbps};
     if(hasAudio) opts.audioBitsPerSecond = 256_000;
     try{
@@ -8567,6 +8735,13 @@ const Record = {
   },
   _cleanupStream(){
     this._watchStop();
+    this._paceArm = false;
+    if(this._paceRaf){ cancelAnimationFrame(this._paceRaf); this._paceRaf = null; }
+    if(this._audioDest){
+      try{ if(typeof Audio !== 'undefined' && Audio.src) Audio.src.disconnect(this._audioDest); }catch(e){}
+      try{ this._audioDest.stream.getTracks().forEach(t=>t.stop()); }catch(e){}
+      this._audioDest = null;
+    }
     if(this.canvasStream){
       try{ this.canvasStream.getTracks().forEach(t=>t.stop()); }catch(e){}
     }
@@ -8574,7 +8749,11 @@ const Record = {
     this.stream = null;
     this.audioIncluded = false;
   },
+  // 録画中か (WebCodecs / MediaRecorder どちらの経路でも)
+  get active(){ return !!(this._mb || this.mr); },
+
   stop(){
+    if(this._mb){ this._stopMB(); return true; }
     if(!this.mr) return false;
     const mr = this.mr;
     this.mr = null;
