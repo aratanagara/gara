@@ -55,7 +55,7 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #app{display:grid;grid-template-columns:1fr 420px;grid-template-rows:42px 1fr;height:100%;width:100%}
 #topbar{grid-column:1/3;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--panel);z-index:5}
 #topbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
-#topbar .title{font-weight:700;letter-spacing:.5px;color:var(--acc)}
+#topbar .title-logo{height:22px;width:auto;display:block;align-self:center}
 #topbar .grow{flex:1}
 #topbar .stat{font:11px var(--mono);color:var(--dim);white-space:nowrap}
 #topbar .stat b{color:var(--fg);font-weight:600;display:inline-block;text-align:right;vertical-align:bottom}
