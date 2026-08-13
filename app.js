@@ -10181,8 +10181,8 @@ const App = {
   //   トリガーが鈍る)を対象外にする。
   POST_FADE_IMMEDIATE: {
     palette:1, cosPalette:1, mir:1,
-    // Post FX
-    inv:1, gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1, hue:1, hueRot:1,
+    // Post FX (inv / hue はフェード対象に変更: プリセット切替でも Param Fade でなめらかに反転・回頭する)
+    gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1, hueRot:1,
     // Audio FX
     gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, mosaic:1, shake:1, slice:1, split:1, pixsort:1, rings:1,
     // Glitch FX のうち音/拍で発火するもの (uHit/uOnset 駆動)。
@@ -10195,7 +10195,16 @@ const App = {
     for(const k in target){
       const v = target[k];
       if(typeof v === 'number' && !IMMEDIATE[k] && typeof this.post[k] === 'number'){
-        this.fadePostNum(k, v, dur);
+        if(k === 'hue'){
+          // 周期 2.0 (=360°) の最短経路で回す (0.9 → -0.9 を遠回りに全周させない)。
+          // フェード完了時に [-1,1) へ折り返すのは _paramFades 側。
+          let to = v;
+          const from = this.post.hue || 0;
+          if(Math.abs(to - from) > 1.0) to += (to < from ? 2.0 : -2.0);
+          this.fadePostNum(k, to, dur);
+        } else {
+          this.fadePostNum(k, v, dur);
+        }
       } else {
         this.post[k] = v;
       }
@@ -10245,7 +10254,10 @@ const App = {
     if(this._paramFades.length){
       this._paramFades = this._paramFades.filter(f => {
         let u = (t - f.t0) / f.dur;
-        if(u >= 1){ this.post[f.key] = f.to; done = true; return false; }
+        if(u >= 1){
+          this.post[f.key] = (f.key === 'hue') ? ((f.to + 1.0) % 2.0 + 2.0) % 2.0 - 1.0 : f.to;   // hue は周期折返し
+          done = true; return false;
+        }
         u = u*u*(3 - 2*u);   // smoothstep
         this.post[f.key] = f.from + (f.to - f.from) * u;
         return true;
