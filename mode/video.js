@@ -817,7 +817,12 @@ void main(){
       if(s._modePhase === 'reverse'){
         if(!s.videoEl.paused){ try{ s.videoEl.pause(); }catch(e){} }
         const rate = Math.abs(effRate);
-        s._revT -= rate * dt;
+        // バッファ圏外走行中に seek が追いつかない間は逆再生時計を止める。
+        // (詰まった seek の間に _revT だけ進むと、次の表示が数秒先へ飛ぶ =「逆再生で
+        //  フレームが飛ぶ」の正体。キーフレームが疎な動画ほど顕著。時計を止めれば
+        //  未走行区間は少しゆっくりになるだけで、内容はコマ落ちなく逆走する)
+        const seekStalled = (s._revInBuffer === false && s.videoEl.seeking);
+        if(!seekStalled) s._revT -= rate * dt;
         // 動画の実境界でシームレスにループ: 先頭(0)まで来たら末尾(duration)へラップ。
         // バッファ先頭ではなく動画先頭で折り返すので「取り込み開始点でのループ」が起きない。
         // バッファが全編をカバーしているときは最新取込フレームへクランプ (dur-0.03 が newest より僅かに
