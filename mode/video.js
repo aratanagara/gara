@@ -211,10 +211,17 @@ void main(){
   // 要素キャッシュを上限まで間引く (現在表示中の要素は残す)
   _trimElCache(s){
     const LIMIT = this._fullCacheEnabled ? Infinity : 6;
-    while(this._elCacheKeys.length > LIMIT){
+    // どのスロットからも参照中の要素は破壊しない。以前は「処理中スロット (s)」の要素しか
+    // 守っておらず、もう一方のスロットで再生中の動画が追い出し時に unload されて
+    // 凍結→黒転していた (プリセット/動画を切り替えているうちに動画が読まれなくなる再発バグの正体)。
+    const inUse = new Set();
+    for(const k in this._slots){ const el = this._slots[k] && this._slots[k].videoEl; if(el) inUse.add(el); }
+    let guard = this._elCacheKeys.length;
+    while(this._elCacheKeys.length > LIMIT && guard-- > 0){
       const old = this._elCacheKeys.shift();
       const ov = this._elCache[old];
-      if(ov && ov !== s.videoEl){ try{ ov.pause(); ov.removeAttribute('src'); ov.load(); }catch(e){} }
+      if(ov && inUse.has(ov)){ this._elCacheKeys.push(old); continue; }   // 使用中 → 最新扱いで温存
+      if(ov){ try{ ov.pause(); ov.removeAttribute('src'); ov.load(); }catch(e){} }
       delete this._elCache[old];
     }
   },
