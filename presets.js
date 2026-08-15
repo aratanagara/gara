@@ -5801,6 +5801,538 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 }
 ,
 {
+  name: "Chrome Spiral Pieces (XflXzn)",
+  ch: ["","","",""],
+  src: `// Adapted from Shadertoy XflXzn "Colorful spirals" by IanDotVos.
+// https://www.shadertoy.com/view/XflXzn
+// VJ: 原作の5色を、互いに接続しない5個の湾曲パーツへ立体化。
+//     低彩度クロム + 3軸回転。Slot A=黒背景、Slot B=背景を実alphaで透過。
+// @param speed 0..3 = 0.7
+// @param spin 0..3 = 1.0
+// @param inflatePct 0..140 = 90
+// @param reliefPct 0..100 = 65
+// @param chromePct 0..100 = 100
+// @param satPct 0..60 = 32
+uniform float speed;
+uniform float spin;
+uniform float inflatePct;
+uniform float reliefPct;
+uniform float chromePct;
+uniform float satPct;
+uniform float uSlotIsA;
+
+const float PI = 3.141592653589793;
+const float TAU = 6.283185307179586;
+const float SLICE = TAU / 5.0;
+
+mat2 rot2(float a){
+    float c = cos(a), s = sin(a);
+    return mat2(c, -s, s, c);
+}
+
+// 原作で半径方向に使われている三角波。
+float saw_function(float x){
+    float t = mod(x, 1.0);
+    return max(min(1.0, min(2.0*t, -2.0*t + 2.0)), 0.0) * 2.0 - 1.0;
+}
+
+vec3 toObject(vec3 p){
+    float t = iTime * speed;
+    // 正面の配置と個々の隙間を保ちながら、全体を緩やかにタンブルさせる。
+    p.yz = rot2(0.48 + 0.15*sin(t*0.37*spin)) * p.yz;
+    p.xz = rot2(0.40*sin(t*0.51*spin)) * p.xz;
+    p.xy = rot2(-t*0.27*spin + 0.10*sin(t*0.23)) * p.xy;
+    return p;
+}
+
+float pieceAngle(float id){
+    float t = iTime * speed;
+    return id*SLICE + 0.11*sin(t*0.34 + id*1.91);
+}
+
+float pieceLength(float id){
+    return 0.69 + 0.07*sin(id*2.17 + 0.6);
+}
+
+float sdTaperedSegment(vec3 p, vec3 a, vec3 b, float ra, float rb){
+    vec3 pa = p-a, ba = b-a;
+    float h = clamp(dot(pa, ba)/max(dot(ba, ba), 0.0001), 0.0, 1.0);
+    return length(pa-ba*h) - mix(ra, rb, h);
+}
+
+float smoothUnion(float a, float b, float k){
+    float h = max(k-abs(a-b), 0.0)/k;
+    return min(a, b) - h*h*k*0.25;
+}
+
+float inflatedPieceSDF(vec3 p, float id){
+    vec2 xy = rot2(-pieceAngle(id))*p.xy;
+    float start = 0.31 + 0.025*sin(id*2.83);
+    float len = pieceLength(id);
+    float bend = 0.18 + 0.045*sin(id*1.73 + 0.4);
+    float zShift = 0.030*sin(id*2.37 + iTime*speed*0.21);
+    vec3 q = vec3(xy, p.z-zShift);
+
+    // 2本の丸いテーパー形状を滑らかにつなぎ、独立した曲面パーツにする。
+    float puff = mix(0.52, 1.38, clamp(inflatePct/140.0, 0.0, 1.0));
+    float variant = 0.94 + 0.08*sin(id*2.31);
+    float r0 = 0.058*puff*variant;
+    float rm = 0.155*puff*variant;
+    float r1 = 0.050*puff*variant;
+    vec3 a = vec3(start, 0.0, 0.0);
+    vec3 b = vec3(start + len*0.48, bend, 0.025*sin(id*1.4));
+    vec3 c = vec3(start + len, 0.015*sin(id*2.0), 0.0);
+    float d0 = sdTaperedSegment(q, a, b, r0, rm);
+    float d1 = sdTaperedSegment(q, b, c, rm, r1);
+    float d = smoothUnion(d0, d1, 0.075*puff);
+
+    // 原作の周期リングを、表面を横切る浅い隆起へ置き換える。
+    float u = clamp((xy.x-start)/len, 0.0, 1.0);
+    float wave = saw_function(u*2.15 - iTime*speed*0.22 + id*0.17);
+    float ridge = pow(max(1.0-abs(wave), 0.0), 5.0);
+    d -= 0.021*ridge*reliefPct*0.01;
+    return d;
+}
+
+float sceneSDF(vec3 worldP, out float pieceId){
+    vec3 p = toObject(worldP);
+    float d = 10.0;
+    pieceId = 0.0;
+    for(int i=0; i<5; i++){
+        float id = float(i);
+        float di = inflatedPieceSDF(p, id);
+        if(di < d){
+            d = di;
+            pieceId = id;
+        }
+    }
+    return d;
+}
+
+float mapDistance(vec3 p){
+    float unusedId;
+    return sceneSDF(p, unusedId);
+}
+
+float march(vec3 ro, vec3 rd, out vec3 pos, out float pieceId){
+    float travel = 0.0;
+    float lastD = 1.0;
+    pieceId = 0.0;
+    for(int i=0; i<72; i++){
+        pos = ro + rd*travel;
+        lastD = sceneSDF(pos, pieceId);
+        if(abs(lastD) < 0.0017) return travel;
+        travel += max(lastD*0.70, 0.0035);
+        if(travel > 7.0) break;
+    }
+    return -1.0;
+}
+
+vec3 getNormal(vec3 p){
+    const float e = 0.0022;
+    vec2 h = vec2(e, -e);
+    return normalize(
+        h.xyy*mapDistance(p + h.xyy) +
+        h.yyx*mapDistance(p + h.yyx) +
+        h.yxy*mapDistance(p + h.yxy) +
+        h.xxx*mapDistance(p + h.xxx));
+}
+
+vec3 originalColor(float id){
+    if(id < 0.5) return vec3(0.396, 0.294, 0.737);
+    if(id < 1.5) return vec3(0.1411, 0.8156, 0.6823);
+    if(id < 2.5) return vec3(0.8, 0.2, 0.4);
+    if(id < 3.5) return vec3(0.5, 0.23, 0.8);
+    return vec3(0.6, 0.3, 0.6);
+}
+
+vec3 chromeEnvironment(vec3 r){
+    float horizon = smoothstep(-0.78, 0.88, r.y);
+    float bandA = 1.0 - smoothstep(0.08, 0.25, abs(r.y + 0.10));
+    float bandB = 1.0 - smoothstep(0.025, 0.10, abs(r.y - 0.56));
+    float vertical = pow(max(r.x*0.5 + 0.5, 0.0), 7.0);
+    vec3 env = mix(vec3(0.035), vec3(0.70, 0.72, 0.76), horizon);
+    env += vec3(0.62, 0.65, 0.70)*bandA;
+    env += vec3(0.95, 0.97, 1.00)*bandB;
+    env += vec3(0.28)*vertical;
+    return env;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv = (fragCoord*2.0 - iResolution.xy) / iResolution.y;
+    vec3 ro = vec3(0.0, 0.0, 3.25);
+    vec3 rd = normalize(vec3(uv, -2.15));
+    vec3 pos;
+    float pieceId;
+    float dist = march(ro, rd, pos, pieceId);
+    float hit = step(0.0, dist);
+    vec3 col = vec3(0.0);
+
+    if(hit > 0.5){
+        // ヒット位置でIDを再評価し、形状ごとに原作の1色を固定する。
+        sceneSDF(pos, pieceId);
+        vec3 n = getNormal(pos);
+        vec3 refl = reflect(rd, n);
+        vec3 lightDir = normalize(vec3(-0.45, 0.72, 0.52));
+        float diff = max(dot(n, lightDir), 0.0);
+        float spec = pow(max(dot(refl, lightDir), 0.0), 72.0);
+        float fresnel = pow(1.0 - max(dot(-rd, n), 0.0), 4.0);
+
+        vec3 chrome = chromeEnvironment(refl);
+        chrome *= 0.66 + 0.34*diff;
+        chrome += vec3(1.0)*spec*0.80 + vec3(0.42, 0.46, 0.52)*fresnel*0.42;
+
+        // 5色の区別を残しつつ脱色。色面ではなく、色付き金属として見せる。
+        vec3 tint = originalColor(pieceId);
+        float tintLum = dot(tint, vec3(0.299, 0.587, 0.114));
+        tint = mix(vec3(tintLum), tint, satPct*0.01);
+        chrome = chrome*(0.55 + tint*0.72) + tint*(0.10 + 0.09*fresnel);
+
+        vec3 graphite = vec3(0.10 + 0.48*diff + 0.58*spec);
+        col = mix(graphite, chrome, chromePct*0.01);
+        col = col/(1.0 + col*0.42);
+        col = pow(max(col, 0.0), vec3(0.88));
+    }
+
+    // A は純黒背景を含む不透明出力、B は5個のパーツ以外を実 alpha で透過。
+    fragColor = vec4(col, mix(hit, 1.0, uSlotIsA));
+}`
+}
+,
+{
+  name: "Drifting Fractal Asteroids (3lBczV)",
+  ch: ["","","",""],
+  src: `// Adapted from Shadertoy 3lBczV "Fractal asteroid field" by jarble.
+// https://www.shadertoy.com/view/3lBczV
+// Original concept based on https://www.shadertoy.com/view/4tcGDr
+// VJ: カメラを滑らかな疑似ランダム軌道へ変更し、岩塊ごとに異なる流動を追加。
+//     Slot A=黒背景、Slot B=背景を実alphaで透過。
+// @param speed 0..3 = 0.7
+// @param camRandomPct 0..100 = 68
+// @param rockMotionPct 0..100 = 48
+// @param travelPct 0..150 = 75
+// @param colorPct 0..100 = 62
+uniform float speed;
+uniform float camRandomPct;
+uniform float rockMotionPct;
+uniform float travelPct;
+uniform float colorPct;
+uniform float uSlotIsA;
+
+const int DEPTH_LAYERS = 4;
+
+mat2 rot2(float a){
+    float c = cos(a), s = sin(a);
+    return mat2(c, s, -s, c);
+}
+
+float hash11(float p){
+    p = fract(p*0.1031);
+    p *= p + 33.33;
+    p *= p + p;
+    return fract(p);
+}
+
+// 時間方向に連続する値ノイズ。カメラを急に切り替えずランダムに蛇行させる。
+float smoothRand(float x){
+    float i = floor(x);
+    float f = fract(x);
+    f = f*f*(3.0-2.0*f);
+    return mix(hash11(i), hash11(i+1.0), f)*2.0-1.0;
+}
+
+vec3 randomCurve(float x){
+    return vec3(smoothRand(x), smoothRand(x+19.17), smoothRand(x+43.71));
+}
+
+vec3 hash33(vec3 p){
+    p = fract(p*vec3(0.1031,0.1030,0.0973));
+    p += dot(p,p.yxz+33.33);
+    return fract((p.xxy+p.yxx)*p.zyx);
+}
+
+float triWave(float x){
+    return abs(fract(x)*2.0-1.0)*2.0-1.0;
+}
+
+vec3 surfaceColor(vec3 p, vec3 n, float materialId){
+    // 原作の紫・苔色・赤褐色を軽い空間変化で再構成。
+    vec3 bands = 0.5 + 0.5*sin(vec3(materialId*2.3,materialId*3.7,materialId*5.1)
+                                   + p*vec3(0.21,0.17,0.19));
+    vec3 mauve = vec3(0.36,0.22,0.31);
+    vec3 moss = vec3(0.32,0.38,0.23);
+    vec3 clay = vec3(0.43,0.25,0.20);
+    vec3 tint = mix(mauve, moss, bands.y);
+    tint = mix(tint, clay, bands.x*bands.z*0.72);
+    float luma = dot(tint, vec3(0.299,0.587,0.114));
+    tint = mix(vec3(luma), tint, colorPct*0.01);
+    float grain = 0.86 + 0.14*sin(dot(p,vec3(0.91,1.17,0.73)) + n.y*4.0);
+    return tint*grain;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+    vec2 uv = (fragCoord*2.0-iResolution.xy)/iResolution.y;
+    float t = iTime*speed;
+    float camAmt = camRandomPct*0.01;
+    float travelSpeed = mix(0.045,0.23,clamp(travelPct/150.0,0.0,1.0));
+
+    // 複数周期の値ノイズを混ぜ、同じ旋回を繰り返さないカメラパスにする。
+    vec3 slow = randomCurve(t*0.115);
+    vec3 detail = randomCurve(t*0.31+71.0);
+    float roll = 0.24*camAmt*smoothRand(t*0.17+101.0);
+    vec2 cameraShift = (slow.xy*0.62+detail.yx*0.18)*camAmt;
+
+    float bestDepth = 100000.0;
+    float bestId = 0.0;
+    vec2 bestQ = vec2(0.0);
+    vec2 bestDir = vec2(1.0,0.0);
+    vec3 bestCenter = vec3(0.0);
+    float motion = rockMotionPct*0.01;
+
+    // 4枚の奥行き層だけを評価。各層は画面空間に多数の岩セルを持つ。
+    for(int i=0; i<DEPTH_LAYERS; i++){
+        float fi = float(i);
+        float cycle = t*travelSpeed+fi/float(DEPTH_LAYERS);
+        float z = fract(cycle);
+        float epoch = floor(cycle);
+        float depth = mix(11.5,1.25,z);
+
+        float layerTurn = roll+0.08*camAmt*smoothRand(epoch+fi*13.7);
+        vec2 p = rot2(layerTurn)*(uv*depth*0.72);
+        p += cameraShift*(0.34+0.66*z);
+        p += vec2(epoch*1.71+fi*7.3,epoch*-1.23+fi*3.9);
+
+        vec2 cell = floor(p);
+        vec2 local = fract(p)-0.5;
+        vec3 rnd = hash33(vec3(cell,epoch+fi*17.0));
+        vec2 driftRate = vec2(0.51+0.61*rnd.x,0.48+0.57*rnd.y);
+        vec2 center = (rnd.xy-0.5)*0.13;
+        center += vec2(triWave(t*driftRate.x*0.18+rnd.z),
+                       triWave(t*driftRate.y*0.18+rnd.x))*0.075*motion;
+
+        float radius = mix(0.245,0.405,rnd.z);
+        vec2 axis = radius*vec2(mix(0.72,1.18,rnd.x),mix(0.76,1.15,rnd.y));
+        vec2 dir = normalize((rnd.xy-0.5)+0.22*motion*vec2(
+            triWave(t*0.11+rnd.z),triWave(t*0.13+rnd.x)));
+        vec2 perp = vec2(-dir.y,dir.x);
+        vec2 delta = local-center;
+        vec2 q = vec2(dot(delta,dir),dot(delta,perp))/axis;
+
+        // 大小2ローブを重ね、完全な球ではない欠けた岩の輪郭にする。
+        vec2 qLobe = (q-(rnd.zy-0.5)*0.34)/vec2(0.76+0.16*rnd.x,0.78+0.14*rnd.y);
+        float shape = dot(q,q);
+        float lobeShape = dot(qLobe,qLobe);
+        if(lobeShape < shape){
+            shape = lobeShape;
+            q = qLobe;
+        }
+        shape += 0.28*(rnd.z-0.5)*q.x*q.y;
+        shape += 0.18*((rnd.x-0.5)*q.x*q.x*q.x+(rnd.y-0.5)*q.y*q.y*q.y);
+        if(shape < 1.0){
+            float frontDepth = depth-radius*0.55*sqrt(max(1.0-shape,0.0));
+            if(frontDepth >= bestDepth) continue;
+            bestDepth = frontDepth;
+            bestId = dot(rnd,vec3(1.0,7.0,13.0))+epoch*0.31+fi;
+            bestQ = q;
+            bestDir = dir;
+            bestCenter = vec3(cell,depth);
+        }
+    }
+
+    float hit = step(bestDepth,999.0);
+    vec3 col = vec3(0.0);
+
+    if(hit > 0.5){
+        float nz = sqrt(max(1.0-dot(bestQ,bestQ),0.0));
+        vec2 planar = bestDir*bestQ.x+vec2(-bestDir.y,bestDir.x)*bestQ.y;
+        vec3 n = normalize(vec3(planar,-nz));
+        vec3 crag = sin(vec3(bestQ.x*5.1+bestId,
+                             bestQ.y*6.3-bestId*0.7,
+                             (bestQ.x-bestQ.y)*4.4+bestId*1.3));
+        n = normalize(n+crag*vec3(0.23,0.23,0.11));
+        vec3 lightDir = normalize(vec3(-0.42,0.68,-0.62));
+        vec3 viewDir = vec3(0.0,0.0,-1.0);
+        vec3 halfDir = normalize(lightDir+viewDir);
+        float diff = max(dot(n,lightDir),0.0);
+        float back = max(dot(n,-lightDir),0.0);
+        float spec = pow(max(dot(n,halfDir),0.0),22.0);
+        float rim = pow(1.0-max(dot(n,viewDir),0.0),3.0);
+
+        vec3 base = surfaceColor(bestCenter,n,bestId);
+        col = base*(0.32+0.74*diff+0.12*back);
+        col += vec3(0.72,0.66,0.62)*spec*0.38;
+        col += base*rim*0.20;
+        float fog = exp(-bestDepth*0.070);
+        col *= fog;
+        col = pow(max(col,0.0),vec3(0.88));
+    }
+
+    fragColor = vec4(col, mix(hit,1.0,uSlotIsA));
+}`
+}
+,
+{
+  name: "Deep Chrome Twisty (MsyyRc)",
+  ch: ["","","",""],
+  src: `// Adapted from Shadertoy MsyyRc "Twisty" by felipunkerito.
+// https://www.shadertoy.com/view/MsyyRc
+// VJ: 原作の「球でくり抜いた箱」の稜を2系統の帯として再構成し、2軸で強くねじる。
+//     反射床は外し、Slot A=純黒背景、Slot B=本体以外を実alphaで透過。
+// @param speed 0..3 = 0.7
+// @param twistPct 0..250 = 175
+// @param spin 0..3 = 0.65
+// @param ribbonPct 0..100 = 56
+// @param contrastPct 0..150 = 105
+uniform float speed;
+uniform float twistPct;
+uniform float spin;
+uniform float ribbonPct;
+uniform float contrastPct;
+uniform float uSlotIsA;
+
+const float PI = 3.141592653589793;
+const float TAU = 6.283185307179586;
+
+mat2 rot2(float a){
+    float c = cos(a), s = sin(a);
+    return mat2(c,-s,s,c);
+}
+
+vec3 toTwistedObject(vec3 p){
+    float t = iTime*speed;
+
+    // 形そのものが読める速度で3軸タンブル。Twistとは独立して止められる。
+    p.xy = rot2(t*0.19*spin+0.18*sin(t*0.31))*p.xy;
+    p.xz = rot2(-t*0.27*spin+0.22*cos(t*0.23))*p.xz;
+    p.yz = rot2(0.31*sin(t*0.37*spin+0.7))*p.yz;
+
+    // 原作の twiX / twiY を強調。位置ごとに角度を変え、帯を深い螺旋へ曲げる。
+    float twist = mix(0.30,6.60,clamp(twistPct/250.0,0.0,1.0));
+    p.yz = rot2(p.x*twist*0.56+0.62*sin(t*0.43))*p.yz;
+    p.xz = rot2(p.y*twist*0.64-0.57*cos(t*0.37+0.8))*p.xz;
+    return p;
+}
+
+float ribbonField(vec3 p){
+    vec3 q = toTwistedObject(p);
+    float t = iTime*speed;
+    float r = max(length(q),0.0001);
+    float a = atan(q.z,q.x);
+    float b = atan(q.y,q.z);
+    float lat = asin(clamp(q.y/r,-1.0,1.0));
+
+    // 球でくり抜かれた箱の「稜」を、交差する2系統の閉じたクロム帯として再構成。
+    // 座標Twistと位相Twistを重ね、元より大きく捻れるが連続した輪郭を保つ。
+    float twist = mix(0.30,6.60,clamp(twistPct/250.0,0.0,1.0));
+    float d1 = abs(sin(a*1.50+lat*0.72+q.y*twist*0.46+t*0.16));
+    float d2 = abs(sin(b*1.50-q.x*twist*0.43-t*0.13+0.65));
+    return min(d1,d2);
+}
+
+vec2 raySphere(vec3 ro,vec3 rd,float radius){
+    float b = dot(ro,rd);
+    float c = dot(ro,ro)-radius*radius;
+    float h = b*b-c;
+    if(h<0.0) return vec2(-1.0);
+    h = sqrt(h);
+    return vec2(-b-h,-b+h);
+}
+
+vec3 ribbonNormal(vec3 p,float radius,float field,float width){
+    const float e = 0.0060;
+    vec2 h = vec2(e,-e);
+    vec3 grad =
+        h.xyy*ribbonField(p+h.xyy)+
+        h.yyx*ribbonField(p+h.yyx)+
+        h.yxy*ribbonField(p+h.yxy)+
+        h.xxx*ribbonField(p+h.xxx);
+    float bevel = smoothstep(width*0.18,width,field);
+    return normalize(p/radius+normalize(grad+vec3(0.0001))*0.42*bevel);
+}
+
+vec3 chromeEnvironment(vec3 r){
+    float horizon = smoothstep(-0.72,0.86,r.y);
+    float whiteBand = 1.0-smoothstep(0.045,0.16,abs(r.y-0.34));
+    float lowBand = 1.0-smoothstep(0.07,0.24,abs(r.y+0.34));
+    float az = atan(r.z,r.x)/TAU+0.5;
+    float panels = pow(0.5+0.5*cos(az*TAU*4.0),10.0);
+    float pin = pow(max(dot(r,normalize(vec3(-0.45,0.76,0.47))),0.0),72.0);
+
+    vec3 env = vec3(mix(0.018,0.54,horizon));
+    env += vec3(0.92)*whiteBand;
+    env += vec3(0.20)*lowBand;
+    env += vec3(0.30)*panels*(0.35+0.65*horizon);
+    env += vec3(1.0)*pin;
+    return env;
+}
+
+vec3 shadeRibbon(vec3 p,vec3 rd,float radius,float field,float width){
+    vec3 n = ribbonNormal(p,radius,field,width);
+    // 穴越しに見える裏側も金属面として読めるよう、視線側へ法線をそろえる。
+    if(dot(n,-rd)<0.0) n = -n;
+    vec3 reflected = reflect(rd,n);
+    vec3 key = normalize(vec3(-0.48,0.74,0.46));
+    vec3 halfDir = normalize(key-rd);
+    float diff = max(dot(n,key),0.0);
+    float spec = pow(max(dot(n,halfDir),0.0),92.0);
+    float fresnel = pow(1.0-max(dot(-rd,n),0.0),4.5);
+    float facing = 0.5+0.5*n.y;
+    float ridge = sqrt(max(1.0-field*field/max(width*width,0.0001),0.0));
+
+    vec3 col = chromeEnvironment(reflected);
+    col *= 0.48+0.31*diff+0.15*facing+0.06*ridge;
+    col += vec3(1.0)*spec*1.10;
+    col += vec3(0.48)*fresnel;
+    return col;
+}
+
+void mainImage(out vec4 fragColor,in vec2 fragCoord){
+    vec2 uv = (fragCoord*2.0-iResolution.xy)/iResolution.y;
+    float t = iTime*speed;
+
+    // ごく小さく視点も揺らし、強いTwistの奥行きを見失わないようにする。
+    vec3 ro = vec3(0.16*sin(t*0.17),0.12*cos(t*0.13),3.80);
+    vec3 target = vec3(0.0,0.02*sin(t*0.21),0.0);
+    vec3 ww = normalize(target-ro);
+    vec3 uu = normalize(cross(vec3(0.0,1.0,0.0),ww));
+    vec3 vv = cross(ww,uu);
+    vec3 rd = normalize(uv.x*uu+uv.y*vv+2.20*ww);
+
+    const float radius = 1.36;
+    vec2 bound = raySphere(ro,rd,radius);
+    float sphereHit = step(0.0,bound.y);
+    float width = mix(0.075,0.285,clamp(ribbonPct*0.01,0.0,1.0));
+    float aa = 2.7/iResolution.y;
+    vec3 col = vec3(0.0);
+    float alpha = 0.0;
+
+    if(sphereHit>0.5){
+        vec3 nearP = ro+rd*bound.x;
+        vec3 farP = ro+rd*bound.y;
+        float nearField = ribbonField(nearP);
+        float farField = ribbonField(farP);
+        float nearMask = 1.0-smoothstep(width,width+aa,nearField);
+        float farMask = 1.0-smoothstep(width,width+aa,farField);
+
+        vec3 nearCol = shadeRibbon(nearP,rd,radius,nearField,width);
+        vec3 farCol = shadeRibbon(farP,rd,radius,farField,width)*0.78;
+        col = nearCol*nearMask+farCol*farMask*(1.0-nearMask);
+        alpha = nearMask+farMask*(1.0-nearMask);
+
+        // 無彩色を維持したままクロムの黒締まりと白い映り込みを調整。
+        float c = clamp(contrastPct/100.0,0.0,1.5);
+        col = (col-0.38)*c+0.38;
+        col = max(col,0.0);
+        col = col/(1.0+col*0.36);
+        col = pow(col,vec3(0.86));
+    }
+
+    // Aは純黒を含む不透明出力、Bは物体だけを残す。
+    fragColor = vec4(col,mix(alpha,1.0,uSlotIsA));
+}`
+}
+,
+{
   name: "Painty (4dSBDc)",
   ch: ["","","",""],
   src: `// Shadertoy 4dSBDc "Painty" by manylegged (単一パス)。https://www.shadertoy.com/view/4dSBDc

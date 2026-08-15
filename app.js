@@ -5972,6 +5972,7 @@ void main(){
     this.asyncReadPixels(p.w, p.h, (buf)=>{
       p._pending = false;
       if(!buf || !p.img || buf.length !== p.img.data.length) return;
+      p.buf = buf;   // drawMixPreviews (Grad/Blend 一覧の CPU 合成) がこのバッファを素材に使う
       p.img.data.set(buf);
       // 透明部分には市松模様を敷く。putImageData は alpha ごと上書きしてしまうので、
       // 一度オフスクリーンに置いてから drawImage で市松の上へ alpha 合成する。
