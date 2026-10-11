@@ -13200,6 +13200,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(typeof d.speed === 'number') this.speed = clamp(d.speed, 0, 4);
     if(typeof d.crossfade === 'number') this.crossfade = clamp(d.crossfade, 0, 1);
     if(d.blendMode) this.blendMode = d.blendMode;
+    if(typeof d.slotABg === 'string') this.setSlotABg(d.slotABg);
     if(typeof d.bpm === 'number') BPM.setBpm(d.bpm);
     if(d.post && typeof d.post === 'object') Object.assign(this.post, this.sanitizePost(this.migrateFeedbackPost(Object.assign({},d.post))));
     if(d.manga && typeof Manga !== 'undefined') Object.assign(Manga.P, d.manga);
