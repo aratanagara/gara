@@ -358,6 +358,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <div class="val" id="cfVal">1.00</div>
           </div>
           <div class="row">
+            <label>A BG</label>
+            <input type="color" id="slotABg" value="#000000" title="Slot A の背景色 = 出力の下地。Slot A が透過している所 (なし / 透過シェーダ / Image の余白) がこの色になる">
+            <div class="val" id="slotABgVal">#000000</div>
+            <button id="slotABgReset" style="flex:0 0 auto;font-size:10px;padding:2px 6px" title="黒 (既定) に戻す">⟲</button>
+          </div>
+          <div class="row">
             <label>B Offset</label>
             <input type="range" id="mixBOffset" min="0" max="8" step="0.25" value="0" title="Slot B のシェーダ位相ずらし (拍)。A/B に同じシェーダを入れて周期をずらして重ねる用">
             <div class="val" id="mixBOffsetVal">0.00</div>

@@ -494,6 +494,7 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uA, uB;
 uniform float uMix;
 uniform float uShowA, uShowB;
+uniform vec3  uBgColA;    // Slot A の背景色 (A の透明部分を埋める下地)。既定 黒
 uniform float uZoomA, uZoomB;   // mode エンジン用 テクスチャズーム (shader は iZoom で処理済のため 1.0)
 uniform vec2  uPanA, uPanB;     // mode エンジン用 テクスチャパン
 uniform int   uBlendMode;  // 0=mix(crossfade) 1=add 2=multiply 3=screen 4=暗い色(DarkerColor) 5=明るい色(LighterColor) 6=difference 7=overlay
@@ -733,6 +734,8 @@ vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
 vec4 sampleAB(vec2 uv){
   vec4 ca = texture(uA, fl_mirror((uv - 0.5) / uZoomA + 0.5 - uPanA));   // mode エンジンの user zoom/pan (領域外はミラー)
   vec4 cb = texture(uB, fl_mirror((uv - 0.5) / uZoomB + 0.5 - uPanB));
+  // Slot A は出力の下地。透過している所を「A の背景色」で埋めて不透明にする (既定 黒 = 従来と同じ絵)
+  ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);
   float showA = clamp(uShowA, 0.0, 1.0);
   float showB = clamp(uShowB, 0.0, 1.0);
   // 両スロットが空: Tex Noise を「warp 可能な土台スタティック」に (Twist/Mondrian/Audio FX を効かせる)。
@@ -3867,6 +3870,7 @@ void main(){
     gl.uniform1f(U('uMix'),       App.crossfade);
     gl.uniform1f(U('uShowA'),     App.slotVisibleAmount ? App.slotVisibleAmount('A') : (App.slotVisible && App.slotVisible.A === false ? 0 : 1));
     gl.uniform1f(U('uShowB'),     App.slotVisibleAmount ? App.slotVisibleAmount('B') : (App.slotVisible && App.slotVisible.B === false ? 0 : 1));
+    { const bg = App.bgAColor(); gl.uniform3f(U('uBgColA'), bg[0], bg[1], bg[2]); }   // Slot A の背景色 (本命/フォールバック共通)
     // mode エンジン(FBO 独立描画)には user zoom/pan を合成段でテクスチャ適用 (shader は iZoom 済のため 1.0)
     { const modeSet = GL._modeZoomSet || (GL._modeZoomSet = new Set(App.modeStateKinds || []));
       const zp = (key)=>{
@@ -5976,7 +5980,15 @@ void main(){
       p.img.data.set(buf);
       // 透明部分には市松模様を敷く。putImageData は alpha ごと上書きしてしまうので、
       // 一度オフスクリーンに置いてから drawImage で市松の上へ alpha 合成する。
-      this._fillChecker(p.ctx, p.w, p.h);
+      // Slot A だけは出力と同じく「A の背景色」で埋める (下地が何色になるか見えるように)。
+      if(key === 'A'){
+        const bg = App.bgAColor();
+        p.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        p.ctx.fillStyle = 'rgb(' + Math.round(bg[0]*255) + ',' + Math.round(bg[1]*255) + ',' + Math.round(bg[2]*255) + ')';
+        p.ctx.fillRect(0, 0, p.w, p.h);
+      } else {
+        this._fillChecker(p.ctx, p.w, p.h);
+      }
       if(kind !== 'none'){
         if(!p._tmp){
           p._tmp = document.createElement('canvas');
@@ -6474,7 +6486,8 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
       gl.viewport(0, 0, target.w, target.h);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-      gl.clearColor(0, 0, 0, slotKey === 'A' ? 1 : 0);
+      const bgc = slotKey === 'A' ? App.bgAColor() : [0, 0, 0];   // A の「なし」= 背景色のベタ (既定 黒)
+      gl.clearColor(bgc[0], bgc[1], bgc[2], slotKey === 'A' ? 1 : 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       slot.fbIdx ^= 1;
@@ -8880,6 +8893,7 @@ precision highp float;
 in vec2 vUv; out vec4 frag;
 uniform sampler2D uA, uB;
 uniform float uMix, uShowA, uShowB;
+uniform vec3  uBgColA;
 uniform float uZoomA, uZoomB;
 uniform vec2  uPanA, uPanB;
 uniform int   uBlendMode;
@@ -8888,6 +8902,7 @@ void main(){
   float za = (uZoomA==0.0)?1.0:uZoomA, zb = (uZoomB==0.0)?1.0:uZoomB;
   vec4 ca = texture(uA, _mir((vUv-0.5)/za + 0.5 - uPanA));
   vec4 cb = texture(uB, _mir((vUv-0.5)/zb + 0.5 - uPanB));
+  ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);   // Slot A の背景色 (本命 composite と同じ)
   float a = clamp(uShowA, 0.0, 1.0), b = clamp(uShowB, 0.0, 1.0);
   vec4 both;
   if(cb.a < 0.999){
@@ -9312,6 +9327,10 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.srcFBO.fbo);
     gl.viewport(0, 0, this.W, this.H);
     gl.disable(gl.BLEND);
+    // 下地をプリセットの Slot A 背景色でクリア。透過シェーダのとき、
+    // クリアしないと前回プレビューした別シェーダの残像が透けてしまう。
+    { const bg = App.parseHexRgb(state.slotABg || '#000000');
+      gl.clearColor(bg[0], bg[1], bg[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
     let drewB = false;
     if(isShader(B)){ const eB = this._compile(B.src); if(eB && !eB.err && !eB.pending){ this._drawShader(eB, B.params); drewB = true; } }
     if(isShader(A)){
@@ -9571,6 +9590,26 @@ const App = {
   slotVisible:{A:true, B:true}, // 一時表示トグル。保存状態には含めない
   slotBOffsetBeats:0,   // B Offset: Slot B のシェーダ位相ずらし (拍)。同一シェーダの重ね掛け用
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
+  // Slot A の背景色 = 出力の下地。Slot A が透過している所 (「なし」/ 透過シェーダ / Image の余白など) を
+  // この色で埋める。既定 #000000 = 従来どおりの黒。合成の 1 箇所 (sampleAB) で効かせるので、
+  // どの kind でも・Post FX より前に乗る。
+  slotABg:'#000000',
+  _bgA:null,
+  parseHexRgb(hex){   // '#rrggbb' → [r,g,b] 0..1 (不正値は黒)
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    const n = m ? parseInt(m[1], 16) : 0;
+    return [((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255];
+  },
+  bgAColor(){   // 現在の Slot A 背景色 (パース結果はキャッシュ)
+    const hex = this.slotABg || '#000000';
+    if(!this._bgA || this._bgA.hex !== hex) this._bgA = { hex, rgb:this.parseHexRgb(hex) };
+    return this._bgA.rgb;
+  },
+  setSlotABg(hex){
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    this.slotABg = m ? ('#' + m[1].toLowerCase()) : '#000000';
+    if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
+  },
   modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder'],
   modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder'],
   _presetDefaults:null,
@@ -11779,6 +11818,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       mix: {
         crossfade: this.crossfade,
         blendMode: this.blendMode,
+        slotABg: this.slotABg,
         mixControls: clone(this._captureMixControls())
       },
       transition: {
@@ -11793,6 +11833,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       beatScale: 1.0,
       crossfade: 1.0,
       blendMode: 'mix',
+      slotABg: '#000000',
       gamma: 1.0,
       slotBOffsetBeats: 0,
       post: clone(this.post),
@@ -11958,7 +11999,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   },
   // ─── Mix パネル(crossfade/blend/transition)のデフォルト値保存 ───────
   saveMixDefault(){
-    const d = { crossfade:this.crossfade, blendMode:this.blendMode, mixControls:this._captureMixControls() };
+    const d = { crossfade:this.crossfade, blendMode:this.blendMode, slotABg:this.slotABg, mixControls:this._captureMixControls() };
     try{ localStorage.setItem('vj.def.mix', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: mix'); }
     catch(e){ toast('保存失敗'); }
   },
@@ -12009,6 +12050,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(F && F.mix){
       this.crossfade = F.mix.crossfade;
       this.blendMode = F.mix.blendMode;
+      this.setSlotABg(F.mix.slotABg);
       this._applyMixControls(F.mix.mixControls);
       this.applyMixDefault();
     }
@@ -12069,6 +12111,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(!d) return;
     this.crossfade = d.crossfade;
     this.blendMode = d.blendMode;
+    this.setSlotABg(d.slotABg);
     this._applyMixControls(d.mixControls);
     this.applyMixDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix();
@@ -12080,6 +12123,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(!d || typeof d !== 'object') return;
     if(typeof d.crossfade === 'number')  this.crossfade  = d.crossfade;
     if(typeof d.blendMode === 'string')  this.blendMode  = d.blendMode;
+    if(typeof d.slotABg === 'string')    this.setSlotABg(d.slotABg);
     if(d.mixControls) this._applyMixControls(d.mixControls);
     else if(d.mode === 'switch' || d.mode === 'crossfade' || typeof d.auto === 'boolean' || typeof d.beats === 'number') this._applyMixControls(d);
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix();
@@ -12240,6 +12284,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       beatMode: this.beatMode,
       audioTime: Object.assign({}, this.audioTime),
       bpm: BPM.bpm, crossfade: this.crossfade, blendMode: this.blendMode, gamma: this.gamma,
+      slotABg: this.slotABg,
       slotBOffsetBeats: this.slotBOffsetBeats || 0,
       transBeats: this.transBeats,
       transStyle: this.transStyle,
@@ -13219,6 +13264,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         if(!('beatMode' in s) && opts.restoreBeatMode !== false) this.beatMode = presetDefaults.beatMode;
         if(!('crossfade' in s)) this.crossfade = presetDefaults.crossfade;
         if(!('blendMode' in s)) this.blendMode = presetDefaults.blendMode;
+        if(!('slotABg' in s)) this.setSlotABg(presetDefaults.slotABg);
         if(!('gamma' in s)) this.gamma = presetDefaults.gamma;
         if(!('slotBOffsetBeats' in s)) this.slotBOffsetBeats = presetDefaults.slotBOffsetBeats;
         if(opts.restoreBeatScale && typeof s.beatScale !== 'number' && this.setBeatScale){
@@ -13234,6 +13280,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       if(typeof s.crossfade==='number') this.crossfade = s.crossfade;
       if(typeof s.slotBOffsetBeats==='number'){ this.slotBOffsetBeats = s.slotBOffsetBeats; const bo=$('#mixBOffset'); if(bo){ bo.value = s.slotBOffsetBeats; const bv=$('#mixBOffsetVal'); if(bv) bv.textContent = s.slotBOffsetBeats.toFixed(2); } }
       if(s.blendMode){ this.blendMode = s.blendMode; const cb=document.querySelector('#cfBlend'); if(cb) cb.value = s.blendMode; }
+      if(typeof s.slotABg === 'string') this.setSlotABg(s.slotABg);
       if(opts.restoreMixControls){
         if(s.mixControls) this._applyMixControls(s.mixControls);
         else if(presetDefaults && presetDefaults.mixControls) this._applyMixControls(presetDefaults.mixControls);
@@ -13610,6 +13657,13 @@ void mainImage(out vec4 o, in vec2 f){
     if(cb){
       cb.value = App.blendMode;
       cb.addEventListener('change', ()=>{ App.setBlendMode(cb.value); });
+    }
+    // Slot A の背景色 (出力の下地)
+    const bgA = $('#slotABg');
+    if(bgA){
+      bgA.addEventListener('input', ()=>{ App.setSlotABg(bgA.value); App._undoSchedule(); });
+      const bgR = $('#slotABgReset');
+      if(bgR) bgR.addEventListener('click', ()=>{ App.setSlotABg('#000000'); App._undoSchedule(); });
     }
     const tdSel = $('#tdMdSelect');
     if(tdSel){
@@ -17793,10 +17847,15 @@ void mainImage(out vec4 o, in vec2 f){
     if(p._uiBox) p._uiBox.checked = p.value>0.5;
   },
 
+  refreshSlotABg(){
+    const el = $('#slotABg'); if(el && el.value !== App.slotABg) el.value = App.slotABg;
+    const v  = $('#slotABgVal'); if(v) v.textContent = App.slotABg;
+  },
   refreshMix(updateSlider=true){
     if(updateSlider) $('#cf').value = App.crossfade;
     $('#cfVal').textContent = App.crossfade.toFixed(2);
     const cb = $('#cfBlend'); if(cb) cb.value = App.blendMode;
+    this.refreshSlotABg();
     const ca = $('#cfAuto'); if(ca) ca.checked = !!(App.autoCF && App.autoCF.on);
     const cab = $('#cfBeats'); if(cab) cab.value = String((App.autoCF && App.autoCF.beats) || 8);
     const cam = $('#cfAutoMode'); if(cam) cam.value = (App.autoCF && App.autoCF.mode) || 'crossfade';

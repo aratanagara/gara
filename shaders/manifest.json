@@ -322,6 +322,11 @@
      "file": "bg_jflow.frag",
      "func": "bg_jflow",
      "name": "Crystal Flow (Julia)"
+    },
+    {
+     "file": "bg_transflock.frag",
+     "func": "bg_transflock",
+     "name": "Transmute Flock (錬成痕)"
     }
    ],
    "exclude": [
