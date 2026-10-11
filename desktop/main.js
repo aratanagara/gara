@@ -45,6 +45,20 @@ const ROOT = path.join(__dirname, '..');   // アプリ一式のルート (開�
 // 二重起動ロックは userData 単位なので、これが無いと本番アプリ起動中はプローブが即終了する。
 if(process.env.GARA_USERDATA) app.setPath('userData', process.env.GARA_USERDATA);
 
+// ── 素材フォルダ (mediaRoot) ──
+//   movies/ images/ shaders/ presets/ を同梱バンドルではなく外部フォルダから読む。
+//   素材の追加・差し替えに再ビルドが不要になる (無ければ従来どおり同梱にフォールバック)。
+//   解決順: 環境変数 GARA_MEDIA_ROOT → userData/media-root.txt (メニューから設定)。
+const mediaRootFile = () => path.join(app.getPath('userData'), 'media-root.txt');
+function resolveMediaRoot(){
+  let p = process.env.GARA_MEDIA_ROOT || '';
+  if(!p){ try{ p = fs.readFileSync(mediaRootFile(), 'utf8').trim(); }catch(_){} }
+  if(!p) return null;
+  try{ if(fs.statSync(p).isDirectory()) return p; }catch(_){}
+  console.warn('mediaRoot が見つかりません (同梱素材で起動):', p);
+  return null;
+}
+
 let win = null;
 let shaderProbeDone = false;
 
@@ -95,7 +109,9 @@ process.on('uncaughtException', (err) => {
 });
 
 async function createWindow(){
-  const server = createServer(ROOT);
+  const mediaRoot = resolveMediaRoot();
+  if(mediaRoot) console.log('素材フォルダ:', mediaRoot);
+  const server = createServer(ROOT, mediaRoot);
   // ポートは固定する。ランダム割当だとオリジンが起動ごとに変わり、localStorage
   // (プリセットキャッシュ / デフォルト / MIDI learn / 前回状態) が毎回空になる。
   // 使用中なら +1 しながら数ポート試し、全滅時のみランダムへフォールバック。
@@ -128,6 +144,7 @@ async function createWindow(){
   // ピッカーを出さず画面全体をそのまま渡す (音声も要求。BPM 検出/Audio FX 用)。
   // 画面収録権限が無いと getSources が返ってこないことがある → タイムアウトで
   // 空応答にし、レンダラ側が無言で固まらずエラー案内を出せるようにする。
+  // ※ macOS ネイティブピッカー (useSystemPicker) は loopback 音声を渡せないため使わない。
   try{
     session.defaultSession.setDisplayMediaRequestHandler((request, callback) => {
       const timeout = new Promise(res => setTimeout(() => res(null), 5000));
@@ -303,6 +320,18 @@ function installMenu(){
       // リロードは誤爆しにくい Cmd+Shift+R のみに (既定の Cmd+R は割り当てない)
       { label: '再読み込み', accelerator: 'CmdOrCtrl+Shift+R', click: (m, w) => { if(w) w.reload(); } },
       { label: '開発者ツール', accelerator: 'CmdOrCtrl+Alt+I', click: (m, w) => { if(w) w.webContents.toggleDevTools(); } },
+      { type: 'separator' },
+      { label: '素材フォルダを選択… (movies/images/shaders)', click: async () => {
+        const r = await dialog.showOpenDialog({ properties: ['openDirectory'],
+          message: 'movies / images / shaders を含むフォルダを選択 (再ビルド不要で素材を差し替えられます)' });
+        if(r.canceled || !r.filePaths.length) return;
+        try{ fs.writeFileSync(mediaRootFile(), r.filePaths[0]); }catch(e){ dialog.showErrorBox('保存失敗', String(e)); return; }
+        app.relaunch(); app.exit(0);   // サーバー設定はプロセス起動時に確定するため再起動
+      } },
+      { label: '素材フォルダを解除 (同梱に戻す)', click: () => {
+        try{ fs.unlinkSync(mediaRootFile()); }catch(_){}
+        app.relaunch(); app.exit(0);
+      } },
     ] },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));

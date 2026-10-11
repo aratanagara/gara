@@ -145,37 +145,6 @@ const Overlay = {
     return best;
   },
   // 指定ブラシのパラメータを P に流し込む (brushParams を優先、なければ BRUSH_DEFAULTS)
-  // MIDI の同じブラシボタンを続けて押したときに TRIGGER / BRUSH SHAPE をランダム化する。
-  //   (1 回目 = 工場プリセットのまま / 2 回目以降 = 押すたびに引き直し)
-  randomizeBrushTriggerShape(){
-    const P = this.P;
-    const R = (a, b)=> a + Math.random()*(b - a);
-    const pick = (arr)=> arr[Math.floor(Math.random()*arr.length)];
-    // ── TRIGGER (発生タイミング / 本数 / 位置 / 向き / ストローク) ──
-    P.subdiv      = pick([1, 2, 3, 4, 6, 8, 12, 16]);
-    P.spawnCount  = Math.round(R(1, 6));                      // 1..8
-    P.centerMode  = pick(['random', 'center', 'edge', 'grid']);
-    P.direction   = pick(['radial', 'random', 'horizontal', 'vertical']);
-    const snap = (v, st)=> Math.round(v / st) * st;
-    P.strokeLen   = +snap(R(0.3, 4.5), 0.05).toFixed(2);
-    P.strokeLenVar= +snap(R(0, 0.9), 0.05).toFixed(2);
-    P.curveAmt    = +snap(R(-1, 1), 0.05).toFixed(2);      // UI は -1..1
-    P.life        = +snap(R(0.3, 3.5), 0.1).toFixed(1);    // step 0.1
-    P.fadePhase   = +snap(R(0.05, 0.6), 0.05).toFixed(2);
-    // ── BRUSH SHAPE (形) ──
-    P.sides       = Math.round(R(3, 30));                     // 3..40
-    P.maxSides    = Math.random() < 0.5 ? 0 : Math.round(R(Math.max(3, P.sides), 40));
-    P.size        = +snap(R(0.02, 0.45), 0.001).toFixed(3);   // 0.001..0.6
-    P.sizeVar     = +snap(R(0, 1), 0.01).toFixed(2);          // 0..1
-    P.warp        = +snap(R(0, 1), 0.01).toFixed(2);          // 0..1
-    P.explode     = +snap(R(0, 1), 0.01).toFixed(2);          // 0..1
-    P.focal       = snap(R(5, 120), 5);                       // 5..300 / step 5
-    P.stamps      = Math.round(R(6, 60));                     // 2..300
-    P.rotPerStamp = +snap(R(-0.6, 0.6), 0.05).toFixed(2);     // -1.5..1.5
-    P.spin        = +snap(R(-4, 4), 0.05).toFixed(2);         // -4..4
-    if(P.tipShape !== undefined) P.tipShape = pick(['round', 'flat', 'gpen', 'finger']);
-    if(P.smudgeSpeed !== undefined) P.smudgeSpeed = +snap(R(0.1, 1.5), 0.01).toFixed(2);
-  },
   applyBrushDefaults(name){
     name = this._brushName(name);
     this.P.brushMode = name;

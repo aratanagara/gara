@@ -201,7 +201,7 @@ vec3 bg_origami(vec2 fc){
     float f = 1000.0;
     col = mix(vec3(0.8), col, exp2(-t*vec3(0.4,0.6,1.0)/f));
   } else {
-    col = og_Sky(ray);
+    col = vec3(0.0);                          // 背景は黒 (entrypoint が uBgColor で塗る)
   }
   bgAlpha = (t > 0.0) ? 1.0 : 0.0;            // 折り紙=不透明 / 空=透明
 

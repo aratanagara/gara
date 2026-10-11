@@ -166,9 +166,7 @@ vec3 bg_stractium(vec2 fc){
     finalColor = mix(vec3(0.98, 0.981, 0.981) + min(vec3(0.25), st_GetSunColorSmall(relVec, sunDir))*2.0,
                      finalColor, exp(-t*0.007));
   } else {
-    // 空
-    finalColor = mix(vec3(1.0, 0.95, 0.85), vec3(0.2, 0.5, 0.95), pow(st_saturate(relVec.y), 0.7))*0.95;
-    finalColor += st_GetSunColorSmall(relVec, sunDir);
+    finalColor = vec3(0.0);   // 空(背景)は黒 (entrypoint が uBgColor で塗る)
   }
 
   finalColor *= st_saturate(1.0 - length(uv/2.5));   // ビネット
@@ -179,7 +177,7 @@ vec3 bg_stractium(vec2 fc){
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
     col = mix(col, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
-  // Slot A=不透明(空も描く) / Slot B=オブジェクトのみ不透明、空は透過
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : (hitObj ? 1.0 : 0.0);
+  // 空は透過 (Slot A では entrypoint が不透明化し uBgColor を敷く)
+  bgAlpha = hitObj ? 1.0 : 0.0;
   return col;
 }

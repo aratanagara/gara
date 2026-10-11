@@ -109,6 +109,6 @@ vec3 bg_matrixjulia(vec2 fc){
   // 白飛び防止: ハードな純白クリップではなく指数トーンマップで滑らかに圧縮(糸の重なりが白く潰れない)
   col = 1.0 - exp(-max(col, 0.0) * 1.25);
   col = clamp(col, 0.0, 1.0);
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(web * 2.0, 0.0, 1.0);   // Slot B: 糸のある所だけ不透明(黒背景透過)
+  bgAlpha = clamp(web * 2.0, 0.0, 1.0);   // Slot B: 糸のある所だけ不透明(黒背景透過)
   return col;
 }

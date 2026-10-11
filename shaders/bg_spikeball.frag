@@ -112,7 +112,7 @@ vec3 bg_spikeball(vec2 fc){
   ro.xz = ry*ro.xz; rd.xz = ry*rd.xz;
 
   vec3 col = vec3(0.0);
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0;           // Slot A=黒背景(不透明) / それ以外=透過(重ねられる)
+  bgAlpha = 0.0;           // 背景は透過(重ねられる)
 
   // バウンディング球(中心原点, 半径 1+最大棘高+余白)で早期棄却 & 行進帯を限定
   float R = sb_core + 1.7*sb_amp + 0.15;

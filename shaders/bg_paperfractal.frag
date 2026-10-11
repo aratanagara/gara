@@ -71,7 +71,7 @@ vec3 bg_paperfractal(vec2 fc){
   vec3 ro = vec3(0.001, 0.001, -4.5);
   vec3 rd = normalize(vec3(uv * 2.0, 0.8));   // 全体を小さく(広角化=折りが小さく密に見える)
   vec3 p  = ro;
-  vec3 col = vec3(0.22);                  // グレー背景
+  vec3 col = vec3(0.0);                   // 背景は黒 (entrypoint が uBgColor で塗る)
 
   float shad = 0.0;
   bool hit = false;

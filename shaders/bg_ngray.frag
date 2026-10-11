@@ -66,11 +66,11 @@ vec3 ng_calcNormal(vec3 pos){
     ng_map(pos + e.yyx).x - ng_map(pos - e.yyx).x));
 }
 
-vec3 ng_render(vec3 ro, vec3 rd, float c, out float hitOut){
+vec3 ng_render(vec3 ro, vec3 rd, out float hitOut){
   vec2 res = ng_castRay(ro, rd);
   float t = res.x, m = res.y;
   hitOut = step(-0.5, m);
-  vec3 col = vec3(c);
+  vec3 col = vec3(0.0);   // 背景は黒 (entrypoint が uBgColor で塗る)
   if(m > -0.5){
     vec3 pos = ro + t*rd;
     vec3 nor = ng_calcNormal(pos);
@@ -118,7 +118,7 @@ vec3 bg_ngray(vec2 fc){
   vec3 rd = ca * normalize(vec3(p.xy, 2.5));
 
   float hit;
-  vec3 col = ng_render(ro, rd, q.y*0.3 + 0.1, hit);
+  vec3 col = ng_render(ro, rd, hit);
   col = pow(col, vec3(0.4545));                    // ガンマ
   col *= 1.0 - length(q*2.0 - 1.0)*0.3;            // ビネット
 
@@ -127,6 +127,6 @@ vec3 bg_ngray(vec2 fc){
     col = mix(col, cosGradColor(lum) * (0.3 + 1.2*lum), abs(uCosGrad));
   }
 
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : hit;          // Slot B はヒットのみ(背景透過)
+  bgAlpha = hit;          // Slot B はヒットのみ(背景透過)
   return col;
 }

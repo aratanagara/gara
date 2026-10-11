@@ -3,7 +3,7 @@
 //   Source : Shadertoy "Liquid mountains"  https://www.shadertoy.com/view/wXdSRB
 //   改変: iTime,iResolution → time,resolution / bgZoom・bgCamPx でズーム/パン。
 //         山の「黒い(暗い)部分」だけをシルバー/クロム(環境反射)に置換。明るい色部分は維持。
-//         背景透過(bgAlpha): Slot A=シルバー背景(不透明) / それ以外=透過して重ねる。
+//         背景透過(bgAlpha): 背景は黒 + 透過。Slot A では entrypoint が uBgColor を敷く。
 //         cosineGradient(uCosGrad)対応。ヘルパは lm_ で名前空間化。
 // =====================================================
 
@@ -114,17 +114,12 @@ vec3 bg_liqmount(vec2 fc){
   }
 
   vec3 col;
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0;   // 背景: A=不透明 / それ以外=透過
+  bgAlpha = 0.0;   // 背景は透過
   if(hit && t < 20.0){
     bgAlpha = 1.0;                          // 山(被写体)は不透明
     col = lm_shade(p, rd);
   } else {
-    // 背景: 蜃気楼風(淡いパステルのグラデ + 地平付近の揺らぎ)
-    float g = clamp(uv.y*0.5 + 0.5, 0.0, 1.0);
-    col = mix(vec3(0.96, 0.90, 0.84), vec3(0.72, 0.84, 0.97), smoothstep(0.0, 1.0, g)); // 地平=淡暖→上=淡青
-    float shimmer = sin(uv.x*9.0 + sin(uv.y*42.0 + time*2.0)*1.6) * 0.5 + 0.5;          // 逃げ水の揺らぎ
-    col += (shimmer - 0.5) * 0.06 * (1.0 - g) * vec3(0.4, 0.6, 0.85);                   // 地平近くで揺らぐ
-    if(uSlotIsA <= 0.5){ bgAlpha = 0.0; }
+    col = vec3(0.0);   // 背景は黒 (entrypoint が uBgColor で塗る)
   }
 
   return col;

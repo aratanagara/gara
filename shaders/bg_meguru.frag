@@ -119,7 +119,7 @@ vec3 bg_meguru(vec2 fc){
   vec3 amb = bgc * 0.1;
   vec3 ds = bn_mrch(ro, rd);
   float d0 = ds.x;
-  if(d0 <= 0.0){ bgAlpha = 0.0; return vec3(0.73, 0.77, 0.80); }   // 背景は透明
+  if(d0 <= 0.0){ bgAlpha = 0.0; return vec3(0.0); }   // 背景は黒 + 透明
   vec3 sp = ro + rd * d0;
   // OFF: 素のグレースケール / ON(uCosGrad): 固有の cosine gradient 彩色
   // 空間/距離による位相をソフト量子化してバンド状の濃淡にする

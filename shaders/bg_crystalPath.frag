@@ -159,6 +159,6 @@ vec3 bg_crystalPath(vec2 fc){
   vec3 col = max(cpColor, vec3(0.0));
   float mx = max(max(col.r, col.g), col.b);
   if(mx > 1.0) col /= mx;
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(cpCov, 0.0, 1.0);   // Slot B は結晶のみ(背景透過)
+  bgAlpha = clamp(cpCov, 0.0, 1.0);   // Slot B は結晶のみ(背景透過)
   return col;
 }
