@@ -82,7 +82,7 @@ vec3 bg_sinedeform(vec2 fc){
   vec3 ro = vec3(0.0, 0.0, 4.5);
   vec3 rd = normalize( vec3(p.xy, -2.0) );
 
-  vec3 col = SD_GRAY * (0.9 + 0.2*p.y);   // グレー背景(パレットの c2 と共有)
+  vec3 col = vec3(0.0);                   // 背景は黒 (entrypoint が uBgColor で塗る)
   bgAlpha = 0.0;                          // 背景は透明
 
   float t = sd_trace(ro, rd);

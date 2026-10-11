@@ -73,11 +73,21 @@ const Inputs = {
   byId(id){ return this.reg.get(id); },
   list(){ return [...this.reg.values()]; },
 
+  // 画像ロード待ち。img.decode() は使わない (Electron 43 / 新 Chromium で大判画像の
+  // decode() が未解決のまま停滞し、チャンネル束縛が永久に保留になる。デコードは
+  // makeTexFromImage の texImage2D が同期で行うため onload 待ちで十分)
+  async _awaitImage(img, src){
+    if(img.complete && img.naturalWidth) return;
+    await new Promise((res, rej)=>{
+      img.onload = res;
+      img.onerror = ()=>rej(new Error('image load failed: ' + src));
+    });
+  },
   async addImageFile(file){
     const url = URL.createObjectURL(file);
     const img = new Image();
     img.src = url;
-    await img.decode();
+    await this._awaitImage(img, file.name || url);
     const id = this.add('image', file.name || 'image', {img, width:img.naturalWidth, height:img.naturalHeight});
     const e = this.reg.get(id);
     e.tex = GL.makeTexFromImage(img);
@@ -90,7 +100,7 @@ const Inputs = {
     if(existing) return existing.id;
     const img = new Image();
     img.src = url;
-    await img.decode();
+    await this._awaitImage(img, url);
     const id = this.add('image', label || url, {img, width:img.naturalWidth, height:img.naturalHeight});
     const e = this.reg.get(id);
     e.tex = GL.makeTexFromImage(img);
@@ -148,54 +158,7 @@ const MediaImport = {
   IMG_RE: /\.(png|jpe?g|webp|gif|bmp)$/i,
   VID_RE: /\.(mp4|webm|mov|m4v|ogv|ogg)$/i,
   _probe: null,
-  storedVideos: [],   // 書き込み不可配信で IndexedDB から復元した動画 [{url(blob), name}] — Visual グリッドへ足す
-
-  // ── 書き込み不可の配信 (github.io / 本番) 用の永続化: IndexedDB に blob 保存 ──
-  //   実ファイル取り込みができない環境でも「次回起動でも読み込んだまま」を成立させる。
-  _dbP: null,
-  _openDb(){
-    if(this._dbP) return this._dbP;
-    this._dbP = new Promise((res, rej)=>{
-      const rq = indexedDB.open('gara.media', 1);
-      rq.onupgradeneeded = ()=>{ rq.result.createObjectStore('files', {keyPath:'id', autoIncrement:true}); };
-      rq.onsuccess = ()=> res(rq.result);
-      rq.onerror = ()=> rej(rq.error);
-    });
-    return this._dbP;
-  },
-  async _dbAll(){ const db = await this._openDb(); return new Promise((res, rej)=>{ const rq = db.transaction('files').objectStore('files').getAll(); rq.onsuccess = ()=>res(rq.result || []); rq.onerror = ()=>rej(rq.error); }); },
-  async _dbPut(rec){ const db = await this._openDb(); return new Promise((res, rej)=>{ const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').put(rec); tx.oncomplete = res; tx.onerror = ()=>rej(tx.error); }); },
-  async _dbClear(){ const db = await this._openDb(); return new Promise((res, rej)=>{ const tx = db.transaction('files', 'readwrite'); tx.objectStore('files').clear(); tx.oncomplete = res; tx.onerror = ()=>rej(tx.error); }); },
-
-  // 起動時: IndexedDB に保存した素材を復元して一覧へ戻す (取り込みサーバがある環境では実ファイル側を使うので何もしない)
-  async restore(){
-    if(await this.local()) return;
-    let recs = [];
-    try{ recs = await this._dbAll(); }catch(e){ return; }
-    if(!recs.length) return;
-    const imgs = recs.filter(r => r.kind === 'image' && r.blob);
-    const vids = recs.filter(r => r.kind === 'video' && r.blob);
-    if(imgs.length && typeof ImageMode !== 'undefined'){
-      if(!ImageMode.initialized && GL.gl) ImageMode.init(GL.gl);
-      // addDroppedFiles はアクティブスロットへ即ロードするので、復元では登録だけ行う
-      let f = ImageMode._folderByDir(ImageMode.DROP_DIR);
-      if(!f){ f = { name:'ドロップ (臨時)', dir:ImageMode.DROP_DIR, count:0, images:[], _urls:[] }; ImageMode.folders.unshift(f); }
-      for(const r of imgs){ f._urls.push(URL.createObjectURL(r.blob)); f.images.push(r.name || ('drop ' + f._urls.length)); }
-      f.count = f._urls.length;
-    }
-    for(const r of vids) this.storedVideos.push({ url: URL.createObjectURL(r.blob), name: r.name || 'drop' });
-    if(typeof UI !== 'undefined'){
-      if(vids.length && UI.populatePresets) UI.populatePresets();
-      if(imgs.length && UI.refreshImageMode) UI.refreshImageMode();
-    }
-    toast('取り込み済み素材 ' + recs.length + ' 件を復元しました');
-  },
-
-  async clearStored(){
-    try{ await this._dbClear(); }catch(e){}
-    this.storedVideos = [];
-    toast('ブラウザ保存の取り込み素材を削除しました (リロードで一覧から消えます)');
-  },
+  storedVideos: [],   // 書き込み不可配信でこのセッション中にドロップした動画 [{url(blob), name}] — Visual グリッドへ足す
 
   // 内蔵サーバ (取り込み可能) かどうか。1 セッションに 1 回だけ問い合わせる
   local(){
@@ -268,7 +231,7 @@ const MediaImport = {
     return done.length;
   },
 
-  // 書き込めない配信 (本番 / github.io): blob として読み込み + IndexedDB へ保存して次回起動でも復元
+  // 書き込めない配信 (本番 / github.io): セッション限りの blob として読み込む (リロードで消える)
   _importBlob(list){
     const vids = list.filter(f => this.kindOf(f) === 'video');
     const imgs = list.filter(f => this.kindOf(f) === 'image');
@@ -286,15 +249,7 @@ const MediaImport = {
       App.transitionVideo(last.url, last.name);
       n += vids.length;
     }
-    // 次回起動でも復元できるよう IndexedDB へ保存 (容量超過などの失敗はセッション限りに落ちるだけ)
-    (async ()=>{
-      let saved = true;
-      for(const f of list){
-        try{ await this._dbPut({ name: f.name || '', kind: this.kindOf(f), blob: f, t: Date.now() }); }
-        catch(e){ saved = false; console.warn('media store failed:', f.name, e); }
-      }
-      toast(n + ' 件を読み込みました' + (saved ? ' (ブラウザに保存。次回起動でも残ります)' : ' (保存失敗: このセッション限り)'));
-    })();
+    toast(n + ' 件を読み込みました (このセッション限り。リロードで消えます)');
     if(typeof UI !== 'undefined'){
       if(vids.length && UI.populatePresets) UI.populatePresets();
       if(UI.refreshAll) UI.refreshAll();
@@ -494,6 +449,7 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uA, uB;
 uniform float uMix;
 uniform float uShowA, uShowB;
+uniform vec3  uBgColA;    // Slot A の背景色 (A の透明部分を埋める下地)。既定 黒
 uniform float uZoomA, uZoomB;   // mode エンジン用 テクスチャズーム (shader は iZoom で処理済のため 1.0)
 uniform vec2  uPanA, uPanB;     // mode エンジン用 テクスチャパン
 uniform int   uBlendMode;  // 0=mix(crossfade) 1=add 2=multiply 3=screen 4=暗い色(DarkerColor) 5=明るい色(LighterColor) 6=difference 7=overlay
@@ -733,6 +689,8 @@ vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
 vec4 sampleAB(vec2 uv){
   vec4 ca = texture(uA, fl_mirror((uv - 0.5) / uZoomA + 0.5 - uPanA));   // mode エンジンの user zoom/pan (領域外はミラー)
   vec4 cb = texture(uB, fl_mirror((uv - 0.5) / uZoomB + 0.5 - uPanB));
+  // Slot A は出力の下地。透過している所を「A の背景色」で埋めて不透明にする (既定 黒 = 従来と同じ絵)
+  ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);
   float showA = clamp(uShowA, 0.0, 1.0);
   float showB = clamp(uShowB, 0.0, 1.0);
   // 両スロットが空: Tex Noise を「warp 可能な土台スタティック」に (Twist/Mondrian/Audio FX を効かせる)。
@@ -1903,7 +1861,7 @@ void main(){
   vec3 L=normalize(vec3(cos(uTime*0.5),0.6,0.7));
   float spec=pow(max(0.0,dot(reflect(-L,n),V)),32.0);
   float fres=pow(1.0-max(0.0,dot(n,V)),3.0);
-  vec3 metal=col*0.25+spec*vec3(1.0)+fres*vec3(0.4,0.55,0.9);
+  vec3 metal=col*0.5+spec*vec3(1.0)+fres*vec3(0.4,0.55,0.9);   // ベース 0.25→0.5: 適用時に暗くなりすぎない
   frag=vec4(mix(col,metal,clamp(uAmount,0.0,1.0)),1.0);
 }`);
 
@@ -1916,32 +1874,68 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uTime, uTwistAcc, uTwistSeed, uTwistSeed2, uTwistMix;
+uniform float uTwistWander;   // 1=drone: 力場の中心がさまよい、波の進みも seed ごとに変わる / 0=beat: 従来
 float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
 vec2 mirUv(vec2 v){ return 1.0 - abs(1.0 - fract(v*0.5)*2.0); }
-// 各波: 位相を測る軸・変位する方向・周期・位相をすべてシードからランダム化 (composite 時代と同一)。
+// 各波: 位相を測る軸・変位する方向・周期・位相をすべてシードからランダム化。
+//   周波数は 0.6〜2.2 周期 (画面内で何度も折り返す細かいうねり)、位相の進みも速めて変化を出す。
 vec2 twistField(vec2 p, float seed){
+  // drone: 力場そのものを seed ごとに違う速さ・向きのリサージュで漂わせる = 掛かる位置が移り続ける
+  vec2 wander = uTwistWander * 0.45 * vec2(
+    sin(uTime * (0.20 + 0.35*rnd(vec2(seed, 9.1))) + seed),
+    cos(uTime * (0.17 + 0.35*rnd(vec2(seed, 2.4))) + seed*0.7));
+  p += wander;
   vec2 disp = vec2(0.0);
   int _twIt = int(min(5.0, 5.0 + uRes.x * 0.0));   // ループ展開抑止
   for(int i=0;i<_twIt;i++){
     float fi = float(i);
     float aAxis = rnd(vec2(seed + fi, 1.7)) * 6.2832;
     float aDir  = rnd(vec2(seed + fi, 3.3)) * 6.2832;
-    float freq  = 0.25 + rnd(vec2(seed + fi, 5.1)) * 0.75;
+    float freq  = 0.6 + rnd(vec2(seed + fi, 5.1)) * 1.6;
     float phase = rnd(vec2(seed + fi, 7.9)) * 6.2832;
-    float drift = uTime * (0.10 + fi*0.045);
+    // drone: 波ごとに進む速さと向きを seed から変える (同じ流れに固まらない)
+    float spd   = 1.0 + uTwistWander * (-0.5 + 3.0*rnd(vec2(seed + fi, 4.2))) * ((rnd(vec2(seed + fi, 6.6)) > 0.5) ? 1.0 : -1.0);
+    float drift = uTime * (0.25 + fi*0.10) * spd;
     vec2 axis = vec2(cos(aAxis), sin(aAxis));
     vec2 dir  = vec2(cos(aDir),  sin(aDir));
     disp += dir * sin(dot(p, axis) * freq * 6.2832 + phase + drift) / (1.0 + fi*0.6);
   }
   return disp;
 }
+// 渦: seed ごとに 2 つの中心の周りを、中心からの距離で減衰する角度で回す (回転は半径を保つので
+//   画面外へ飛ばない = ミラータイルにならない)。角度は時間で脈動し、drone では中心も漂う。
+vec2 twistSwirl(vec2 p, float seed, float amt, float asp){
+  for(int k=0;k<2;k++){
+    float fk = float(k) * 7.0;
+    vec2 c = vec2(0.15 + 0.7*rnd(vec2(seed + fk, 11.3)), 0.15 + 0.7*rnd(vec2(seed + fk, 13.7))) * vec2(asp, 1.0);
+    c += uTwistWander * 0.22 * vec2(
+      sin(uTime * (0.23 + 0.3*rnd(vec2(seed + fk, 15.1))) + seed*1.3),
+      cos(uTime * (0.19 + 0.3*rnd(vec2(seed + fk, 17.9))) + seed*0.9));
+    float rad  = 0.30 + 0.35*rnd(vec2(seed + fk, 19.3));   // 影響半径 (画面高基準)
+    float sgn  = (rnd(vec2(seed + fk, 21.1)) > 0.5) ? 1.0 : -1.0;
+    vec2 d = p - c;
+    float fall = exp(-dot(d, d) / (rad*rad));
+    float ang = amt * sgn * fall * (1.0 + 0.6*sin(uTime * (0.6 + 0.6*rnd(vec2(seed + fk, 23.3))) + seed));
+    float cs = cos(ang), sn = sin(ang);
+    p = c + vec2(cs*d.x - sn*d.y, sn*d.x + cs*d.y);
+  }
+  return p;
+}
 void main(){
   vec2 uv = vUv;
   if(uTwistAcc >= 0.001){
     float asp = uRes.x / uRes.y;
     vec2 p = uv * vec2(asp, 1.0);
-    vec2 disp = mix(twistField(p, uTwistSeed), twistField(p, uTwistSeed2), uTwistMix);
-    p += uTwistAcc * 0.5 * disp;
+    // 強度は頭打ちにして「引いてタイル化」させない。余った強度は渦の角度・うねりの深さに回す。
+    float swirlAmt = 3.2 * tanh(uTwistAcc / 2.6);          // 中心での回転角 (rad)。acc=2.6 で約 2.4 rad、スライダー上側で 3.2 へ緩やかに収束
+    vec2 pa = twistSwirl(p, uTwistSeed,  swirlAmt, asp);
+    vec2 pb = twistSwirl(p, uTwistSeed2, swirlAmt, asp);
+    p = mix(pa, pb, uTwistMix);
+    vec2 disp = mix(twistField(p, uTwistSeed), twistField(p, uTwistSeed2), uTwistMix) * (uTwistAcc * 0.5);
+    float L = length(disp);
+    const float capD = 0.30;                               // うねりの変位上限 (画面高の 3 割)
+    if(L > 1e-5) disp *= capD * tanh(L / capD) / L;
+    p += disp;
     uv = p / vec2(asp, 1.0);
   }
   frag = vec4(texture(uTex, mirUv(uv)).rgb, 1.0);
@@ -2081,15 +2075,15 @@ float blum(vec2 uv){
   for(int i=0;i<6;i++){
     float a=float(i)*1.0471976;
     vec2 d=vec2(cos(a),sin(a));
-    l+=lum(texture(uTex,uv+d*3.0*px).rgb)*0.08;
-    l+=lum(texture(uTex,uv+d*6.0*px).rgb)*0.06;
+    l+=lum(texture(uTex,uv+d*2.0*px).rgb)*0.08;
+    l+=lum(texture(uTex,uv+d*4.0*px).rgb)*0.06;
   }
   return l;
 }
 void main(){
   vec3 col=texture(uTex,vUv).rgb;
   if(uAmount<=0.001){ frag=vec4(col,1.0); return; }
-  vec2 e=2.5/uRes;
+  vec2 e=1.6/uRes;   // フチ幅を狭く (2.5→1.6px)
   float lx=blum(vUv+vec2(e.x,0.0))-blum(vUv-vec2(e.x,0.0));
   float ly=blum(vUv+vec2(0.0,e.y))-blum(vUv-vec2(0.0,e.y));
   // Relief と同じ方式: 弱い勾配(点)だけデッドゾーンで無視し、
@@ -3212,6 +3206,7 @@ void main(){
     return { kind:'shader',
              prog:null, src:'', errors:'', params:[], channels:[null,null,null,null],
              fbos:[this._mkFBO(2,2), this._mkFBO(2,2)], fbIdx:0, ready:false,
+             renderScale:1,
              uniforms:{}, customLocs:{},
              // ── ユーザ pan/zoom はスロット毎に保持 (シェーダ/動画ごと) ──
              userPan:{x:0, y:0}, userZoom:1.0,
@@ -3326,6 +3321,17 @@ void main(){
     o.w=w; o.h=h;
   },
 
+  // プリセット単位の内部描画倍率。最終合成は常に FIXED_W x FIXED_H なので画角・表示サイズは不変。
+  _resizeSlotBuffers(s,resizeSnapshot){
+    if(!s || !s.fbos) return;
+    const scale=Math.max(0.25,Math.min(1,Number(s.renderScale)||1));
+    const w=Math.max(2,Math.round(this.FIXED_W*scale));
+    const h=Math.max(2,Math.round(this.FIXED_H*scale));
+    this._resizeFBO(s.fbos[0],w,h);
+    this._resizeFBO(s.fbos[1],w,h);
+    if(resizeSnapshot!==false && s._snap && (s._snap.w!==w || s._snap.h!==h)) this._resizeFBO(s._snap,w,h);
+  },
+
   // 描画解像度の既定 (初回訪問時 = vj.res 未保存のときに使用。録画 / Projector 出力サイズの初期値)
   FIXED_W:960, FIXED_H:540,
   // ロストが続いた場合(シェーダ自体が重い等)は解像度を半分に落として負荷を1/4に
@@ -3342,9 +3348,7 @@ void main(){
     if(this.canvas.height !== h) this.canvas.height = h;
     for(const k of ['A','B']){
       const s = this.slots[k];
-      this._resizeFBO(s.fbos[0], w, h);
-      this._resizeFBO(s.fbos[1], w, h);
-      if(s._snap) this._resizeFBO(s._snap, w, h);
+      this._resizeSlotBuffers(s);
     }
     this._fitStage();
   },
@@ -3712,7 +3716,10 @@ void main(){
     // 拾う間は、そのスロットがアクティブなときだけ実マウスを反映(非アクティブ/OFFは最後の値で凍結)。
     if(App.mouseCapture && slotKey === App.activeSlot){ slot._mouse = { x: App.mouse.x, y: App.mouse.y, dx: App.mouse.dx, dy: App.mouse.dy }; }
     const m = slot._mouse || { x: 0, y: 0, dx: 0, dy: 0 };
-    if(u.iMouse) gl.uniform4f(u.iMouse, m.x, m.y, m.dx, m.dy);
+    if(u.iMouse){
+      const sx=target.w/Math.max(1,this.FIXED_W), sy=target.h/Math.max(1,this.FIXED_H);
+      gl.uniform4f(u.iMouse,m.x*sx,m.y*sy,m.dx*sx,m.dy*sy);
+    }
     if(u.iSampleRate) gl.uniform1f(u.iSampleRate, Audio.sampleRate || 44100);
     const d = new Date();
     if(u.iDate) gl.uniform4f(u.iDate, d.getFullYear(), d.getMonth(), d.getDate(),
@@ -3783,7 +3790,7 @@ void main(){
       else gl.uniform1f(loc, App.deadParam ? App.deadParam(p.value) : p.value);
     }
 
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.drawArrays(gl.TRIANGLES,0,3);
     gl.bindVertexArray(null);
     slot.fbIdx ^= 1;
   },
@@ -3867,6 +3874,7 @@ void main(){
     gl.uniform1f(U('uMix'),       App.crossfade);
     gl.uniform1f(U('uShowA'),     App.slotVisibleAmount ? App.slotVisibleAmount('A') : (App.slotVisible && App.slotVisible.A === false ? 0 : 1));
     gl.uniform1f(U('uShowB'),     App.slotVisibleAmount ? App.slotVisibleAmount('B') : (App.slotVisible && App.slotVisible.B === false ? 0 : 1));
+    { const bg = App.bgAColor(); gl.uniform3f(U('uBgColA'), bg[0], bg[1], bg[2]); }   // Slot A の背景色 (本命/フォールバック共通)
     // mode エンジン(FBO 独立描画)には user zoom/pan を合成段でテクスチャ適用 (shader は iZoom 済のため 1.0)
     { const modeSet = GL._modeZoomSet || (GL._modeZoomSet = new Set(App.modeStateKinds || []));
       const zp = (key)=>{
@@ -4939,6 +4947,7 @@ void main(){
       gl.uniform1f(gl.getUniformLocation(P, 'uTwistSeed'), this._twistSeed || 0);
       gl.uniform1f(gl.getUniformLocation(P, 'uTwistSeed2'), this._twistSeed2 != null ? this._twistSeed2 : (this._twistSeed || 0));
       gl.uniform1f(gl.getUniformLocation(P, 'uTwistMix'),  this._twistMix || 0);
+      gl.uniform1f(gl.getUniformLocation(P, 'uTwistWander'), App.beatMode === 'beat' ? 0 : 1);   // drone だけ位置・動きがさまよう
     });
   },
 
@@ -5976,7 +5985,15 @@ void main(){
       p.img.data.set(buf);
       // 透明部分には市松模様を敷く。putImageData は alpha ごと上書きしてしまうので、
       // 一度オフスクリーンに置いてから drawImage で市松の上へ alpha 合成する。
-      this._fillChecker(p.ctx, p.w, p.h);
+      // Slot A だけは出力と同じく「A の背景色」で埋める (下地が何色になるか見えるように)。
+      if(key === 'A'){
+        const bg = App.bgAColor();
+        p.ctx.setTransform(1, 0, 0, 1, 0, 0);
+        p.ctx.fillStyle = 'rgb(' + Math.round(bg[0]*255) + ',' + Math.round(bg[1]*255) + ',' + Math.round(bg[2]*255) + ')';
+        p.ctx.fillRect(0, 0, p.w, p.h);
+      } else {
+        this._fillChecker(p.ctx, p.w, p.h);
+      }
       if(kind !== 'none'){
         if(!p._tmp){
           p._tmp = document.createElement('canvas');
@@ -6291,16 +6308,19 @@ void main(){
         //   張り付いたまま掛かり続ける。リセット/巻き戻しをしないので途切れない
         //   (力場の位相はシェーダ側でゆっくり時間ドリフトするので画は動き続ける)。
         if(!(this._twistAcc > 0)){ this._twistSeed = Math.random() * 100.0; this._twistSeed2 = Math.random() * 100.0; this._twistMix = 0; }
-        const cap = 2.6 * twEff;
+        // 上限 8: シェーダ側は acc≈8 で渦角・変位とも飽和するので、それ以上溜めても絵は変わらず 0 への戻りが延びるだけ
+        const cap = Math.min(8, 2.6 * twEff);
         const X = Math.max(0.0625, App._normalizeBeatScale ? App._normalizeBeatScale(App.beatScale) : (App.beatScale || 1));
         const dBeat = realDt * ((typeof BPM !== 'undefined' && BPM.bpm) ? BPM.bpm : 120) / 60 * X;   // beat モードと同じ進み
         this._twistAcc = Math.min(cap, (this._twistAcc || 0) + cap * dBeat);
         this._twistBeat = null;
-        // 力場のシードを 8 拍かけて次のシードへ渡り、着いたら新しい次シードを引く (振幅は落とさない)
-        this._twistMix = (this._twistMix || 0) + dBeat / 8.0;
+        // 力場のシードを 2 拍かけて次のシードへ渡り、着いたら新しい次シードを引く (振幅は落とさない)。
+        // 位置のさまよい・波ごとの進み (uTwistWander) と合わせて、掛かる場所と動きが変わり続ける
+        this._twistMix = (this._twistMix || 0) + dBeat / 2.0;
         if(this._twistMix >= 1){ this._twistSeed = this._twistSeed2; this._twistSeed2 = Math.random() * 100.0; this._twistMix = 0; }
       }else if(this._twistAcc > 0){
-        this._twistAcc = Math.max(0, this._twistAcc - twDt * 0.25);
+        // 0 に戻したときの巻き戻し: 蓄積量に比例して減衰 (1.0 から約 4 秒、上限 8 からでも約 5 秒で抜ける) + 下限 0.25/s で確実に 0 へ
+        this._twistAcc = Math.max(0, this._twistAcc - twDt * Math.max(0.25, this._twistAcc * 0.8));
       }
     }
     const bz = !!(Math.abs(post.boltz||0) > 0.001) && typeof Boltzmann !== 'undefined';
@@ -6474,7 +6494,8 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
       gl.viewport(0, 0, target.w, target.h);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
-      gl.clearColor(0, 0, 0, slotKey === 'A' ? 1 : 0);
+      const bgc = slotKey === 'A' ? App.bgAColor() : [0, 0, 0];   // A の「なし」= 背景色のベタ (既定 黒)
+      gl.clearColor(bgc[0], bgc[1], bgc[2], slotKey === 'A' ? 1 : 0);
       gl.clear(gl.COLOR_BUFFER_BIT);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       slot.fbIdx ^= 1;
@@ -6699,6 +6720,18 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
+    if(slot.kind === 'transflock'){
+      if(typeof TransFlock === 'undefined') return;
+      if(!TransFlock.initialized) TransFlock.init(this.gl);
+      TransFlock.update();
+      const target = slot.fbos[slot.fbIdx];
+      TransFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
     if(slot.kind === 'shelf'){
       if(typeof Shelf === 'undefined') return;
       if(!Shelf.initialized) Shelf.init(this.gl);
@@ -6875,6 +6908,77 @@ const Audio = {
 
   _starting:false,
 
+  // アプリ版のシステム音声: CoreAudio プロセスタップ (desktop/bin/gara-audio-tap) を
+  // /__sysaudio 経由で受け、AudioWorklet で MediaStream 化する。Discord 等の除外は
+  // ヘルパ側で行う (SCK loopback と違い特定アプリの音を録画から外せる)。
+  async _startTapCapture(){
+    const ac = new AbortController();
+    const resp = await fetch('/__sysaudio', { signal: ac.signal, cache: 'no-store' });
+    if(!resp.ok || !resp.body) throw new Error('sysaudio HTTP ' + resp.status);
+    const rate = parseInt(resp.headers.get('X-Audio-Rate') || '48000', 10);
+    const ch = Math.max(1, parseInt(resp.headers.get('X-Audio-Channels') || '2', 10));
+    const ctx = new AudioContext({ sampleRate: rate });
+    const workletSrc = `
+      registerProcessor('gara-tap-feed', class extends AudioWorkletProcessor {
+        constructor(opt){
+          super();
+          this.ch = (opt.processorOptions && opt.processorOptions.ch) || 2;
+          this.q = []; this.off = 0; this.buffered = 0; this.started = false;
+          this.port.onmessage = (e)=>{ this.q.push(e.data); this.buffered += e.data.length; };
+        }
+        process(inputs, outputs){
+          const out = outputs[0], n = out[0].length, ch = this.ch;
+          if(!this.started){ if(this.buffered < 2048 * ch) return true; this.started = true; }
+          let i = 0;
+          while(i < n && this.q.length){
+            const b = this.q[0];
+            const avail = ((b.length - this.off) / ch) | 0;
+            const take = Math.min(n - i, avail);
+            for(let f = 0; f < take; f++){
+              const s = this.off + f * ch;
+              out[0][i + f] = b[s];
+              if(out.length > 1) out[1][i + f] = ch > 1 ? b[s + 1] : b[s];
+            }
+            i += take; this.off += take * ch; this.buffered -= take * ch;
+            if((((b.length - this.off) / ch) | 0) === 0){ this.q.shift(); this.off = 0; }
+          }
+          if(i < n) this.started = false;   // アンダーラン → 再バッファ
+          const max = sampleRate * 0.25 * ch;   // 溜まりすぎ (>250ms) は捨てて追いつく
+          while(this.buffered > max && this.q.length > 1){ this.buffered -= (this.q[0].length - this.off); this.q.shift(); this.off = 0; }
+          return true;
+        }
+      });`;
+    await ctx.audioWorklet.addModule(URL.createObjectURL(new Blob([workletSrc], { type: 'application/javascript' })));
+    const node = new AudioWorkletNode(ctx, 'gara-tap-feed', { numberOfInputs: 0, outputChannelCount: [2], processorOptions: { ch } });
+    const dest = ctx.createMediaStreamDestination();
+    node.connect(dest);
+    const stream = dest.stream;
+    const reader = resp.body.getReader();
+    let carry = new Uint8Array(0);
+    (async ()=>{
+      try{
+        for(;;){
+          const { done, value } = await reader.read();
+          if(done) break;
+          let buf = value;
+          if(carry.length){ const m = new Uint8Array(carry.length + value.length); m.set(carry); m.set(value, carry.length); buf = m; }
+          const usable = buf.length - (buf.length % (4 * ch));
+          carry = buf.subarray(usable);
+          if(usable){
+            const c = buf.buffer.slice(buf.byteOffset, buf.byteOffset + usable);   // 4byte アライン複製
+            node.port.postMessage(new Float32Array(c), [c]);
+          }
+        }
+      }catch(_){ /* 停止 or 切断 */ }
+      // ヘルパ側が終了した場合: このストリームが現役なら Audio を止めてボタン消灯
+      if(Audio._stream === stream){
+        Audio.stop().then(()=>{ if(typeof UI !== 'undefined' && UI.refreshAudioButtons) UI.refreshAudioButtons(); });
+      }
+    })();
+    stream._tapCleanup = ()=>{ try{ ac.abort(); }catch(_){} try{ ctx.close(); }catch(_){} };
+    return stream;
+  },
+
   async start(mode='mic'){
     if(this._starting){ toast('Audio: 起動中…'); return false; }
     this._starting = true;
@@ -6884,12 +6988,19 @@ const Audio = {
     try{
       ctx = new (window.AudioContext||window.webkitAudioContext)();
       if(mode==='display'){
+        const isApp = /Electron/i.test(navigator.userAgent || '');
+        if(isApp){
+          // アプリ版はまず CoreAudio プロセスタップ (Discord 除外) を試す。
+          // 失敗時 (旧 macOS / 権限なし / ヘルパなし) は従来の SCK loopback へフォールバック。
+          stream = await this._startTapCapture().catch(e => { console.warn('sysaudio tap failed, fallback to loopback:', e); return null; });
+          if(stream) toast('システム音声を取得します (Discord は除外)', 3000);
+        }
+        if(!stream){
         if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
           throw new Error('このブラウザは画面音声キャプチャに非対応');
         }
         // アプリ版 (Electron) はピッカーを出さず「画面全体 + システム音声」を自動取得する
         // (desktop/main.js の setDisplayMediaRequestHandler)。案内とエラー文言を分ける。
-        const isApp = /Electron/i.test(navigator.userAgent || '');
         if(isApp){
           toast('画面全体のシステム音声を取得します', 3000);
         } else {
@@ -6931,6 +7042,7 @@ const Audio = {
         // アプリ版のシステム音声 (SCK loopback) は映像トラックを止めるとキャプチャ
         // セッションごと終了して音声トラックも即 ended になる → 1fps ダミーのまま保持する
         if(!isApp) stream.getVideoTracks().forEach(t=>t.stop());
+        }
       } else {
         try{
           stream = await navigator.mediaDevices.getUserMedia({audio:true});
@@ -6991,6 +7103,7 @@ const Audio = {
     try{ if(this.src) this.src.disconnect(); }catch(e){}
     this.src = null;
     if(this._stream){
+      if(this._stream._tapCleanup){ try{ this._stream._tapCleanup(); }catch(e){} }
       try{ this._stream.getTracks().forEach(t=>t.stop()); }catch(e){}
       this._stream = null;
     }
@@ -8337,11 +8450,6 @@ const MIDI = {
           // プリセットを工場出荷状態に戻してから読込 (毎押下でリフレッシュ)
           if(Overlay.resetBrushParams) Overlay.resetBrushParams(name);
           if(Overlay.applyBrushDefaults) Overlay.applyBrushDefaults(name);
-          // 同じボタンで呼び出すたびに TRIGGER / BRUSH SHAPE をランダム化
-          //   (1 回目 = デフォルト値のまま / 2 回目以降 = 押すたびに引き直し)
-          this._brushCall = this._brushCall || {};
-          const nth = (this._brushCall[name] = (this._brushCall[name] || 0) + 1);
-          if(nth > 1 && Overlay.randomizeBrushTriggerShape) Overlay.randomizeBrushTriggerShape();
           Overlay.P.enabled = true;
         }
         if(UI.refreshOverlay) UI.refreshOverlay();
@@ -8880,6 +8988,7 @@ precision highp float;
 in vec2 vUv; out vec4 frag;
 uniform sampler2D uA, uB;
 uniform float uMix, uShowA, uShowB;
+uniform vec3  uBgColA;
 uniform float uZoomA, uZoomB;
 uniform vec2  uPanA, uPanB;
 uniform int   uBlendMode;
@@ -8888,6 +8997,7 @@ void main(){
   float za = (uZoomA==0.0)?1.0:uZoomA, zb = (uZoomB==0.0)?1.0:uZoomB;
   vec4 ca = texture(uA, _mir((vUv-0.5)/za + 0.5 - uPanA));
   vec4 cb = texture(uB, _mir((vUv-0.5)/zb + 0.5 - uPanB));
+  ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);   // Slot A の背景色 (本命 composite と同じ)
   float a = clamp(uShowA, 0.0, 1.0), b = clamp(uShowB, 0.0, 1.0);
   vec4 both;
   if(cb.a < 0.999){
@@ -9312,6 +9422,10 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.srcFBO.fbo);
     gl.viewport(0, 0, this.W, this.H);
     gl.disable(gl.BLEND);
+    // 下地をプリセットの Slot A 背景色でクリア。透過シェーダのとき、
+    // クリアしないと前回プレビューした別シェーダの残像が透けてしまう。
+    { const bg = App.parseHexRgb(state.slotABg || '#000000');
+      gl.clearColor(bg[0], bg[1], bg[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
     let drewB = false;
     if(isShader(B)){ const eB = this._compile(B.src); if(eB && !eB.err && !eB.pending){ this._drawShader(eB, B.params); drewB = true; } }
     if(isShader(A)){
@@ -9570,9 +9684,29 @@ const App = {
   crossfade:1,
   slotVisible:{A:true, B:true}, // 一時表示トグル。保存状態には含めない
   slotBOffsetBeats:0,   // B Offset: Slot B のシェーダ位相ずらし (拍)。同一シェーダの重ね掛け用
+  // Slot A の背景色 = 出力の下地。Slot A が透過している所 (「なし」/ 透過シェーダ / Image の余白など) を
+  // この色で埋める。既定 #000000 = 従来どおりの黒。合成の 1 箇所 (sampleAB) で効かせるので、
+  // どの kind でも・Post FX より前に乗る。
+  slotABg:'#000000',
+  _bgA:null,
+  parseHexRgb(hex){   // '#rrggbb' → [r,g,b] 0..1 (不正値は黒)
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    const n = m ? parseInt(m[1], 16) : 0;
+    return [((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255];
+  },
+  bgAColor(){   // 現在の Slot A 背景色 (パース結果はキャッシュ)
+    const hex = this.slotABg || '#000000';
+    if(!this._bgA || this._bgA.hex !== hex) this._bgA = { hex, rgb:this.parseHexRgb(hex) };
+    return this._bgA.rgb;
+  },
+  setSlotABg(hex){
+    const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
+    this.slotABg = m ? ('#' + m[1].toLowerCase()) : '#000000';
+    if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
+  },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -9651,7 +9785,16 @@ const App = {
   },
   _assetCacheName(){ return 'vj-assets-' + this._assetVersion(); },
   _canUseAssetCache(){
-    try{ return !!window.caches && location.protocol !== 'file:'; }catch(e){ return false; }
+    // ローカル配信 (デスクトップアプリ / local.sh) は内蔵サーバー = ディスク直読みなので
+    // Cache Storage を使わない。使うと ?v がビルド時のまま固定のため、素材フォルダに
+    // シェーダを足してもキャッシュが返り続けて「リロードしても反映されない」事故になる。
+    try{
+      if(/^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname)) return false;
+      return !!window.caches && location.protocol !== 'file:';
+    }catch(e){ return false; }
+  },
+  _isLocalOrigin(){
+    try{ return /^(127\.0\.0\.1|localhost|\[::1\])$/.test(location.hostname); }catch(e){ return false; }
   },
   _versionedAssetUrl(url){
     try{
@@ -9666,7 +9809,9 @@ const App = {
   async cacheAsset(url){
     const reqUrl = this._versionedAssetUrl(url);
     if(!this._canUseAssetCache()){
-      return fetch(reqUrl, {cache:'force-cache'});
+      // ローカル配信は HTTP ディスクキャッシュも避けて常に実ファイルを読む
+      // (force-cache だと鮮度を無視して古い応答を再利用し、素材フォルダの変更が映らない)
+      return fetch(reqUrl, this._isLocalOrigin() ? {cache:'no-store'} : {cache:'force-cache'});
     }
     let cache = null;
     try{
@@ -10618,6 +10763,7 @@ const App = {
     }
     Preview.init();
     // Built-in な特殊プリセットを先頭に追加
+    PRESETS.unshift({ name:'★ TRANSMUTE FLOCK (錬成痕)', kind:'transflock', ch:[], src:'' });
     PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
     PRESETS.unshift({ name:'★ VIDEO (Loop Player)', kind:'video', ch:[], src:'' });
     PRESETS.unshift({ name:'(なし / 透明)', kind:'none', ch:[], src:'' });   // 一番左上: 無選択=透過
@@ -10809,6 +10955,18 @@ const App = {
     // 内部で getBeat() を使っているシェーダは自前で beat 対応済みとみなしラップしない。
     // それ以外は beat モード時、拍ごとに time をランダムオフセット = フレームが「飛ぶ」。
     const usesBeat = /\bgetBeat\s*\(/.test(bgText);
+    // 透過対応シェーダ (bgAlpha を書くもの) だけ背景色 uBgColor を持たせる。
+    // 背景 (bgAlpha<1) に uBgColor を加算 → 既定 #000000 では従来と完全に同じ絵。
+    const usesAlpha = /\bbgAlpha\s*=/.test(bgText);
+    const bgColorDecl = usesAlpha ? `
+// @param uBgColor color = #000000
+uniform vec3 uBgColor;    // 背景色 (bgAlpha<1 の領域に加算。既定=黒)
+` : '';
+    const outBlock = usesAlpha
+      ? `  float _bgA = clamp(bgAlpha, 0.0, 1.0);
+  col += uBgColor * (1.0 - _bgA);                    // 背景を uBgColor で塗る
+  fragColor = vec4(col, (uSlotIsA > 0.5) ? 1.0 : _bgA);   // Slot A は不透明 / それ以外は透過`
+      : `  fragColor = vec4(col, bgAlpha);`;
     // bg 関数内の time 参照を _bgTime に置換し、外側で _bgTime を beat ジャンプ込みで設定。
     const patchedBgText = usesBeat ? bgText : bgText.replace(/\btime\b/g, '_bgTime');
     const beatTimeBlock = usesBeat ? '' : `
@@ -10847,6 +11005,7 @@ uniform float uBPM;
 uniform float uBgZoom;
 uniform float uCosGrad;   // Post FX の Cos Grad 強度を bg 側に供給 (各シェーダ固有の彩色を ON)
 uniform float uSlotIsA;   // 1=このシェーダは Slot A (ベース) / 0=Slot B 等。透過対応シェーダが背景色判定に使用
+${bgColorDecl}
 uniform float iAudio;     // 音域(Band)+アタック(Attack)で整形した音声リアクト値 0..1 (vj が供給)
 uniform float iAudioSeed; // アタックを拾うたびに変わる乱数 0..1 (vj が供給。棘ごとの係数変化用)
 
@@ -10887,7 +11046,7 @@ ${patchedBgText}
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
   ${callSetBgTime}
   vec3 col = ${bg.func}(fragCoord);
-  fragColor = vec4(col, bgAlpha);
+${outBlock}
 }
 `;
   },
@@ -11459,6 +11618,11 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(typeof GL !== 'undefined' && GL.forceRenderOnce) GL.forceRenderOnce();
     this._undoSchedule();   // プリセット変更を Undo 履歴に積む(デバウンス後にスナップショット)
     const s = GL.slots[slotKey];
+    const nextRenderScale=Math.max(0.25,Math.min(1,Number(p.renderScale)||1));
+    if(s.renderScale!==nextRenderScale){
+      s.renderScale=nextRenderScale;
+      if(GL._resizeSlotBuffers) GL._resizeSlotBuffers(s,false);
+    }
     s.bKey = false; s.bKeyWhite = false;   // キー透過フラグを一旦リセット(@bkey シェーダ / ribbon で再設定)
     // 溶解FX(Boltzmann)中の切替: スイッチは維持し、新シェーダを数フレーム描画してから再捕獲して溶かし直す
     if(Math.abs(this.deadParam ? this.deadParam(this.post.boltz||0) : (this.post.boltz||0)) > 0.001){ GL._bzCaptureWait = 5; }
@@ -11692,6 +11856,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'transflock'){
+      s.kind = 'transflock';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'transflock';
+      if(typeof TransFlock !== 'undefined' && !TransFlock.initialized) TransFlock.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('transflock');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'ribbon'){
       s.kind = 'ribbon';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'ribbon';
@@ -11764,6 +11938,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       case 'ribbon':  return (typeof Ribbon   !== 'undefined' && Ribbon.P) ? Ribbon.P : null;
       case 'photoplane': return (typeof PhotoPlane !== 'undefined' && PhotoPlane.P) ? PhotoPlane.P : null;
       case 'shredder': return (typeof Shredder !== 'undefined' && Shredder.P) ? Shredder.P : null;
+      case 'transflock': return (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null;
       case 'textdeform': return (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null;
       case 'ugomeki': return (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null;
       case 'spacetype': return (typeof SpaceType !== 'undefined' && SpaceType.P) ? SpaceType.P : null;
@@ -11779,6 +11954,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       mix: {
         crossfade: this.crossfade,
         blendMode: this.blendMode,
+        slotABg: this.slotABg,
         mixControls: clone(this._captureMixControls())
       },
       transition: {
@@ -11793,6 +11969,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       beatScale: 1.0,
       crossfade: 1.0,
       blendMode: 'mix',
+      slotABg: '#000000',
       gamma: 1.0,
       slotBOffsetBeats: 0,
       post: clone(this.post),
@@ -11958,7 +12135,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   },
   // ─── Mix パネル(crossfade/blend/transition)のデフォルト値保存 ───────
   saveMixDefault(){
-    const d = { crossfade:this.crossfade, blendMode:this.blendMode, mixControls:this._captureMixControls() };
+    const d = { crossfade:this.crossfade, blendMode:this.blendMode, slotABg:this.slotABg, mixControls:this._captureMixControls() };
     try{ localStorage.setItem('vj.def.mix', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: mix'); }
     catch(e){ toast('保存失敗'); }
   },
@@ -12009,6 +12186,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(F && F.mix){
       this.crossfade = F.mix.crossfade;
       this.blendMode = F.mix.blendMode;
+      this.setSlotABg(F.mix.slotABg);
       this._applyMixControls(F.mix.mixControls);
       this.applyMixDefault();
     }
@@ -12069,6 +12247,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(!d) return;
     this.crossfade = d.crossfade;
     this.blendMode = d.blendMode;
+    this.setSlotABg(d.slotABg);
     this._applyMixControls(d.mixControls);
     this.applyMixDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix();
@@ -12080,6 +12259,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(!d || typeof d !== 'object') return;
     if(typeof d.crossfade === 'number')  this.crossfade  = d.crossfade;
     if(typeof d.blendMode === 'string')  this.blendMode  = d.blendMode;
+    if(typeof d.slotABg === 'string')    this.setSlotABg(d.slotABg);
     if(d.mixControls) this._applyMixControls(d.mixControls);
     else if(d.mode === 'switch' || d.mode === 'crossfade' || typeof d.auto === 'boolean' || typeof d.beats === 'number') this._applyMixControls(d);
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix();
@@ -12234,12 +12414,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     });
     return {
       slots:{
-        A:{src:GL.slots.A.src, kind:GL.slots.A.kind, channels:chOf('A'), params:GL.slots.A.params, presetName: pn('A'), video: vidOf('A'), mouse: mouseOf('A')},
-        B:{src:GL.slots.B.src, kind:GL.slots.B.kind, channels:chOf('B'), params:GL.slots.B.params, presetName: pn('B'), video: vidOf('B'), mouse: mouseOf('B')}
+        A:{src:GL.slots.A.src, kind:GL.slots.A.kind, channels:chOf('A'), params:GL.slots.A.params, presetName: pn('A'), video: vidOf('A'), mouse: mouseOf('A'), renderScale:GL.slots.A.renderScale},
+        B:{src:GL.slots.B.src, kind:GL.slots.B.kind, channels:chOf('B'), params:GL.slots.B.params, presetName: pn('B'), video: vidOf('B'), mouse: mouseOf('B'), renderScale:GL.slots.B.renderScale}
       },
       beatMode: this.beatMode,
       audioTime: Object.assign({}, this.audioTime),
       bpm: BPM.bpm, crossfade: this.crossfade, blendMode: this.blendMode, gamma: this.gamma,
+      slotABg: this.slotABg,
       slotBOffsetBeats: this.slotBOffsetBeats || 0,
       transBeats: this.transBeats,
       transStyle: this.transStyle,
@@ -12262,6 +12443,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 	      ribbon: (typeof Ribbon !== 'undefined' && Ribbon.P) ? Ribbon.P : null,
 	      photoplane: (typeof PhotoPlane !== 'undefined' && PhotoPlane.P) ? PhotoPlane.P : null,
 	      shredder: (typeof Shredder !== 'undefined' && Shredder.P) ? Shredder.P : null,
+	      transflock: (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null,
 	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null,
 	      ugomeki: (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null,
 	      spacetype: (typeof SpaceType !== 'undefined' && SpaceType.P) ? SpaceType.P : null,
@@ -12939,7 +13121,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -13155,6 +13337,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     if(typeof d.speed === 'number') this.speed = clamp(d.speed, 0, 4);
     if(typeof d.crossfade === 'number') this.crossfade = clamp(d.crossfade, 0, 1);
     if(d.blendMode) this.blendMode = d.blendMode;
+    if(typeof d.slotABg === 'string') this.setSlotABg(d.slotABg);
     if(typeof d.bpm === 'number') BPM.setBpm(d.bpm);
     if(d.post && typeof d.post === 'object') Object.assign(this.post, this.sanitizePost(this.migrateFeedbackPost(Object.assign({},d.post))));
     if(d.manga && typeof Manga !== 'undefined') Object.assign(Manga.P, d.manga);
@@ -13219,6 +13402,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         if(!('beatMode' in s) && opts.restoreBeatMode !== false) this.beatMode = presetDefaults.beatMode;
         if(!('crossfade' in s)) this.crossfade = presetDefaults.crossfade;
         if(!('blendMode' in s)) this.blendMode = presetDefaults.blendMode;
+        if(!('slotABg' in s)) this.setSlotABg(presetDefaults.slotABg);
         if(!('gamma' in s)) this.gamma = presetDefaults.gamma;
         if(!('slotBOffsetBeats' in s)) this.slotBOffsetBeats = presetDefaults.slotBOffsetBeats;
         if(opts.restoreBeatScale && typeof s.beatScale !== 'number' && this.setBeatScale){
@@ -13234,6 +13418,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
       if(typeof s.crossfade==='number') this.crossfade = s.crossfade;
       if(typeof s.slotBOffsetBeats==='number'){ this.slotBOffsetBeats = s.slotBOffsetBeats; const bo=$('#mixBOffset'); if(bo){ bo.value = s.slotBOffsetBeats; const bv=$('#mixBOffsetVal'); if(bv) bv.textContent = s.slotBOffsetBeats.toFixed(2); } }
       if(s.blendMode){ this.blendMode = s.blendMode; const cb=document.querySelector('#cfBlend'); if(cb) cb.value = s.blendMode; }
+      if(typeof s.slotABg === 'string') this.setSlotABg(s.slotABg);
       if(opts.restoreMixControls){
         if(s.mixControls) this._applyMixControls(s.mixControls);
         else if(presetDefaults && presetDefaults.mixControls) this._applyMixControls(presetDefaults.mixControls);
@@ -13316,7 +13501,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -13375,6 +13560,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         if(sk && sk.src){
           // エンジン → シェーダ切替時に kind を 'shader' へ戻す(残っていると描画系がエンジンを描き続ける)
           GL.slots[k].kind = sk.kind || 'shader';
+          // 旧保存データには renderScale が無いため、プリセット名から現在の推奨値を補完する。
+          const renderPreset = sk.presetName ? PRESETS.find(p => p && p.name === sk.presetName) : null;
+          const restoredScale = sk.renderScale != null ? Number(sk.renderScale)
+            : Number(renderPreset && renderPreset.renderScale);
+          GL.slots[k].renderScale = Math.max(0.25,Math.min(1,restoredScale||1));
+          if(GL._resizeSlotBuffers) GL._resizeSlotBuffers(GL.slots[k],false);
           GL.compileSlot(k, sk.src);
           GL.slots[k].channels = (sk.channels || [null,null,null,null]).slice();
           // パス保存された画像チャンネルを再束縛 (Inputs の ID はセッション限りのため)
@@ -13610,6 +13801,13 @@ void mainImage(out vec4 o, in vec2 f){
     if(cb){
       cb.value = App.blendMode;
       cb.addEventListener('change', ()=>{ App.setBlendMode(cb.value); });
+    }
+    // Slot A の背景色 (出力の下地)
+    const bgA = $('#slotABg');
+    if(bgA){
+      bgA.addEventListener('input', ()=>{ App.setSlotABg(bgA.value); App._undoSchedule(); });
+      const bgR = $('#slotABgReset');
+      if(bgR) bgR.addEventListener('click', ()=>{ App.setSlotABg('#000000'); App._undoSchedule(); });
     }
     const tdSel = $('#tdMdSelect');
     if(tdSel){
@@ -15732,7 +15930,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -15809,6 +16007,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'shelf') ? 'SHELF\nTOWER'
                      : (p.kind === 'photoplane') ? 'PHOTO\nPLANE'
                      : (p.kind === 'shredder') ? 'POLYGON\nSHREDDER'
+                     : (p.kind === 'transflock') ? 'TRANSMUTE\nFLOCK'
                      : (p.kind === 'spacetype') ? 'SPACE\nTYPE'
                      : (p.kind === 'ribbon') ? 'RIBBON\nLINES'
                      : '…';
@@ -16162,7 +16361,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -16177,6 +16376,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isShred = slot.kind === 'shredder';
     $$('.shredder-mode').forEach(el => el.style.display = isShred ? '' : 'none');
     if(isShred && this.refreshShredderParams) this.refreshShredderParams();
+    const isTF = slot.kind === 'transflock';
+    $$('.transflock-mode').forEach(el => el.style.display = isTF ? '' : 'none');
+    if(isTF && this.refreshTransflockParams) this.refreshTransflockParams();
     if(isPhoto && this.refreshPhotoParams) this.refreshPhotoParams();
     const isPen = slot.kind === 'pen';
     $$('.pen-mode').forEach(el => el.style.display = isPen ? '' : 'none');
@@ -16260,20 +16462,16 @@ void mainImage(out vec4 o, in vec2 f){
     // ローカル起動なら images/drop/ ・ movies/ へ実ファイルとして取り込む (MediaImport)。
     MediaImport.bindDropZone(document.querySelector('.pane[data-pane="shader"]'));
     MediaImport.bindDropZone($('#imageFolderGrid'));
-    const mBtn = $('#btnMediaImport'), mFile = $('#fileMedia'), mClr = $('#btnMediaClear');
+    const mBtn = $('#btnMediaImport'), mFile = $('#fileMedia');
     if(mBtn && mFile){
       mBtn.addEventListener('click', ()=> mFile.click());
       mFile.addEventListener('change', async ()=>{ await MediaImport.accept(mFile.files); mFile.value = ''; });
       MediaImport.local().then(ok=>{
         mBtn.title = ok ? '画像 / 動画を images/drop/ ・ movies/ へ取り込む (次回起動でも残る)'
-                        : '画像 / 動画を読み込む (ブラウザに保存され、次回起動でも残ります)';
-        if(mClr) mClr.style.display = ok ? 'none' : '';   // 実ファイル取り込み環境では Finder で消せるので不要
+                        : '画像 / 動画を読み込む (このセッション限り。リロードで消えます)';
       });
     }
-    if(mClr) mClr.addEventListener('click', ()=>{
-      if(confirm('ブラウザに保存した取り込み画像 / 動画をすべて削除しますか?')) MediaImport.clearStored();
-    });
-    MediaImport.restore();   // 書き込み不可配信: IndexedDB に保存した素材を復元
+    try{ indexedDB.deleteDatabase('gara.media'); }catch(e){}   // 旧・次回復元用 IndexedDB の保存データを掃除
   },
 
   _imageDefKey: 'vj.def.image',
@@ -16618,6 +16816,72 @@ void mainImage(out vec4 o, in vec2 f){
         if(rebuild && Shredder.rebuild) Shredder.rebuild(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+  },
+  refreshTransflockParams(){
+    const root = document.getElementById('transflockParams'); if(!root) return;
+    if(typeof TransFlock === 'undefined' || !TransFlock.initialized){
+      root.innerHTML = '<div class="help">TRANSMUTE FLOCK preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = TransFlock.P;
+    const f2 = v=>v.toFixed(2);
+    const specs = [
+      ['Birds',      'birds',     1,    12,  1,     v=>String(Math.round(v))],
+      ['Speed',      'speed',     0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Wheel',      'wheel',     0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Trail',      'trail',     1,    24,  0.5,   v=>v.toFixed(1)],
+      ['Step',       'step',      0.03, 0.3, 0.005, v=>v.toFixed(3)],
+      ['Gap',        'gap',       0,    3,   0.02,  f2],
+      ['Spread',     'spread',    0,    2,   0.02,  f2],
+      ['Brush',      'brush',     0.3,  3,   0.02,  f2],
+      ['Pressure',   'pressure',  0,    1,   0.02,  f2],
+      ['Jitter',     'jitter',    0,    1,   0.02,  f2],
+      ['Cluster',    'cluster',   0,    1,   0.02,  f2],
+      ['Grain',      'grain',     0.05, 0.6, 0.01,  f2],
+      ['Stray',      'stray',     0,    1,   0.02,  f2],
+      ['Islands',    'islands',   0,    1,   0.02,  f2],
+      ['Island Len', 'islandLen', 0.3,  4,   0.05,  f2],
+      ['Fill',       'fill',      0,    1,   0.02,  f2],
+      ['Line',       'line',      0.1,  3,   0.02,  f2],
+      ['Detail',     'detail',    0,    1,   0.02,  f2],
+      ['Persp',      'persp',     0.3,  2,   0.02,  f2],
+      ['Depth',      'depth',     0,    1,   0.02,  f2],
+      ['Warp',       'warp',      0,    1,   0.02,  f2],
+      ['Audio',      'audio',     0,    2,   0.02,  f2],
+    ];
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    for(const [label,key,mi,ma,step,fmt] of specs){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const val=document.createElement('div'); val.className='val'; val.textContent=disp(P[key], fmt);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=disp(P[key], fmt); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    }
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    for(const [label,key] of [['Ink','ink'],['Paper','paper']]){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const val=document.createElement('div'); val.className='val'; val.textContent='';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    }
+    // Random 🎲 (数値パラメータのみ。色と Audio は変えない。保存は右上の Save)
+    { const row = mkRow();
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      b.title='群れ・筆・破片のパラメータをランダム生成 (色は変えない。保存は右上の Save)';
+      b.addEventListener('click', ()=>{
+        for(const [label,key,mi,ma,step] of specs){
+          if(key === 'audio') continue;
+          const v = mi + Math.random()*(ma - mi);
+          P[key] = +(Math.round(v/step)*step).toFixed(4);
+        }
+        App._undoSchedule && App._undoSchedule();
+        this.refreshTransflockParams();
+      });
+      row.appendChild(b); }
   },
   // ─── Ugomeki (文字アニメーション) ───────────────────────────────
   bindUgomeki(){
@@ -17793,10 +18057,15 @@ void mainImage(out vec4 o, in vec2 f){
     if(p._uiBox) p._uiBox.checked = p.value>0.5;
   },
 
+  refreshSlotABg(){
+    const el = $('#slotABg'); if(el && el.value !== App.slotABg) el.value = App.slotABg;
+    const v  = $('#slotABgVal'); if(v) v.textContent = App.slotABg;
+  },
   refreshMix(updateSlider=true){
     if(updateSlider) $('#cf').value = App.crossfade;
     $('#cfVal').textContent = App.crossfade.toFixed(2);
     const cb = $('#cfBlend'); if(cb) cb.value = App.blendMode;
+    this.refreshSlotABg();
     const ca = $('#cfAuto'); if(ca) ca.checked = !!(App.autoCF && App.autoCF.on);
     const cab = $('#cfBeats'); if(cab) cab.value = String((App.autoCF && App.autoCF.beats) || 8);
     const cam = $('#cfAutoMode'); if(cam) cam.value = (App.autoCF && App.autoCF.mode) || 'crossfade';

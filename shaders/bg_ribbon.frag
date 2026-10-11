@@ -26,12 +26,12 @@ vec3 bg_ribbon(vec2 fc){
   }
   o = tanh(o*o/3e7);
 
-  // 彩度を下げ、寒色を足して銀調に → シルバーグレー背景で埋める
+  // 彩度を下げ、寒色を足して銀調に → 地は黒 (entrypoint が uBgColor で塗る)
   vec3 col = o.rgb;
   float lum = dot(col, vec3(0.3333));
   col = mix(vec3(lum), col, 0.35);                         // 彩度を落としてシルバー寄りに
   col *= vec3(0.98, 0.99, 1.03);                           // 銀のわずかな寒色
-  col = mix(vec3(0.52, 0.54, 0.58), col, smoothstep(0.0, 0.22, lum));  // 地を明るいシルバーグレーに
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : smoothstep(0.0, 0.22, lum);       // Slot B はシルバー地を透過(リボンのみ残す)
+  col *= smoothstep(0.0, 0.22, lum);        // 地を黒に落とす
+  bgAlpha = smoothstep(0.0, 0.22, lum);     // 地は透過(リボンのみ残す)
   return clamp(col, 0.0, 1.0);
 }

@@ -132,7 +132,7 @@ vec3 bg_romhack(vec2 fc){
     t += d;
     if(t > 12.0) break;
   }
-  if(!hit){ bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0; return vec3(0.0); }
+  if(!hit){ bgAlpha = 0.0; return vec3(0.0); }
 
   vec3 nor = rh_zigN(p);
   float r   = length(p.xy);

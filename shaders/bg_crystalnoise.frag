@@ -91,6 +91,6 @@ vec3 bg_crystalnoise(vec2 fc){
     col = mix(col, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
   // Slot B=透過(輝度をアルファに) / Slot A=不透明(黒背景)
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(lum * 3.0, 0.0, 1.0);
+  bgAlpha = clamp(lum * 3.0, 0.0, 1.0);
   return col;
 }

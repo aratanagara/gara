@@ -88,6 +88,6 @@ vec3 bg_nebula(vec2 fc){
     float lum = dot(color, vec3(0.299, 0.587, 0.114));
     color = mix(color, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(layers.a, 0.0, 1.0);  // Slot B はブロブ部分のみ
+  bgAlpha = clamp(layers.a, 0.0, 1.0);  // Slot B はブロブ部分のみ
   return color;
 }

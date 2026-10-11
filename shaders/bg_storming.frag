@@ -95,6 +95,6 @@ vec3 bg_storming(vec2 fc){
   o = mix(sky, o, pow(clamp(o.r, 0.0, 1.0), 0.3));
 
   o = st_cosgrad(o, gray);
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(pow(clamp(gray, 0.0, 1.0), 0.3), 0.0, 1.0);
+  bgAlpha = clamp(pow(clamp(gray, 0.0, 1.0), 0.3), 0.0, 1.0);
   return clamp(o, 0.0, 1.0);
 }

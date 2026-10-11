@@ -96,7 +96,7 @@ vec3 bg_flowingMetal(vec2 fc){
   vec3 wd = v2w * viewDir;
   float dist = fm_march(eye, wd, 0.0, FM_MAXD);
   if(dist > FM_MAXD - FM_EPS){
-    bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0;   // 背景(ミス)は Slot B で透過(黒キーではなく元から透明)
+    bgAlpha = 0.0;   // 背景(ミス)は Slot B で透過(黒キーではなく元から透明)
     return vec3(0.0);
   }
   vec3 p  = eye + dist*wd;

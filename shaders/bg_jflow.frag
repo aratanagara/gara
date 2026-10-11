@@ -114,6 +114,6 @@ vec3 bg_jflow(vec2 fc){
     col = mix(col, cosGradColor(lum) * (0.3 + 1.3*lum), abs(uCosGrad));
   }
 
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(cov, 0.0, 1.0); // Slot B は結晶のみ
+  bgAlpha = clamp(cov, 0.0, 1.0); // Slot B は結晶のみ
   return col;
 }

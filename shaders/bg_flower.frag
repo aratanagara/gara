@@ -92,7 +92,7 @@ vec3 bg_flower(vec2 fc){
   float B = 2.0*dot(lo.xy, ld.xy);
   float C = dot(lo.xy, lo.xy) - RAD*RAD;
   float disc = B*B - 4.0*A*C;
-  if(disc <= 0.0 || A < 1e-8){ bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0; return vec3(0.0); }
+  if(disc <= 0.0 || A < 1e-8){ bgAlpha = 0.0; return vec3(0.0); }
   float sq = sqrt(disc);
   float tcA = (-B - sq) / (2.0*A);
   float tcB = (-B + sq) / (2.0*A);
@@ -101,12 +101,12 @@ vec3 bg_flower(vec2 fc){
     float z0 = (-THICK - lo.z)/ld.z, z1 = (THICK - lo.z)/ld.z;
     tzA = min(z0, z1); tzB = max(z0, z1);
   } else {
-    if(abs(lo.z) > THICK){ bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0; return vec3(0.0); }
+    if(abs(lo.z) > THICK){ bgAlpha = 0.0; return vec3(0.0); }
     tzA = tcA; tzB = tcB;
   }
   float t0 = max(max(tcA, tzA), 0.0);
   float t1 = min(tcB, tzB);
-  if(t1 <= t0){ bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0; return vec3(0.0); }
+  if(t1 <= t0){ bgAlpha = 0.0; return vec3(0.0); }
 
   const int STEPS = 80;
   float dt = (t1 - t0) / float(STEPS);
@@ -119,7 +119,7 @@ vec3 bg_flower(vec2 fc){
     t += dt;
   }
 
-  if(hit < 0.5){ bgAlpha = (uSlotIsA > 0.5) ? 1.0 : 0.0; return vec3(0.0); }
+  if(hit < 0.5){ bgAlpha = 0.0; return vec3(0.0); }
 
   // 法線: F(p)=abs(p.z)-THICK*h(p.xy) の勾配(実ジオメトリ → ノイズなし)
   vec2 e = vec2(0.004, 0.0);

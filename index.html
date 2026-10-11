@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1786769841">
+<link rel="stylesheet" href="style.css?v=1791714868">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -243,7 +243,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <span class="grow"></span>
             <span id="fmtBadge" class="pill" title="アクティブスロットの形式" style="color:var(--dim)">—</span>
             <button id="btnMediaImport" style="font-size:10px;padding:2px 8px;margin-left:6px">＋ 画像/動画</button>
-            <button id="btnMediaClear" title="ブラウザに保存した取り込み画像/動画をすべて削除" style="font-size:10px;padding:2px 6px;display:none">✕</button>
             <input type="file" id="fileMedia" accept="image/*,video/*" multiple hidden>
           </h3>
           <div style="display:flex;gap:4px;align-items:center;flex-wrap:wrap">
@@ -356,6 +355,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <label>Opacity</label>
             <input type="range" id="cf" min="0" max="1" step="0.001" value="1">
             <div class="val" id="cfVal">1.00</div>
+          </div>
+          <div class="row">
+            <label>A BG</label>
+            <input type="color" id="slotABg" value="#000000" title="Slot A の背景色 = 出力の下地。Slot A が透過している所 (なし / 透過シェーダ / Image の余白) がこの色になる">
+            <div class="val" id="slotABgVal">#000000</div>
+            <button id="slotABgReset" style="flex:0 0 auto;font-size:10px;padding:2px 6px" title="黒 (既定) に戻す">⟲</button>
           </div>
           <div class="row">
             <label>B Offset</label>
@@ -749,6 +754,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <h3>Shredder <span class="pill section-tag">polygon flock</span> <span class="default-actions"><button class="resetDefBtn" data-kind="shredder" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="shredder" title="現在の値をデフォルトとして保存">Save</button></span></h3>
           <div class="help" style="font-size:10px;margin-top:4px">カール(渦)ノイズで流れる粒に、原点を貫いて互いに交差する三角形の刃を生やした群れ。表=ブルー / 裏=クローム。</div>
           <div id="shredParams" style="margin-top:6px"></div>
+        </div>
+
+        <div class="section transflock-mode" style="display:none">
+          <h3>Transmute Flock <span class="pill section-tag">錬成痕 / instanced</span> <span class="default-actions"><button class="resetDefBtn" data-kind="transflock" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="transflock" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">角張った矩形ブラシの「錬成痕」が群れで旋回する。板 1 枚ずつを 3D で描き、重なりは手前の板が奥を隠す。</div>
+          <div id="transflockParams" style="margin-top:6px"></div>
         </div>
 
         <div class="section pen-mode" style="display:none">
@@ -1339,35 +1350,36 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1786769841"></script>
-<script src="mode/layer.js?v=1786769841"></script>
-<script src="vendor/iro.min.js?v=1786769841"></script>
-<script src="vendor/mediabunny.min.js?v=1786769841"></script>
-<script src="mode/textdeform.js?v=1786769841"></script>
-<script src="mode/textdeform-comp.js?v=1786769841"></script>
-<script src="mode/ugomeki.js?v=1786769841"></script>
-<script src="mode/slicer.js?v=1786769841"></script>
-<script src="mode/video.js?v=1786769841"></script>
-<script src="mode/aratanagara.js?v=1786769841"></script>
-<script src="vendor/p5.min.js?v=1786769841"></script>
-<script src="mode/cyberui.js?v=1786769841"></script>
-<script src="mode/novel.js?v=1786769841"></script>
-<script src="shaders/inkelly.js?v=1786769841"></script>
-<script src="sketchfx.js?v=1786769841"></script>
-<script src="pixelsortfx.js?v=1786769841"></script>
-<script src="shaders/boltzmann.js?v=1786769841"></script>
-<script src="mode/pen.js?v=1786769841"></script>
-<script src="shaders/caverns.js?v=1786769841"></script>
-<script src="mode/shelf.js?v=1786769841"></script>
-<script src="shaders/ribbon.js?v=1786769841"></script>
-<script src="mode/photoplane.js?v=1786769841"></script>
-<script src="mode/shredder.js?v=1786769841"></script>
-<script src="mode/image.js?v=1786769841"></script>
-<script src="mode/spacetype.js?v=1786769841"></script>
-<script src="pollockfx.js?v=1786769841"></script>
-<script src="overlay.js?v=1786769841"></script>
-<script src="gif.js?v=1786769841"></script>
-<script src="app.js?v=1786769841"></script>
-<script src="camroll.js?v=1786769841" defer></script>
+<script src="presets.js?v=1791714868"></script>
+<script src="mode/layer.js?v=1791714868"></script>
+<script src="vendor/iro.min.js?v=1791714868"></script>
+<script src="vendor/mediabunny.min.js?v=1791714868"></script>
+<script src="mode/textdeform.js?v=1791714868"></script>
+<script src="mode/textdeform-comp.js?v=1791714868"></script>
+<script src="mode/ugomeki.js?v=1791714868"></script>
+<script src="mode/slicer.js?v=1791714868"></script>
+<script src="mode/video.js?v=1791714868"></script>
+<script src="mode/aratanagara.js?v=1791714868"></script>
+<script src="vendor/p5.min.js?v=1791714868"></script>
+<script src="mode/cyberui.js?v=1791714868"></script>
+<script src="mode/novel.js?v=1791714868"></script>
+<script src="shaders/inkelly.js?v=1791714868"></script>
+<script src="sketchfx.js?v=1791714868"></script>
+<script src="pixelsortfx.js?v=1791714868"></script>
+<script src="shaders/boltzmann.js?v=1791714868"></script>
+<script src="mode/pen.js?v=1791714868"></script>
+<script src="shaders/caverns.js?v=1791714868"></script>
+<script src="mode/shelf.js?v=1791714868"></script>
+<script src="shaders/ribbon.js?v=1791714868"></script>
+<script src="mode/photoplane.js?v=1791714868"></script>
+<script src="mode/shredder.js?v=1791714868"></script>
+<script src="mode/transflock.js?v=1791714868"></script>
+<script src="mode/image.js?v=1791714868"></script>
+<script src="mode/spacetype.js?v=1791714868"></script>
+<script src="pollockfx.js?v=1791714868"></script>
+<script src="overlay.js?v=1791714868"></script>
+<script src="gif.js?v=1791714868"></script>
+<script src="app.js?v=1791714868"></script>
+<script src="camroll.js?v=1791714868" defer></script>
 </body>
 </html>

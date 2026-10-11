@@ -90,6 +90,6 @@ vec3 bg_juice(vec2 fc){
   if(abs(uCosGrad) > 0.0001){
     col = mix(col, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
-  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : clamp(lum*2.5, 0.0, 1.0);   // Slot B は暗部透過
+  bgAlpha = clamp(lum*2.5, 0.0, 1.0);   // Slot B は暗部透過
   return col;
 }
