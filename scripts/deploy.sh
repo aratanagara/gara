@@ -138,6 +138,7 @@ mirror -R --delete --verbose=1 \
   --exclude-glob .firecrawl/ \
   --exclude-glob .DS_Store \
   --exclude-glob '*.zip' \
+  --exclude-glob 'archive/' \
   --exclude-glob .ftpconfig \
   --exclude-glob CLAUDE.md \
   --exclude-glob scripts/ \
