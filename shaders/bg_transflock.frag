@@ -16,8 +16,9 @@
 //        面の向き(タンブル)と中心をゆっくり動かす = 群れ全体が旋回する。
 //   粗(大きい破片) + 細(小さい破片) の 2 レイヤを同じ軌道に重ねてサイズの散らばりを作る。
 //
-//   背景は透過 (bgAlpha = 線の被覆)。下地の色は Mix パネルの「A BG」で決める
-//   → 白にすれば「紙の上の錬成痕」、既定の黒なら暗闇に発光する破片群になる。
+//   Slot A では uPaper を下地に敷いた不透明出力、Slot B では線の被覆を alpha にした透過出力
+//   (この装置の透過シェーダ共通の作法)。uPaper を白にすれば「紙の上の錬成痕」、
+//   既定の黒なら暗闇に発光する破片群になる。
 // =====================================================
 
 // @param uOrbits  1..5   = 4
@@ -37,6 +38,7 @@
 // @param uDetail  bool   = true
 // @param uAudio   0..2   = 1.0
 // @param uInk     color  = #e9eef2
+// @param uPaper   color  = #000000
 uniform float uOrbits;    // 軌道(群れ)の本数。減らすと軽い
 uniform float uFlow;      // 破片が軌道上を流れる速さ (%)
 uniform float uSwirl;     // 群れ全体が旋回/タンブルする速さ (%)
@@ -54,6 +56,7 @@ uniform float uDepth;     // 奥行きによる減衰 (遠い破片を薄く)
 uniform float uDetail;    // 細かい破片レイヤ (bool)
 uniform float uAudio;     // 音の効き (破片が増えて膨らむ)
 uniform vec3  uInk;       // 線の色 (Cos Grad を上げるとパレットが優先)
+uniform vec3  uPaper;     // Slot A のときの下地 (紙) の色。Slot B では透過して下の A が出る
 
 #define TF_TAU 6.2831853
 #define TF_EYE 3.2        // 群れの基準奥行き (カメラは原点、+z を見る)
@@ -230,6 +233,9 @@ vec3 bg_transflock(vec2 fc){
   }
 
   cov = max(cov, trail);
-  bgAlpha = clamp(cov, 0.0, 1.0);                              // 背景は透過 (下地は Slot A の背景色)
-  return mix(uInk, cosGradColor(tfTint), clamp(uCosGrad, 0.0, 1.0));
+  float a = clamp(cov, 0.0, 1.0);
+  vec3 ink = mix(uInk, cosGradColor(tfTint), clamp(uCosGrad, 0.0, 1.0));
+  // Slot A (ベース) は uPaper を下地に敷いた不透明出力 / それ以外は線の被覆で透過させて下の絵に重ねる
+  bgAlpha = (uSlotIsA > 0.5) ? 1.0 : a;
+  return (uSlotIsA > 0.5) ? mix(uPaper, ink, a) : ink;
 }
