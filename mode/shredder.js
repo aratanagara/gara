@@ -71,7 +71,7 @@ const Shredder = {
     nearFade:2.0,      // カメラ至近を透明化する距離 (0=しない)
     nearMode:0,        // 至近の処理 0=透明度 1=ディザ 2=背景へ溶かす 3=なし
     nearCull:0.55,     // カメラ至近の破片を縮めて消す距離
-    bgLight:1.0,       // 背景の明るさ (0=チャコール / 1=明るいグレー)
+    bgColor:[0.690, 0.733, 0.800],   // 背景色 (Slot A で敷く / 空気遠近の溶け先。Slot B は透過)
     shape:0,           // 刃の形 0=三角 1=矢 2=針 3=薄片 4=十字
     colorMode:0,       // 配色 0=aratanagara 1=モノクローム 2=表裏同色 3=速度で色相
     camPath:0,         // カメラ経路 0=周回 1=螺旋 2=静止 3=ドリフト
@@ -369,7 +369,8 @@ precision highp float;
 in vec3 vN; in vec3 vWorld; in float vAlive; in float vSeedR; in float vSpeed; in float vViewDist; in float vTipDist;
 out vec4 o;
 uniform float uFog, uAlpha, uDist, uFogNear, uFogFar;
-uniform float uHueShift, uSat, uBgLight, uChrome, uColorMode, uBlueLight, uChromeLight;
+uniform float uHueShift, uSat, uChrome, uColorMode, uBlueLight, uChromeLight;
+uniform vec3  uBgColor;
 uniform float uChromeCon, uChromeFloor, uNearFade, uPass, uNearMode;
 uniform vec3 uCamPos, uCamRight, uCamUp;   // 反射をカメラ基準で計算 (公転カメラでも aratanagara と同じ見え方)
 uniform float uStripeFreq, uStripeScale, uStripeAmt, uStripeW;   // 反射帯: 向き周波数 / 空間周期 / 濃さ / 幅
@@ -457,7 +458,7 @@ void main(){
   chrome = clamp(chrome * uChromeLight, 0.0, 1.0);                  // 裏(クローム)の明度
   vec3 col = gl_FrontFacing ? blue : mix(blue, chrome, chromeAmt);
   // 空気遠近: 奥ほど背景色へ。背景は明るいグレー(aratanagara) ↔ 暗いチャコールを Bg で選ぶ
-  vec3 bg = mix(vec3(0.055, 0.058, 0.070), vec3(0.690, 0.733, 0.800), uBgLight);
+  vec3 bg = uBgColor;
   // 距離はカメラからの実距離で測る (公転カメラだとワールド z は奥行きにならない)。
   //   Fog Near/Far はカメラ距離に対する比率なので、寄り引きしても霞み方が保たれる。
   float depth = smoothstep(uDist*uFogNear, uDist*uFogFar, vViewDist);
@@ -689,9 +690,8 @@ void main(){
 
   // 背景色 (フラグメント側の空気遠近と同じ式)。bgLight: 0=チャコール / 1=明るいグレー
   bgColor(){
-    const k = Math.max(0, Math.min(1, this.P.bgLight));
-    const a = [0.055, 0.058, 0.070], b = [0.690, 0.733, 0.800];
-    return [a[0]+(b[0]-a[0])*k, a[1]+(b[1]-a[1])*k, a[2]+(b[2]-a[2])*k];
+    const c = this.P.bgColor;
+    return (Array.isArray(c) && c.length >= 3) ? c : [0.690, 0.733, 0.800];
   },
 
   update(){},
@@ -787,7 +787,7 @@ void main(){
     gl.uniform1f(uD('uFogFar'), P.fogFar);
     gl.uniform1f(uD('uHueShift'), P.hue);
     gl.uniform1f(uD('uSat'), P.sat);
-    gl.uniform1f(uD('uBgLight'), P.bgLight);
+    { const bc = this.bgColor(); gl.uniform3f(uD('uBgColor'), bc[0], bc[1], bc[2]); }
     gl.uniform1f(uD('uChrome'), P.chrome);
     gl.uniform1f(uD('uColorMode'), P.colorMode);
     gl.uniform1f(uD('uBlueLight'), P.blueLight);
