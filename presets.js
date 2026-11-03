@@ -5655,6 +5655,8 @@ uniform float cIter;      // 色用フラクタル反復 (原作は 30)
 uniform float bumpPct;    // 法線の強さ
 uniform float black;      // Black: 立体を黒インクに (Slot A=白地に黒 / Slot B=透過に黒のみ)
 uniform float uSlotIsA;   // 1=Slot A / 0=Slot B (B では黒い部分を透過)
+// @param uBgColor color = #000000
+uniform vec3 uBgColor;    // Slot A の背景色 (黒モードの紙の色。黒のままなら白紙)
 #define FRACTAL_SEQUENCE_LENGTH 9
 int fractalSequence[] = int[FRACTAL_SEQUENCE_LENGTH](0, 0, 1, 0, 0, 0, 1, 1, 1);
 float TT_;
@@ -5762,14 +5764,17 @@ void mainImage(out vec4 finalColor, in vec2 pixelCoordinate) {
     // Black モード: 色を捨てて黒インクの版画にする。
     // Slot A は白地に黒 (黒背景だと黒い立体が見えないため) / Slot B は黒インクのみで背景は透過。
     float bk = step(0.5, black);
+    vec3 paper = (max(uBgColor.r, max(uBgColor.g, uBgColor.b)) < 0.004) ? vec3(1.0) : uBgColor;   // 黒モードの紙: 既定は白
     if(bk > 0.001){
         float ink = smoothstep(0.02, 0.45, lum);      // 稜線が明るいほど濃い黒
-        vec3 onA = mix(vec3(1.0), vec3(0.0), ink);
+        vec3 onA = mix(paper, vec3(0.0), ink);
         col = mix(col, mix(vec3(0.0), onA, uSlotIsA), bk);
         mask = mix(mask, ink, bk);                     // 黒モードでは濃さ=不透明度
+    } else {
+        col += uBgColor * (1.0 - mask) * uSlotIsA;     // 通常モード: Slot A の背景に uBgColor を敷く
     }
 
-    // Slot A=不透明(黒/白背景) / Slot B=背景を透過
+    // Slot A=不透明(背景色/紙) / Slot B=背景を透過
     float a = mix(mask, 1.0, uSlotIsA);
     finalColor = vec4(col, a);
 }`
@@ -5792,6 +5797,8 @@ uniform float randPct;  // ランダム回転の量
 uniform float snapPct;  // 100 に近いほど回転がカクッとスナップ
 uniform float black;    // Black: 線を白ではなく黒に (Slot A=白地に黒 / Slot B=透過に黒のみ)
 uniform float uSlotIsA; // 1=Slot A / 0=Slot B (B では線以外を透過)
+// @param uBgColor color = #000000
+uniform vec3 uBgColor;  // Slot A の背景色 (黒モードの紙の色。黒のままなら白紙)
 float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 mat2 rot2(float a){ return mat2(cos(a),sin(a),-sin(a),cos(a)); }
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
@@ -5830,11 +5837,12 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 
     vec3 col;
     if(black > 0.5){
-        // Black: Slot A は白地に黒線 (黒背景だと黒線が見えないため) / Slot B は黒線のみで背景は透過
-        vec3 bg = mix(vec3(0.0), vec3(1.0), uSlotIsA);
+        // Black: Slot A は紙 (uBgColor。黒のままなら白) に黒線 / Slot B は黒線のみで背景は透過
+        vec3 paper = (max(uBgColor.r, max(uBgColor.g, uBgColor.b)) < 0.004) ? vec3(1.0) : uBgColor;
+        vec3 bg = mix(vec3(0.0), paper, uSlotIsA);
         col = mix(bg, vec3(0.0), ink);
     } else {
-        col = vec3(ink);
+        col = vec3(ink) + uBgColor * (1.0 - ink) * uSlotIsA;   // Slot A の背景に uBgColor を敷く
     }
     // Slot A=不透明 / Slot B=線以外を透過 (濃さがそのまま不透明度)
     float a = mix(ink, 1.0, uSlotIsA);

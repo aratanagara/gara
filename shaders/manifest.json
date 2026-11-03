@@ -322,6 +322,21 @@
      "file": "bg_jflow.frag",
      "func": "bg_jflow",
      "name": "Crystal Flow (Julia)"
+    },
+    {
+     "file": "bg_windline.frag",
+     "func": "bg_windline",
+     "name": "Windline"
+    },
+    {
+     "file": "bg_smear_tear.frag",
+     "func": "bg_smear_tear",
+     "name": "Smear Tear"
+    },
+    {
+     "file": "bg_fur_fold.frag",
+     "func": "bg_fur_fold",
+     "name": "Fur Fold"
     }
    ],
    "exclude": [

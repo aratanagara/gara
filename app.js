@@ -500,6 +500,8 @@ uniform float uInv;
 // glitch-style FX (ported from hinotori-vj visual.frag)
 uniform float uGlass;     // 0..1 Hipass (旧Glass / Liquid Glass)
 uniform float uSlice;     // 0..1
+uniform float uRingSlice; // 0..1 Ring Slice (同心円の帯ごとに映像を回す。Slice の極座標版。値 = 回転の速さ)
+uniform float uRsPhase;   // Ring Slice の回転位相 (JS で値 × 時間を積分。速さを変えても角度が跳ばない)
 uniform float uSplit;     // 0..1 Split Glitch (グリッドのセルごとにランダム方向へ変位)
 uniform float uMosaic;    // 0..1 — block 単位の RGB swap
 uniform float uShake;     // 0..1
@@ -767,21 +769,21 @@ float sg_f(vec2 uv){
   return c;
 }
 vec2 applySlice(vec2 uv){
-  float beatHit = (uBeatMode == 1) ? pow(1.0 - uBeatPhase, 1.5) : 0.0;   // 拍頭で強く→拍内で減衰 (beat モード時のみ)
-  float str = uSlice * max(uHit, beatHit);      // 音 or 拍で駆動
+  float str = uSlice;                           // スライダー値で常時 (音/拍での発火はしない。帯のパターンは拍ごとに変わる)
   if(str <= 0.001) return uv;
   float seed = floor(uBeat);            // 行のパターンは拍ごとに変化
   // 上から可変高さの行を積む: 大(画面1/4~1/3)が1-2個 / 中くらい多め / 1-4px の細行を散り散り。
   float yPx = uv.y * uRes.y;
   float pos = 0.0, band = 0.0;
-  int _slIt = int(min(48.0, 48.0 + uRes.x * 0.0));   // uniform依存の上限で ANGLE(D3D11) の強制ループ展開を抑止 (コンパイル爆発→TDR対策)
+  int _slIt = int(min(96.0, 96.0 + uRes.x * 0.0));   // uniform依存の上限で ANGLE(D3D11) の強制ループ展開を抑止 (コンパイル爆発→TDR対策)
   for(int i = 0; i < _slIt; i++){
     float fi = float(i);
     float t = h11(fi*1.7 + seed*3.1 + 0.5);
     float h;
-    if(t < 0.12)      h = uRes.y * (0.25 + 0.08*h11(fi*5.0 + seed));  // 大: 画面1/4~1/3
-    else if(t < 0.30) h = 1.0 + 3.0*h11(fi*7.0 + seed);              // 細: 1-4px(アクセント)
-    else              h = 26.0 + 34.0*h11(fi*9.0 + seed);            // 中: 26-60px
+    if(t < 0.10)      h = uRes.y * (0.22 + 0.10*h11(fi*5.0 + seed));  // 大: 画面の 22-32%
+    else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed);              // 細: 1-6px (半分近くを細い帯に)
+    else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 3.0);       // 小: 6-20px
+    else              h = 24.0 + 50.0*h11(fi*9.0 + seed);            // 中: 24-74px
     band = fi;
     if(yPx < pos + h) break;
     pos += h;
@@ -790,6 +792,44 @@ vec2 applySlice(vec2 uv){
   float act = step(0.30, sg_f(vec2(band*2.37 + seed, 9.1)));// 一部の行だけ動く
   float shift = (r - 0.5) * str * 0.45 * act;
   return uv + vec2(shift, 0.0);
+}
+
+// === Ring Slice (Slice の同心円版) ===
+//   中心から可変幅の同心円の帯を積み (大 / 細 1-4px / 中 26-60px)、帯ごとに別々の速さ・向きで映像を回し続ける
+//   (値 = 速さ。位相は uRsPhase に積分)。帯のパターンは beat モードでは拍ごとに変わり、drone では固定。
+//   Ring Blur (後段パス) も同じ帯を使う。
+float rsBand(float rPx, float seed, out float pos, out float bandH){
+  pos = 0.0; bandH = 0.0;
+  float band = 0.0;
+  int it = int(min(96.0, 96.0 + uRes.x * 0.0));
+  for(int i = 0; i < it; i++){
+    float fi = float(i);
+    float t = h11(fi*1.7 + seed*3.1 + 20.5), h;
+    if(t < 0.10)      h = uRes.y * (0.10 + 0.08*h11(fi*5.0 + seed + 20.0));   // 大: 画面高の 10-18%
+    else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed + 20.0);               // 細: 1-6px (半分近く)
+    else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 23.0);              // 小: 6-20px
+    else              h = 24.0 + 50.0*h11(fi*9.0 + seed + 20.0);             // 中: 24-74px
+    band = fi; bandH = h;
+    if(rPx < pos + h) break;
+    pos += h;
+  }
+  return band;
+}
+vec2 applyRingSlice(vec2 uv){
+  if(uRingSlice <= 0.001) return uv;
+  float seed = (uBeatMode == 1) ? floor(uBeat) : 0.0;        // beat モードは拍ごとにパターン更新 / drone は固定 (滑らかに回り続ける)
+  float aspect = uRes.x / uRes.y;
+  vec2  c = (uv - 0.5) * vec2(aspect, 1.0);
+  float rPx = length(c) * uRes.y;
+  float pos, bandH;
+  float band = rsBand(rPx, seed, pos, bandH);
+  float r   = sg_f(vec2(band*1.91 + seed, 14.7));
+  float act = step(0.30, sg_f(vec2(band*2.37 + seed, 19.1)));
+  float spd = (r < 0.5 ? -1.0 : 1.0) * (0.25 + 0.75*floor(abs(r - 0.5)*2.0*3.0 + 1.0)/3.0);   // 帯ごとの速さ: ±(0.5 / 0.75 / 1.0) 倍
+  float ang = spd * uRsPhase * act;                          // 回転角 (位相に帯ごとの速さを掛けて回り続ける)
+  float sn = sin(ang), cs = cos(ang);
+  c = mat2(cs, -sn, sn, cs) * c;
+  return c / vec2(aspect, 1.0) + 0.5;
 }
 
 // === Split Glitch (Shadertoy "split glitch effect" wfcfRB) ===
@@ -872,6 +912,26 @@ vec2 applyShake(vec2 uv){
 }
 // === Twisting Rings (Audio FX) ===
 //   同心円リングごとに映像を回転=ねじる。リング幅は CD のように非等間隔で時間変化(最小~2px)。
+//   基本リングの中に細い副リング (1-6px、リングごとに最大 3 本) を混ぜ、副リングは別のねじれ量で回す。
+//   戻り値 = リング番号 (副リングは小数オフセット)。edgeDist = 最寄りの境界までの距離 (リング座標単位)
+float ringsBand(float rPx, float fine, out float edgeDist){
+  float freq = mix(0.0004, 0.0026, fine);
+  float warpAmp = mix(0.5, 2.0, fine);
+  float warp = warpAmp*sin(rPx*0.011 + uTime*0.6) + 0.55*warpAmp*sin(rPx*0.019 - uTime*0.4);
+  float x = rPx*freq + warp;
+  float id = floor(x), fr = fract(x);
+  float ringPx = 1.0 / freq;                                   // 基本リング 1 本の幅 (px の目安)
+  edgeDist = min(fr, 1.0 - fr);
+  for(int k = 0; k < 3; k++){
+    float fk = float(k);
+    if(h11(id*3.3 + fk*7.1 + 2.0) < 0.35) continue;            // 無い副リングもある
+    float p = 0.06 + 0.86*h11(id*5.7 + fk*2.9 + 4.0);           // 位置 (リング内 0..1)
+    float w = (1.0 + 5.0*h11(id*9.1 + fk*1.3 + 6.0)) / ringPx;  // 幅 1-6px
+    if(fr >= p && fr < p + w){ edgeDist = min(fr - p, p + w - fr); return id + 0.31 + fk*0.23; }
+    edgeDist = min(edgeDist, min(abs(fr - p), abs(fr - (p + w))));
+  }
+  return id;
+}
 vec2 applyRings(vec2 uv){
   float rExp = (exp2(4.0*clamp(uRings, 0.0, 1.0)) - 1.0) / 15.0;   // 指数カーブ: 低値で弱く高値で一気に
   float audioSpin = 4.8*pow(clamp(uHit,0.0,1.0),0.62)
@@ -882,34 +942,31 @@ vec2 applyRings(vec2 uv){
   float aspect = uRes.x / uRes.y;
   vec2 c = (uv - 0.5) * vec2(aspect, 1.0);
   float rPx = length(c) * uRes.y;              // 中心からの半径(px)
-  // 全体は本数少なめ(疎・幅広)に保つ
-  float freq = mix(0.0004, 0.0026, fine);       // 線と分割を約1/10にして広いリングに
-  float warpAmp = mix(0.5, 2.0, fine);
-  float warp = warpAmp*sin(rPx*0.011 + uTime*0.6) + 0.55*warpAmp*sin(rPx*0.019 - uTime*0.4);
-  // 局所的な高周波リングは使わず、パラメータで決まる少数のリングだけにする。
-  float ringId = floor(rPx*freq + warp);
+  // 全体は本数少なめ(疎・幅広)に保ちつつ、細い副リングを混ぜる (ringsBand)
+  float _ed;
+  float ringId = ringsBand(rPx, fine, _ed);
   // リングごとに異なる回転量(有界) → 同心円がバラバラにねじれる
   float twist = 0.6*sin(ringId*0.7) + 0.4*sin(ringId*1.9 + 1.3);
   float ang = twist * amt * 2.2;               // 回転量アップ
   float s = sin(ang), co = cos(ang);
-  vec2 cc = uv - 0.5;
+  vec2 cc = (uv - 0.5) * vec2(aspect, 1.0);   // アスペクト補正した空間で回す (縦横比が違っても外側が伸びない)
   cc = mat2(co, -s, s, co) * cc;
-  return cc + 0.5;
+  return cc / vec2(aspect, 1.0) + 0.5;
 }
 
 // Slice / Mondrian / Rings の境界線マスク。線自体は main の色に合わせて白黒を決める。
 float sliceEdgeMask(vec2 uv){
-  float beatHit = (uBeatMode == 1) ? pow(1.0 - uBeatPhase, 1.5) : 0.0;
-  float str = uSlice * max(uHit, beatHit);
+  float str = uSlice;
   if(str <= 0.001) return 0.0;
   float yPx = uv.y * uRes.y, pos = 0.0, bandH = 0.0;
   float seed = floor(uBeat);
-  int it = int(min(48.0, 48.0 + uRes.x * 0.0));
+  int it = int(min(96.0, 96.0 + uRes.x * 0.0));
   for(int i=0;i<it;i++){
     float fi = float(i), t = h11(fi*1.7 + seed*3.1 + 0.5), h;
-    if(t < 0.12) h = uRes.y * (0.25 + 0.08*h11(fi*5.0 + seed));
-    else if(t < 0.30) h = 1.0 + 3.0*h11(fi*7.0 + seed);
-    else h = 26.0 + 34.0*h11(fi*9.0 + seed);
+    if(t < 0.10) h = uRes.y * (0.22 + 0.10*h11(fi*5.0 + seed));
+    else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed);
+    else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 3.0);
+    else h = 24.0 + 50.0*h11(fi*9.0 + seed);
     bandH = h;
     if(yPx < pos + h) break;
     pos += h;
@@ -967,12 +1024,11 @@ float ringsEdgeMask(vec2 uv){
   if(amt <= 0.001) return 0.0;
   float fine = clamp(uRings, 0.0, 1.0), aspect = uRes.x/uRes.y;
   float rPx = length((uv-0.5)*vec2(aspect,1.0))*uRes.y;
-  float freq = mix(0.0004,0.0026,fine), warpAmp = mix(0.5,2.0,fine);
-  float warp = warpAmp*sin(rPx*0.011+uTime*0.6) + 0.55*warpAmp*sin(rPx*0.019-uTime*0.4);
-  float ringCoord = rPx*freq + warp;
-  float edgeDist = min(fract(ringCoord), 1.0-fract(ringCoord));
-  // fwidthは境界の両側を含むため、半分にして実線幅を約1pxに固定。
-  float lineW = max(0.00005, 0.5 * fwidth(ringCoord));
+  float edgeDist;
+  ringsBand(rPx, fine, edgeDist);                              // 副リングの境界も含む
+  float freq = mix(0.0004,0.0026,fine);
+  // 境界の両側を拾わないよう、リング座標で 0.5px 相当だけを線にする
+  float lineW = max(0.00005, 0.5 * freq * fwidth(rPx));
   return step(edgeDist, lineW);
 }
 
@@ -1382,6 +1438,7 @@ void main(){
   // beat-driven UV warps (Twist は後段パスへ移設)
   vec2 sliceLineUv = uv;
   uv = applySlice(uv);
+  uv = applyRingSlice(uv);                 // 境界線なし (Slice / Mondrian / Rings とは違い線は描かない)
   vec2 splitLineUv = uv;
   uv = applySplit(uv);
   uv = applyShake(uv);
@@ -2061,6 +2118,70 @@ void main(){
 
     // Chrome: マットキャップ流の液体金属。輝度勾配法線でスタジオ照明バンドの環境を引き、
     // 映像の色味を残したまま全体を金属質に変える。光源はゆっくり回転。
+    // Ring Blur: Ring Slice と同じ同心円の帯 (rsBand と同一の乱数・定数) ごとに、円周方向の回転ブラーを掛ける
+    this._linkDeferred('ringBlurProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uAmount, uBeat, uBeatMode, uTime;
+float h11(float x){ x = fract(x*0.1031); x *= x+33.33; x *= x+x; return fract(x); }
+float sg_f(vec2 uv){
+  float c = 0.0;
+  for(int k=0; k<8; k++){
+    c = fract(uv.x + c*(-38.0) + sin(uv.y*62.0 + c*36.0) + c*uv.x*0.2);
+  }
+  return c;
+}
+float rsBand(float rPx, float seed, out float pos, out float bandH){
+  pos = 0.0; bandH = 0.0;
+  float band = 0.0;
+  int it = int(min(96.0, 96.0 + uRes.x * 0.0));
+  for(int i = 0; i < it; i++){
+    float fi = float(i);
+    float t = h11(fi*1.7 + seed*3.1 + 20.5), h;
+    if(t < 0.10)      h = uRes.y * (0.10 + 0.08*h11(fi*5.0 + seed + 20.0));   // 大: 画面高の 10-18%
+    else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed + 20.0);               // 細: 1-6px (半分近く)
+    else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 23.0);              // 小: 6-20px
+    else              h = 24.0 + 50.0*h11(fi*9.0 + seed + 20.0);             // 中: 24-74px
+    band = fi; bandH = h;
+    if(rPx < pos + h) break;
+    pos += h;
+  }
+  return band;
+}
+void main(){
+  vec3 base = texture(uTex, vUv).rgb;
+  if(uAmount <= 0.001){ frag = vec4(base, 1.0); return; }
+  float seed = (uBeatMode > 0.5) ? floor(uBeat) : 0.0;        // Ring Slice と同じ帯 (beat モードは拍ごと / drone は固定)
+  float aspect = uRes.x / uRes.y;
+  vec2  c = (vUv - 0.5) * vec2(aspect, 1.0);
+  float rPx = length(c) * uRes.y;
+  float pos, bandH;
+  float band = rsBand(rPx, seed, pos, bandH);
+  float r   = sg_f(vec2(band*3.17 + seed, 24.7));              // 帯ごとのぼかし量
+  float act = step(0.25, sg_f(vec2(band*2.71 + seed, 29.1)));   // 一部の帯はぼかさない
+  float dir = (sg_f(vec2(band*1.37 + seed, 33.3)) < 0.5) ? -1.0 : 1.0;   // 回転の向き
+  // 時間変化: 帯ごとに別の周期・位相でぼけ量が脈動する (0.35〜1 倍)
+  float ws   = 0.4 + 1.0*sg_f(vec2(band*4.13 + seed, 37.7));
+  float ph   = sg_f(vec2(band*0.91 + seed, 41.3)) * 6.2831853;
+  float anim = 0.35 + 0.65*(0.5 + 0.5*sin(uTime*ws + ph));
+  float arc = pow(uAmount, 1.4) * 0.7 * (0.3 + 0.7*r) * act * anim;   // 円弧 (rad)。半径を保って回すので帯の中に収まる
+  if(arc <= 0.0005){ frag = vec4(base, 1.0); return; }
+  float arcPx = arc * rPx;                                       // 円弧の長さ (px)
+  int   N   = int(clamp(floor(arcPx / 2.5) + 6.0, 6.0, 40.0));   // 外側ほどタップを増やす (2.5px 間隔、最大 40)
+  float jit = h11(dot(gl_FragCoord.xy, vec2(0.731, 1.319)) + seed*7.0);   // ピクセルごとのジッター (縞 → ノイズ)
+  vec3 acc = vec3(0.0);
+  for(int i = 0; i < N; i++){
+    float a = ((float(i) + jit)/float(N) - 0.3) * arc * dir;      // 進行方向へ 70% / 逆へ 30% (回転の尾)
+    float sn = sin(a), cs = cos(a);
+    vec2 cr = mat2(cs, -sn, sn, cs) * c;
+    vec2 uv = clamp(cr / vec2(aspect, 1.0) + 0.5, vec2(0.0), vec2(1.0));
+    acc += texture(uTex, uv).rgb;
+  }
+  frag = vec4(acc / float(N), 1.0);
+}`);
+
     this._linkDeferred('chromeProg', `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag;
@@ -2234,6 +2355,130 @@ void main(){
   if(uAmount<=0.001){ frag=vec4(orig,1.0); return; }
   vec3 blurred=gauss(vUv,uAmount*25.0);
   frag=vec4(clamp(mix(orig,blurred,uAmount*2.0),0.0,1.0),1.0);
+}`);
+
+    // Film Blur 1/4: 縮小 + 逆トーンマップ。光を線形の HDR へ戻してからぼかす (LDR のままだと小さい光が平均で消える)
+    // 4 点は各 2x2 平均 = 4x4 相当。1/4 への取りこぼしで細い光がちらつくのを防ぐ
+    this._linkDeferred('filmBlurDownProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+vec3 expand(vec2 uv){
+  vec3 c=min(texture(uTex,uv).rgb,vec3(1.0));
+  return c/(1.06-c);
+}
+void main(){
+  vec2 px=1.0/uRes;
+  frag=vec4((expand(vUv+px*vec2(-1.0,-1.0))+expand(vUv+px*vec2(1.0,-1.0))
+            +expand(vUv+px*vec2(-1.0,1.0))+expand(vUv+px*vec2(1.0,1.0)))*0.25,1.0);
+}`);
+
+    // Film Blur 2/4: 一方向ブラー (ブレの長手 → 直交の順に 2 回通す)。uStep は UV 単位の半径ベクトル、uFall は端の減衰 (長手は箱型に近いほど手ブレらしい)
+    this._linkDeferred('filmBlurDirProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uStep;
+uniform float uFall;
+void main(){
+  int N=int(min(12.0,12.0+uStep.x*0.0));
+  float jit=fract(52.9829189*fract(dot(gl_FragCoord.xy,vec2(0.06711056,0.00583715))))-0.5;
+  vec3 acc=texture(uTex,vUv).rgb;
+  float wsum=1.0;
+  for(int i=1;i<=N;i++){
+    float t=(float(i)+jit)/float(N);
+    float wt=exp(-uFall*t*t);
+    acc+=(texture(uTex,vUv+uStep*t).rgb+texture(uTex,vUv-uStep*t).rgb)*wt;
+    wsum+=wt*2.0;
+  }
+  frag=vec4(acc/wsum,1.0);
+}`);
+
+    // Film Blur 3/4: ハイライトだけを抜いて広く滲ませる (フィルムのハレーション)
+    this._linkDeferred('filmBlurGlowProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uRadius;
+vec3 hi(vec2 uv){
+  vec3 c=texture(uTex,uv).rgb;
+  float m=max(c.r,max(c.g,c.b));
+  return c*smoothstep(0.55,0.95,m*1.06/(1.0+m));
+}
+void main(){
+  int N=int(min(24.0,24.0+uRes.x*0.0));
+  const float GA=2.39996323;
+  vec2 rad=uRadius/uRes;
+  vec3 acc=hi(vUv);
+  float wsum=1.0;
+  for(int i=0;i<N;i++){
+    float fi=(float(i)+0.5)/float(N);
+    float r=sqrt(fi), a=float(i)*GA;
+    float wt=exp(-2.0*fi);
+    acc+=hi(vUv+vec2(cos(a),sin(a))*r*rad)*wt;
+    wsum+=wt;
+  }
+  frag=vec4(acc/wsum,1.0);
+}`);
+
+    // Film Blur 4/4: 等倍合成。ブラー → 滲み → 黒を沈めるトーン → 粒子の順 (粒子はブレない)
+    this._linkDeferred('filmBlurProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform sampler2D uBlur;
+uniform sampler2D uGlow;
+uniform vec2 uRes;
+uniform vec2 uFringe;
+uniform float uAmount;
+uniform float uFrame;
+const vec3 LUMA=vec3(0.2126,0.7152,0.0722);
+vec3 rnd(ivec2 p){
+  uvec3 v=uvec3(ivec3(p,int(uFrame)));
+  v=v*1664525u+1013904223u;
+  v.x+=v.y*v.z; v.y+=v.z*v.x; v.z+=v.x*v.y;
+  v^=v>>16u;
+  v.x+=v.y*v.z; v.y+=v.z*v.x; v.z+=v.x*v.y;
+  return vec3(v)/4294967295.0;
+}
+// 粒径 = 高さの 1/470 (960x540 で約 1 画素)。補間で格子状に分散が揺れるモアレは重みの二乗和で打ち消す
+vec3 grain(){
+  vec2 q=gl_FragCoord.xy/max(1.15,uRes.y/470.0);
+  ivec2 i=ivec2(floor(q));
+  vec2 f=q-floor(q);
+  vec3 n=mix(mix(rnd(i),rnd(i+ivec2(1,0)),f.x),mix(rnd(i+ivec2(0,1)),rnd(i+ivec2(1,1)),f.x),f.y);
+  vec2 v=f*f+(1.0-f)*(1.0-f);
+  return (n-0.5)*2.0/sqrt(v.x*v.y);
+}
+void main(){
+  vec3 orig=texture(uTex,vUv).rgb;
+  float a=uAmount;
+  vec3 hdr=vec3(texture(uBlur,vUv+uFringe).r,texture(uBlur,vUv).g,texture(uBlur,vUv-uFringe).b);
+
+  // 滲みは赤橙へ転ばせる (コアは白のまま、外周だけ黄 → 橙 → 赤に落ちる)
+  vec3 g=texture(uGlow,vUv).rgb;
+  hdr+=(g*vec3(1.0,0.42,0.14)+vec3(dot(g,LUMA))*vec3(0.55,0.10,0.0))*1.3*a;
+
+  vec3 col=mix(orig,hdr*1.06/(1.0+hdr),1.0-pow(1.0-a,4.0));
+
+  col=clamp(col,0.0,1.0);
+  col=mix(vec3(dot(col,LUMA)),col,1.0+0.2*a);
+  col=clamp(col,0.0,1.0);
+  col=mix(col,col*col*(3.0-2.0*col),0.8*a);
+
+  // 白飛びは淡い青緑へ、黒は赤紫へ転ばせる (クロス現像の色)
+  float l=dot(col,LUMA);
+  col*=mix(vec3(1.0),vec3(0.74,0.92,0.98),smoothstep(0.55,1.0,l)*a);
+  col+=vec3(0.035,0.006,0.016)*a*(1.0-smoothstep(0.0,0.3,l));
+
+  // 粒子はほぼ単色の加算 (色ノイズは輝度の 3 割)。明度によらず一定で、黒と白飛びの中だけ弱い
+  vec3 n=grain();
+  float nl=dot(n,vec3(0.3333));
+  vec3 gr=vec3(nl*1.73)+(n-nl)*0.22;
+  col+=gr*0.13*pow(a,0.7)*mix(0.25,1.0,smoothstep(0.0,0.2,l))*(1.0-0.7*smoothstep(0.85,1.0,l));
+  frag=vec4(clamp(col,0.0,1.0),1.0);
 }`);
 
     // Pixel-perfect Outline pass 1: color-aware Scharr gradient + structure-tensor direction.
@@ -3654,7 +3899,7 @@ void main(){
     for(const n of ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate',
                     'iChannel0','iChannel1','iChannel2','iChannel3',
                     'iBPM','iBeat','iBeatPhase','iEnergy','iAttack','iAttackEnv','iCrossfade','iBeatMode','iPan','iZoom',
-                    'time','mouse','resolution','backbuffer','beat','uCosGrad','uCosPalette','uFFT','uBsodText','uSlotIsA','iAudio','iAudioSeed','uGradStops[0]','uGradPos[0]','uGradN']){
+                    'time','mouse','resolution','backbuffer','beat','uCosGrad','uCosPalette','uFFT','uBsodText','uSlotIsA','uSlotIsAReal','iAudio','iAudioSeed','uGradStops[0]','uGradPos[0]','uGradN']){
       slot.uniforms[n] = U(n);
     }
     slot.uniforms.iChannelResolution = U('iChannelResolution[0]');
@@ -3808,6 +4053,7 @@ void main(){
     if(u.uCosGrad){ gl.uniform1f(u.uCosGrad, 0.0); }
     if(u.uCosPalette) gl.uniform1i(u.uCosPalette, (App.post && App.post.cosPalette) || 0);
     if(u.uSlotIsA) gl.uniform1f(u.uSlotIsA, slotKey === 'A' ? 1.0 : 0.0);   // 透過対応シェーダが A=黒背景 判定に使用
+    if(u.uSlotIsAReal) gl.uniform1f(u.uSlotIsAReal, slotKey === 'A' ? 1.0 : 0.0);   // 自前 uSlotIsA シェーダの背景色ラッパ用 (preprocess で差し替え)
     if(u.iAudio) gl.uniform1f(u.iAudio, Audio.react || 0);                   // 音域+アタックで整形した音声リアクト
     if(u.iAudioSeed) gl.uniform1f(u.iAudioSeed, Audio.hitSeed || 0);         // アタックごとに変わる乱数
 
@@ -4011,6 +4257,11 @@ void main(){
     gl.uniform1f(U('uUnsharpRadius'), App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(p.unsharp) : (p.unsharpRadius || 1.5));
     gl.uniform1f(U('uInv'),       _sk ? 0 : (p.inv === true ? 1 : (Number(p.inv) || 0)));
     gl.uniform1f(U('uSlice'),     p.slice);
+    gl.uniform1f(U('uRingSlice'), p.ringSlice || 0);
+    // Ring Slice の回転位相: 値 (= 速さ。1.0 で最大 0.8 rad/s) × 時間を積分。0 で止まる (角度は保持、次に上げると続きから)
+    { const _rsDt = Math.max(0.001, Math.min(0.1, this.lastDt || 1/60));
+      this._rsPhase = (this._rsPhase || 0) + (p.ringSlice || 0) * 0.8 * _rsDt;
+      gl.uniform1f(U('uRsPhase'), this._rsPhase); }
     gl.uniform1f(U('uSplit'),     p.split || 0);
     gl.uniform1f(U('uMosaic'),    p.mosaic);
     gl.uniform1f(U('uShake'),     p.shake);
@@ -4127,7 +4378,7 @@ void main(){
     //   5) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
     //   6) 折り紙系: Needle → Origami → Kaiser (+Flames)
     //   7) Twist + FB Add/Multiply
-    //   8) FXAA + Outline + Dither Blur + Gaussian Blur
+    //   8) FXAA + Outline + Dither Blur + Gaussian Blur + Film Blur
     //   9) Pollock (最後・他 FX の影響を受けない)
 
     // 1) Water (Ballpoint Sketch) / Boltzmann
@@ -4176,11 +4427,13 @@ void main(){
     this._applyTwistPost(p, _safe);
     this._applyFeedbackBlend(p, _safe);
 
-    // 8) 仕上げの線とブラー (FXAA → Outline → Dither Blur → Gaussian Blur)
+    // 8) 仕上げの線とブラー (FXAA → Outline → Dither Blur → Gaussian Blur → Film Blur)
     if(App.post && App.post.fxaa){ this._applyFXAA(); }
     this._applyOutlinePost(p, _safe);
     this._applyDitherPost(p, _safe);
+    this._applyRingBlurPost(p, _safe);    // Ring Slice と同じ同心円の帯ごとの回転ブラー
     this._applyGaussianPost(p, _safe);
+    this._applyFilmBlurPost(p, _safe);
 
     // 9) Pollock (最後)
     this._applyPollockFinal(p, _safe);
@@ -4990,11 +5243,92 @@ void main(){
     });
   },
 
+  _applyRingBlurPost(p, safe){
+    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.ringBlur) || 0));
+    if(amount <= 0.001 || !this.ringBlurProg) return;
+    this._runFinalPost(this.ringBlurProg, '_ringBlurTmp', (P)=>{
+      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
+      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uBeat'), BPM.beatCount());   // 合成シェーダの uBeat と同じ値 = Ring Slice と同じ帯
+      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uBeatMode'), App.beatMode === 'beat' ? 1 : 0);
+      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
+    });
+  },
+
   _applyGaussianPost(p, safe){
     const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.slit2) || 0));
     if(amount <= 0.001 || !this.gaussianProg) return;
     this._runFinalPost(this.gaussianProg, '_gaussianTmp', (P)=>{
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
+    });
+  },
+
+  // Film Blur: 大半径を等倍で回すと重いので、1/4 解像度でブレと滲みを作って等倍で合成する。
+  // ブレの向きは drone = ゆっくり揺れる / beat = 拍ごとに振り直し + 拍頭で長さが伸びる
+  _applyFilmBlurPost(p, safe){
+    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.filmBlur) || 0));
+    if(amount <= 0.001 || !this.filmBlurProg || !this.filmBlurDownProg || !this.filmBlurDirProg || !this.filmBlurGlowProg) return;
+    const gl = this.gl;
+    const w = this._finalFBO.w, h = this._finalFBO.h;
+    const lw = Math.max(2, Math.round(w / 4)), lh = Math.max(2, Math.round(h / 4));
+    if(!this._filmBlurFBOs) this._filmBlurFBOs = [0,1,2,3].map(()=> this._mkFBO(lw, lh));
+    const [fDown, fLong, fBlur, fGlow] = this._filmBlurFBOs;
+    this._filmBlurFBOs.forEach((f)=> this._resizeFBO(f, lw, lh));
+
+    const t = this.postClock != null ? this.postClock : this.clock;
+    let angle, stretch = 1;
+    if(App.beatMode === 'beat'){
+      const beat = BPM.beatCount();
+      const b = Math.floor(beat), ph = beat - b;
+      const h1 = (n)=>{ const s = Math.sin(n * 127.1) * 43758.5453; return s - Math.floor(s); };
+      const e = Math.min(1, ph / 0.3);
+      const k = e * e * (3 - 2 * e);
+      angle = ((h1(b - 1) - 0.5) * (1 - k) + (h1(b) - 0.5) * k) * 1.2;
+      stretch = 1 + 0.5 * Math.exp(-5 * ph);
+    } else {
+      angle = 0.32 * Math.sin(t * 0.11) + 0.22 * Math.sin(t * 0.047 + 1.3);
+    }
+    const dx = Math.cos(angle), dy = Math.sin(angle);
+    const len = 0.13 * w * Math.pow(amount, 1.4) * stretch;
+    const wid = 0.02 * w * Math.pow(amount, 1.4);
+
+    gl.bindVertexArray(this.quadVAO);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+    gl.viewport(0, 0, lw, lh);
+    gl.activeTexture(gl.TEXTURE0);
+    const pass = (P, src, dst, setup)=>{
+      gl.useProgram(P);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+      gl.bindTexture(gl.TEXTURE_2D, src.tex);
+      gl.uniform1i(gl.getUniformLocation(P, 'uTex'), 0);
+      setup(P);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+    pass(this.filmBlurDownProg, this._finalFBO, fDown, (P)=> gl.uniform2f(gl.getUniformLocation(P, 'uRes'), w, h));
+    pass(this.filmBlurDirProg, fDown, fLong, (P)=>{
+      gl.uniform2f(gl.getUniformLocation(P, 'uStep'), dx * len / w, dy * len / h);
+      gl.uniform1f(gl.getUniformLocation(P, 'uFall'), 0.8);
+    });
+    pass(this.filmBlurDirProg, fLong, fBlur, (P)=>{
+      gl.uniform2f(gl.getUniformLocation(P, 'uStep'), -dy * wid / w, dx * wid / h);
+      gl.uniform1f(gl.getUniformLocation(P, 'uFall'), 2.5);
+    });
+    pass(this.filmBlurGlowProg, fBlur, fGlow, (P)=>{
+      gl.uniform2f(gl.getUniformLocation(P, 'uRes'), lw, lh);
+      gl.uniform1f(gl.getUniformLocation(P, 'uRadius'), 0.035 * lw * (0.4 + 0.6 * amount));
+    });
+
+    this._runFinalPost(this.filmBlurProg, '_filmBlurTmp', (P)=>{
+      gl.uniform1f(gl.getUniformLocation(P, 'uAmount'), amount);
+      gl.uniform1f(gl.getUniformLocation(P, 'uFrame'), Math.floor(t * 24) % 4096);
+      const f = 0.0016 * amount;
+      gl.uniform2f(gl.getUniformLocation(P, 'uFringe'), dx * f, dy * f * w / h);
+      gl.activeTexture(gl.TEXTURE0 + 1);
+      gl.bindTexture(gl.TEXTURE_2D, fBlur.tex);
+      gl.uniform1i(gl.getUniformLocation(P, 'uBlur'), 1);
+      gl.activeTexture(gl.TEXTURE0 + 2);
+      gl.bindTexture(gl.TEXTURE_2D, fGlow.tex);
+      gl.uniform1i(gl.getUniformLocation(P, 'uGlow'), 2);
+      gl.activeTexture(gl.TEXTURE0);
     });
   },
 
@@ -6908,6 +7242,42 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
+    if(slot.kind === 'windflock'){
+      if(typeof WindFlock === 'undefined') return;
+      if(!WindFlock.initialized) WindFlock.init(this.gl);
+      WindFlock.update();
+      const target = slot.fbos[slot.fbIdx];
+      WindFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
+    if(slot.kind === 'fude'){
+      if(typeof Fude === 'undefined') return;
+      if(!Fude.initialized) Fude.init(this.gl);
+      Fude.update();
+      const target = slot.fbos[slot.fbIdx];
+      Fude.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
+    if(slot.kind === 'liquidpeel'){
+      if(typeof LiquidPeel === 'undefined') return;
+      if(!LiquidPeel.initialized) LiquidPeel.init(this.gl);
+      LiquidPeel.update();
+      const target = slot.fbos[slot.fbIdx];
+      LiquidPeel.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
     if(slot.kind === 'shelf'){
       if(typeof Shelf === 'undefined') return;
       if(!Shelf.initialized) Shelf.init(this.gl);
@@ -7010,6 +7380,16 @@ out vec4 _vjFragOut;
       params.push(p);
     }
 
+    // ---- 透過対応シェーダ (自前で uSlotIsA を宣言し、Slot A では不透明・B では実 alpha を出すもの) に背景色を付ける ----
+    //   シェーダには uSlotIsA = 0 (常に実 alpha) を見せ、Slot A の不透明化と背景色 (uBgColor) の敷き込みは
+    //   エントリポイント側で行う (bg_*.frag の bgAlpha と同じ規約)。uBgColor を自前で持つシェーダはそのまま。
+    const ownSlotIsA = /\buniform\s+float\s+uSlotIsA\s*;/.test(body);
+    const bgWrap = ownSlotIsA && !/\buBgColor\b/.test(body);
+    if(bgWrap){
+      body = body.replace(/\buniform\s+float\s+uSlotIsA\s*;/, 'const float uSlotIsA = 0.0;');
+      params.push({ name:'uBgColor', type:'color', value:[0,0,0], defaultValue:[0,0,0] });
+    }
+
     // ---- Format detection ----
     const hasMainImage = /\bvoid\s+mainImage\s*\(/.test(body);
     // GLSL Sandbox: uses `void main()` + any of the well-known Sandbox uniforms / gl_FragColor
@@ -7035,6 +7415,12 @@ out vec4 _vjFragOut;
     }
 
     const format = hasMainImage ? 'shadertoy' : (looksSandbox ? 'sandbox' : 'raw');
+    if(bgWrap) inject += 'uniform float uSlotIsAReal;\nuniform vec3 uBgColor;\n';
+    // 背景色の敷き込み: alpha<1 の所に uBgColor を加算し、Slot A では不透明にする
+    const bgOut = bgWrap ? `  float _bgA = clamp(c.a, 0.0, 1.0);
+  c.rgb += uBgColor * (1.0 - _bgA);
+  c.a = (uSlotIsAReal > 0.5) ? 1.0 : _bgA;
+` : '';
 
     let code;
     if(hasMainImage){
@@ -7042,7 +7428,17 @@ out vec4 _vjFragOut;
 void main(){
   vec4 c;
   mainImage(c, gl_FragCoord.xy);
-  _vjFragOut = c;
+${bgOut}  _vjFragOut = c;
+}
+`;
+    } else if(bgWrap && /\bgl_FragColor\b/.test(body) && /\bvoid\s+main\s*\(/.test(body)){
+      // Sandbox 形式: ユーザーの main を _vjUserMain に改名し、gl_FragColor を一時変数で受けて敷き込む
+      const translated = body.replace(/gl_FragColor/g, '_vjCol').replace(/\bvoid\s+main\s*\(/, 'void _vjUserMain(');
+      code = this.HEADER + inject + 'vec4 _vjCol = vec4(0.0);\n' + translated + `
+void main(){
+  _vjUserMain();
+  vec4 c = _vjCol;
+${bgOut}  _vjFragOut = c;
 }
 `;
     } else {
@@ -7817,7 +8213,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], glass:[0,1], outline:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -8045,7 +8441,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', glass:'Hipass', outline:'Outline', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Warp', smear:'Brush: Smear', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Warp', smear:'Brush: Smear', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -9505,7 +9901,7 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
       const locs = {};
       const names = ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate',
                      'iChannel0','iChannel1','iChannel2','iChannel3',
-                     'iBPM','iBeat','iBeatPhase','iEnergy','iAttack','iAttackEnv','iCrossfade','iBeatMode','iPan','iZoom','uSlotIsA',
+                     'iBPM','iBeat','iBeatPhase','iEnergy','iAttack','iAttackEnv','iCrossfade','iBeatMode','iPan','iZoom','uSlotIsA','uSlotIsAReal',
                      'time','mouse','resolution','backbuffer','beat','uCosGrad','iChannelResolution[0]'];
       for(const n of names) locs[n.replace('[0]','')] = gl.getUniformLocation(prog, n);
       const customLocs = {};
@@ -9545,6 +9941,7 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
     if(u.iBeatPhase) gl.uniform1f(u.iBeatPhase, BPM.beatPhase());
     if(u.iBeatMode) gl.uniform1i(u.iBeatMode, App.beatMode==='beat' ? 1 : 0);
     if(u.uSlotIsA) gl.uniform1f(u.uSlotIsA, this._slotIsA || 0);   // 既定 0 = 単体サムネは従来どおり
+    if(u.uSlotIsAReal) gl.uniform1f(u.uSlotIsAReal, this._slotIsA || 0);
     if(u.iPan)  gl.uniform2f(u.iPan, 0, 0);
     if(u.iZoom) gl.uniform1f(u.iZoom, 1.0);
     if(u.iEnergy) gl.uniform1f(u.iEnergy, Audio.energy);
@@ -9881,8 +10278,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -10383,6 +10780,8 @@ const App = {
     inv:1, gamma:1, bri:1, con:1, sat:1, hue:1, hueRot:1, hueRotSpeed:1, hueAuto:1,
     palette:1, cosPalette:1, paletteAmt:1, gradMix:1, cosGrad:1, gradA:1, gradB:1, gradStops:1,
     gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1,
+    // Slice / Ring Slice / Ring Blur: 値で常時掛ける切り裂き・ぼかしなので音で持ち上げない (2026-10-16)
+    slice:1, ringSlice:1, ringBlur:1,
     audioTarget:1, audioGain:1, audioBand:1, audioAttack:1, mir:1, fxaa:1,
     texNoiseScale:1, unsharpRadius:1, postScale:1, audioFx:1, audioFxAttack:1, audioFxRelease:1,
     // Material (質感): 音で暴れると絵肌が壊れるので対象外
@@ -10461,6 +10860,7 @@ const App = {
   paramFadeBeats: 0.5,
   _paramFades: [],           // {key, from, to, t0, dur(実秒)}
   _gradFade: null,           // Grad 色替えの dip-to-zero: {fromMix, stops, targetMix, phase, t0, dur}
+  gradAuto: {mode:0, beats:8, cycle:null},   // Grad Auto: Grad Map が Grad Preset の間を変わり続ける (mode 1=ランダム)
   // Hue Shift (手動スライダー / MIDI / プリセット適用 / Param Fade 補間 / 自動ローテート) の
   // 変化を検出して、Grad Map のバーと Preset 欄のパレット一覧を描き直す。
   // DOM 再構築があるので、実際に値が動いたときだけ・最大 20fps に間引く。
@@ -10506,7 +10906,7 @@ const App = {
     // Post FX (inv / hue はフェード対象に変更: プリセット切替でも Param Fade でなめらかに反転・回頭する)
     gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1, hueRot:1,
     // Audio FX
-    gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, mosaic:1, shake:1, slice:1, split:1, pixsort:1, rings:1,
+    gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, mosaic:1, shake:1, slice:1, ringSlice:1, split:1, pixsort:1, rings:1,
     // Glitch FX のうち音/拍で発火するもの (uHit/uOnset 駆動)。
     // フェードで強度が遅れて上がるとトリガーの瞬発力が鈍るため瞬時反映。
     glass:1, twist:1, origami:1, kaiser:1, kaiserOld:1,
@@ -10540,8 +10940,9 @@ const App = {
     return [{t:0, rgb:(this.post.gradA || [0.8,0.8,0.8]).slice()},
             {t:1, rgb:(this.post.gradB || [0.247,0,1]).slice()}];
   },
-  fadeGradTo(stops, targetMix){
-    const dur = this._fadeSec();
+  fadeGradTo(stops, targetMix, durSec){
+    const dur = durSec > 0 ? durSec : this._fadeSec();
+    this._gradLinear = durSec > 0;                     // Grad Auto は等速 (つなぎ目で止まって見えないように)
     const cur = this.post.gradMix || 0;
     const ge = (typeof UI !== 'undefined') ? UI._gradEditor : null;
     if(!(dur > 0.01) || !ge){   // 即時
@@ -10570,6 +10971,15 @@ const App = {
                          fromMix: cur, targetMix, t0: now(), dur };
     }
   },
+  // Grad Auto: beats 拍ごとに次の Grad Preset を選び、次の選択までの時間いっぱい掛けて移る
+  _tickGradAuto(){
+    const a = this.gradAuto;
+    if(!a.mode){ a.cycle = null; return; }
+    const c = Math.floor(BPM.beatCount() / a.beats);
+    if(c === a.cycle) return;
+    a.cycle = c;
+    this.randomGradPreset(a.beats*60/Math.max(20, BPM.bpm));
+  },
   _tickParamFades(){
     const t = now();
     let done = false;
@@ -10595,7 +11005,7 @@ const App = {
         this.post.gradMix = g.targetMix;
         this._gradFade = null; done = true;
       } else {
-        const s = u*u*(3 - 2*u);                    // smoothstep
+        const s = this._gradLinear ? u : u*u*(3 - 2*u);   // smoothstep
         this.post.gradMix = g.fromMix + (g.targetMix - g.fromMix) * s;
         if(g.to && g.from && g.ts){                 // 現在のグラデ → 次のグラデを直接補間
           const ge = (typeof UI !== 'undefined') ? UI._gradEditor : null;
@@ -10793,7 +11203,7 @@ const App = {
     gamma:1.0, sat:1.0, hue:0.0, bri:0.0, con:1.0,
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
-    twist:0.0, slice:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
+    twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, barcode:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
@@ -10854,7 +11264,7 @@ const App = {
     gamma:1.0, sat:1.0, hue:0.0, bri:0.0, con:1.0,
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
-    twist:0.0, slice:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
+    twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, barcode:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
@@ -10940,6 +11350,9 @@ const App = {
     Preview.init();
     // Built-in な特殊プリセットを先頭に追加
     PRESETS.unshift({ name:'★ TRANSMUTE FLOCK (錬成痕)', kind:'transflock', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ LIQUID PEEL (剥離)', kind:'liquidpeel', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ WIND FLOCK (風の面)', kind:'windflock', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ FUDE (毛筆)', kind:'fude', ch:[], src:'' });
     PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
     PRESETS.unshift({ name:'★ VIDEO (Loop Player)', kind:'video', ch:[], src:'' });
     PRESETS.unshift({ name:'(なし / 透明)', kind:'none', ch:[], src:'' });   // 一番左上: 無選択=透過
@@ -11434,6 +11847,7 @@ ${outBlock}
         if(typeof Aratanagara!=='undefined'){ Aratanagara._flowTime = 0; Aratanagara._ftPrev = undefined; }
         if(typeof Pen!=='undefined' && Pen.initialized){ Pen.clock = 0; if(Pen.strokes){ Pen.strokes.length = 0; for(let i=0;i<(Pen.P.count||0);i++) Pen.strokes.push(Pen.makeRandomStroke(-Pen._rand(0,1.5))); } }
         if(typeof Boltzmann!=='undefined' && Boltzmann.initialized) Boltzmann.seeded = false;   // 次フレームで再シード
+        if(typeof Fude!=='undefined' && Fude.initialized) Fude.restart();   // 書き順を一画目へ
         if(typeof GrayScott!=='undefined' && GrayScott.initialized && GrayScott.reseed) GrayScott.reseed();
         if(typeof Ugomeki!=='undefined' && Ugomeki.initialized && Ugomeki.reseed){ Ugomeki.reseed(); Ugomeki._typeT = 0; Ugomeki._mdStartBeat = null; }   // 文字ごとの揺れを再ランダム化＋書き出しを先頭へ
         if(typeof TextDeform!=='undefined' && TextDeform.initialized){   // 変形を全解除して組版し直し(初期フレーム)
@@ -11550,9 +11964,242 @@ ${outBlock}
     // ドラッグパン状態
     let _panDrag = null; // {sx, sy, baseX, baseY}
     const isPanDragEvent = (e)=>{
-      // 中ボタン / 右ボタン / Alt+左ドラッグ / Space + 左ドラッグ
-      return e.button === 1 || e.button === 2 || (e.button === 0 && (e.altKey || e.metaKey));
+      // 中ボタン / 右ボタン / Cmd+左ドラッグ (Alt+左 はスポイトに使うのでパンには使わない)
+      return e.button === 1 || e.button === 2 || (e.button === 0 && e.metaKey && !e.altKey);
     };
+    // ── Option キー: カラーサークル (短押し) と スポイト (長押し) ──
+    //   短押し (350ms 未満で離す) → カーソル位置にカラーサークル (色相×彩度の円盤 + 明度バー) を表示。
+    //     円盤・バーをクリック / ドラッグで背景色をライブ変更。カーソルが一定範囲の外へ出る / もう一度 Option /
+    //     Esc / サークル外のクリックで消える。
+    //   長押し (350ms 以上) → 押している間スポイト: カーソルがスポイトになり、ポインタ下の色を円で表示しながら
+    //     ライブで背景色へ入れ、離した位置の色で確定。拾う元: ステージ = 最終出力 / A・B タイル = タイルの画 /
+    //     カラーピッカー = その値 / 他の UI = 要素の背景色 (透明な所は下へ透過)。
+    //   入れる先の優先順: アクティブスロットのシェーダの uBgColor → エンジン (transflock / liquidpeel /
+    //   windflock 等) の Paper → Slot A 背景色 (Mix パネル)。
+    const eyeCursor = (()=>{
+      const svg = "<svg xmlns='http://www.w3.org/2000/svg' width='22' height='22' viewBox='0 0 22 22'>"
+        + "<path d='M3 19 L10 12' stroke='#000' stroke-width='4.4' stroke-linecap='round'/>"
+        + "<path d='M3 19 L10 12' stroke='#fff' stroke-width='2.2' stroke-linecap='round'/>"
+        + "<path d='M9 9 L13 13 L17 9 A2.8 2.8 0 0 0 13 5 Z' fill='#fff' stroke='#000' stroke-width='1.2' stroke-linejoin='round'/>"
+        + "<circle cx='3' cy='19' r='1.6' fill='#000'/><circle cx='3' cy='19' r='0.9' fill='#fff'/>"
+        + "</svg>";
+      return "url(\"data:image/svg+xml;utf8," + encodeURIComponent(svg) + "\") 3 19, crosshair";
+    })();
+    { const st = document.createElement('style');
+      st.textContent = 'body.vjEyedrop, body.vjEyedrop *{cursor:' + eyeCursor + ' !important}';
+      document.head.appendChild(st); }
+    const clamp01 = (v)=>Math.max(0, Math.min(1, v));
+    const toHexRgb = (rgb)=>'#' + rgb.map(v=>Math.round(clamp01(v)*255).toString(16).padStart(2,'0')).join('');
+    const hsv2rgb = (h, s, v)=>{
+      const i = Math.floor(h*6), f = h*6 - i, p = v*(1 - s), q = v*(1 - f*s), t = v*(1 - (1 - f)*s);
+      switch(((i % 6) + 6) % 6){ case 0: return [v,t,p]; case 1: return [q,v,p]; case 2: return [p,v,t]; case 3: return [p,q,v]; case 4: return [t,p,v]; default: return [v,p,q]; }
+    };
+    const rgb2hsv = (r, g, b)=>{
+      const mx = Math.max(r,g,b), mn = Math.min(r,g,b), d = mx - mn; let h = 0;
+      if(d > 1e-6){ if(mx === r) h = ((g - b)/d) % 6; else if(mx === g) h = (b - r)/d + 2; else h = (r - g)/d + 4; h /= 6; if(h < 0) h += 1; }
+      return [h, mx > 1e-6 ? d/mx : 0, mx];
+    };
+    // 入れる先 (優先順) を {label, get, set, refresh} で返す
+    const bgTarget = ()=>{
+      const slot = GL.slots[App.activeSlot];
+      const bgParam = (slot && (!slot.kind || slot.kind === 'shader') && slot.params) ? slot.params.find(q=>q.type === 'color' && q.name === 'uBgColor') : null;
+      if(bgParam) return { label:'背景色 (uBgColor)', get:()=>bgParam.value.slice(), set:(rgb)=>{ bgParam.value = rgb.slice(); }, refresh:()=>{ if(UI.refreshParams) UI.refreshParams(); } };
+      const EP = (slot && slot.kind && App._engineP) ? App._engineP(slot.kind) : null;
+      if(EP){
+        // エンジンの背景色: paper (配列 or hex 文字列) / bgColor / bg の順で探す。slicer は bgMode も Color に切り替える
+        for(const key of ['paper', 'bgColor', 'bg']){
+          const v = EP[key];
+          const label = key + ' (' + slot.kind + ')';
+          const refresh = ()=>{ if(UI.refreshAll) UI.refreshAll(); };
+          if(Array.isArray(v) && v.length >= 3)
+            return { label, get:()=>EP[key].slice(0, 3), set:(rgb)=>{ EP[key] = rgb.slice(); if(EP.bgMode !== undefined) EP.bgMode = 'color'; }, refresh };
+          if(typeof v === 'string' && /^#[0-9a-f]{6}$/i.test(v))
+            return { label, get:()=>App.parseHexRgb(EP[key]), set:(rgb)=>{ EP[key] = toHexRgb(rgb); }, refresh };
+        }
+      }
+      return { label:'Slot A 背景色', get:()=>App.parseHexRgb(App.slotABg), set:(rgb)=>{ App.setSlotABg(toHexRgb(rgb)); }, refresh:()=>{ if(UI.refreshSlotABg) UI.refreshSlotABg(); } };
+    };
+
+    // ── カラーサークル ──
+    const WR = 76, WB = 14, WBAR = 160;                        // 円盤の半径 / 明度バーの幅 / 高さ (px)
+    const wheel = document.createElement('div'); wheel.id = 'vjColorWheel';
+    wheel.style.cssText = 'position:fixed;left:0;top:0;width:' + (WR*2 + 8 + WB) + 'px;height:' + (WR*2) + 'px;display:none;z-index:99998;user-select:none;filter:drop-shadow(0 2px 8px rgba(0,0,0,.65))';
+    const disc = document.createElement('canvas'); disc.width = disc.height = WR*2;
+    disc.style.cssText = 'position:absolute;left:0;top:0;border-radius:50%;cursor:crosshair';
+    const bar = document.createElement('canvas'); bar.width = WB; bar.height = WBAR;
+    bar.style.cssText = 'position:absolute;left:' + (WR*2 + 8) + 'px;top:' + (WR - WBAR/2) + 'px;border-radius:4px;cursor:ns-resize';
+    const mark = document.createElement('div');
+    mark.style.cssText = 'position:absolute;width:12px;height:12px;border-radius:50%;border:2px solid #fff;box-shadow:0 0 0 1px #000;pointer-events:none;transform:translate(-50%,-50%)';
+    const barMark = document.createElement('div');
+    barMark.style.cssText = 'position:absolute;left:' + (WR*2 + 6) + 'px;width:' + (WB + 4) + 'px;height:3px;background:#fff;box-shadow:0 0 0 1px #000;pointer-events:none;transform:translateY(-50%)';
+    wheel.append(disc, bar, mark, barMark);
+    document.body.appendChild(wheel);
+    const W = { h:0, s:0, v:1, cx:0, cy:0, drag:null, visible:false };
+    const drawDisc = ()=>{
+      const ctx = disc.getContext('2d'), N = WR*2, img = ctx.createImageData(N, N), d = img.data;
+      for(let y = 0; y < N; y++) for(let x = 0; x < N; x++){
+        const dx = x + 0.5 - WR, dy = y + 0.5 - WR, r = Math.hypot(dx, dy) / WR, o = (y*N + x)*4;
+        if(r > 1.0){ d[o+3] = 0; continue; }
+        const h = (Math.atan2(dy, dx) / (2*Math.PI) + 1) % 1;
+        const c = hsv2rgb(h, r, W.v);
+        d[o] = c[0]*255; d[o+1] = c[1]*255; d[o+2] = c[2]*255; d[o+3] = (r > 0.985) ? (1 - r)/0.015*255 : 255;
+      }
+      ctx.putImageData(img, 0, 0);
+    };
+    const drawBar = ()=>{
+      const ctx = bar.getContext('2d'), g = ctx.createLinearGradient(0, 0, 0, WBAR);
+      g.addColorStop(0, toHexRgb(hsv2rgb(W.h, W.s, 1))); g.addColorStop(1, '#000000');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, WB, WBAR);
+    };
+    const placeMarks = ()=>{
+      mark.style.left = (WR + Math.cos(W.h*2*Math.PI)*W.s*WR) + 'px';
+      mark.style.top  = (WR + Math.sin(W.h*2*Math.PI)*W.s*WR) + 'px';
+      mark.style.background = toHexRgb(hsv2rgb(W.h, W.s, W.v));
+      barMark.style.top = ((WR - WBAR/2) + (1 - W.v)*WBAR) + 'px';
+    };
+    const applyWheel = (final)=>{
+      const rgb = hsv2rgb(W.h, W.s, W.v); const T = bgTarget(); T.set(rgb);
+      if(final){ T.refresh(); toast(T.label + ' ← ' + toHexRgb(rgb)); }
+    };
+    const showWheel = (x, y)=>{
+      const cur = bgTarget().get(); [W.h, W.s, W.v] = rgb2hsv(cur[0], cur[1], cur[2]);
+      if(W.v < 0.05) W.v = 1.0;                                 // 黒から開くと円盤が真っ黒で選べないので明度 1 で出す
+      W.cx = Math.max(WR + 8, Math.min(window.innerWidth - WR - WB - 16, x));
+      W.cy = Math.max(WR + 8, Math.min(window.innerHeight - WR - 8, y));
+      wheel.style.transform = 'translate(' + (W.cx - WR) + 'px,' + (W.cy - WR) + 'px)';
+      drawDisc(); drawBar(); placeMarks();
+      wheel.style.display = ''; W.visible = true; W.drag = null;
+    };
+    const hideWheel = ()=>{ wheel.style.display = 'none'; W.visible = false; W.drag = null; };
+    // 円盤 / バー上の座標を色に反映。戻り値 = 当たった部位 ('disc' / 'bar') か null
+    const wheelPick = (e)=>{
+      const dx = e.clientX - W.cx, dy = e.clientY - W.cy, r = Math.hypot(dx, dy);
+      if(W.drag === 'disc' || (W.drag == null && r <= WR + 2)){
+        W.s = Math.min(1, r / WR); if(r > 1.5) W.h = (Math.atan2(dy, dx) / (2*Math.PI) + 1) % 1;
+        drawBar(); placeMarks(); applyWheel(false); return 'disc';
+      }
+      const bx0 = W.cx + WR + 8, by0 = W.cy - WBAR/2;
+      if(W.drag === 'bar' || (W.drag == null && e.clientX >= bx0 - 4 && e.clientX <= bx0 + WB + 4 && e.clientY >= by0 - 4 && e.clientY <= by0 + WBAR + 4)){
+        W.v = clamp01(1 - (e.clientY - by0) / WBAR); drawDisc(); placeMarks(); applyWheel(false); return 'bar';
+      }
+      return null;
+    };
+
+    // ── スポイト (長押し) ──
+    const eyeSwatch = document.createElement('div');
+    eyeSwatch.id = 'vjEyeSwatch';
+    eyeSwatch.style.cssText = 'position:fixed;left:0;top:0;width:30px;height:30px;border-radius:50%;border:2px solid #fff;'
+      + 'box-shadow:0 0 0 1px #000,0 2px 8px rgba(0,0,0,.6);pointer-events:none;z-index:99999;display:none;background:#000';
+    document.body.appendChild(eyeSwatch);
+    const E = { on:false, last:{x:0, y:0}, sampleT:0, timer:null, holdTimer:null, altDown:false, lastRgb:null };
+    const readCanvasAt = (cv, u, v)=>{
+      if(cv === c){
+        const fb = GL._finalFBO, gl = GL.gl; if(!fb || !gl) return null;
+        const px = Math.max(0, Math.min(fb.w - 1, Math.floor(u * fb.w)));
+        const py = Math.max(0, Math.min(fb.h - 1, Math.floor((1 - v) * fb.h)));
+        const buf = new Uint8Array(4);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fb.fbo);
+        gl.readPixels(px, py, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        return [buf[0]/255, buf[1]/255, buf[2]/255];
+      }
+      let ctx = null; try{ ctx = cv.getContext('2d'); }catch(e){}
+      if(!ctx) return null;
+      const px = Math.max(0, Math.min(cv.width - 1, Math.floor(u * cv.width)));
+      const py = Math.max(0, Math.min(cv.height - 1, Math.floor(v * cv.height)));
+      const d = ctx.getImageData(px, py, 1, 1).data;
+      return (d[3] > 0) ? [d[0]/255, d[1]/255, d[2]/255] : null;
+    };
+    // 画面座標の下にある色 → {rgb, from} / null。重なった要素を上から見て、透明な所は下へ透過
+    const sampleColorAt = (x, y)=>{
+      for(const el of document.elementsFromPoint(x, y)){
+        if(el === eyeSwatch || el === wheel || wheel.contains(el) || el === document.documentElement) continue;
+        if(el.tagName === 'CANVAS'){
+          const r = el.getBoundingClientRect();
+          const rgb = readCanvasAt(el, (x - r.left) / Math.max(1, r.width), (y - r.top) / Math.max(1, r.height));
+          if(rgb) return { rgb, from: (el === c) ? '' : ' (' + (el.id || 'canvas') + ')' };
+          continue;
+        }
+        if(el.tagName === 'INPUT' && el.type === 'color' && /^#[0-9a-f]{6}$/i.test(el.value)){
+          const h = el.value;
+          return { rgb:[parseInt(h.slice(1,3),16)/255, parseInt(h.slice(3,5),16)/255, parseInt(h.slice(5,7),16)/255], from:' (ピッカー)' };
+        }
+        const m = getComputedStyle(el).backgroundColor.match(/rgba?\(\s*(\d+)[,\s]+(\d+)[,\s]+(\d+)(?:[,\s/]+([\d.]+))?/);
+        if(m && (m[4] == null || parseFloat(m[4]) > 0.05)) return { rgb:[+m[1]/255, +m[2]/255, +m[3]/255], from:' (UI)' };
+      }
+      return null;
+    };
+    // スポイト中: 円の位置は毎回、サンプル (ステージは同期 readPixels) は 40ms 間隔 + 最後の位置で後追い。拾えたらライブ反映
+    const eyeUpdate = (x, y, force)=>{
+      eyeSwatch.style.transform = 'translate(' + (x + 16) + 'px,' + (y - 44) + 'px)';
+      const now = performance.now();
+      if(!force && now - E.sampleT < 40){
+        clearTimeout(E.timer); E.timer = setTimeout(()=>{ if(E.on) eyeUpdate(E.last.x, E.last.y, true); }, 45);
+        return;
+      }
+      E.sampleT = now;
+      const got = sampleColorAt(x, y);
+      eyeSwatch.style.background = got ? toHexRgb(got.rgb) : 'transparent';
+      eyeSwatch.style.opacity = got ? '1' : '0.4';
+      if(got){ E.lastRgb = got.rgb; bgTarget().set(got.rgb); }
+    };
+    const eyeStart = ()=>{
+      if(E.on) return;
+      E.on = true; hideWheel();
+      document.body.classList.add('vjEyedrop');
+      eyeSwatch.style.display = '';
+      E.lastRgb = null;
+      eyeUpdate(E.last.x, E.last.y, true);
+    };
+    const eyeEnd = ()=>{
+      if(!E.on) return;
+      E.on = false; clearTimeout(E.timer);
+      document.body.classList.remove('vjEyedrop');
+      eyeSwatch.style.display = 'none';
+      const got = sampleColorAt(E.last.x, E.last.y) || (E.lastRgb ? { rgb:E.lastRgb, from:'' } : null);
+      if(got){ const T = bgTarget(); T.set(got.rgb); T.refresh(); toast(T.label + ' ← ' + toHexRgb(got.rgb) + got.from); }
+      else toast('スポイト: 色を拾えませんでした');
+    };
+
+    // ── キー / マウス ──
+    const HOLD_MS = 350;
+    window.addEventListener('keydown', e=>{
+      if(e.key !== 'Alt' || e.repeat || E.altDown) return;
+      E.altDown = true;
+      clearTimeout(E.holdTimer);
+      E.holdTimer = setTimeout(()=>{ if(E.altDown) eyeStart(); }, HOLD_MS);   // 長押し → スポイト
+    });
+    window.addEventListener('keyup', e=>{
+      if(e.key !== 'Alt') return;
+      E.altDown = false; clearTimeout(E.holdTimer);
+      if(E.on){ eyeEnd(); return; }                                      // 長押し終了 → 確定
+      if(W.visible) hideWheel(); else showWheel(E.last.x, E.last.y);     // 短押し → サークルのトグル
+    });
+    window.addEventListener('keydown', e=>{ if(e.key === 'Escape' && W.visible) hideWheel(); });
+    window.addEventListener('blur', ()=>{ E.altDown = false; clearTimeout(E.holdTimer); if(E.on) eyeEnd(); });
+    window.addEventListener('mousemove', e=>{
+      E.last = { x:e.clientX, y:e.clientY };
+      if(W.drag){ wheelPick(e); return; }
+      if(E.on){ eyeUpdate(e.clientX, e.clientY, false); return; }
+      if(W.visible && Math.hypot(e.clientX - W.cx, e.clientY - W.cy) > WR + 120) hideWheel();   // 範囲外へ出たら消える
+    }, {passive:true});
+    let _eyeSwallowClick = false;
+    window.addEventListener('mousedown', e=>{
+      if(e.button !== 0) return;
+      if(W.visible){
+        const hit = wheelPick(e);
+        if(hit){ W.drag = hit; _eyeSwallowClick = true; e.preventDefault(); e.stopPropagation(); return; }
+        hideWheel();                                                     // サークル外のクリック → 消す (クリック自体は通す)
+      }
+      if(E.on){ eyeUpdate(e.clientX, e.clientY, true); _eyeSwallowClick = true; e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    window.addEventListener('mouseup', e=>{
+      if(W.drag){ W.drag = null; applyWheel(true); e.preventDefault(); e.stopPropagation(); return; }
+      if(E.on){ e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    for(const ev of ['click', 'dblclick']){
+      window.addEventListener(ev, e=>{ if(_eyeSwallowClick || E.on){ e.preventDefault(); e.stopPropagation(); if(ev === 'click') _eyeSwallowClick = false; } }, true);
+    }
     // Manga: アクティブスロットが manga のとき、画面上を左ドラッグでマシンガンを走らせる。
     //   カーソル位置が照準になる (Enter の 8 方向自走とは排他)。
     let _mangaDrag = false;
@@ -11700,6 +12347,7 @@ ${outBlock}
         }
         UI.refreshMix(true);
       }
+      this._tickGradAuto();
       this._tickParamFades();   // Param Fade: post 数値パラメータの補間を進める
       this._syncHuePreview();   // Hue Shift の変化をグラデバー / パレット一覧へ即反映
       GL._pollCompiles();       // 非同期シェーダコンパイルの完了確認・差し替え
@@ -12042,6 +12690,37 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'windflock'){
+      s.kind = 'windflock';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'windflock';
+      if(typeof WindFlock !== 'undefined' && !WindFlock.initialized) WindFlock.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('windflock');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
+    if(p.kind === 'fude'){
+      s.kind = 'fude';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'fude';
+      if(typeof Fude !== 'undefined' && !Fude.initialized) Fude.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('fude');
+      if(typeof Fude !== 'undefined') Fude.restart();
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
+    if(p.kind === 'liquidpeel'){
+      s.kind = 'liquidpeel';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'liquidpeel';
+      if(typeof LiquidPeel !== 'undefined' && !LiquidPeel.initialized) LiquidPeel.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('liquidpeel');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'ribbon'){
       s.kind = 'ribbon';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'ribbon';
@@ -12115,6 +12794,9 @@ ${outBlock}
       case 'photoplane': return (typeof PhotoPlane !== 'undefined' && PhotoPlane.P) ? PhotoPlane.P : null;
       case 'shredder': return (typeof Shredder !== 'undefined' && Shredder.P) ? Shredder.P : null;
       case 'transflock': return (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null;
+      case 'liquidpeel': return (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null;
+      case 'windflock': return (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null;
+      case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
       case 'textdeform': return (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null;
       case 'ugomeki': return (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null;
       case 'spacetype': return (typeof SpaceType !== 'undefined' && SpaceType.P) ? SpaceType.P : null;
@@ -12402,6 +13084,7 @@ ${outBlock}
   escResetAll(){
     // リセットは 3 秒後の autosave で vj.state に焼き付くため、直前状態を undo へ確定させる
     this._undoPushNow();
+    this.gradAuto.mode = 0;
 
     // 1) 両スロットを「なし(透明)」に (転換は挟まない)
     this.transBeats = 0; this.transStyle = 0;
@@ -12598,6 +13281,7 @@ ${outBlock}
       bpm: BPM.bpm, crossfade: this.crossfade, blendMode: this.blendMode, gamma: this.gamma,
       slotABg: this.slotABg,
       slotBOffsetBeats: this.slotBOffsetBeats || 0,
+      gradAuto: { mode:this.gradAuto.mode, beats:this.gradAuto.beats },
       transBeats: this.transBeats,
       transStyle: this.transStyle,
       post: this.post,
@@ -12620,6 +13304,9 @@ ${outBlock}
 	      photoplane: (typeof PhotoPlane !== 'undefined' && PhotoPlane.P) ? PhotoPlane.P : null,
 	      shredder: (typeof Shredder !== 'undefined' && Shredder.P) ? Shredder.P : null,
 	      transflock: (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null,
+	      liquidpeel: (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null,
+	      windflock: (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null,
+	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
 	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null,
 	      ugomeki: (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null,
 	      spacetype: (typeof SpaceType !== 'undefined' && SpaceType.P) ? SpaceType.P : null,
@@ -12981,7 +13668,7 @@ ${outBlock}
     // 保存: Shader / Mix(Blend・crossfade) / Visual Beat / Overlay / Post FX / 各mode。除外: テンポ・Transition・Style・Audio FX。
     delete data.bpm;
     delete data.beatMode;                    // beat / drone は演奏中に手で決めるライブ設定
-    delete data.transBeats; delete data.transStyle;
+    delete data.transBeats; delete data.transStyle; delete data.gradAuto;
     if(data.post){
       const AUDIO_FX = ['audioTarget','audioGain','audioBand','audioAttack','aScan','aRgb','aStrobe','aShock','aExplode'];
       AUDIO_FX.forEach(k => delete data.post[k]);   // Post FX は保存 / Audio FX のみ除外
@@ -13221,10 +13908,20 @@ ${outBlock}
     if(!ge || !ge._hueShifted) return stops.map(s=>({t:s.t, rgb:s.rgb.slice()}));
     return stops.map(s=>({t:s.t, rgb:ge._hueShifted(s.rgb)}));
   },
-  applyGradPreset(n){   // n: 0..8 = Grad Preset (キー 1〜9) / 9 = 通常色 = Grad Map OFF (キー 0)
+  // 登録済みの Grad Preset からランダムに選び、dur 秒かけて移る (直前と同じものは避ける)
+  randomGradPreset(dur){
+    const list = (typeof UI !== 'undefined' && UI._gradStore) ? UI._gradStore.list : [];
+    const ok = [];
+    list.forEach((it, i)=>{ if(it && it.stops && i !== 9 && i !== this._activeGradPreset) ok.push(i); });   // 9 は通常色 (OFF) の番号
+    if(ok.length) this.applyGradPreset(ok[Math.floor(Math.random()*ok.length)], true, dur);
+  },
+  applyGradPreset(n, quiet, dur){   // n: 0..8 = Grad Preset (キー 1〜9) / 9 = 通常色 = Grad Map OFF (キー 0)
     const ge = (typeof UI !== 'undefined') ? UI._gradEditor : null;
     if(!ge) return;
     if(n === 9){                        // 通常色: Grad Map を切るだけ (Hue Shift はライブのまま = 色は確定しない)
+      this.gradAuto.mode = 0;
+      this._gradFade = null;            // 移行中の Grad が終わったときに gradMix を戻さないように
+      this._gradPreview = null;
       this.fadePostNum('gradMix', 0);
       this._activeGradPreset = 9;
       if(UI.refreshPost) UI.refreshPost();
@@ -13237,15 +13934,15 @@ ${outBlock}
     if(!item || !item.stops){ toast('Grad '+(n+1)+' は空'); return; }
     // 同じ数字を 2 回押しても解除しない。Grad Map を切るのは 0 (通常色)。
     // Param Fade: gradMix を一度 0 へ落として色を差し替え、目標値まで戻す(即時なら従来どおり)
-    const curMix = this.post.gradMix || 0;
+    const curMix = this._gradFade ? this._gradFade.targetMix : (this.post.gradMix || 0);   // フェード中は途中の値でなく行き先を引き継ぐ
     const targetMix = (Math.abs(curMix) > 0.0001) ? curMix : 1.0;
     // ストップは保存色のまま適用する (焼き込みなし)。Hue Shift はシェーダで Grad 出力の
     // 後段にライブで掛かるので、見た目は従来 (回したパレット) と同一で、かつ可逆。
-    this.fadeGradTo(item.stops.map(s=>({t:s.t, rgb:s.rgb.slice()})), targetMix);
+    this.fadeGradTo(item.stops.map(s=>({t:s.t, rgb:s.rgb.slice()})), targetMix, dur);
     this._activeGradPreset = n;
     if(UI.refreshPost) UI.refreshPost();
     if(UI._refreshGradList) UI._refreshGradList();
-    toast('Grad: '+item.name);
+    if(!quiet) toast('Grad: '+item.name);
   },
   presetOverwrite(i, name){
     const lib0 = this._loadPresetLib();
@@ -13297,7 +13994,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -13341,7 +14038,7 @@ ${outBlock}
     this._confirm(msg, ()=>{
       const data = this._collectState();
       // バンクには BPM / Transition は含めない (テンポ・演出は維持したまま構成だけ切替)
-      delete data.bpm; delete data.transBeats; delete data.transStyle;
+      delete data.bpm; delete data.transBeats; delete data.transStyle; delete data.gradAuto;
       try{ localStorage.setItem('vj.bank.'+n, JSON.stringify(data)); }catch(e){}
       if(UI && UI.refreshBanks) UI.refreshBanks();
       toast('Bank '+n+' に保存');
@@ -13592,6 +14289,7 @@ ${outBlock}
         else { this.beatScale = bs; this.setSpeed(bs); }
       }
       if(typeof s.crossfade==='number') this.crossfade = s.crossfade;
+      if(s.gradAuto){ this.gradAuto.mode = s.gradAuto.mode || 0; this.gradAuto.beats = s.gradAuto.beats || 8; }
       if(typeof s.slotBOffsetBeats==='number'){ this.slotBOffsetBeats = s.slotBOffsetBeats; const bo=$('#mixBOffset'); if(bo){ bo.value = s.slotBOffsetBeats; const bv=$('#mixBOffsetVal'); if(bv) bv.textContent = s.slotBOffsetBeats.toFixed(2); } }
       if(s.blendMode){ this.blendMode = s.blendMode; const cb=document.querySelector('#cfBlend'); if(cb) cb.value = s.blendMode; }
       if(typeof s.slotABg === 'string') this.setSlotABg(s.slotABg);
@@ -13677,7 +14375,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','fude'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -14160,7 +14858,27 @@ void mainImage(out vec4 o, in vec2 f){
         });
       }
     }
-    $('#bpmInput').addEventListener('change', e=>{ BPM.setBpm(parseFloat(e.target.value)); });
+    // 手で決めた BPM: 音声が入っている間は Auto が 8 秒で上書きするので Auto を切る
+    const typedBpm = v=>{
+      if(!isFinite(v) || v <= 0){ this.refreshBPM(); return; }
+      if(BPM.auto && Audio.mode !== 'off'){ BPM.auto = false; const a=$('#bpmAuto'); if(a) a.checked = false; toast('Auto BPM OFF'); }
+      BPM.setBpm(v);
+    };
+    $('#bpmInput').addEventListener('change', e=>{ typedBpm(parseFloat(e.target.value)); });
+    // 大きい BPM 表示をクリックするとその場で入力できる (Enter / フォーカスを外すで確定、Esc で取消)
+    { const big = $('#bpmBig'), edit = $('#bpmBigEdit');
+      const close = ()=>{ edit.style.display = 'none'; big.style.display = ''; };
+      big.addEventListener('click', ()=>{
+        big.style.display = 'none'; edit.style.display = '';
+        edit.value = BPM.bpm.toFixed(1); edit.focus(); edit.select();
+      });
+      edit.addEventListener('keydown', e=>{
+        e.stopPropagation();
+        if(e.key === 'Enter'){ e.preventDefault(); edit.blur(); }
+        else if(e.key === 'Escape'){ e.preventDefault(); edit.value = ''; edit.blur(); }
+      });
+      edit.addEventListener('blur', ()=>{ if(edit.value !== '') typedBpm(parseFloat(edit.value)); close(); });
+    }
     $('#btnTap').addEventListener('click', ()=>BPM.tap());
     $('#btnReset').addEventListener('click', ()=>BPM.resetPhase());
     $('#bpmAuto').addEventListener('change', e=>{
@@ -14213,32 +14931,10 @@ void mainImage(out vec4 o, in vec2 f){
     { const b = $('#btnDiagClear');    if(b) b.addEventListener('click',()=>{ Diag.clear(); toast('診断ログをクリア'); }); }
 
     // audio (ON のボタンに色を付ける / 点灯中の再クリックで OFF にトグル)
+    $('#btnAudioNone').addEventListener('click', async ()=>{ await Audio.stop(); UI.refreshAudioButtons(); });
     $('#btnAudioMic').addEventListener('click', async ()=>{ if(Audio.mode==='mic'){ await Audio.stop(); } else { await Audio.start('mic'); } UI.refreshAudioButtons(); });
     $('#btnAudioDisp').addEventListener('click', async ()=>{ if(Audio.mode==='display'){ await Audio.stop(); } else { await Audio.start('display'); } UI.refreshAudioButtons(); });
     this.refreshAudioButtons();
-    // マイクを自動 ON にする。権限が既に許可済みならプロンプトなしで started、
-    // 未許可/失敗時は最初のユーザー操作 (クリック/キー) で 1 回だけ再試行する
-    // (ブラウザによっては権限プロンプトにジェスチャが要るため)。
-    {
-      let tries = 0, busy = false, done = false;
-      const onUser = ()=>{ autoMic(); };
-      const finish = ()=>{
-        done = true;
-        window.removeEventListener('pointerdown', onUser);
-        window.removeEventListener('keydown', onUser);
-      };
-      const autoMic = async ()=>{
-        if(done || busy || Audio.mode !== 'off') return;
-        if(tries >= 3){ finish(); return; }        // 拒否され続けるなら諦める (毎操作の再試行を防ぐ)
-        busy = true; tries++;
-        const ok = await Audio.start('mic').catch(()=>false);
-        busy = false;
-        if(ok){ this.refreshAudioButtons(); finish(); }
-      };
-      autoMic();
-      window.addEventListener('pointerdown', onUser, {passive:true});
-      window.addEventListener('keydown', onUser);
-    }
 
     // channels
     $('#btnLoadImg').addEventListener('click',()=>$('#fileImg').click());
@@ -15177,6 +15873,13 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
       root.appendChild(row);
     }
+    { const row = document.createElement('div'); row.className = 'row';       // 紙 (Slot A の背景色)
+      const lab = document.createElement('label'); lab.textContent = 'BG Color';
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col = document.createElement('input'); col.type='color'; col.value = toHex(Pen.P.bgColor);
+      col.dataset.default = toHex(App.resetValueFor('pen', 'bgColor', Pen._PDef.bgColor || Pen.P.bgColor));
+      col.addEventListener('input', ()=>{ const v = col.value; Pen.P.bgColor = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
   },
 
   // MIDI Relative の UI を MIDI の現在値へ同期。
@@ -15451,6 +16154,9 @@ void mainImage(out vec4 o, in vec2 f){
         });
       } }
     slid('pxGradMix','gradMix', f2);
+    { const m = $('#pxGradAuto'), b = $('#pxGradAutoBeats');
+      m.addEventListener('change', ()=>{ const v = parseInt(m.value, 10); if(v) App.gradAuto.mode = v; else App.applyGradPreset(9); });
+      b.addEventListener('change', ()=>{ App.gradAuto.beats = parseFloat(b.value); App.gradAuto.cycle = null; }); }
     slid('pxPaletteAmt','paletteAmt', f2);
     { const pa = $('#pxPaletteAmt'); if(pa) pa.addEventListener('input', ()=>{ if(Math.abs(App.post.paletteAmt||0) > 0.001 && App.post.palette !== 8){ App.post.palette = 8; } }); }
     const hexToRGB = (h)=>{ h=h.replace('#',''); return [parseInt(h.slice(0,2),16)/255, parseInt(h.slice(2,4),16)/255, parseInt(h.slice(4,6),16)/255]; };
@@ -15813,9 +16519,12 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxBlm',  'blm',  f2);
     slid('pxTwist','twist',f2);
     slid('pxSlice','slice',f2);
+    slid('pxRingSlice','ringSlice',f2);
+    slid('pxRingBlur','ringBlur',f2);
     slid('pxSplit','split',f2);
     slid('pxMos',  'mosaic',f2);
     slid('pxSlit2','slit2', f2);
+    slid('pxFilmBlur','filmBlur', f2);
     slid('pxGlass','glass', f2);
     slid('pxOutline','outline', f2);
     slid('pxDither','dither', f2);
@@ -15973,14 +16682,19 @@ void mainImage(out vec4 o, in vec2 f){
       if(out) out.textContent = f2(u);
     }
     set('pxGradMix',  p.gradMix || 0, f2);
+    { const m = $('#pxGradAuto'), b = $('#pxGradAutoBeats');
+      if(m) m.value = String(App.gradAuto.mode); if(b) b.value = String(App.gradAuto.beats); }
     if(UI._gradEditor) UI._gradEditor.render();   // Grad Map エディタを現状の stops で再描画
     set('pxPos',   p.pos,   fi);
     set('pxBlm',   p.blm,   f2);
     set('pxTwist', p.twist, f2);
     set('pxSlice', p.slice, f2);
+    set('pxRingSlice', p.ringSlice || 0, f2);
+    set('pxRingBlur', p.ringBlur || 0, f2);
     set('pxSplit', p.split || 0, f2);
     set('pxMos',   p.mosaic,f2);
     set('pxSlit2', p.slit2 || 0, f2);
+    set('pxFilmBlur', p.filmBlur || 0, f2);
     set('pxGlass', p.glass || 0, f2);
     set('pxOutline', p.outline || 0, f2);
     set('pxDither', p.dither || 0, f2);
@@ -16108,7 +16822,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -16186,6 +16900,9 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'photoplane') ? 'PHOTO\nPLANE'
                      : (p.kind === 'shredder') ? 'POLYGON\nSHREDDER'
                      : (p.kind === 'transflock') ? 'TRANSMUTE\nFLOCK'
+                     : (p.kind === 'liquidpeel') ? 'LIQUID\nPEEL'
+                     : (p.kind === 'windflock') ? 'WIND\nFLOCK'
+                     : (p.kind === 'fude') ? 'FUDE'
                      : (p.kind === 'spacetype') ? 'SPACE\nTYPE'
                      : (p.kind === 'ribbon') ? 'RIBBON\nLINES'
                      : '…';
@@ -16539,7 +17256,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'fude';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -16557,6 +17274,15 @@ void mainImage(out vec4 o, in vec2 f){
     const isTF = slot.kind === 'transflock';
     $$('.transflock-mode').forEach(el => el.style.display = isTF ? '' : 'none');
     if(isTF && this.refreshTransflockParams) this.refreshTransflockParams();
+    const isLP = slot.kind === 'liquidpeel';
+    $$('.liquidpeel-mode').forEach(el => el.style.display = isLP ? '' : 'none');
+    if(isLP && this.refreshLiquidPeelParams) this.refreshLiquidPeelParams();
+    const isWF = slot.kind === 'windflock';
+    $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
+    if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
+    const isFude = slot.kind === 'fude';
+    $$('.fude-mode').forEach(el => el.style.display = isFude ? '' : 'none');
+    if(isFude && this.refreshFudeParams) this.refreshFudeParams();
     if(isPhoto && this.refreshPhotoParams) this.refreshPhotoParams();
     const isPen = slot.kind === 'pen';
     $$('.pen-mode').forEach(el => el.style.display = isPen ? '' : 'none');
@@ -16823,6 +17549,13 @@ void mainImage(out vec4 o, in vec2 f){
       inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); if(relayout && PhotoPlane.generateLayout) PhotoPlane.generateLayout(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+    { const row=document.createElement('div'); row.className='row';          // 背景色 (Slot A で敷く / Slot B は透過)
+      const lab=document.createElement('label'); lab.textContent='BG Color';
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P.bg);
+      col.dataset.default = toHex(App.resetValueFor('photoplane', 'bg', (PhotoPlane.PDefaults && PhotoPlane.PDefaults.bg) || P.bg));
+      col.addEventListener('input', ()=>{ const v=col.value; P.bg=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
   },
   // すべてのスライダーに「ダブルクリックで既定値へ戻す」を付ける。
   //   既定値 = そのスライダーが最初に組まれた時点の値 (= Save/Reset が復元する値)。
@@ -16967,7 +17700,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Specular',    'specAmt',    0,   2,  0.02, v=>v.toFixed(2), false],
       ['Near Clear', 'nearFade',   0,   6,  0.05, v=>v.toFixed(2), false],
       ['Near Cull',  'nearCull',   0,   3,  0.05, v=>v.toFixed(2), false],
-      ['Bg Light',   'bgLight',    0,   1,  0.02, v=>v.toFixed(2), false],
+      {color:true, label:'BG Color', key:'bgColor'},
       ['Fog',        'fog',        0,   1.5, 0.02, v=>v.toFixed(2), false],
       ['Fog Near',   'fogNear',    0,   3,  0.02, v=>v.toFixed(2), false],
       ['Fog Far',    'fogFar',     0.2, 6,  0.05, v=>v.toFixed(2), false],
@@ -16984,6 +17717,15 @@ void mainImage(out vec4 o, in vec2 f){
         sel.value = String(Math.round(P[spec.key] || 0));
         sel.addEventListener('change', ()=>{ P[spec.key] = parseInt(sel.value, 10); App._undoSchedule && App._undoSchedule(); });
         row.appendChild(lab); row.appendChild(sel); root.appendChild(row);
+        continue;
+      }
+      if(spec.color){                                 // 色
+        const lab=document.createElement('label'); lab.textContent=spec.label;
+        const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+        const col=document.createElement('input'); col.type='color'; col.value=toHex(P[spec.key] || [0,0,0]);
+        col.dataset.default = toHex(App.resetValueFor('shredder', spec.key, (Shredder.PDefaults && Shredder.PDefaults[spec.key]) || P[spec.key]));
+        col.addEventListener('input', ()=>{ const v=col.value; P[spec.key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+        row.appendChild(lab); row.appendChild(col); root.appendChild(row);
         continue;
       }
       const [label,key,mi,ma,step,fmt,rebuild] = spec;
@@ -17020,11 +17762,13 @@ void mainImage(out vec4 o, in vec2 f){
       ['Island Len', 'islandLen', 0.3,  4,   0.05,  f2],
       ['Fill',       'fill',      0,    1,   0.02,  f2],
       ['Line',       'line',      0.1,  3,   0.02,  f2],
+      ['Line Skip',  'lineSkip',  0,    1,   0.02,  f2],
       ['Detail',     'detail',    0,    1,   0.02,  f2],
       ['Persp',      'persp',     0.3,  2,   0.02,  f2],
       ['Depth',      'depth',     0,    1,   0.02,  f2],
       ['Warp',       'warp',      0,    1,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
+      ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
@@ -17052,12 +17796,499 @@ void mainImage(out vec4 o, in vec2 f){
       b.title='群れ・筆・破片のパラメータをランダム生成 (色は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const [label,key,mi,ma,step] of specs){
-          if(key === 'audio') continue;
+          if(key === 'audio' || key === 'paperAlpha') continue;
           const v = mi + Math.random()*(ma - mi);
           P[key] = +(Math.round(v/step)*step).toFixed(4);
         }
         App._undoSchedule && App._undoSchedule();
         this.refreshTransflockParams();
+      });
+      row.appendChild(b); }
+  },
+  refreshWindflockParams(){
+    const root = document.getElementById('windflockParams'); if(!root) return;
+    if(typeof WindFlock === 'undefined' || !WindFlock.initialized){
+      root.innerHTML = '<div class="help">WIND FLOCK preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = WindFlock.P;
+    const f2 = v=>v.toFixed(2);
+    const pct = v=>String(Math.round(v))+'%';
+    const deg = v=>String(Math.round(v))+'°';
+    const specs = [
+      ['Sheets',     'sheets',    1,    12,  1,     v=>String(Math.round(v))],
+      ['Speed',      'speed',     0,    300, 1,     pct],
+      ['Angle',      'angle',     0,    360, 1,     deg],
+      ['Yaw',        'yaw',       -60,  60,  1,     deg],
+      ['Cam Yaw',    'camYaw',    -180, 180, 1,     deg],
+      ['Cam Pitch',  'camPitch',  -90,  90,  1,     deg],
+      ['Wander',     'wander',    0,    2,   0.02,  f2],
+      ['Trail',      'trail',     0.5,  12,  0.1,   v=>v.toFixed(1)],
+      ['Gap',        'gap',       0,    4,   0.02,  f2],
+      ['Spread',     'spread',    0,    1,   0.02,  f2],
+      ['Place',      'place',     0,    2,   0.02,  f2],
+      ['Radius',     'radius',    10,   100, 1,     pct],
+      ['Coil',       'coil',      0,    300, 1,     pct],
+      ['Spin',       'spin',      -200, 200, 1,     pct],
+      ['Warp',       'warp',      0,    200, 1,     pct],
+      ['Width',      'width',     0,    100, 1,     pct],
+      ['Density',    'density',   0.3,  6,   0.02,  f2],
+      ['Lanes',      'lanes',     1,    6,   1,     v=>String(Math.round(v))],
+      ['Overlap',    'overlap',   0.5,  3,   0.02,  f2],
+      ['Plate',      'plate',     0.3,  3,   0.02,  f2],
+      ['Size',       'size',      0.1,  2,   0.02,  f2],
+      ['Size Var',   'sizeVar',   0,    3,   0.02,  f2],
+      ['Jitter',     'jitter',    0,    4,   0.02,  f2],
+      ['Distort',    'distort',   0,    1,   0.02,  f2],
+      ['Round',      'round',     0,    1,   0.02,  f2],
+      ['Curve',      'curve',     0,    1,   0.02,  f2],
+      ['Gaps',       'gaps',      0,    1,   0.02,  f2],
+      ['Stray',      'stray',     0,    1,   0.02,  f2],
+      ['Scatter',    'scatter',   0,    1,   0.02,  f2],
+      ['Scat Dist',  'scatterDist', 0,  3,   0.02,  f2],
+      ['Scat End',   'scatterEnd', 0,   1,   0.02,  f2],
+      ['Fill',       'fill',      0,    1,   0.02,  f2],
+      ['Line',       'line',      0.1,  4,   0.02,  f2],
+      ['Line Var',   'lineVar',   0,    2,   0.02,  f2],
+      ['Line Skip',  'lineSkip',  0,    1,   0.02,  f2],
+      ['Detail',     'detail',    0,    1,   0.02,  f2],
+      ['Shade',      'shade',     0,    1,   0.02,  f2],
+      ['Shade Fill', 'shadeFill', 0,    1,   0.02,  f2],
+      ['Depth',      'depth',     0,    1,   0.02,  f2],
+      ['Persp',      'persp',     0.3,  2,   0.02,  f2],
+      ['Gust',       'gust',      0,    2,   0.02,  f2],
+      ['Audio',      'audio',     0,    2,   0.02,  f2],
+      ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
+      ['Seed',       'seed',      0,    999, 1,     v=>String(Math.round(v))],
+      {sel:true, label:'Hold (静止)', key:'hold', opts:['動く', '静止 (Phase の時刻で固定)']},
+      ['Phase',      'phase',     0,    120, 0.1,   v=>v.toFixed(1)+'s'],
+    ];
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const NO_DEAD = { seed:1, camYaw:1, camPitch:1, phase:1 };   // デッドゾーン表示をしない (設定値)
+    for(const spec of specs){
+      if(spec.sel){                                   // 選択肢はプルダウン
+        const row = mkRow();
+        const lab=document.createElement('label'); lab.textContent=spec.label;
+        const sel=document.createElement('select');
+        spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
+        sel.value = String(Math.round(P[spec.key] || 0));
+        sel.addEventListener('change', ()=>{ P[spec.key] = parseInt(sel.value, 10); App._undoSchedule && App._undoSchedule(); });
+        row.appendChild(lab); row.appendChild(sel);
+        continue;
+      }
+      const [label,key,mi,ma,step,fmt] = spec;
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
+      const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    }
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    for(const [label,key] of [['Ink','ink'],['Paper','paper']]){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const val=document.createElement('div'); val.className='val'; val.textContent='';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    }
+    // Random 🎲 (数値パラメータのみ。色・Audio / Paper Alpha・カメラ・Hold/Phase は変えない。保存は右上の Save)
+    { const row = mkRow();
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      b.title='面・板・線のパラメータをランダム生成 (色・カメラ・Hold は変えない。保存は右上の Save)';
+      b.addEventListener('click', ()=>{
+        for(const spec of specs){
+          if(spec.sel) continue;
+          const [label,key,mi,ma,step] = spec;
+          if(key === 'audio' || key === 'paperAlpha' || key === 'camYaw' || key === 'camPitch' || key === 'phase') continue;
+          const v = mi + Math.random()*(ma - mi);
+          P[key] = +(Math.round(v/step)*step).toFixed(4);
+        }
+        App._undoSchedule && App._undoSchedule();
+        this.refreshWindflockParams();
+      });
+      row.appendChild(b); }
+  },
+  refreshFudeParams(){
+    const root = document.getElementById('fudeParams'); if(!root) return;
+    if(typeof Fude === 'undefined' || !Fude.initialized){
+      root.innerHTML = '<div class="help">FUDE preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = Fude.P;
+    const f2 = v=>v.toFixed(2);
+    const f1 = v=>v.toFixed(1);
+    const int = v=>String(Math.round(v));
+    const deg = v=>String(Math.round(v))+'°';
+    const beats = v=>v.toFixed(1)+'b';
+    const RAND_UNIT = ['固定', '1文字ごと', '1セットごと'];
+    const BEAT_VALS = [0, 1/32, 1/16, 1/8, 1/4, 1/2, 1, 2, 4, 8, 16, 32];
+    const BEAT_NAMES = ['Off', '1/32', '1/16', '1/8', '1/4', '1/2', '1', '2', '4', '8', '16', '32'];
+    const EASE_OPTS = ['一定', 'Ease In (加速)', 'Ease Out (減速)', 'In-Out (加速→減速)', 'Out-In (途中で溜める)'];
+    const groups = [
+      ['Beat', [
+        {sel:true, label:'Beat Write', key:'beatMode', opts:['Off (beat=全文字列 / drone=Write の設定)', 'A: Beat ごとに 1 筆', 'B: Beat ごとに 1 文字', 'C: Beat ごとに全文字列']},
+        {steps:true, label:'Bar Beats', key:'beatBar', vals:BEAT_VALS.slice(1), names:BEAT_NAMES.slice(1)},
+        {steps:true, label:'Beat Rate', key:'beatRate', vals:BEAT_VALS.slice(1), names:BEAT_NAMES.slice(1)},
+        ['Attack',    'penTime',   0,    1,   0.02, v=>v>0 ? v.toFixed(2) : '一気'],
+        {steps:true, label:'Beat Hold', key:'beatHold', vals:BEAT_VALS, names:BEAT_NAMES},
+      ]],
+      ['Transition', [
+        {steps:true, label:'Set Trans', key:'setTrans', vals:BEAT_VALS, names:BEAT_NAMES},
+        {transStyle:true},
+      ]],
+      ['Variation', [
+        {sel:true, label:'Reseed', key:'reseed', opts:['固定 (Seed の値)', '毎回変える (Loop の周回 / C / 読込)']},
+        ['Seed',      'seed',      0,    9999,1,    int],
+        ['Vary',      'vary',      0,    1,   0.02, f2],
+      ]],
+      ['Random Unit', [
+        {sel:true, label:'Style Rand',  key:'styleRand',  opts:RAND_UNIT},
+        {sel:true, label:'Font Rand',   key:'fontRand',   opts:RAND_UNIT},
+        {sel:true, label:'Brush Rand',  key:'brushRand',  opts:RAND_UNIT},
+        ['Brush Amt', 'brushAmt',  0,    1,   0.02, f2],
+        {sel:true, label:'Layout Rand', key:'layoutRand', opts:['1文字ごと', '1セットごと']},
+      ]],
+      ['Layout', [
+        {sel:true, label:'Layout',    key:'layout',   opts:['横組', '縦組', 'ランダム配置', '毎回ランダム', '毎回ランダム (ずらし・大きさも)']},
+        {sel:true, label:'Align',     key:'align',    opts:['中央', '先頭', '末尾']},
+        {sel:true, label:'Weight',    key:'bold',     opts:['Regular', 'Bold']},
+        ['Tracking',  'tracking',  -0.3, 1,   0.01, f2],
+        ['Leading',   'leading',   0,    2,   0.01, f2],
+        ['Wrap',      'wrap',      0,    40,  1,    v=>v>0 ? String(Math.round(v))+'字' : 'Off'],
+        ['Pos Rand',  'scatter',   0,    3,   0.02, f2],
+        ['Shift',     'shift',     0,    3,   0.02, f2],
+        ['Stagger',   'stagger',   -2,   2,   0.02, f2],
+        ['Stair',     'stair',     -1,   1,   0.01, f2],
+        ['Rot Rand',  'scatterRot',0,    180, 1,    deg],
+        ['Size Min',  'sizeMin',   0.1,  4,   0.01, f2],
+        ['Size Max',  'sizeMax',   0.1,  4,   0.01, f2],
+        ['Size Skew', 'sizeSkew',  0.3,  5,   0.02, f2],
+        ['Aspect',    'aspect',    0.3,  3,   0.01, f2],
+        ['Aspect Rand','aspectRand',0,   1,   0.02, f2],
+        ['Slant Rand','slantRand', 0,    1,   0.02, f2],
+        {sel:true, label:'Placement', key:'compose', opts:['完全に乱数', '構成 (ポスターの型)']},
+        ['Even',      'even',      0,    1,   0.02, f2],
+        ['Area',      'area',      0.3,  3,   0.02, f2],
+      ]],
+      ['Skeleton', [
+        ['Smooth',    'smooth',    0,    12,  1,    int],
+        ['Spur',      'spur',      0,    4,   0.02, f2],
+        ['Merge',     'merge',     0,    90,  1,    deg],
+        ['Hane',      'hane',      0,    1,   0.02, f2],
+        ['Harai Len', 'haraiLen',  0,    3,   0.02, f2],
+        ['Hataku',    'hataku',    0,    1,   0.02, f2],
+        ['Link',      'link',      0,    1,   0.02, f2],
+        ['Link Thin', 'linkThin',  0.05, 1,   0.01, f2],
+      ]],
+      ['Brush', [
+        ['Width',     'width',     0.1,  4,   0.01, f2],
+        ['Font Width','fontWidth', 0,    1,   0.02, f2],
+        ['Nib',       'nib',       0,    1,   0.02, f2],
+        ['Nib Angle', 'nibAngle',  -90,  90,  1,    deg],
+        ['Pressure',  'pressure',  0,    1,   0.02, f2],
+        ['Press Freq','pressFreq', 0.5,  20,  0.1,  f1],
+        ['Entry',     'entry',     0,    2,   0.02, f2],
+        ['Taper In',  'taperIn',   0,    4,   0.02, f2],
+        ['Taper Out', 'taperOut',  0.2,  10,  0.05, f2],
+        ['Taper Pow', 'taperPow',  0.3,  3,   0.02, f2],
+        ['Harai',     'harai',     0,    1,   0.02, f2],
+        ['Tome',      'tome',      0,    1.5, 0.02, f2],
+        ['Corner',    'corner',    0,    2,   0.02, f2],
+        ['Wobble',    'wobble',    0,    2,   0.02, f2],
+        ['Wobble Freq','wobbleFreq',0.5, 30,  0.1,  f1],
+      ]],
+      ['Bristle', [
+        ['Bristles',  'bristles',  2,    60,  1,    int],
+        ['Streak',    'streak',    0.5,  40,  0.1,  f1],
+        ['Contrast',  'bristleContrast', 0.2, 3, 0.02, f2],
+        ['Kasure',    'kasure',    0,    1.2, 0.02, f2],
+        ['Dry Start', 'dryStart',  0,    0.95,0.01, f2],
+        ['Speed Dry', 'speedDry',  0,    1,   0.02, f2],
+        ['Refill',    'refill',    1,    12,  1,    int],
+        ['Splay',     'splay',     0,    1,   0.02, f2],
+        ['Rough',     'rough',     0,    1,   0.02, f2],
+      ]],
+      ['Ink', [
+        ['Density',   'density',   0,    1,   0.02, f2],
+        ['Tone',      'tone',      0,    1,   0.02, f2],
+        ['Pool',      'pool',      0,    1,   0.02, f2],
+        ['Overlap',   'overlap',   0,    1,   0.02, f2],
+        ['Bleed',     'bleed',     0,    1,   0.02, f2],
+        ['Bleed Scale','bleedScale',1,   60,  0.5,  f1],
+        ['Bleed Fiber','bleedFiber',0,   1,   0.02, f2],
+        ['Bleed Taps','bleedTaps', 4,    12,  1,    int],
+        ['Splatter',  'splatter',  0,    1,   0.01, f2],
+        ['Splat Size','splatSize', 0.2,  3,   0.02, f2],
+        ['Splat Spread','splatSpread',0, 3,   0.02, f2],
+        ['Sheen',     'sheen',     0,    1,   0.02, f2],
+      ]],
+      ['Paper', [
+        ['Grain',     'grain',     0,    1,   0.02, f2],
+        ['Paper Alpha','paperAlpha',0,   1,   0.02, f2],
+      ]],
+      ['Write', [
+        {sel:true, label:'Write', key:'write', opts:['全表示', 'Loop', 'Once']},
+        ['Write Beats','writeBeats',1,   128, 1,    beats],
+        ['Hold Beats','holdBeats', 0,    128, 1,    beats],
+        {sel:true, label:'Exit', key:'exit', opts:['フェード (beat は切替まで残す)', '一気に消える', '1 筆・1 文字ずつ (A / B)']},
+        ['Fade Beats','fadeBeats', 0,    32,  1,    beats],
+        {sel:true, label:'Ease',     key:'ease',    opts:EASE_OPTS},
+        {sel:true, label:'Ease All', key:'easeAll', opts:EASE_OPTS},
+        ['Ease Pow',  'easePow',   1,    8,   0.1,  f1],
+        ['Stroke Gap','strokeGap', 0,    1,   0.01, f2],
+        ['Speed Var', 'speedVar',  0,    1,   0.02, f2],
+      ]],
+      ['Motion', [
+        ['Flow',      'flow',      -2,   2,   0.02, f2],
+        ['Boil',      'boil',      0,    1,   0.02, f2],
+        ['Boil Rate', 'boilRate',  1,    24,  1,    int],
+        ['Sway',      'sway',      0,    1,   0.02, f2],
+        ['Pulse',     'pulse',     0,    1,   0.02, f2],
+        ['Audio',     'audio',     0,    2,   0.02, f2],
+        {sel:true, label:'Hold (静止)', key:'hold', opts:['動く', '静止 (Phase の時刻で固定)']},
+        ['Phase',     'phase',     0,    120, 0.1,  v=>v.toFixed(1)+'s'],
+      ]],
+      ['Transform', [
+        ['Zoom',      'zoom',      0.1,  4,   0.01, f2],
+        ['Pos X',     'posX',      -1,   1,   0.01, f2],
+        ['Pos Y',     'posY',      -1,   1,   0.01, f2],
+        ['Rotate',    'rotate',    -180, 180, 1,    deg],
+        ['Slant',     'slant',     -1,   1,   0.01, f2],
+        ['Stretch',   'stretch',   0.3,  3,   0.01, f2],
+      ]],
+      ['Color', [
+        {sel:true, label:'Color',     key:'colorMode', opts:['指定色 (Ink / Paper)', 'セットから選ぶ', 'セットからランダム', '完全ランダム']},
+        {sel:true, label:'Color Set', key:'colorSet',  opts:Fude.COLORS.map(c=>c.name)},
+      ]],
+    ];
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    const NO_DEAD = { smooth:1, merge:1, nibAngle:1, pressFreq:1, wobbleFreq:1, bristles:1, streak:1, bristleContrast:1, dryStart:1, refill:1,
+      bleedScale:1, bleedTaps:1, splatSize:1, splatSpread:1, wrap:1, sizeMin:1, sizeMax:1, sizeSkew:1, area:1, aspect:1, penTime:1, easePow:1, strokeGap:1, writeBeats:1, holdBeats:1, fadeBeats:1, flow:1, boilRate:1, phase:1,
+      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, seed:1, tracking:1, leading:1, taperPow:1 };   // デッドゾーン表示をしない (設定値)
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    // 文字入力。日本語の変換中は確定まで反映しない
+    const mkText = (key, rows, hint)=>{
+      const ta=document.createElement('textarea'); ta.value=P[key]; ta.rows=rows; ta.spellcheck=false; ta.placeholder=hint;
+      ta.style.cssText='width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:14px;padding:6px;margin-bottom:4px;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.18);border-radius:4px';
+      let composing=false;
+      ta.addEventListener('compositionstart', ()=>{ composing=true; });
+      ta.addEventListener('compositionend', ()=>{ composing=false; P[key]=ta.value; });
+      ta.addEventListener('input', ()=>{ if(!composing) P[key]=ta.value; });
+      ta.addEventListener('change', ()=>{ P[key]=ta.value; App._undoSchedule && App._undoSchedule(); });
+      root.appendChild(ta);
+    };
+    mkText('text', 3, '書く文字');
+    { const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent='Text Pick';
+      const sel=document.createElement('select');
+      ['上の文字をそのまま', 'Word Set からランダム', 'Word Set から順番に'].forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
+      sel.value = String(Math.round(P.textPick || 0));
+      sel.addEventListener('change', ()=>{ P.textPick = parseInt(sel.value, 10); Fude._curText = null; App._undoSchedule && App._undoSchedule(); });
+      row.appendChild(lab); row.appendChild(sel); }
+    mkText('words', 4, 'Word Set: 1 行に 1 つの文字列。/ で改行。空なら既定のセットを読む');
+    { const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent='Style';
+      const sel=document.createElement('select');
+      Fude.STYLES.forEach((st,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=st.name; sel.appendChild(o); });
+      sel.value = String(Math.round(P.style || 0));
+      sel.addEventListener('change', ()=>{ Fude.applyStyle(parseInt(sel.value, 10)); App._undoSchedule && App._undoSchedule(); this.refreshFudeParams(); });
+      row.appendChild(lab); row.appendChild(sel); }
+    { const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent='Font';
+      const sel=document.createElement('select');
+      Fude.fontList().forEach(f=>{ const o=document.createElement('option'); o.value=f.ff; o.textContent=f.name; sel.appendChild(o); });
+      sel.value = P.fontFamily; if(sel.selectedIndex < 0) sel.selectedIndex = 0;
+      sel.addEventListener('change', ()=>{ P.fontFamily = sel.value; App._undoSchedule && App._undoSchedule(); });
+      row.appendChild(lab); row.appendChild(sel); }
+    for(const [title, specs] of groups){
+      const head=document.createElement('div'); head.className='help'; head.textContent=title;
+      head.style.cssText='font-size:10px;margin-top:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.75';
+      root.appendChild(head);
+      for(const spec of specs){
+        if(spec.sel){                                 // 選択肢はプルダウン
+          const row = mkRow();
+          const lab=document.createElement('label'); lab.textContent=spec.label;
+          const sel=document.createElement('select');
+          spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
+          sel.value = String(Math.round(P[spec.key] || 0));
+          sel.addEventListener('change', ()=>{ P[spec.key] = parseInt(sel.value, 10); App._undoSchedule && App._undoSchedule(); });
+          row.appendChild(lab); row.appendChild(sel);
+          continue;
+        }
+        if(spec.transStyle){                          // 演出の一覧は Mix タブの Transition と共通
+          const row = mkRow();
+          const lab=document.createElement('label'); lab.textContent='Trans Style';
+          const sel=document.createElement('select');
+          const first=document.createElement('option'); first.value='-1'; first.textContent='Mix の設定'; sel.appendChild(first);
+          const src=document.getElementById('transStyle');
+          if(src) for(const o of src.options){ const c=document.createElement('option'); c.value=o.value; c.textContent=o.textContent; sel.appendChild(c); }
+          sel.value = String(Math.round(P.setTransStyle ?? -1)); if(sel.selectedIndex < 0) sel.selectedIndex = 0;
+          sel.addEventListener('change', ()=>{ P.setTransStyle = parseInt(sel.value, 10); App._undoSchedule && App._undoSchedule(); });
+          row.appendChild(lab); row.appendChild(sel);
+          continue;
+        }
+        if(spec.steps){                               // 決まった値だけを取るスライダー
+          const row = mkRow();
+          const lab=document.createElement('label'); lab.textContent=spec.label;
+          const near = v=>spec.vals.reduce((b,x,i)=> Math.abs(x-v) < Math.abs(spec.vals[b]-v) ? i : b, 0);
+          const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=spec.vals.length-1; inp.step=1; inp.value=near(P[spec.key]||0);
+          const val=document.createElement('div'); val.className='val'; val.textContent=spec.names[inp.value];
+          inp.addEventListener('input', ()=>{ P[spec.key]=spec.vals[inp.value]; val.textContent=spec.names[inp.value]; });
+          row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+          continue;
+        }
+        const [label,key,mi,ma,step,fmt] = spec;
+        const row = mkRow();
+        const lab=document.createElement('label'); lab.textContent=label;
+        const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+        const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
+        const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+        inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+        if(key === 'seed') Fude._onSeed = ()=>{ inp.value = P.seed; val.textContent = show(P.seed); };
+        row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+      }
+      if(title === 'Variation'){
+        const row = mkRow();
+        const b=document.createElement('button'); b.style.flex='1'; b.textContent='New Seed 🎲';
+        b.title='今すぐ別の書きぶりに引き直す。気に入ったら Reseed を固定にすればその Seed のまま止まる';
+        b.addEventListener('click', ()=>{ Fude.nextSet(true); App._undoSchedule && App._undoSchedule(); });
+        row.appendChild(b);
+      }
+    }
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    for(const [label,key] of [['Ink','ink'],['Ink 2','ink2'],['Paper','paper']]){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.addEventListener('input', ()=>{
+        const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255];
+        P.colorMode = 0;                              // 色を選んだら指定色へ
+        const modeSel = [...root.querySelectorAll('.row')].find(r=>r.querySelector('label')?.textContent === 'Color')?.querySelector('select');
+        if(modeSel) modeSel.value = '0';
+      });
+      const val=document.createElement('div'); val.className='val'; val.textContent='';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    }
+    // Random 🎲 (筆・毛・墨のみ。文字・書体・色・書き順・配置は変えない。保存は右上の Save)
+    { const row = mkRow();
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      b.title='筆・毛・墨のパラメータをランダム生成 (文字・書体・色・書き順・配置は変えない。保存は右上の Save)';
+      b.addEventListener('click', ()=>{
+        for(const [title, specs] of groups){
+          if(title !== 'Brush' && title !== 'Bristle' && title !== 'Ink') continue;
+          for(const spec of specs){
+            if(spec.sel) continue;
+            const [label,key,mi,ma,step] = spec;
+            if(key === 'bleedTaps') continue;
+            const v = mi + Math.random()*(ma - mi);
+            P[key] = +(Math.round(v/step)*step).toFixed(4);
+          }
+        }
+        App._undoSchedule && App._undoSchedule();
+        this.refreshFudeParams();
+      });
+      row.appendChild(b); }
+  },
+  refreshLiquidPeelParams(){
+    const root = document.getElementById('liquidpeelParams'); if(!root) return;
+    if(typeof LiquidPeel === 'undefined' || !LiquidPeel.initialized){
+      root.innerHTML = '<div class="help">LIQUID PEEL preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = LiquidPeel.P;
+    const f2 = v=>v.toFixed(2);
+    const specs = [
+      {sel:true, label:'Shape (形)', key:'shape', opts:['液体 (2D)', '球', '縦の面', '円柱', '立方体']},
+      {sel:true, label:'Reveal (表示)', key:'reveal', opts:['皮を常に表示', 'めくれる破片だけ']},
+      {sel:true, label:'Appear (出現)', key:'appear', opts:['本体の色から', '紙色から']},
+      {sel:true, label:'Order (順)', key:'order', opts:['まとまり (ノイズ順)', '下から上', '上から下']},
+      {sel:true, label:'Peel By (剥がれ方)', key:'peelMode', opts:['自動 (周期)', 'マウス (クリック・ドラッグ)']},
+      {sel:true, label:'Body Color (本体色)', key:'bodyLink', opts:['Body Color を使う', 'インク (破片) と連動']},
+      {sel:true, label:'Edge (縁の線)', key:'edgeOn', opts:['なし', 'あり']},
+      {sel:true, label:'Shading (陰影)', key:'lit', opts:['なし', 'あり']},
+      ['Speed',      'speed',     0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Morph',      'morph',     0,    3,   0.02,  f2],
+      ['Blobs',      'blobs',     1,    6,   1,     v=>String(Math.round(v))],
+      ['Size',       'size',      0.3,  2,   0.02,  f2],
+      ['Wobble',     'wobble',    0,    1,   0.02,  f2],
+      ['Deform',     'deform',    0,    1,   0.02,  f2],
+      ['Cells',      'cells',     8,    128, 1,     v=>String(Math.round(v))],
+      ['Jitter',     'jitter',    0,    2,   0.02,  f2],
+      ['Overlap',    'overlap',   1,    2.2, 0.02,  f2],
+      ['Aspect',     'aspect',    1,    4,   0.05,  f2],
+      ['Rotate',     'rotate',   -180,  180, 1,     v=>String(Math.round(v))+'°'],
+      ['Rot Var',    'rotVar',    0,    1,   0.02,  f2],
+      ['Edge Peel',  'peel',      0.2,  4,   0.05,  f2],
+      ['Peel Rate',  'peelRate',  0,    2,   0.02,  f2],
+      ['Peel Size',  'peelScale', 0.5,  4,   0.05,  f2],
+      ['Peel Var',   'peelVar',   0,    1,   0.02,  f2],
+      ['Peel Amt',   'peelAmt',   0.05, 1,   0.01,  f2],
+      ['Brush',      'brush',     2,    50,  1,     v=>String(Math.round(v))+'%'],
+      ['Lift',       'lift',      0,    4,   0.02,  f2],
+      ['Fall',       'fall',      0,    3,   0.05,  f2],
+      ['Drift',      'drift',     0,    1,   0.02,  f2],
+      ['Tumble',     'tumble',    0,    3,   0.02,  f2],
+      ['Tilt',       'tilt',      0,    1.4, 0.02,  f2],
+      ['Spin',       'spin',      0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Swell',      'swell',     0,    1.5, 0.02,  f2],
+      ['Depth',      'depth',     0,    1,   0.02,  f2],
+      ['Persp',      'persp',     0.3,  2,   0.02,  f2],
+      ['Fill',       'fill',      0,    1,   0.02,  f2],
+      ['Body',       'body',      0,    1,   0.02,  f2],
+      ['Line',       'line',      0.1,  3,   0.02,  f2],
+      ['Line Skip',  'lineSkip',  0,    1,   0.02,  f2],
+      ['Detail',     'detail',    0,    1,   0.02,  f2],
+      ['Audio',      'audio',     0,    2,   0.02,  f2],
+      ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
+    ];
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    for(const spec of specs){
+      if(spec.sel){                                   // 選択肢はプルダウン
+        const row = mkRow();
+        const lab=document.createElement('label'); lab.textContent=spec.label;
+        const sel=document.createElement('select');
+        spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
+        sel.value = String(Math.round(P[spec.key] || 0));
+        sel.addEventListener('change', ()=>{ P[spec.key] = parseInt(sel.value, 10); App._undoSchedule && App._undoSchedule(); });
+        row.appendChild(lab); row.appendChild(sel);
+        continue;
+      }
+      const [label,key,mi,ma,step,fmt] = spec;
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const val=document.createElement('div'); val.className='val'; val.textContent=disp(P[key], fmt);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=disp(P[key], fmt); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    }
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Body Color','bodyCol']]){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const val=document.createElement('div'); val.className='val'; val.textContent='';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    }
+    // Random 🎲 (数値パラメータのみ。Shape・色・Audio / Paper Alpha は変えない。保存は右上の Save)
+    { const row = mkRow();
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      b.title='本体の形・破片・剥がれ方のパラメータをランダム生成 (Shape と色は変えない。保存は右上の Save)';
+      b.addEventListener('click', ()=>{
+        for(const spec of specs){
+          if(spec.sel) continue;
+          const [label,key,mi,ma,step] = spec;
+          if(key === 'audio' || key === 'paperAlpha') continue;
+          const v = mi + Math.random()*(ma - mi);
+          P[key] = +(Math.round(v/step)*step).toFixed(4);
+        }
+        App._undoSchedule && App._undoSchedule();
+        this.refreshLiquidPeelParams();
       });
       row.appendChild(b); }
   },
@@ -17446,6 +18677,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('ikFlow',       'flow',       v=>v.toFixed(2));
     slid('ikBreathBars', 'breathBars', v=>String(v));
     slid('ikFeather',    'feather',    v=>v.toFixed(3));
+    slid('ikLine',       'line',       v=>v.toFixed(2));
     const bs = $('#ikBeatSync');
     if(bs){ bs.checked = !!P.beatSync; bs.addEventListener('change', ()=>{ P.beatSync = bs.checked; }); }
     const bk = $('#ikBlack');
@@ -17470,6 +18702,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('ikFlow',       P.flow,       v=>v.toFixed(2));
     set('ikBreathBars', P.breathBars, v=>String(v));
     set('ikFeather',    P.feather,    v=>v.toFixed(3));
+    set('ikLine',       (P.line != null ? P.line : 2.0), v=>v.toFixed(2));
     const bs=$('#ikBeatSync'); if(bs) bs.checked=!!P.beatSync;
     const bk=$('#ikBlack'); if(bk) bk.checked=!!P.black;
     const ah=$('#ikAutoHue'); if(ah) ah.checked=!!P.autoHue;
@@ -17606,6 +18839,12 @@ void mainImage(out vec4 o, in vec2 f){
     if(os){ os.checked = !!S.overlapShadow; os.addEventListener('change', ()=>{ S.overlapShadow = os.checked; }); }
     const bm = $('#slBgMode');
     if(bm){ bm.value = S.bgMode || 'image'; bm.addEventListener('change', ()=>{ S.bgMode = bm.value; }); }
+    const bc = $('#slBgColor');
+    if(bc){
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      bc.value = toHex(S.bgColor || [0,0,0]);
+      bc.addEventListener('input', ()=>{ const v = bc.value; S.bgColor = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; S.bgMode = 'color'; if(bm) bm.value = 'color'; });
+    }
   },
 
   refreshSlicer(){
@@ -17655,6 +18894,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('slShadowBias', S.shadowBias, f3);
     set('slPostScale',  S.postScale,  f2);
     const bm = $('#slBgMode'); if(bm) bm.value = S.bgMode || 'image';
+    const bc = $('#slBgColor'); if(bc && S.bgColor) bc.value = '#' + S.bgColor.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
   },
 
 	  refreshManga(){
@@ -18260,7 +19500,8 @@ void mainImage(out vec4 o, in vec2 f){
   },
 
   refreshBPM(){
-    $('#bpmInput').value = BPM.bpm.toFixed(1);
+    const bi = $('#bpmInput');
+    if(document.activeElement !== bi) bi.value = BPM.bpm.toFixed(1);   // 入力中は上書きしない
     $('#bpmBig').textContent = BPM.bpm.toFixed(1);
     const target=$('#bpmTarget'); if(target) target.value=BPM.target||'auto';
   },
@@ -18513,7 +19754,8 @@ void mainImage(out vec4 o, in vec2 f){
   // マイク/画面音声が ON のとき該当ボタンを点灯
   refreshAudioButtons(){
     const mode = (typeof Audio !== 'undefined') ? Audio.mode : 'off';
-    const m = $('#btnAudioMic'), d = $('#btnAudioDisp');
+    const m = $('#btnAudioMic'), d = $('#btnAudioDisp'), n = $('#btnAudioNone');
+    if(n) n.classList.toggle('audio-on', mode === 'off');
     if(m) m.classList.toggle('audio-on', mode === 'mic');
     if(d) d.classList.toggle('audio-on', mode === 'display');
   },

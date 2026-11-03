@@ -674,7 +674,8 @@ void main(){
     const eye=this._camEye();
     const vp=this.m4.mul(proj, this.m4.lookAt(eye, this.cam.target, [0,1,0]));
     const bgv=(this.P.bg!=null)?this.P.bg:1.0;
-    const bg=[bgv,bgv,bgv];
+    const bgc=Array.isArray(this.P.bgColor)?this.P.bgColor:[1,1,1];
+    const bg=[bgc[0]*bgv,bgc[1]*bgv,bgc[2]*bgv];   // BG Color × BG (明るさ)
 
     // === Shadow pass ===
     if(this.P.shadowOn && this.planes.length){

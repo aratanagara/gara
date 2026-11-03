@@ -9,7 +9,7 @@
 // 画像ごとの保存対象キー (postScale=品質設定は共通のまま)
 const SL_IMG_KEYS = ['pieces','seed','sides','maxSides','explode','bend','curl','warpAmp','warpFreq',
   'overlapShadow','shadowStr','shadowRadius','shadowBias','autorot','camEl','fov','dist',
-  'autoMode','autoRebuildBeats','autoZoomAmp','autoElAmp','bgMode'];
+  'autoMode','autoRebuildBeats','autoZoomAmp','autoElAmp','bgMode','bgColor'];
 
 const Slicer = {
   gl:null,
@@ -46,7 +46,8 @@ const Slicer = {
     autoZoomAmp:0.75,  // ズーム振幅 (1.0=±100%) — 0.45→0.75 でダイナミック
     autoElAmp:0.65,    // 仰角ドリフト振幅 (rad) — 0.40→0.65
     postScale:0.75,    // ポストエフェクトの解像度スケール (0.75 = 約 56% ピクセル)
-    bgMode:'image',    // 'black' | 'white' | 'image' (平均色で画像になじませる)
+    bgMode:'image',    // 'black' | 'white' | 'image' (平均色で画像になじませる) | 'color' (bgColor)
+    bgColor:[0,0,0],   // bgMode='color' のときの背景色 (Slot A で敷く / Slot B は透過)
     // ── 画像選択 (ランタイム設定。画像ごと保存 SL_IMG_KEYS には含めない。
     //    含めると画像を読むたびにモードが上書きされ、Random が即 fixed に戻る) ──
     imgMode:'fixed',   // 'fixed' = 選んだ画像 / 'random' = ランダム表示
@@ -826,6 +827,7 @@ void main(){
     gl.viewport(0, 0, sw, sh);
     let bg;
     if(this.P.bgMode === 'white') bg = [1,1,1];
+    else if(this.P.bgMode === 'color') bg = this.P.bgColor || [0,0,0];
     else if(this.P.bgMode === 'image') bg = this.bgFromImage || [0.5,0.5,0.5];
     else bg = [0,0,0];
     // Slot B: 背景色を塗らず透明(0,0,0,0)でクリア → 断片の縁に背景色が滲まず真に透過。

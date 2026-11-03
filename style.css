@@ -220,7 +220,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .params .par .midi.learn{background:var(--acc);color:#fff;animation:blink 1s infinite}
 @keyframes blink{50%{opacity:.4}}
 
-.bpmBig{font:600 28px var(--mono);text-align:center;color:var(--acc);margin:4px 0}
+.bpmBig{font:600 28px var(--mono);text-align:center;color:var(--acc);margin:4px 0;cursor:text}
+.bpmBigEdit{display:block;width:100%;box-sizing:border-box;padding:0;background:transparent;border:0;outline:1px solid var(--acc);border-radius:3px}
 .bpmDots{display:flex;justify-content:center;gap:6px;margin:6px 0}
 .bpmDots div{width:14px;height:14px;border-radius:50%;background:#222;border:1px solid var(--line);transition:background .05s}
 .bpmDots div.on{background:var(--acc);box-shadow:0 0 8px var(--acc)}

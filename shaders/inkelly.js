@@ -22,6 +22,7 @@ const Inkelly = {
     fade:       1.0,     // 軌跡の消える速さ(大きいほど早く消える)
     flow:       3.0,     // インク場の連続ドリフト(0=ステップのみ)
     feather:    0.02,    // エッジ検出の柔らかさ
+    line:       2.0,     // 輪郭線の太さ (px)。Slot B の line モードの線。0.2 未満は薄くなり 0.1 で 25% の極細線
     size:       1.6,     // 形の大きさ(大きいほど弧が長い)
     sharp:      0.5,     // 尖り具合(大きいほど尖る)
     breathBars: 4,       // ブリージング(密度増減)の周期(小節)
@@ -92,6 +93,8 @@ uniform float uTime;            // クローム反射のゆっくりした動き
 uniform float uBlack;           // 1=濃い黒い絵の具版(ほぼ黒のボディ + 鈍いウェット反射)
 uniform float uBgHue;           // 0=白(Silver)/黒(Black) / >0=色相環(hue)で原色着色
 uniform float uLineBW;          // 無彩色時の線: 1=白(黒支配) / 0=黒(白支配)
+uniform float uLineW;           // 輪郭線の半幅 (px) = エッジ差分を取るサンプル間隔
+uniform float uLineK;           // 線の濃さ (線幅が 0.2px 未満で薄くなる)
 out vec4 o;
 
 vec3 hsv2rgb(vec3 c){
@@ -114,7 +117,7 @@ float pot(vec2 uv){
 
 void main(){
   vec2 uv = gl_FragCoord.xy / uRes;
-  vec3 ep = vec3(1./uRes, 0.);
+  vec3 ep = vec3(uLineW/uRes, 0.);   // 線幅: 差分を取る間隔 = 半幅 (px)
   // 透過オーバーレイ用の白い輪郭線
   float mr = smoothstep(0., uFeather, texture(uBuf, uv).r);
   float edge = abs(smoothstep(0.,uFeather,texture(uBuf,uv+ep.xz).r)-mr)
@@ -129,7 +132,7 @@ void main(){
     // 無彩色時は白支配→黒線 / 黒支配→白線(uLineBW)。色相があればその原色。
     vec3 lineCol = (uBgHue > 0.0) ? hsv2rgb(vec3(uBgHue, 1.0, 1.0))
                                   : ((uLineBW > 0.5) ? vec3(1.0) : richBlackLine);
-    o = vec4(lineCol, e); return;
+    o = vec4(lineCol, e * uLineK); return;
   }
 
   // Slot A: H4風の水銀クローム。2パスで全面を流れる滑らかな場(.a)の傾きだけで反射を曲げる
@@ -364,6 +367,10 @@ void main(){
     gl.uniform1f(ui('uBgHue'), P.bgHue || 0.0);
     gl.uniform1f(ui('uLineBW'), (this._grayLineWhite != null ? this._grayLineWhite : (P.black ? 0.0 : 1.0)));
     gl.uniform1f(ui('uTime'), flowT);
+    { const lineW = (P.line != null) ? P.line : 2.0;
+      const t = Math.max(0, Math.min(1, (lineW - 0.1) / 0.1));
+      gl.uniform1f(ui('uLineW'), Math.max(lineW, 1.0) * 0.5);   // 1px 未満は極細線 (0.5px 間隔) のまま、濃さは uLineK で落とす
+      gl.uniform1f(ui('uLineK'), 0.25 + 0.75 * t*t*(3 - 2*t)); }   // 0.1→25% / 0.2 以上で従来どおり
     this._drawQuad(this.imgProg);
 
     // swap ping-pong

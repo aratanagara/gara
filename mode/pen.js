@@ -18,7 +18,8 @@ const Pen = {
 
   // パラメータ (元 index.html の P。photo 系は除外)
   P:{ count:100, width:1.0, peak:1.0, bleed:1.0, kasure:1.0, len:1.0, depth:0.35, speed:1.0,
-      color:1 },   // 0=mono / 1=ランダムパレット / 2=共有パレット
+      color:1,     // 0=mono / 1=ランダムパレット / 2=共有パレット
+      bgColor:[0xdd/255, 0xdd/255, 0xdd/255] },   // 紙 (Slot A の背景色 / Slot B は透過)
 
   // 定数
   BLEED:1.52, SPHERE_R:500, STRIDE:5, CAM_DIST:1250, FOV:920,   // 球状ハコ(半径 SPHERE_R)。カメラは奥へ引き FOV で見かけ倍率を維持
@@ -463,7 +464,8 @@ void main(){
       gl.clearColor(0, 0, 0, 0);
     } else {
       gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-      gl.clearColor(0xdd/255, 0xdd/255, 0xdd/255, 1.0);   // 紙(ライトグレー)
+      const bgc = this.P.bgColor;
+      gl.clearColor(bgc[0], bgc[1], bgc[2], 1.0);   // 紙 (既定ライトグレー)
     }
     gl.clear(gl.COLOR_BUFFER_BIT);
 

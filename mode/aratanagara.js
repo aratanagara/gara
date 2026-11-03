@@ -7,6 +7,9 @@ const Aratanagara = {
   aaProg:null, aaVAO:null, aaVBO:null, aaFbo:null, aaTex:null, aaW:0, aaH:0, depth:null, depthW:0, depthH:0,
   pieces:null, cap:0,
   strideFloats:22,
+  // ── パラメータ (背景色のみ。Slot A で敷き、空気遠近の溶け先にもなる / Slot B は透過) ──
+  P:{ bgColor:[0.690, 0.733, 0.800] },
+  PDefaults:{ bgColor:[0.690, 0.733, 0.800] },
 
   init(gl){
     if(this.initialized) return;
@@ -207,6 +210,7 @@ in float vKind;
 uniform float uAlpha;
 uniform float uHiOnly;   // 1=影を落とさずハイライトのみ(web版)
 uniform float uFog;      // 大気遠近の強さ(web版)
+uniform vec3  uBg;       // 背景色 (空気遠近の溶け先)
 uniform float uCamDist;  // カメラ距離倍率(fogレンジ補正用)
 out vec4 o;
 void main(){
@@ -251,7 +255,7 @@ void main(){
   // 空気遠近(view空間z): 奥ほど(1) 手前ほど(0)
   float depth = smoothstep(2.0*uCamDist, 4.8*uCamDist, vWorld.z);
   float k = clamp(depth * uFog, 0.0, 1.0);
-  vec3 bg = vec3(0.690,0.733,0.800);
+  vec3 bg = uBg;
   float luma = dot(col, vec3(0.299,0.587,0.114));
   col = mix(col, mix(vec3(luma), bg, 0.5), k * 0.62);   // 手前以外はコントラストを弱く(平坦化)
   col = mix(col, bg, k * 0.62);                          // 背景へフェード(空気遠近)
@@ -563,7 +567,8 @@ void main(){
     gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depth);
     gl.viewport(0,0,w,h);
     const opaque = slot === 'A';
-    gl.clearColor(0.690,0.733,0.800, opaque ? 1 : 0);
+    const bgc = (this.P && Array.isArray(this.P.bgColor)) ? this.P.bgColor : [0.690, 0.733, 0.800];
+    gl.clearColor(bgc[0], bgc[1], bgc[2], opaque ? 1 : 0);
     gl.clearDepth(1);
     gl.enable(gl.DEPTH_TEST);
     gl.depthFunc(gl.LEQUAL);
@@ -603,6 +608,7 @@ void main(){
     gl.uniform1f(gl.getUniformLocation(this.prog,'uAlpha'), 1);
     gl.uniform1f(gl.getUniformLocation(this.prog,'uHiOnly'), this.highlightOnly ? 1 : 0);
     gl.uniform1f(gl.getUniformLocation(this.prog,'uFog'), this.fogAmt || 0);
+    gl.uniform3f(gl.getUniformLocation(this.prog,'uBg'), bgc[0], bgc[1], bgc[2]);
     gl.uniform1f(gl.getUniformLocation(this.prog,'uCamDist'), this.camDist || 1.0);
     gl.uniform1f(gl.getUniformLocation(this.prog,'uRoam'), this.roam || 0.0);
     gl.bindVertexArray(this.vao);

@@ -6,6 +6,9 @@
      軌道・向き・反りを計算して透視投影する。計算は板 1 枚につき 1 回 (frag は 1 ピクセルにつき全板)。
    - 重なりは深度テスト: 手前の板が奥を隠す。塗りのとき板の縁は紙色の線 (= 重なった境のひび割れ)、
      輪郭だけのとき縁はインクの線で内部は紙 (Slot B では透明) + 深度書き込み (奥の線は手前で消える)。
+   - Line Skip は板が重なり合った内側の縁だけを間引き、群れ全体の最外周の線は残す
+     (先に全板の被覆マスクを深度プリパスで描き、間引く板では自板の縁の代わりにマスクの境界
+     = 線幅の範囲内に被覆の外がある所を線にする。板の継ぎ目や角でも途切れない)。
    - 既存の vj WebGL2 コンテキストを共有 / 指定 FBO に描画 → 通常の合成・Post FX に合流
    - Drone/Beat: frag の getBeat() と同じ (beat モード = 拍数 / drone = time × 6 × bpm/120)
    IF: init(gl) / update() / render({fbo,w,h,slot,beat,clock,opaque}) / P(params)
@@ -15,6 +18,7 @@ const TransFlock = {
   gl:null, initialized:false,
   prog:null, vao:null, cornerVBO:null,
   depthRBO:null, depthW:0, depthH:0,
+  maskFBO:null, maskTex:null, maskW:0, maskH:0, zeroTex:null,
   startTime:0,
 
   // ── パラメータ (UI から操作)。名前は frag の @param から u を外したもの。工場値は frag の @param 既定値 ──
@@ -37,13 +41,15 @@ const TransFlock = {
     islandLen:1.0,    // 島の長さ (拍)
     fill:1.0,         // 塗りつぶし (1=塗る / 0=輪郭だけ)
     line:0.9,         // 輪郭線の太さ (px)。0.2 未満は薄くなり 0.1 で 25% の極細線
+    lineSkip:0,       // 重なった内側の縁を描かない板の割合 (板ごとの乱数で決める。群れの最外周の線は残る。塗りでは線の無い板が隣と合体して見える)
     detail:0.5,       // 一部の板 (7%) に出る内側の線の濃さ (塗り時は紙色 / 輪郭時はインク)
     persp:1.0,        // 遠近の強さ
     depth:0.7,        // 奥行きによる減衰
     warp:0.5,         // 板を軌道に沿ってねじる量 (反り)
     audio:1.0,        // 音の効き (筆が太くなる)
     ink:[0.914, 0.933, 0.949],    // インクの色 (#e9eef2)
-    paper:[0, 0, 0],              // Slot A のときの下地 (紙) の色
+    paper:[0, 0, 0],              // 下地 (紙) の色。Slot A では背景にも敷く
+    paperAlpha:1.0,   // Slot B での紙の不透明度 (1=板は不透明なカード / 0=インクの線だけ残して板の中は透ける)
   },
 
   // ===== init =====
@@ -58,13 +64,14 @@ in vec2 aCorner;                 // 板ローカルの四隅 (-1..1)
 uniform vec2  uRes;
 uniform float uU, uLu, uDsu, uI0, uStampsMax, uBirds;
 uniform float uGap, uSpread, uWheel, uFcl, uBrush, uAu;
-uniform float uIslK, uIslands, uPressure, uJitter, uCluster, uGrain, uStray, uWarp, uDepth;
+uniform float uIslK, uIslands, uPressure, uJitter, uCluster, uGrain, uStray, uWarp, uDepth, uLineSkip;
 uniform float uMinSS;            // 投影短軸の下限 (画面高=1 の単位)。これ未満は真横なので描かない
 out vec2  vLoc;                  // 板ローカル (-1..1)
 out vec2  vHalfPx;               // 投影した 2 半軸の長さ (px)
 out float vDepthF;               // 奥行き減衰
 out float vTint;                 // 色パラメータ (未使用: Grad Map は合成段で全スロットに掛かる)
 out float vDet;                  // 内側の線を出す板か (0/1)
+out float vLineOn;               // 縁の線を描く板か (0/1。Line Skip で間引く)
 
 #define TF_EYE 3.6
 #define TF_F1 0.48
@@ -206,6 +213,7 @@ void main(){
   vDepthF = depthF;
   vTint   = fract(k*0.17 + ti*0.05);
   vDet    = det;
+  vLineOn = (tf_h1(i*0.531 + k*7.9 + m*3.3 + 0.37) < uLineSkip) ? 0.0 : 1.0;
 }`;
 
     const fs = `#version 300 es
@@ -215,23 +223,49 @@ in vec2  vHalfPx;
 in float vDepthF;
 in float vTint;
 in float vDet;
-uniform float uLine, uLineK, uFill, uDetail, uOpaque;
+in float vLineOn;
+uniform float uLine, uLineK, uFill, uDetail, uOpaque, uPaperAlpha;
+uniform float uPass;             // 0 = 被覆マスク書き込み (深度プリパス) / 1 = 本描画
+uniform vec2  uRes;
+uniform sampler2D uMask;         // 全板の被覆 (uPass=0 の結果)
 uniform vec3  uInk, uPaper;
 out vec4 frag;
 void main(){
+  if(uPass < 0.5){ frag = vec4(1.0); return; }   // 被覆マスク: 板の形を 1 で描く
   vec2  e  = (1.0 - abs(vLoc)) * vHalfPx;     // 縁までの距離 (px)
   float d  = min(e.x, e.y);
   float lw = max(uLine, 0.05) * 0.5;
   float aa = 0.7;
-  float band  = (1.0 - smoothstep(lw, lw + aa, d)) * uLineK;   // 縁の線 (塗りでは重なった板の境のひび割れになる)
-  float inner = (1.0 - smoothstep(0.5, 0.5 + aa, abs(d - (2.0*lw + 1.6)))) * vDet * uDetail * uLineK;   // 一部の板の内側の線
+  // 縁の線 (塗りでは重なった板の境のひび割れになる)。Line Skip の板は自板の縁を描かず、
+  //   群れ全体の被覆マスクの境界を線にする (線幅の範囲 8 方向 × 2 半径の 16 点に被覆の外があれば線)
+  float band;
+  if(vLineOn < 0.5){
+    float rad2 = lw + aa, miss = 0.0;
+    for(int i = 0; i < 8; i++){
+      float ang = float(i) * 0.78539816;
+      vec2  dir = vec2(cos(ang), sin(ang));
+      for(int j = 1; j <= 2; j++){
+        ivec2 ip = ivec2(clamp(gl_FragCoord.xy + dir * rad2 * (float(j) * 0.5), vec2(0.5), uRes - 0.5));
+        miss += 1.0 - step(0.5, texelFetch(uMask, ip, 0).r);
+      }
+    }
+    band = clamp(miss / 3.0, 0.0, 1.0) * uLineK;
+  } else {
+    band = (1.0 - smoothstep(lw, lw + aa, d)) * uLineK;
+  }
+  float inner = (1.0 - smoothstep(0.5, 0.5 + aa, abs(d - (2.0*lw + 1.6)))) * vDet * uDetail * uLineK * vLineOn;   // 一部の板の内側の線
   float lines = max(band, inner);
   // 輪郭モード: 線=インク、内部=紙 / 塗りモード: 内部=インク、線=紙色
   float inkOutline = lines;
   float inkFill    = 1.0 - lines;
   float ink = mix(inkOutline, inkFill, uFill) * vDepthF;
-  if(uOpaque > 0.5) frag = vec4(mix(uPaper, uInk, ink), 1.0);
-  else              frag = vec4(uInk, ink);   // Slot B: 実 alpha (内部が透明でも深度は書く = 奥の線を隠す)
+  if(uOpaque > 0.5){ frag = vec4(mix(uPaper, uInk, ink), 1.0); }
+  else {
+    // Slot B: 実 alpha。紙 (板の中・紙色の線) は uPaperAlpha の不透明度、インクは不透明。深度は常に書く (奥の線を隠す)
+    float a = ink + uPaperAlpha * (1.0 - ink);
+    vec3  c = (ink * uInk + (1.0 - ink) * uPaperAlpha * uPaper) / max(a, 1e-5);
+    frag = vec4(c, a);
+  }
 }`;
 
     const link = (vsrc, fsrc)=>{
@@ -271,6 +305,34 @@ void main(){
     gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
     gl.bindRenderbuffer(gl.RENDERBUFFER, null);
     this.depthW = w; this.depthH = h;
+  },
+
+  // 被覆マスク (R8) と、マスク無しのときのダミー (0)
+  _ensureMask(w,h){
+    const gl = this.gl;
+    if(!this.zeroTex){
+      this.zeroTex = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, this.zeroTex);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, 1, 1, 0, gl.RED, gl.UNSIGNED_BYTE, new Uint8Array([0]));
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+    }
+    if(this.maskTex && this.maskW===w && this.maskH===h) return true;
+    if(this.maskTex){ gl.deleteTexture(this.maskTex); gl.deleteFramebuffer(this.maskFBO); }
+    this.maskTex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, this.maskTex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, w, h, 0, gl.RED, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    this.maskFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.maskFBO);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.maskTex, 0);
+    const ok = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    this.maskW = w; this.maskH = h;
+    if(!ok){ console.warn('[transflock] mask FBO incomplete'); gl.deleteTexture(this.maskTex); this.maskTex = null; }
+    return ok;
   },
 
   update(){},
@@ -314,20 +376,11 @@ void main(){
     const lineK = 0.25 + 0.75 * (()=>{ const t = Math.max(0, Math.min(1, lineEff / 0.12)); return t*t*(3 - 2*t); })();
 
     const useRBO = !!opts.fbo;
-    if(useRBO){
-      this._ensureDepth(w, h);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
-    } else {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    }
+    if(useRBO) this._ensureDepth(w, h);
+    const useMask = useRBO && this._ensureMask(w, h);
     gl.viewport(0, 0, w, h);
     const opaque = (opts.opaque !== false);
     const paper = P.paper || [0,0,0];
-    gl.clearColor(opaque ? paper[0] : 0, opaque ? paper[1] : 0, opaque ? paper[2] : 0, opaque ? 1 : 0);
-    gl.clearDepth(1.0);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
     gl.disable(gl.CULL_FACE);
     gl.disable(gl.BLEND);
 
@@ -335,6 +388,7 @@ void main(){
     gl.bindVertexArray(this.vao);
     const U = (n)=>gl.getUniformLocation(this.prog, n);
     gl.uniform2f(U('uRes'), w, h);
+    gl.uniform1i(U('uMask'), 0);
     gl.uniform1f(U('uU'), u);
     gl.uniform1f(U('uLu'), g.Lu);
     gl.uniform1f(U('uDsu'), g.dsu);
@@ -356,16 +410,45 @@ void main(){
     gl.uniform1f(U('uStray'), dz(P.stray));
     gl.uniform1f(U('uWarp'), dz(P.warp));
     gl.uniform1f(U('uDepth'), dz(P.depth));
+    gl.uniform1f(U('uLineSkip'), dz(P.lineSkip));
     gl.uniform1f(U('uMinSS'), 1.5 / Math.max(1, h));
     gl.uniform1f(U('uLine'), lineEff);
     gl.uniform1f(U('uLineK'), lineK);
     gl.uniform1f(U('uFill'), dz(P.fill));
     gl.uniform1f(U('uDetail'), dz(P.detail));
     gl.uniform1f(U('uOpaque'), opaque ? 1 : 0);
+    gl.uniform1f(U('uPaperAlpha'), dz(P.paperAlpha));
     const ink = P.ink || [0.914, 0.933, 0.949];
     gl.uniform3f(U('uInk'), ink[0], ink[1], ink[2]);
     gl.uniform3f(U('uPaper'), paper[0], paper[1], paper[2]);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, this.zeroTex);
+    // 1) 被覆マスク (深度プリパス): 全板の形を 1 で描く。ここで確定した深度を 2) でそのまま使う
+    if(useMask){
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.maskFBO);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+      gl.clearColor(0, 0, 0, 0); gl.clearDepth(1.0);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
+      gl.uniform1f(U('uPass'), 0);
+      gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, g.instances);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    }
+    // 2) 本描画 (マスクを参照して Line Skip の内側の縁を落とす)
+    if(useRBO){
+      gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
+    gl.clearColor(opaque ? paper[0] : 0, opaque ? paper[1] : 0, opaque ? paper[2] : 0, opaque ? 1 : 0);
+    if(useMask){ gl.clear(gl.COLOR_BUFFER_BIT); }
+    else { gl.clearDepth(1.0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); }
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
+    gl.bindTexture(gl.TEXTURE_2D, useMask ? this.maskTex : this.zeroTex);
+    gl.uniform1f(U('uPass'), 1);
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, g.instances);
+    gl.bindTexture(gl.TEXTURE_2D, null);
     gl.bindVertexArray(null);
 
     if(useRBO) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
