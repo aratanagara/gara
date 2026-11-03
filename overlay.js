@@ -1,6 +1,6 @@
 'use strict';
-/* Overlay v5 — 元の polygon ツール (/Users/aratanagara/Dropbox/shader/polygon) と
-   同じ形状アルゴリズム (Delaunay 三角化 + 各ブラシの本家ロジック) を移植。
+/* IMAGON — imagon.app のブラシを VJ の beat 同期ストロークに移植。
+   面ブラシは Delaunay、平筆と G ペンはリボン、消しゴムはフェザー付きカプセルで描く。
 
    - 各 beat trigger で 1 ストローク生成
    - 寿命前半 (searchPhase) で始点固定/終点ぶれの "探る" モーション → 残り時間で確定形状
@@ -28,6 +28,7 @@ const Overlay = {
     strokeLen:2.5,
     strokeLenVar:0.25,
     curveAmt:1.0,
+    freq:1,
 
     sides:15,           // 元 P.N (Points) — min (maxSides=0 なら固定値)
     maxSides:0,         // 0=固定, 3以上=3..maxSides のランダム
@@ -87,10 +88,15 @@ const Overlay = {
       subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, stamps:40, smudgeSpeed:0.5, tipShape:'round', drawBeats:0,
       sides:12, maxSides:0, size:0.13, sizeVar:0.4, warp:0.82, explode:0.20, focal:80,
     },
-    // imagon mode 4 (CURVE)
+    // 旧 CURVE (保存済みプリセット用)
     curve: {
       subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:1.0, stamps:25,
       sides:10, maxSides:0, size:0.22, sizeVar:1.0, warp:0.65, explode:0.45, focal:80,
+    },
+    // imagon mode 4 (FLAT): 固定角のニブで色を引きずる平筆
+    flat: {
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0.5, freq:1, stamps:25,
+      sides:10, maxSides:0, size:0.125, sizeVar:0.4, warp:0.65, explode:0.45, focal:80,
     },
     // imagon mode 5 (RANDOM)
     random: {
@@ -116,22 +122,27 @@ const Overlay = {
       subdiv:16, strokeLen:2.5, strokeLenVar:0.4, curveAmt:1.75, stamps:25,
       sides:5, maxSides:0, size:0.015, sizeVar:0.82, warp:1.0, explode:0.0, focal:5,
     },
-    // G ペン: size=線の基準スケール / sizeVar=太さの上限 / warp=ジッタ・うねり / curveAmt=反り
+    // imagon mode 7 (G-PEN): 入り抜きのある線
     gpen: {
-      subdiv:16, strokeLen:2.5, strokeLenVar:0.4, curveAmt:1.0, stamps:25,
-      sides:5, maxSides:0, size:0.02, sizeVar:0.5, warp:0.4, explode:0.0, focal:5,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0.6, freq:1, stamps:25,
+      sides:3, maxSides:0, size:0.05, sizeVar:0.4, warp:0.6, explode:0.35, focal:80,
+    },
+    // imagon mode 8 (ERASE): ストロークの下の合成画面へ戻す
+    erase: {
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0, freq:1, stamps:25,
+      sides:16, maxSides:0, size:0.125, sizeVar:0.4, warp:0.5, explode:0.3, focal:80,
     },
   },
   // ブラシ毎の保持パラメータ (init 時に BRUSH_DEFAULTS をディープコピー)。
   //   スライダーを変更するとここに書き戻され、ブラシ切替で各自の値がロードされる。
   brushParams:null,
   // 「ブラシ毎に保持する」キーセット
-  BRUSH_KEYS:['strokeLen','strokeLenVar','curveAmt','stamps','smudgeSpeed','tipShape','drawBeats','sides','maxSides','size','sizeVar','warp','explode','focal'],
+  BRUSH_KEYS:['strokeLen','strokeLenVar','curveAmt','freq','stamps','smudgeSpeed','tipShape','drawBeats','sides','maxSides','size','sizeVar','warp','explode','focal'],
   GLOBAL_KEYS:['subdiv'],
   TRIGGER_STEPS:[0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32],
   _brushName(name){
     if(name === 'smudgeStretch') return 'smudgeWet';
-    if(name === 'gpen' || name === 'pollock' || name === 'polygon') return 'smudge';
+    if(name === 'pollock' || name === 'polygon') return 'smudge';
     return name;
   },
   _normalizeSubdiv(v){
@@ -485,6 +496,7 @@ void main(){
 	      rotPerStamp: P.rotPerStamp,
       spinRate: P.spin,
       curveAmt: P.curveAmt,
+      freq: Math.max(1, Math.min(5, Math.round(P.freq || 1))),
       straight,
       color,
       alpha: P.alpha,
@@ -689,7 +701,7 @@ void main(){
     return this._makeGeom(uvPts, posPts, tris, W, H);
   },
 
-  /* ─── 元 buildSmear 移植 (簡略化) ─────────────────── */
+  /* ─── IMAGON WARP: 不規則な面を引き伸ばし、先端を終点へ固定 ─── */
   _buildSmear(s, W, H){
     const [cx, cy] = this._ndcToPx(s.sx, s.sy, W, H);
     const [cex, cey] = this._ndcToPx(s.currentEx, s.currentEy, W, H);
@@ -717,14 +729,14 @@ void main(){
     }
     // 内部点を追加
     const pts = poly.slice();
-    const innerN = Math.max(8, polyN * 2);
+    const innerN = Math.max(8, polyN * 2) + 12;
     let added = 0, tries = 0;
     const maxTries = innerN * 20;
     while(added < innerN && tries < maxTries){
       tries++;
       const fi = seed * 2000 + tries * 43;
       const a = this._fh(fi * 3.7) * Math.PI * 2;
-      const r = Math.sqrt(this._fh(fi * 5.9)) * R;
+      const r = Math.sqrt(this._fh(fi * 5.9)) * R * 1.15;
       const x = cx + Math.cos(a) * r, y = cy + Math.sin(a) * r;
       if(this._isInsidePoly(x, y, poly)){ pts.push({x, y}); added++; }
     }
@@ -732,20 +744,44 @@ void main(){
 
     const tris = this._delaunay(pts);
 
-    // POS 変形: ドラッグ方向へ延長
-    const stretch = dLen * (0.9 + s.explode * 2.6);
+    // 現行 IMAGON と同じ重みで面を引く。最大重みの点が終点を越えないよう pull を解く。
+    const gamma = Math.max(0.4, 1.7 - s.explode * 0.55);
+    const pullW = (lx,ly)=>{
+      const along = lx*ux+ly*uy;
+      const side = Math.abs(lx*perpX+ly*perpY);
+      const front = Math.max(0,Math.min(1,(along+R)/(2*R)));
+      return Math.pow(front,gamma)*(0.25+0.75*Math.max(0,1-side/(R*1.15)));
+    };
+    let kPull = 0, wMax = 0;
+    if(hasDrag){
+      kPull = 1e9;
+      for(const p of pts){
+        const lx=p.x-cx,ly=p.y-cy;
+        const along=lx*ux+ly*uy,w=pullW(lx,ly);
+        wMax=Math.max(wMax,w);
+        if(w>0.15) kPull=Math.min(kPull,(dLen-along)/w);
+      }
+      if(kPull>1e8) kPull=0;
+      kPull=Math.max(0,kPull);
+    }
+    const pullMax=kPull*wMax;
+    const bendSign=this._fh(seed*9.7)>0.5?1:-1;
+    const freq=Math.max(1,Math.min(5,Math.round(s.freq||1)));
     const posPts = pts.map((p, i) => {
       const lx = p.x - cx, ly = p.y - cy;
       const along = lx * ux + ly * uy;
-      const side  = Math.abs(lx * perpX + ly * perpY);
-      const front = hasDrag ? Math.max(0, (along + R) / (2 * R)) : 0;
-      const sideFall = Math.max(0, 1 - side / (R * 1.15));
-      const pull = front * stretch * (0.25 + 0.75 * sideFall);
+      const side = lx * perpX + ly * perpY;
+      const front = hasDrag ? Math.max(0,Math.min(1,(along+R)/(2*R))) : 0;
+      const pull = hasDrag ? pullW(lx,ly)*kPull : 0;
+      const t = Math.min(1,pull/(pullMax||1));
       const fi = seed * 3000 + i * 17;
       const wobble = (this._fh(fi * 4.3) - 0.5) * R * s.warp * 0.12 * front;
+      const alongOut=along+pull;
+      const sideOut=side*(1-0.85*Math.pow(t,1.5))+wobble;
+      const bend=hasDrag ? Math.sin(Math.PI*freq*Math.max(0,Math.min(1,alongOut/dLen))) * dLen * s.curveAmt * 0.35 * bendSign : 0;
       return {
-        px: p.x + ux * pull + perpX * wobble,
-        py: p.y + uy * pull + perpY * wobble,
+        px: cx + ux*alongOut + perpX*(sideOut+bend),
+        py: cy + uy*alongOut + perpY*(sideOut+bend),
       };
     });
 
@@ -1124,70 +1160,92 @@ void main(){
     return this._buildQuadStrip(this._addRoundCaps(pts), cx, cy, cex, cey, W, H);
   },
 
-  /* ─── gpen: 漫画用 G ペン (入り鋭く / 抜きより鋭く / 先端 1px / 中央膨らみ) ─────
-       Dropbox/shader/pen の widthAt プロファイルを移植。Size Var = 太さの上限。 */
-  _buildGpen(s, W, H){
-    const [cx, cy]   = this._ndcToPx(s.sx, s.sy, W, H);
-    const [cex, cey] = this._ndcToPx(s.targetEx, s.targetEy, W, H);
-    const ddx = cex - cx, ddy = cey - cy;
-    const dLen = Math.hypot(ddx, ddy);
-    if(dLen < 4) return null;
-    const dAng = Math.atan2(ddy, ddx);
-    const perpX = -Math.sin(dAng), perpY = Math.cos(dAng);
-    const R = Math.min(W, H) * s.size;
-    const seed = s.seed;
-    const r1 = this._fh(seed*111.7), r2 = this._fh(seed*222.3+17),
-          r3 = this._fh(seed*333.9+43), r4 = this._fh(seed*444.1+71);
-    // bezier 制御点 (単弓 or S字)
-    const isS = r3 > 0.55;
-    const bendSign = r1 > 0.5 ? 1 : -1;
-    const bendAmt  = dLen * s.curveAmt * (0.15 + r2 * 0.22) * s.warp;
-    const cp1x = cx + ddx * 0.33 + perpX * bendAmt * bendSign;
-    const cp1y = cy + ddy * 0.33 + perpY * bendAmt * bendSign;
-    const cp2x = cx + ddx * 0.67 + perpX * bendAmt * (isS ? -bendSign : bendSign);
-    const cp2y = cy + ddy * 0.67 + perpY * bendAmt * (isS ? -bendSign : bendSign);
-    // 進行度: ヘッドが伸びる
-    const u = 1 - s.life;
-    const headT = Math.max(0.001, Math.min(1.0, u / 0.80));
-    const fullSteps = Math.max(24, Math.min(400, Math.floor(dLen * 0.9)));
-    const steps = Math.max(2, Math.floor(fullSteps * headT));
-    // 最大幅: Size Var が太さを決める (0=最小 / 1 に近づくほど太く)
-    const baseMax = R * (0.10 + s.sizeVar * (0.5 + r4 * 1.5));
-    // 入り抜き: 抜き(exit)をより鋭く。長い stroke ほどテーパー区間が伸びる。
-    const taperT = Math.max(0.0, Math.min(1.0, (dLen - 60) / 340));
-    const entryLen = 0.10 * (0.4 + 0.6*taperT);
-    const exitLen  = 0.16 * (0.4 + 0.6*taperT);
-    const entryK = 1.8 + r2*1.2;
-    const exitK  = 2.6 + r3*2.4;          // 抜きの方が鋭く尾を引く
-    const swellAmt = 0.25 + r1*0.25;      // 中央の膨らみ(筆圧感)
-    const isMatt = (s.finish === 'matt');
-    const jitterAmp = baseMax * (isMatt ? 0.30 : 0.10) * s.warp;
-    const pts = [];
-    let jx = 0, jy = 0;
+  /* ─── IMAGON FLAT: 固定角のニブから色を引きずる ─── */
+  _buildFlat(s, W, H){
+    const [cx, cy] = this._ndcToPx(s.sx, s.sy, W, H);
+    const [ex, ey] = this._ndcToPx(s.currentEx, s.currentEy, W, H);
+    const dx = ex - cx, dy = ey - cy, len = Math.hypot(dx, dy);
+    if(len < 4) return null;
+    const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+    const nib = this._fh(s.seed * 11.3) * Math.PI;
+    const nx = Math.cos(nib), ny = Math.sin(nib);
+    const half = Math.min(W, H) * s.size * 0.5;
+    const bend = (this._fh(s.seed * 7.3) > 0.5 ? 1 : -1) * len * s.curveAmt * 0.35;
+    const freq = Math.max(1, Math.min(5, Math.round(s.freq || 1)));
+    const uvPts = [], posPts = [], tris = [], steps = 48;
     for(let i=0; i<=steps; i++){
-      const t = i / Math.max(1, fullSteps);
-      const mt = 1 - t;
-      const bx = mt*mt*mt*cx + 3*mt*mt*t*cp1x + 3*mt*t*t*cp2x + t*t*t*cex;
-      const by = mt*mt*mt*cy + 3*mt*mt*t*cp1y + 3*mt*t*t*cp2y + t*t*t*cey;
-      jx = jx * 0.82 + (Math.random() - 0.5) * jitterAmp * 0.2;
-      jy = jy * 0.82 + (Math.random() - 0.5) * jitterAmp * 0.2;
-      const px = bx + jx, py = by + jy;
-      const tdx = 3*mt*mt*(cp1x-cx) + 6*mt*t*(cp2x-cp1x) + 3*t*t*(cex-cp2x);
-      const tdy = 3*mt*mt*(cp1y-cy) + 6*mt*t*(cp2y-cp1y) + 3*t*t*(cey-cp2y);
-      const tLen = Math.sqrt(tdx*tdx + tdy*tdy);
-      const nx = tLen > 0.001 ? -tdy / tLen : perpX;
-      const ny = tLen > 0.001 ?  tdx / tLen : perpY;
-      // 入りテーパー / 抜きテーパー → 先端は 0 (= 1px にクランプ)
-      const inT  = (t < entryLen) ? Math.pow(t / entryLen, entryK) : 1.0;
-      const outT = (t > 1 - exitLen) ? Math.pow((1 - t) / exitLen, exitK) : 1.0;
-      const swell = (1.0 - swellAmt) + swellAmt * Math.sin(Math.PI * Math.pow(t, 0.85));
-      const w = baseMax * swell * Math.min(inT, outT);
-      // 伸長中のヘッド先端も細く
-      const headTaper = (i >= steps - 3) ? Math.max(0.2, (steps - i) / 3) : 1.0;
-      pts.push({bx: px, by: py, nx, ny, w: Math.max(1, w * headTaper), gt: t});
+      const t = i / steps, sway = Math.sin(Math.PI * freq * t) * bend;
+      const x = cx + ux * len * t + px * sway;
+      const y = cy + uy * len * t + py * sway;
+      posPts.push({px:x+nx*half, py:y+ny*half}, {px:x-nx*half, py:y-ny*half});
+      uvPts.push({x:cx+nx*half, y:cy+ny*half}, {x:cx-nx*half, y:cy-ny*half});
+      if(i){ const k = i*2; tris.push([k-2,k-1,k], [k-1,k+1,k]); }
     }
-    if(pts.length < 2) return null;
-    return this._buildQuadStrip(pts, cx, cy, cex, cey, W, H);
+    return this._makeGeom(uvPts, posPts, tris, W, H);
+  },
+
+  /* ─── IMAGON G-PEN: 正弦カーブと入り抜きの幅プロファイル ─── */
+  _buildGpen(s, W, H){
+    const [cx, cy] = this._ndcToPx(s.sx, s.sy, W, H);
+    const [ex, ey] = this._ndcToPx(s.currentEx, s.currentEy, W, H);
+    const dx = ex - cx, dy = ey - cy, len = Math.hypot(dx, dy);
+    if(len < 4) return null;
+    const ux = dx / len, uy = dy / len, px = -uy, py = ux;
+    const bend = (this._fh(s.seed * 7.3) > 0.5 ? 1 : -1) * len * s.curveAmt * 0.35;
+    const freq = Math.max(1, Math.min(5, Math.round(s.freq || 1)));
+    const radius = Math.min(W, H) * s.size;
+    const maxWidth = radius * 0.22 * (0.4 + s.explode * 0.86);
+    const uvCx = (cx+ex)*0.5, uvCy = (cy+ey)*0.5;
+    const uvPts = [], posPts = [], tris = [], steps = 56;
+    for(let i=0; i<=steps; i++){
+      const t = i/steps, a = Math.PI*freq*t;
+      const x = cx + dx*t + px*bend*Math.sin(a);
+      const y = cy + dy*t + py*bend*Math.sin(a);
+      const tx = dx + px*bend*Math.PI*freq*Math.cos(a);
+      const ty = dy + py*bend*Math.PI*freq*Math.cos(a);
+      const tl = Math.hypot(tx,ty) || 1;
+      const nx = -ty/tl, ny = tx/tl;
+      const width = maxWidth * Math.pow(Math.max(0, Math.sin(Math.PI*Math.pow(t,0.6))),1.8);
+      for(const sign of [1,-1]){
+        const qx = x + nx*width*sign, qy = y + ny*width*sign;
+        posPts.push({px:qx,py:qy});
+        uvPts.push({x:uvCx+(qx-uvCx)*0.4,y:uvCy+(qy-uvCy)*0.4});
+      }
+      if(i){ const k=i*2; tris.push([k-2,k-1,k],[k-1,k+1,k]); }
+    }
+    return this._makeGeom(uvPts,posPts,tris,W,H);
+  },
+
+  /* ─── IMAGON ERASE: 描画前の合成画面を元の座標から戻す ─── */
+  _buildErase(s, W, H){
+    const [sx, sy] = this._ndcToPx(s.sx, s.sy, W, H);
+    const [ex, ey] = this._ndcToPx(s.currentEx, s.currentEy, W, H);
+    const ang = Math.atan2(ey-sy, ex-sx);
+    const radius = Math.min(W,H) * s.size;
+    const hard = radius * (1-Math.max(0.04, Math.min(1,s.warp)*0.45));
+    const boundary = [], halfSteps = 18;
+    for(let i=0;i<=halfSteps;i++){
+      const a=ang-Math.PI/2+Math.PI*i/halfSteps;
+      boundary.push({x:ex,y:ey,dx:Math.cos(a),dy:Math.sin(a)});
+    }
+    for(let i=0;i<=halfSteps;i++){
+      const a=ang+Math.PI/2+Math.PI*i/halfSteps;
+      boundary.push({x:sx,y:sy,dx:Math.cos(a),dy:Math.sin(a)});
+    }
+    const n=boundary.length, uvPts=[{x:(sx+ex)*0.5,y:(sy+ey)*0.5}];
+    const posPts=[{px:(sx+ex)*0.5,py:(sy+ey)*0.5}];
+    const soft=[1], tris=[];
+    for(const p of boundary){
+      for(const [r,a] of [[hard,1],[radius,0]]){
+        const x=p.x+p.dx*r,y=p.y+p.dy*r;
+        uvPts.push({x,y}); posPts.push({px:x,py:y}); soft.push(a);
+      }
+    }
+    for(let i=0;i<n;i++){
+      const k=1+i*2, next=1+((i+1)%n)*2;
+      tris.push([0,k,next],[k,k+1,next],[k+1,next+1,next]);
+    }
+    return this._makeGeom(uvPts,posPts,tris,W,H,soft);
   },
 
   /* ─── polygon: シンプル N 角形 (Delaunay 不要) ──── */
@@ -1659,9 +1717,11 @@ void main(){
         case 'warp':    geom = this._buildWarp(s, w, h);    break;
         case 'rise':    geom = this._buildRise(s, w, h);    break;
         case 'smear':   geom = this._buildSmear(s, w, h);   break;
+        case 'flat':    geom = this._buildFlat(s, w, h);    break;
         case 'curve':   geom = this._buildCurve(s, w, h);   break;
         case 'pollock': geom = this._buildPollock(s, w, h); break;
-        case 'gpen':    geom = this._buildGpen(s, w, h);    break;
+        case 'gpen':    geom = this._buildGpen(s, w, h); break;
+        case 'erase':   geom = this._buildErase(s, w, h);   break;
         case 'polygon': geom = this._buildPolygon(s, w, h); break;
         case 'spike':   geom = this._buildSpike(s, w, h);   break;
         case 'random':  geom = this._buildRandom(s, w, h);  break;

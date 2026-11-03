@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1793668536">
+<link rel="stylesheet" href="style.css?v=1793696406">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -141,12 +141,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <tr><td><kbd>T</kbd></td><td>Tap tempo</td></tr>
           <tr><td><kbd>Cmd/Ctrl + R</kbd></td><td>Record ON / OFF</td></tr>
           <tr><td><kbd>Cmd/Ctrl + S</kbd></td><td>スクリーンショットを PNG 保存</td></tr>
-          <tr><td><kbd>R</kbd></td><td>Post / Mix / Transition / mode / Overlay / Pan・Zoom を保存値・初期値へリセット (スロットは保持)</td></tr>
+          <tr><td><kbd>R</kbd></td><td>Post / Mix / Transition / mode / IMAGON / Pan・Zoom を保存値・初期値へリセット (スロットは保持)</td></tr>
           <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Crossfade ± / <kbd>\</kbd> フリップ</td></tr>
           <tr><td><kbd>A</kbd></td><td>Auto Map トグル (アクティブスロットへ適用 — A なら A ← B / B なら B ← A)</td></tr>
           <tr><td><kbd>P</kbd></td><td>Grad / Blend プレビューバーの表示トグル (負荷対策)</td></tr>
           <tr><td><kbd>D</kbd></td><td>beat / drone 切替</td></tr>
-          <tr><td><kbd>O</kbd></td><td>Overlay トグル</td></tr>
+          <tr><td><kbd>O</kbd></td><td>IMAGON トグル</td></tr>
           <tr><td><kbd>U</kbd></td><td>色相反転 (+180°。押すたびに半周、2回で元へ)</td></tr>
           <tr><td><kbd>I</kbd></td><td>Invert トグル (hue も180°回転)</td></tr>
           <tr><td><kbd>Esc</kbd></td><td>全スロットを「なし(透明)」に + 各パラメータを保存値/初期値へリセット</td></tr>
@@ -154,7 +154,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <tr><td><kbd>1</kbd>〜<kbd>9</kbd></td><td>プリセット呼出</td></tr>
           <tr><td><kbd>F</kbd></td><td>Audio Direction 切替 (Flip → Flip Charge → Off)</td></tr>
           <tr><td><kbd>Shift</kbd>+<kbd>F</kbd></td><td>フルスクリーン</td></tr>
-          <tr><td><kbd>C</kbd></td><td>Overlay キャンバスをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
+          <tr><td><kbd>C</kbd></td><td>IMAGON キャンバスをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
           <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>beat scale (×倍率) 上げ/下げ</td></tr>
           <tr><td><kbd>←</kbd></td><td>visual 逆再生 / <kbd>→</kbd> 順再生 (GL.clock を反転)</td></tr>
           <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td>ズーム (iZoom 経由)</td></tr>
@@ -207,8 +207,8 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
       <div class="tab on" data-tab="preset">Preset</div>
       <div class="tab" data-tab="shader">Visual</div>
       <div class="tab" data-tab="mix">Mix</div>
-      <div class="tab" data-tab="post">Post</div>
-      <div class="tab" data-tab="overlay">Overlay</div>
+      <div class="tab" data-tab="post">FX</div>
+      <div class="tab" data-tab="overlay">IMAGON</div>
       <div class="tab" data-tab="tempo">Timing</div>
     </div>
     <div class="panes">
@@ -898,7 +898,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
       <!-- POST FX -->
       <div class="pane" data-pane="post">
         <div class="section">
-          <h3>Post FX <button id="btnPostReset" style="float:right;font-size:10px;padding:2px 8px">Reset</button></h3>
+          <h3>Post FX <span class="default-actions"><button class="resetDefBtn" data-kind="post:color" title="保存した色調の既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:color" title="色調の現在値を既定値として保存">Save</button></span><button id="btnPostReset" style="float:right;font-size:10px;padding:2px 8px" title="Post FX 全体を既定値へ戻す">Reset All</button></h3>
           <div class="row"><label>Invert</label><input type="checkbox" id="pxInv" title="色反転 (hue も180°回転)"></div>
           <div class="row"><label>Gamma</label><input type="range" id="pxGamma" min="0.5" max="2.5" step="0.01" value="1"><div class="val" id="pxGammaVal">1.00</div></div>
           <div class="row"><label>Brightness</label><input type="range" id="pxBri" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxBriVal">0.00</div></div>
@@ -925,7 +925,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Hue Rotate</label><input type="range" id="pxHueRot" min="0" max="2" step="0.01" value="0" title="自動で色相が左右にランダムに揺れる"><div class="val" id="pxHueRotVal">0.00</div></div>
         </div>
         <div class="section">
-          <h3>Quality <span class="pill" style="font-size:9px">画質補完</span></h3>
+          <h3>Quality <span class="pill" style="font-size:9px">画質補完</span> <span class="default-actions"><button class="resetDefBtn" data-kind="post:quality" title="保存したQualityの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:quality" title="Qualityの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Clarity</label><input type="range" id="pxClarity" min="0" max="1" step="0.01" value="0" title="CAS風の適応シャープ: 局所コントラストが低い所ほど強く輪郭を立てる(ノイズを増幅しにくい)"><div class="val" id="pxClarityVal">0.00</div></div>
           <div class="row"><label>Denoise</label><input type="range" id="pxDenoise" min="0" max="1" step="0.01" value="0" title="エッジ保存平滑: 輪郭を残して面のノイズ/圧縮の粗れを均す(バイラテラル風)"><div class="val" id="pxDenoiseVal">0.00</div></div>
           <div class="row"><label>Deband</label><input type="range" id="pxDeband" min="0" max="1" step="0.01" value="0" title="バンディング除去: グラデーションの段差を溶かして微細ディザで均す"><div class="val" id="pxDebandVal">0.00</div></div>
@@ -934,7 +934,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>FXAA</label><input type="checkbox" id="pxFxaa"></div>
         </div>
         <div class="section">
-          <h3>Material <span class="pill" style="font-size:9px">質感</span></h3>
+          <h3>Material <span class="pill" style="font-size:9px">質感</span> <span class="default-actions"><button class="resetDefBtn" data-kind="post:material" title="保存したMaterialの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:material" title="Materialの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Relief</label><input type="range" id="pxSdfChrome" min="0" max="1" step="0.01" value="0" title="Relief (旧Chrome Relief): 輝度勾配法線に金属スペキュラ+フレネル。プラスチック/金属のレリーフ"><div class="val" id="pxSdfChromeVal">0.00</div></div>
           <div class="row"><label>Bleed</label><input type="range" id="pxBleed" min="0" max="1" step="0.01" value="0" title="水彩/インクのにじみ。輪郭が滲んで溶け、エッジに顔料の暗溜まりが出る"><div class="val" id="pxBleedVal">0.00</div></div>
           <div class="row"><label>Impasto</label><input type="range" id="pxImpasto" min="0" max="1" step="0.01" value="0" title="油絵の厚塗り。絵の具の盛り上がり・筆すじ・艶が乗る(色は保持)"><div class="val" id="pxImpastoVal">0.00</div></div>
@@ -946,7 +946,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Pollock Flat</label><input type="range" id="pxPollockFlat" min="0" max="1" step="0.01" value="0" title="フラット(単色+エンボスのみ)ポロック。0=off"><div class="val" id="pxPollockFlatVal">0.0</div></div>
         </div>
         <div class="section">
-          <h3>Texture</h3>
+          <h3>Texture <span class="default-actions"><button class="resetDefBtn" data-kind="post:texture" title="保存したTextureの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:texture" title="Textureの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Scanlines</label><input type="range" id="pxScn" min="-1" max="1" step="0.01" value="0" title="中央0=無効。正=黒い走査線、負=白い走査線"><div class="val" id="pxScnVal">0.00</div></div>
           <div class="row"><label>Grain</label><input type="range" id="pxGrn" min="0" max="0.5" step="0.005" value="0"><div class="val" id="pxGrnVal">0.00</div></div>
           <div class="row"><label>Tex Noise</label><input type="range" id="pxTexN" min="-1" max="1" step="0.01" value="0" title="正=黒みがかったノイズ / 負=白みがかったノイズ (静的)"><div class="val" id="pxTexNVal">0.00</div></div>
@@ -955,7 +955,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Voxel</label><input type="range" id="pxVoxel" min="0" max="1" step="0.01" value="0" title="画面を立方体ボクセル状にピクセル化"><div class="val" id="pxVoxelVal">0.00</div></div>
         </div>
         <div class="section">
-          <h3>Audio FX <span class="pill" style="font-size:9px">要マイク/ライン入力</span></h3>
+          <h3>Audio FX <span class="pill" style="font-size:9px">要マイク/ライン入力</span> <span class="default-actions"><button class="resetDefBtn" data-kind="post:audioFx" title="保存したAudio FXの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:audioFx" title="Audio FXの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Audio → FX</label><input type="range" id="pxAudioFx" min="0" max="1" step="0.01" value="0" title="【これを上げないと Atk / Rel は効きません】Distortion / Blur・Feedback / Glitch FX を音で持ち上げる。値が 0 の FX は鳴らない。色調補正・Grad / Auto Map・Material・Texture・Quality は対象外"><div class="val" id="pxAudioFxVal">0.00</div></div>
           <div class="row"><label>Audio → FX Atk</label><input type="range" id="pxAudioFxAtk" min="0" max="1" step="0.01" value="0.6" title="0=音の持続 (energy) 寄り / 1=打点 (hit/onset) 寄り"><div class="val" id="pxAudioFxAtkVal">0.60</div></div>
           <div class="row"><label>Audio → FX Rel</label><input type="range" id="pxAudioFxRel" min="0.05" max="1.5" step="0.01" value="0.28" title="打点で跳ねたあと元に戻るまでの秒数。長いほどアタックの余韻が残る"><div class="val" id="pxAudioFxRelVal">0.28</div></div>
@@ -964,6 +964,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Strobe</label><input type="range" id="pxAStrobe" min="0" max="1" step="0.01" value="0" title="アタックで一瞬フラッシュ (発火ごとに白/反転がランダム)"><div class="val" id="pxAStrobeVal">0.00</div></div>
           <div class="row"><label>Shockwave</label><input type="range" id="pxAShock" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)で中心から屈折の衝撃波リング"><div class="val" id="pxAShockVal">0.00</div></div>
           <div class="row"><label>Pixel Expl</label><input type="range" id="pxAExplode" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)でセルが粒子状に飛散→吸い戻し"><div class="val" id="pxAExplodeVal">0.00</div></div>
+          <div class="row"><label>Waveform</label><input type="range" id="pxWaveform" min="0" max="1" step="0.01" value="0" title="画面を 32 本の縦帯に分け、帯ごとに音声スペクトルの高さへ縦に圧縮する (帯の幅はゆっくり揺れる)。1.0 で無音の帯は高さ 0。0=OFF"><div class="val" id="pxWaveformVal">0.00</div></div>
           <div class="row"><label>Mosaic</label><input type="range" id="pxMos" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダムなブロック色swap"><div class="val" id="pxMosVal">0.00</div></div>
           <div class="row"><label>Shake</label><input type="range" id="pxShake" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダム方向へ画面シェイク"><div class="val" id="pxShakeVal">0.00</div></div>
           <div class="row"><label>Mondrian</label><input type="range" id="pxSplit" min="0" max="1" step="0.01" value="0" title="Mondrian: 画面を再帰分割した矩形ごとに変位。値が大きいほど取り出し座標が大きくジャンプ。音/拍で増幅"><div class="val" id="pxSplitVal">0.00</div></div>
@@ -972,7 +973,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Gain</label><input type="range" id="pxGain" min="-1" max="1" step="0.01" value="0" title="拍/音に同期した明滅。正=フラッシュ / 負=ダーク"><div class="val" id="pxGainVal">0.00</div></div>
         </div>
         <div class="section">
-          <h3>Distortion</h3>
+          <h3>Distortion <span class="default-actions"><button class="resetDefBtn" data-kind="post:distortion" title="保存したDistortionの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:distortion" title="Distortionの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Vignette</label><input type="range" id="pxVig" min="0" max="2" step="0.01" value="0"><div class="val" id="pxVigVal">0.00</div></div>
           <div class="row"><label>Chroma Ab</label><input type="range" id="pxChr" min="0" max="0.05" step="0.0005" value="0"><div class="val" id="pxChrVal">0.000</div></div>
           <div class="row"><label>Pixelate</label><input type="range" id="pxPix" min="0" max="300" step="1" value="0"><div class="val" id="pxPixVal">0</div></div>
@@ -994,46 +995,76 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Boltzmann</label><input type="range" id="pxBoltz" min="0" max="1" step="0.01" value="0" title="0=off。値で運動の強弱・速さ。攪拌の向きはランダム"><div class="val" id="pxBoltzVal">0.0</div></div>
         </div>
         <div class="section">
-          <h3>Blur / Feedback</h3>
+          <h3>Blur / Feedback <span class="default-actions"><button class="resetDefBtn" data-kind="post:blur" title="保存したBlurの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:blur" title="Blurの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Gaussian Blur</label><input type="range" id="pxSlit2" min="0" max="1" step="0.01" value="0" title="〜0.5は輪郭を残しつつぼかし、0.5以降で完全にぼかす"><div class="val" id="pxSlit2Val">0.00</div></div>
           <div class="row"><label>Film Blur</label><input type="range" id="pxFilmBlur" min="0" max="1" step="0.01" value="0" title="手ブレしたフィルム写真の質感。方向ブレ + 赤橙の滲み + 沈んだ黒 + 粗い粒子。向きは drone でゆっくり揺れ、beat で拍ごとに振れる"><div class="val" id="pxFilmBlurVal">0.00</div></div>
           <div class="row"><label>Hipass</label><input type="range" id="pxGlass" min="0" max="1" step="0.01" value="0" title="Hipass: 初速から高域強調が強く効き、後段でブラー範囲が広がる。補色は弱めに抑えつつ残す"><div class="val" id="pxGlassVal">0.00</div></div>
           <div class="row"><label>Dither Blur</label><input type="range" id="pxDither" min="0" max="1" step="0.01" value="0" title="Kawase Jitter Blur: ジッター付き 2 半径 Kawase ブラー。指数カーブ"><div class="val" id="pxDitherVal">0.00</div></div>
           <div class="row"><label>Motion Blur</label><input type="range" id="pxMblur" min="0" max="1" step="0.01" value="0"><div class="val" id="pxMblurVal">0.00</div></div>
-          <div class="row"><label>FB Add</label><input type="range" id="pxFbAdd" min="0" max="1" step="0.01" value="0" title="前フレームの明るい部分を残すFeedback"><div class="val" id="pxFbAddVal">0.00</div></div>
-          <div class="row"><label>FB Multiply</label><input type="range" id="pxFbMultiply" min="0" max="1" step="0.01" value="0" title="前フレームの暗い部分を残すFeedback"><div class="val" id="pxFbMultiplyVal">0.00</div></div>
-          <div class="row"><label>· Fb Zoom</label><input type="range" id="pxFbZoom" min="-1" max="1" step="0.01" value="0" title="フィードバックのズーム: 正=外へ広がるトンネル / 負=内へ吸い込み"><div class="val" id="pxFbZoomVal">0.00</div></div>
-          <div class="row"><label>· Fb Rot</label><input type="range" id="pxFbRot" min="-1" max="1" step="0.01" value="0" title="フィードバックの回転(渦巻きトレイル)"><div class="val" id="pxFbRotVal">0.00</div></div>
+          <div class="fb-group" style="margin-top:10px;padding-top:8px;border-top:1px solid #383838">
+            <h3>FB <span class="default-actions"><button class="resetDefBtn" data-kind="fb" title="保存したFBの既定値を消して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="fb" title="FBの種類と全設定を既定値として保存">Save</button></span></h3>
+            <div class="row"><label>Mode</label><select id="pxFbMode" title="FBの種類。Add は明るい残像、Multiply は暗い残像、Residue は動いた形の残像"><option value="add">Add</option><option value="multiply">Multiply</option><option value="residue" selected>Residue</option></select></div>
+            <div class="row"><label>Amount</label><input type="range" id="pxFbAmount" min="0" max="1" step="0.01" value="0" title="選んだFBの量。0で無効"><div class="val" id="pxFbAmountVal">0.00</div></div>
+            <div class="row"><label>Steps</label><input type="range" id="pxFbSteps" min="0" max="1" step="0.01" value="1" title="保持する残像の枚数。1〜12 段。増やすほど別々の時刻の絵が重なる"><div class="val" id="pxFbStepsVal">12</div></div>
+            <div class="row"><label>Fade</label><input type="range" id="pxFbFade" min="0" max="1" step="0.01" value="0.5" title="残像が消える速さ。左は長く残り、右は早く消える。残像の採取間隔と段ごとの濃さを調整"><div class="val" id="pxFbFadeVal">0.50</div></div>
+            <div class="fb-light-options">
+              <div class="row"><label>Zoom</label><input type="range" id="pxFbZoom" min="-1" max="1" step="0.01" value="0" title="Add / Multiply のズーム。正=外へ広がる / 負=内へ吸い込み"><div class="val" id="pxFbZoomVal">0.00</div></div>
+              <div class="row"><label>Rot</label><input type="range" id="pxFbRot" min="-1" max="1" step="0.01" value="0" title="Add / Multiply の回転"><div class="val" id="pxFbRotVal">0.00</div></div>
+            </div>
+            <div class="fb-residue-options">
+            <div class="row"><label>Echo Hold</label><input type="range" id="pxFbResidueHold" min="0" max="1" step="0.01" value="0.55" title="前の画が崩れながら残る長さ"><div class="val" id="pxFbResidueHoldVal">0.55</div></div>
+            <div class="row"><label>Echo Pull</label><input type="range" id="pxFbResiduePull" min="0" max="1" step="0.01" value="0.35" title="動きに沿って前の画を引き延ばす強さ。0 で位置ずれなし"><div class="val" id="pxFbResiduePullVal">0.35</div></div>
+            <div class="row"><label>Polygon</label><input type="range" id="pxFbResiduePoly" min="0" max="1" step="0.01" value="0" title="選ばれた大きな多角形の面がそれぞれ独立して揺れ、たわみながら前の映像を運ぶ。Polygon 1 では粉を出さない。0 は従来の有機的な残像"><div class="val" id="pxFbResiduePolyVal">0.00</div></div>
+            <div class="row"><label>Face Size</label><input type="range" id="pxFbResidueFaceSize" min="0" max="1" step="0.01" value="0.5" title="Polygon の面の大きさ。上げるほど分割数が指数的に減り、最大では画面をまたぐ大きな面になる"><div class="val" id="pxFbResidueFaceSizeVal">0.50</div></div>
+            <div class="help">人物・物体・文字など、動いた部分にだけ残像が生じます。</div>
+            </div>
+          </div>
         </div>
         <div class="section">
-          <h3>Glitch FX <span class="pill" style="font-size:9px">beat-sync</span></h3>
+          <h3>Glitch FX <span class="pill" style="font-size:9px">beat-sync</span> <span class="default-actions"><button class="resetDefBtn" data-kind="post:glitch" title="保存したGlitch FXの既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="saveDefBtn" data-kind="post:glitch" title="Glitch FXの現在値を既定値として保存">Save</button></span></h3>
           <div class="row"><label>Slice</label><input type="range" id="pxSlice" min="0" max="1" step="0.01" value="0" title="横の帯ごとに映像を左右へずらして切り裂く。値=ずれの大きさ。帯のパターンは拍ごとに変わる"><div class="val" id="pxSliceVal">0.00</div></div>
           <div class="row"><label>Ring Slice</label><input type="range" id="pxRingSlice" min="0" max="1" step="0.01" value="0" title="同心円の帯ごとに別々の速さ・向きで映像を回し続ける (Slice の同心円版。境界線なし)。値=回転の速さ。帯のパターンは beat モードで拍ごとに変わり、drone では固定"><div class="val" id="pxRingSliceVal">0.00</div></div>
           <div class="row"><label>Ring Blur</label><input type="range" id="pxRingBlur" min="0" max="1" step="0.01" value="0" title="Ring Slice と同じ同心円の帯ごとに、円周方向の回転ブラー。帯ごとに量と向きが違い、時間で脈動する。一部の帯はぼかさない"><div class="val" id="pxRingBlurVal">0.00</div></div>
           <div class="row"><label>Slit-scan</label><input type="range" id="pxSlitScan" min="0" max="1" step="0.01" value="0" title="時間が縦に流れるスクロール型slit-scan。値=分割数。上下方向はランダムなタイミングで反転。0=OFF"><div class="val" id="pxSlitScanVal">0.0</div></div>
           <div class="row"><label>Outline</label><input type="range" id="pxOutline" min="0" max="1" step="0.01" value="0" title="Outline: 色差対応Scharr + Canny細線化で、白地にAAなしの1pxドット輪郭を引き直す"><div class="val" id="pxOutlineVal">0.00</div></div>
+          <div class="row"><label for="pxInkBleed">Ink Bleed</label><input type="range" id="pxInkBleed" min="0" max="1" step="0.01" value="0" title="線と輪郭の色を保ったまま紙ににじませる。背景が黒いときは Paper を黒に設定する"><div class="val" id="pxInkBleedVal">0</div></div>
           <div class="row"><label>Barcode</label><input type="range" id="pxBarcode" min="0" max="1" step="0.01" value="0" title="ランダムなピクセルを横に引き延ばし、ランダムな周期・高さのバーコード状の行に。行ごとに違う速さで変異する"><div class="val" id="pxBarcodeVal">0.00</div></div>
           <div class="row"><label>Datamosh</label><input type="range" id="pxGlitchTrail" min="0" max="1" step="0.01" value="0" title="細面ほど1/16〜1/4拍で速く動き、未分割の大面を遅く残しながら分節スキャンを刻むデータモッシュ。0=OFF"><div class="val" id="pxGlitchTrailVal">0.00</div></div>
+          <div class="row"><label>Datamosh Type</label><div id="pxGlitchTrailTypes" style="flex:1;display:flex;gap:3px" title="Datamosh の種類 (複数を同時に重ねられる)"><button data-type="mondrian" title="面ごとの動き + 走査帯" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Mondrian</button><button data-type="block" title="マクロブロックの流れ + 4 拍ごとの I フレーム" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Block</button><button data-type="melt" title="縦の帯が下へ垂れる" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Melt</button><button data-type="tear" title="横帯の横ずれ + ロール" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Tear</button><button data-type="freeze" title="面が数拍そのまま固まる" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Freeze</button></div></div>
           <div class="help" style="margin-top:6px">visual.frag の glitchMode 1/2/3/4 + 5 を移植。BPM/Tap でテンポを合わせると拍に同期します。</div>
+        </div>
+        <div class="section">
+          <h3>Ink Bleed <span class="default-actions"><button class="saveDefBtn" data-kind="inkBleed" title="インクのにじみ設定を保存する">Save</button><button class="resetDefBtn" data-kind="inkBleed" title="保存した詳細設定に戻す。保存がなければ初期値に戻す">Reset</button><button class="randDefBtn" data-kind="inkBleed" title="Spread・Fiber・Edge・Node・Seed をランダムに変える">Random 🎲</button></span></h3>
+          <div class="row"><label for="pxInkBleedSpread">Spread</label><input type="range" id="pxInkBleedSpread" min="0" max="1" step="0.01" value="0.5" title="にじみと溜まりの上限。線幅に比例して広がるが、太い線でもこれ以上は広がらない"><div class="val" id="pxInkBleedSpreadVal">0.5</div></div>
+          <div class="row"><label for="pxInkBleedFiber">Fiber</label><input type="range" id="pxInkBleedFiber" min="0" max="1" step="0.01" value="0.5" title="溜まりの縁の揺らぎ (線幅に対する比)"><div class="val" id="pxInkBleedFiberVal">0.50</div></div>
+          <div class="row"><label for="pxInkBleedEdge">Edge</label><input type="range" id="pxInkBleedEdge" min="0" max="1" step="0.01" value="0.4" title="印刷インク風の仕上げ。線が少し柔らかく太り、ベタにわずかなムラが出る (線幅によらず一定)"><div class="val" id="pxInkBleedEdgeVal">0.40</div></div>
+          <div class="row"><label for="pxInkBleedNode">Node</label><input type="range" id="pxInkBleedNode" min="0" max="1" step="0.01" value="0.5" title="線が交差する所の溝をインクで埋めて、内向きの弧 (光マーク状) にする。線幅に比例し、0 で溜まりなし"><div class="val" id="pxInkBleedNodeVal">0.50</div></div>
+          <div class="row"><label for="pxInkBleedSeed">Seed</label><input type="range" id="pxInkBleedSeed" min="0" max="999" step="1" value="1" title="溜まりの大きさと形の模様を変える"><div class="val" id="pxInkBleedSeedVal">1</div></div>
+          <div class="row"><label for="pxInkBleedPaper">Paper</label><input type="color" id="pxInkBleedPaper" value="#ffffff" title="インクの判定基準となる紙色。暗い背景では背景に合わせる"></div>
         </div>
       </div>
 
-      <!-- OVERLAY -->
+      <!-- IMAGON (legacy state key: overlay) -->
       <div class="pane" data-pane="overlay">
         <div class="section">
-          <h3>Overlay <span class="pill section-tag">stroke / beat-sync</span> <span class="default-actions"><button class="resetDefBtn" data-kind="overlay" title="現在のブラシモードを初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="overlay" title="現在のブラシモードの値をデフォルトとして保存">Save</button></span></h3>
+          <h3>IMAGON <span class="pill section-tag">stroke / beat-sync</span> <span class="default-actions"><button class="resetDefBtn" data-kind="overlay" title="現在のブラシモードを初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="overlay" title="現在のブラシモードの値をデフォルトとして保存">Save</button></span></h3>
           <div class="row"><label>Enabled</label><input type="checkbox" id="ovEnable"></div>
           <div class="row"><label>Brush</label>
             <select id="ovBrush" style="flex:1">
-              <option value="warp">Warp</option>
+              <option value="warp">Glass</option>
               <option value="rise">Rise</option>
-              <option value="smear" selected>Smear</option>
+              <option value="smear" selected>Warp</option>
               <option value="spike">Spike</option>
-	              <option value="swoosh">Swoosh</option>
-	              <option value="curve">Curve</option>
-	              <option value="smudge">Smudge</option>
-	              <option value="random">Random</option>
-	            </select>
+              <option value="gpen">G-Pen</option>
+              <option value="flat">Flat</option>
+              <option value="smudge">Smudge</option>
+              <option value="random">Random</option>
+              <option value="erase">Erase</option>
+              <optgroup label="VJ Legacy">
+                <option value="curve">Curve</option>
+                <option value="swoosh">Swoosh</option>
+              </optgroup>
+            </select>
           </div>
           <div class="row" id="ovFinishRow"><label>Finish</label>
             <select id="ovFinish" style="flex:1">
@@ -1119,6 +1150,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Stroke Len</label><input type="range" id="ovStrokeLen" min="0.1" max="5.0" step="0.05" value="2.5"><div class="val" id="ovStrokeLenVal">2.50</div></div>
           <div class="row"><label>Len Var</label><input type="range" id="ovStrokeLenVar" min="0" max="1" step="0.05" value="0.25"><div class="val" id="ovStrokeLenVarVal">0.25</div></div>
           <div class="row"><label>Curve</label><input type="range" id="ovCurve" min="-1" max="1" step="0.05" value="1.0"><div class="val" id="ovCurveVal">1.00</div></div>
+          <div class="row" id="ovFreqRow"><label title="FLAT / G-PEN の曲がる回数。1〜5">Freq</label><input type="range" id="ovFreq" min="1" max="5" step="1" value="1"><div class="val" id="ovFreqVal">1</div></div>
           <div class="row"><label>Stamps</label><input type="range" id="ovStamps" min="2" max="300" step="1" value="40"><div class="val" id="ovStampsVal">40</div></div>
           <div class="row" id="ovSmudgeSpeedRow"><label>Finger Speed</label><input type="range" id="ovSmudgeSpeed" min="0.05" max="4" step="0.01" value="0.5"><div class="val" id="ovSmudgeSpeedVal">0.50</div></div>
         </div>
@@ -1134,7 +1166,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
         <div class="section">
           <h3>Brush Shape</h3>
-          <div class="help" style="margin-bottom:6px">元 polygon ツールと同じ Delaunay 三角化 + ブラシ別アルゴリズム</div>
+          <div class="help" style="margin-bottom:6px">imagon.app のブラシ形状を VJ の拍に合わせて生成</div>
           <div class="row"><label>Points</label><input type="range" id="ovSides" min="3" max="40" step="1" value="15"><div class="val" id="ovSidesVal">15</div></div>
           <div class="row"><label>Max Points</label><input type="range" id="ovMaxSides" min="0" max="40" step="1" value="0"><div class="val" id="ovMaxSidesVal">0</div></div>
           <div class="row"><label>Size</label><input type="range" id="ovSize" min="0.001" max="0.6" step="0.001" value="0.15"><div class="val" id="ovSizeVal">0.150</div></div>
@@ -1387,39 +1419,39 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1793668536"></script>
-<script src="mode/layer.js?v=1793668536"></script>
-<script src="vendor/iro.min.js?v=1793668536"></script>
-<script src="vendor/mediabunny.min.js?v=1793668536"></script>
-<script src="mode/textdeform.js?v=1793668536"></script>
-<script src="mode/textdeform-comp.js?v=1793668536"></script>
-<script src="mode/ugomeki.js?v=1793668536"></script>
-<script src="mode/slicer.js?v=1793668536"></script>
-<script src="mode/video.js?v=1793668536"></script>
-<script src="mode/aratanagara.js?v=1793668536"></script>
-<script src="vendor/p5.min.js?v=1793668536"></script>
-<script src="mode/cyberui.js?v=1793668536"></script>
-<script src="mode/novel.js?v=1793668536"></script>
-<script src="shaders/inkelly.js?v=1793668536"></script>
-<script src="sketchfx.js?v=1793668536"></script>
-<script src="pixelsortfx.js?v=1793668536"></script>
-<script src="shaders/boltzmann.js?v=1793668536"></script>
-<script src="mode/pen.js?v=1793668536"></script>
-<script src="shaders/caverns.js?v=1793668536"></script>
-<script src="mode/shelf.js?v=1793668536"></script>
-<script src="shaders/ribbon.js?v=1793668536"></script>
-<script src="mode/photoplane.js?v=1793668536"></script>
-<script src="mode/shredder.js?v=1793668536"></script>
-<script src="mode/transflock.js?v=1793668536"></script>
-<script src="mode/liquidpeel.js?v=1793668536"></script>
-<script src="mode/windflock.js?v=1793668536"></script>
-<script src="mode/fude.js?v=1793668536"></script>
-<script src="mode/image.js?v=1793668536"></script>
-<script src="mode/spacetype.js?v=1793668536"></script>
-<script src="pollockfx.js?v=1793668536"></script>
-<script src="overlay.js?v=1793668536"></script>
-<script src="gif.js?v=1793668536"></script>
-<script src="app.js?v=1793668536"></script>
-<script src="camroll.js?v=1793668536" defer></script>
+<script src="presets.js?v=1793696406"></script>
+<script src="mode/layer.js?v=1793696406"></script>
+<script src="vendor/iro.min.js?v=1793696406"></script>
+<script src="vendor/mediabunny.min.js?v=1793696406"></script>
+<script src="mode/textdeform.js?v=1793696406"></script>
+<script src="mode/textdeform-comp.js?v=1793696406"></script>
+<script src="mode/ugomeki.js?v=1793696406"></script>
+<script src="mode/slicer.js?v=1793696406"></script>
+<script src="mode/video.js?v=1793696406"></script>
+<script src="mode/aratanagara.js?v=1793696406"></script>
+<script src="vendor/p5.min.js?v=1793696406"></script>
+<script src="mode/cyberui.js?v=1793696406"></script>
+<script src="mode/novel.js?v=1793696406"></script>
+<script src="shaders/inkelly.js?v=1793696406"></script>
+<script src="sketchfx.js?v=1793696406"></script>
+<script src="pixelsortfx.js?v=1793696406"></script>
+<script src="shaders/boltzmann.js?v=1793696406"></script>
+<script src="mode/pen.js?v=1793696406"></script>
+<script src="shaders/caverns.js?v=1793696406"></script>
+<script src="mode/shelf.js?v=1793696406"></script>
+<script src="shaders/ribbon.js?v=1793696406"></script>
+<script src="mode/photoplane.js?v=1793696406"></script>
+<script src="mode/shredder.js?v=1793696406"></script>
+<script src="mode/transflock.js?v=1793696406"></script>
+<script src="mode/liquidpeel.js?v=1793696406"></script>
+<script src="mode/windflock.js?v=1793696406"></script>
+<script src="mode/fude.js?v=1793696406"></script>
+<script src="mode/image.js?v=1793696406"></script>
+<script src="mode/spacetype.js?v=1793696406"></script>
+<script src="pollockfx.js?v=1793696406"></script>
+<script src="overlay.js?v=1793696406"></script>
+<script src="gif.js?v=1793696406"></script>
+  <script src="app.js?v=1793696406"></script>
+<script src="camroll.js?v=1793696406" defer></script>
 </body>
 </html>

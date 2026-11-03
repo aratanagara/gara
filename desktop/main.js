@@ -2,7 +2,7 @@
 // 内蔵の静的 HTTP サーバ (desktop/server.js) でアプリ一式を配信し、BrowserWindow で開く。
 // file:// だと fetch(manifest.json 等) が失敗するため必ず HTTP で配信する。
 // プリセット/グラデ等の store.php 同期は app.js 側が本番サーバを参照する(既存動作)。
-const { app, BrowserWindow, session, Menu, dialog, desktopCapturer } = require('electron');
+const { app, BrowserWindow, session, Menu, dialog, desktopCapturer, powerSaveBlocker } = require('electron');
 const fs = require('fs');
 const path = require('path');
 const { createServer } = require('./server');
@@ -206,6 +206,27 @@ async function createWindow(){
     }
   });
 
+  // Projector 窓 (app.js の window.open) にも誤閉じ確認を付ける。アプリ側の「閉じる」操作は
+  // 閉じる前にタイトルへ印を付けるので (Projector.close)、そのときだけ確認なしで閉じる。
+  win.webContents.setWindowOpenHandler(() => ({
+    action: 'allow',
+    overrideBrowserWindowOptions: { backgroundColor: '#000000', webPreferences: { backgroundThrottling: false } },
+  }));
+  win.webContents.on('did-create-window', (child) => {
+    child.on('close', (e) => {
+      if(app._quitting || child.__confirmedClose) return;
+      let intended = false;
+      try{ intended = /closing/.test(child.getTitle()); }catch(_){}
+      if(intended) return;
+      e.preventDefault();
+      const r = dialog.showMessageBoxSync(child, {
+        type: 'warning', buttons: ['キャンセル', '閉じる'], defaultId: 0, cancelId: 0,
+        message: 'Projector を閉じますか?', detail: 'VJ 中の誤操作防止のため確認しています。',
+      });
+      if(r === 1){ child.__confirmedClose = true; child.close(); }
+    });
+  });
+
   // ── クラッシュ自動復旧 ──
   //   描画プロセスが落ちたらリロード (コンテンツは autosave = vj.state から復元される)。
   //   60 秒以内に 3 回落ちるようならアプリごと再起動 (GPU プロセス異常などの根本リセット)。
@@ -354,6 +375,9 @@ if(!app.requestSingleInstanceLock()){
 }
 
 app.whenReady().then(() => {
+  // 本番中にディスプレイスリープ / スクリーンセーバで Projector が消えないようにする
+  // (Chromium は見えている video の再生中しか抑止しないため、明示的に止める)
+  powerSaveBlocker.start('prevent-display-sleep');
   installMenu();
   createWindow();
   app.on('activate', () => { if(BrowserWindow.getAllWindows().length === 0) createWindow(); });

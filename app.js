@@ -257,6 +257,15 @@ const MediaImport = {
     return n;
   },
 
+  // images/ 直下の 1 枚もの (Visual の個別画像) を実ファイルごと削除する (ローカル起動のみ)
+  async remove(dir){
+    const r = await fetch('__media?path=' + encodeURIComponent(dir), { method:'DELETE' });
+    const d = await r.json().catch(()=>null);
+    if(!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    if(typeof ImageMode !== 'undefined') await ImageMode.loadFolderIndex(true);
+    if(typeof UI !== 'undefined' && UI.refreshImageMode) UI.refreshImageMode();
+  },
+
   // アクティブスロットを Image モードにして dir / name を表示する
   _toImageSlot(dir, name){
     if(typeof ImageMode === 'undefined') return;
@@ -1918,7 +1927,7 @@ void main(){
   vec3 L=normalize(vec3(cos(uTime*0.5),0.6,0.7));
   float spec=pow(max(0.0,dot(reflect(-L,n),V)),32.0);
   float fres=pow(1.0-max(0.0,dot(n,V)),3.0);
-  vec3 metal=col*0.5+spec*vec3(1.0)+fres*vec3(0.4,0.55,0.9);   // ベース 0.25→0.5: 適用時に暗くなりすぎない
+  vec3 metal=col*0.5+spec*vec3(1.0)+fres*vec3(0.52,0.58,0.68);   // ベース 0.25→0.5: 適用時に暗くなりすぎない。縁の色はブルーグレー (青に寄りすぎない)
   frag=vec4(mix(col,metal,clamp(uAmount,0.0,1.0)),1.0);
 }`);
 
@@ -2245,6 +2254,54 @@ void main(){
     // Barcode: 画面をランダム高の行に割り、各行を「元画の 1 点を横に引き延ばしたバー」で敷き詰める。
     // 拡縮の基点は画面中央。地は行の連続ストリーク(=引き延ばした元画)で、素の元画は見せない。
     // Amount: 低=細かい分割(元画像に近い) → 高=少ない太い行・太いバー(抽象化)。
+    // Waveform: 画面を 32 本の縦帯に分け、帯ごとに音声スペクトルの高さへ縦に圧縮する。
+    // 帯の幅はゆっくり揺れる。Amount 1.0 で無音の帯は高さ 0 (中央線に消える)。
+    this._linkDeferred('waveformProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform sampler2D uFFT;
+uniform vec2 uRes;
+uniform float uAmount;
+uniform float uTime;
+uniform float uGain;
+uniform float uOnset;   // アタック (立ち上がり) 0..1
+float hash11(float n){ return fract(sin(n*127.1+311.7)*43758.5453); }
+float bandWidth(float i){
+  float r0=hash11(i*3.1), r1=hash11(i*7.7+2.0);
+  return 1.0+0.55*sin(uTime*(0.35+0.5*r0)+r1*6.2831853);
+}
+void main(){
+  vec3 src=texture(uTex,vUv).rgb;
+  if(uAmount<=0.001){ frag=vec4(src,1.0); return; }
+  int N=int(min(32.0,32.0+uRes.x*0.0));
+  float total=0.0;
+  for(int i=0;i<N;i++) total+=bandWidth(float(i));
+  float x=vUv.x*total;
+  float acc=0.0; float band=0.0;
+  for(int i=0;i<N;i++){
+    float w=bandWidth(float(i));
+    if(x>=acc && x<acc+w){ band=float(i); }
+    acc+=w;
+  }
+  // 帯ごとの音量: 低域ほど幅広の対数配分で FFT (512 bin) を読む
+  float t=(band+0.5)/32.0;
+  float bin=exp2(mix(1.0,8.3,t));
+  float lv=0.0;
+  for(int k=-1;k<=1;k++) lv=max(lv,texture(uFFT,vec2((bin+float(k)*max(1.0,bin*0.08)+0.5)/512.0,0.25)).r);
+  lv=clamp(pow(lv*uGain,0.75),0.0,1.0);
+  // FFT は平滑化されて鈍いので、時間波形 (row1) の瞬時振幅とアタック (onset) で鋭く立てる
+  float amp=0.0;
+  for(int k=0;k<4;k++){ float w=texture(uFFT,vec2((band*16.0+float(k)*4.0+2.5)/512.0,0.75)).r; amp=max(amp,abs(w-0.5)*2.0); }
+  amp=max(0.0,amp-0.05)/0.95;   // 無音 (128/255) のわずかなずれは床で切る
+  lv=max(lv,clamp(amp*1.6,0.0,1.0));
+  lv=max(lv,uOnset*(0.5+0.5*hash11(band*5.3+floor(uTime*12.0))));
+  float sc=mix(1.0,lv,uAmount);
+  float d=abs(vUv.y-0.5);
+  if(d>=sc*0.5 || sc<0.002){ frag=vec4(0.0,0.0,0.0,1.0); return; }
+  float sy=0.5+(vUv.y-0.5)/sc;
+  frag=vec4(texture(uTex,vec2(vUv.x,sy)).rgb,1.0);
+}`);
     this._linkDeferred('barcodeProg', `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag;
@@ -2479,6 +2536,407 @@ void main(){
   vec3 gr=vec3(nl*1.73)+(n-nl)*0.22;
   col+=gr*0.13*pow(a,0.7)*mix(0.25,1.0,smoothstep(0.0,0.2,l))*(1.0-0.7*smoothstep(0.85,1.0,l));
   frag=vec4(clamp(col,0.0,1.0),1.0);
+}`);
+
+    const inkBleedNoise = `
+float hashCell(vec2 p){
+  vec3 q=fract(vec3(p.xyx)*0.1031);
+  q+=dot(q,q.yzx+33.33);
+  return fract((q.x+q.y)*q.z);
+}
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p);
+  f=f*f*(3.0-2.0*f);
+  return mix(mix(hashCell(i),hashCell(i+vec2(1,0)),f.x),
+             mix(hashCell(i+vec2(0,1)),hashCell(i+1.0),f.x),f.y);
+}`;
+    this._linkDeferred('inkBleedMaskProg', `#version 300 es
+precision highp float;
+layout(location=0) out vec4 frag;
+layout(location=1) out vec4 lineData;
+uniform sampler2D uTex;
+uniform vec3 uPaper;
+uniform float uNode;
+// The analysis reads the source through a coarser mip at 4K and above, so a frame of any
+// size is measured like a 1080p one (the print-look swell keeps a full-detail pass).
+uniform int uLod;
+void main(){
+  ivec2 base=2*ivec2(gl_FragCoord.xy);
+  ivec2 limit=textureSize(uTex,uLod)-1;
+  vec3 pigment=vec3(0);
+  float mass=0.0, darkest=0.0;
+  float line=0.0, dilated=0.0, densitySum=0.0;
+  vec2 strokeCenter=vec2(0);
+  for(int y=-1;y<=2;y++){
+    for(int x=-1;x<=2;x++){
+      vec3 rgb=texelFetch(uTex,clamp(base+ivec2(x,y),ivec2(0),limit),uLod).rgb;
+      float density=distance(rgb,uPaper)*0.5773503;
+      if(uNode>0.0){
+        densitySum+=density;
+        dilated=max(dilated,density);
+        strokeCenter+=density*(vec2(x,y)-0.5);
+        if(x>=0 && x<=1 && y>=0 && y<=1) line+=density*0.25;
+      }
+      // The ink color is the block's strongest pixel: averaging would gray it where
+      // every pixel is a softened edge (fine stipple, upscaled scans).
+      if(density>darkest){ darkest=density; pigment=rgb; }
+      mass+=max(0.0,density-0.018);
+    }
+  }
+  // Averaging coverage conserves the ink in subpixel strokes. Solid and thin lines
+  // both sit near 1; only pale tones fall away, so dark ink is what travels.
+  float coverage=1.0-min(1.0,pow(mass*0.185,0.80));
+  float reach=1.0-coverage*coverage;
+  frag=vec4(pigment*reach,reach);
+  lineData=vec4(line,mix(densitySum/16.0,dilated,0.33),0.5+strokeCenter/max(densitySum,0.001)*0.25);
+}`);
+    this._linkDeferred('inkBleedNodeProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uRadius;
+uniform float uSeed;
+uniform sampler2D uWidth;
+${inkBleedNoise}
+float stroke(vec2 p){ return textureLod(uTex,p,0.0).r; }
+float ringInk(vec2 p){ return textureLod(uTex,p,0.0).g; }
+vec2 direction(int i){
+  float a=float(i)*6.2831853/24.0;
+  return vec2(cos(a),sin(a));
+}
+void main(){
+  vec4 mask=texelFetch(uTex,ivec2(gl_FragCoord.xy),0);
+  frag=vec4(0,0,0,1);
+  if(mask.r<0.09 || mask.g>0.86) return;
+  vec2 center=vUv+(mask.ba-0.5)*2.0/uRes;
+  // The ring has to clear the stroke itself, so everything widens with thick lines.
+  // A 12px stroke reads about 5 here; below that the ring sits inside the stroke and
+  // its own edge looks like three arms.
+  float reach=uRadius*clamp(texture(uWidth,vUv).r/0.10,1.0,5.0);
+  if(textureLod(uTex,center,max(0.0,log2(reach*2.8))).r>0.36) return;
+  int N=int(min(24.0,24.0+uRes.x*0.0));
+  vec2 radius=reach/uRes;
+  uint ring=0u;
+  int gap=0, covered=0;
+
+  for(int i=0;i<N;i++){
+    vec2 dir=direction(i);
+    float ink=ringInk(center+dir*radius);
+    if(ink>0.32){
+      ring |= 1u << uint(i);
+      covered++;
+      if(float(covered)>0.6*float(N)) return;
+    }else{
+      gap=i;
+    }
+  }
+  if(covered==0) return;
+  int arms=0;
+  vec2 dirs[6];
+  vec2 run=vec2(0);
+  for(int j=1;j<=N;j++){
+    int i=(gap+j)%N;
+    if((ring & (1u << uint(i)))!=0u){
+      run+=direction(i);
+    }else if(dot(run,run)>0.0){
+      vec2 arm=normalize(run);
+      vec2 tangent=vec2(-arm.y,arm.x)/uRes;
+      vec2 mid=center+arm*radius*0.5;
+      float connected=max(stroke(mid),
+                          max(stroke(mid-tangent*0.45),stroke(mid+tangent*0.45)));
+      // The arm has to keep going well past the ring: short strokes that happen to
+      // meet (fur, lashes, hatching) are not crossings.
+      // Sampled with a wide mip so a slightly curved arm still registers. Both
+      // distances must hold: short strokes meeting at a point (fur, lashes) fail the far one.
+      float lod=max(0.0,log2(reach*0.5));
+      vec2 far=center+arm*radius*2.6;
+      float farInk=max(textureLod(uTex,far,lod).r,max(textureLod(uTex,far-tangent*reach*0.5,lod).r,textureLod(uTex,far+tangent*reach*0.5,lod).r));
+      bool long_=textureLod(uTex,center+arm*radius*1.6,lod).r>0.10 && farInk>0.08;
+      if(connected>0.23 && stroke(center+arm*radius*0.25)>0.20 && long_){
+        // The two edges of one thick stroke show up as two nearly parallel arms.
+        bool dup=false;
+        for(int k=0;k<6;k++){ if(k>=arms) break; if(dot(dirs[k],arm)>0.85) dup=true; }
+        if(!dup){ if(arms<6) dirs[arms]=arm; arms++; }
+      }
+      run=vec2(0);
+    }
+  }
+  // A crossing is where one stroke passes through another: at least one pair of arms
+  // runs in opposite directions. A bundle of short strokes meeting at a point (fur,
+  // lashes) also shows three arms, but none of them continue through.
+  float node=0.0;
+  // How shallow the crossing is: the smallest angle between any two arms that are not
+  // the same stroke. A shallow crossing leaves long narrow wedges that take long fillets.
+  float shallow=0.0;
+  if(arms>=3){
+    int through=0;
+    for(int a=0;a<6;a++){
+      if(a>=arms) break;
+      for(int b=a+1;b<6;b++){
+        if(b>=arms) break;
+        float d=dot(dirs[a],dirs[b]);
+        if(d<-0.85) through++;
+        // How acute the wedge between two different strokes is. Arms closer than 45°
+        // are the same stroke seen twice (a wobble at the ring), not a shallow crossing.
+        else if(d<0.7) shallow=max(shallow,d);
+      }
+    }
+    if(arms>=4) node=through>=2 ? 1.0 : 0.0;
+    else node=through>=1 ? 1.0 : 0.0;
+  }
+  frag.r=node*mask.r*2.75*mix(0.42,1.0,noise(gl_FragCoord.xy/51.0+vec2(uSeed,0.71*uSeed)));
+  frag.g=node*clamp(shallow,0.0,1.0);
+  frag.b=node*clamp(texture(uWidth,vUv).r/0.10,0.4,6.0)/6.0;
+}`);
+    this._linkDeferred('inkBleedSpreadProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform vec2 uStep;
+void main(){
+  int N=int(min(13.0,13.0+uRes.x*0.0));
+  float half_=6.0;
+  // Wide steps quantize the reach into terraces parallel to the stroke.
+  // A per-pixel jitter turns them into grain that the fibers hide.
+  float jitter=fract(sin(dot(gl_FragCoord.xy,vec2(12.9898,78.233)))*43758.5453)-0.5;
+  vec4 center=texture(uTex,vUv);
+  float front=center.a;
+  vec3 pigment=center.rgb;
+  float mass=center.a;
+  for(int i=0;i<N;i++){
+    float offset=(float(i)-half_+jitter)/half_;
+    vec4 tap=texture(uTex,vUv+uStep*offset);
+    // Max-plus propagation of a circular wetting front, with color from
+    // the sources that actually reach this point.
+    float reach=max(0.0,tap.a-offset*offset);
+    front=max(front,reach);
+    // Strong ink sets the color. Antialiased stroke edges would otherwise gray it.
+    float weight=reach*reach*tap.a*tap.a*tap.a;
+    pigment+=tap.rgb*(weight/max(tap.a,0.001));
+    mass+=weight;
+  }
+  frag=vec4(pigment/max(mass,0.001)*front,front);
+}`);
+    this._linkDeferred('inkBleedBlurProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform vec2 uStep;
+void main(){
+  int N=int(min(13.0,13.0+uRes.x*0.0));
+  vec4 sum=vec4(0);
+  float total=0.0;
+  for(int i=0;i<N;i++){
+    float offset=float(i)-6.0;
+    float weight=exp(-offset*offset/12.5);
+    sum+=texture(uTex,vUv+uStep*offset)*weight;
+    total+=weight;
+  }
+  frag=sum/total;
+}`);
+    // Jump Flooding: each pixel keeps the position of its nearest seed (xy, z = valid).
+    // Seeds sit at the ink centroid of their block, so thin strokes give smooth distances.
+    this._linkDeferred('inkBleedSeedProg', `#version 300 es
+precision highp float;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform int uMode;
+uniform float uThreshold;
+void main(){
+  vec2 p=gl_FragCoord.xy;
+  frag=vec4(0);
+  if(uMode==0){
+    // Ink blocks seed the distance to the strokes, placed at the block's ink centroid.
+    // Thin strokes need that for smooth distances; thick ones already cover whole
+    // blocks, and a centroid there would pull the seed inward, away from the edge.
+    vec4 t=texelFetch(uTex,ivec2(p),0);
+    if(t.r<=uThreshold) return;
+    // Only edge blocks seed: a block whose neighbors are all ink lies inside a thick
+    // stroke, and seeding it would measure distances from the inside instead of the edge.
+    ivec2 size=ivec2(uRes)-1;
+    float paper=0.0;
+    int N=int(min(8.0,8.0+uRes.x*0.0));
+    for(int i=0;i<N;i++){
+      ivec2 o=ivec2(i<4 ? (i%2==0 ? -1 : 1) : (i<6 ? 0 : (i==6 ? -1 : 1)), i<2 ? 0 : (i<4 ? 0 : (i==4 ? -1 : (i==5 ? 1 : (i==6 ? -1 : 1)))));
+      paper=max(paper,1.0-texelFetch(uTex,clamp(ivec2(p)+o,ivec2(0),size),0).r);
+    }
+    if(paper<0.05) return;
+    float edge=1.0-smoothstep(0.7,0.95,t.r);
+    frag=vec4(p+(t.ba-0.5)*2.0*edge,1,0);
+  }else if(uMode==2){
+    // Detected crossings, read from a finer buffer. w carries how shallow the crossing is.
+    vec4 t=texture(uTex,p/uRes);
+    // w packs how shallow the crossing is (fraction) with its stroke width ratio (×8).
+    if(t.r>uThreshold) frag=vec4(p,1,clamp(t.g,0.0,0.99)+8.0*clamp(t.b*6.0,0.0,6.0));
+  }
+}`);
+    this._linkDeferred('inkBleedJumpProg', `#version 300 es
+precision highp float;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uStep;
+void main(){
+  vec2 p=gl_FragCoord.xy;
+  ivec2 size=ivec2(uRes);
+  vec4 best=vec4(0);
+  float nearest=1e18;
+  int N=int(min(9.0,9.0+uRes.x*0.0));
+  for(int i=0;i<N;i++){
+    ivec2 q=ivec2(p)+ivec2(i%3-1,i/3-1)*int(uStep);
+    if(any(lessThan(q,ivec2(0))) || any(greaterThanEqual(q,size))) continue;
+    vec4 s=texelFetch(uTex,q,0);
+    if(s.z<0.5) continue;
+    vec2 d=s.xy-p;
+    if(dot(d,d)<nearest){ nearest=dot(d,d); best=s; }
+  }
+  frag=best;
+}`);
+    this._linkDeferred('inkBleedDrawProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform sampler2D uField;
+uniform sampler2D uBlur;
+uniform sampler2D uCrossing;
+uniform sampler2D uHaloS;
+uniform sampler2D uHaloM;
+uniform sampler2D uHaloL;
+uniform sampler2D uPrint;
+uniform vec3 uHaloSigma;
+uniform float uHaloRatio;
+uniform float uFilletMax;
+uniform vec2 uRes;
+uniform vec3 uPaper;
+uniform float uAmount;
+uniform float uFiber;
+uniform float uEdge;
+uniform float uSpread;
+uniform float uSeed;
+uniform float uNode;
+uniform float uPx;
+// Analysis buffers are 1080p-sized: at 4K they are a further 2x coarser (uLodScale).
+uniform float uLodScale;
+uniform vec2 uSigma;
+${inkBleedNoise}
+void main(){
+  vec4 src=texture(uTex,vUv);
+  frag=src;
+  vec4 still=texture(uField,vUv);
+  // The crossing marks live at a quarter of the analysis resolution; the gap below is
+  // in half pixels like the sigmas.
+  vec2 quarter=gl_FragCoord.xy*0.25/uLodScale;
+  vec4 crossing=texelFetch(uCrossing,ivec2(quarter),0);
+  float shallow=fract(crossing.w);
+  float crossWide=floor(crossing.w)/8.0;
+  // Measured from the crossing's own edge, not its center, so the fillet gate does not
+  // reach out along the far side of a thick stroke.
+  float crossingGap=uNode>0.0 && crossing.z>0.5 ? 2.0*uLodScale*length(crossing.xy-quarter) : 1e9;
+  // Pools need a crossing nearby and the swell needs a stroke; anywhere else is untouched.
+  bool nearCrossing=crossingGap<2.6*uFilletMax;
+  if(still.a<=0.25 && !nearCrossing) return;
+  // How much ink lies around: a stray speck has too little to bleed, tone and
+  // dense hatching have so much that bleeding would only fill them in.
+  float around=texture(uBlur,vUv).r;
+  // Tone and dense hatching stay dense all around, while a stroke or a crossing always
+  // leaves paper on some side; they are already ink, and bleeding would fill them in.
+  float thinnest=around;
+  for(int i=0;i<8;i++){
+    float a=float(i)*0.7853982;
+    thinnest=min(thinnest,texture(uBlur,vUv+vec2(cos(a),sin(a))*uSigma*1.5).r);
+  }
+  // Dense drawing (lashes, packed hatching) leaves little paper in any direction, and
+  // tone is about as dense all around as it is here. The corners beside a crossing
+  // still see open paper between the arms (about 0.17 here against 0.25 and up).
+  float crowd=max(smoothstep(0.20,0.26,thinnest),
+                  smoothstep(0.70,0.80,thinnest/max(around,1e-4))*smoothstep(0.08,0.12,thinnest));
+  // A stray speck has too little ink around it to bleed.
+  float lineLike=smoothstep(0.03,0.05,around)*(1.0-crowd);
+  // Every effect scales with the stroke's own width, so thin lines never grow lumps.
+  // The width comes from the distance field when it exists, else from the blur.
+  float wide=clamp(around/0.10,0.4,3.0);
+
+  // Only broad, smooth variation: fine paper grain breaks the ink into specks.
+  vec2 paper=gl_FragCoord.xy/uPx+vec2(uSeed*37.0,uSeed*61.0);
+
+  // At crossings the grooves between the arms fill with inward-curving arcs, like a
+  // sparkle: the strokes are dilated and then eroded by the same radius (a closing),
+  // which fills concave corners only. The distances are exact (Jump Flooding).
+  float pool=0.0;
+  vec3 poolInk=vec3(0);
+  if(nearCrossing && crowd<1.0){
+    // After the CLIP STUDIO trick (zenn.dev/7tsu): a faint, wide halo is laid along every
+    // stroke and the result is thresholded. One stroke's halo never reaches the threshold;
+    // where two cross, their halos add up and the wedge between them fills with an
+    // inward-curving arc. The halo width follows the stroke width (Node scales it, Spread
+    // caps it); three blur widths are blended to get a per-pixel sigma.
+    float sigmaPx=min(wide*uHaloSigma.x,uHaloSigma.y);
+    float t=clamp((sigmaPx-uHaloSigma.x)/max(uHaloSigma.z-uHaloSigma.x,1e-3),0.0,1.0);
+    float halo=t<0.5 ? mix(texture(uHaloS,vUv).r,texture(uHaloM,vUv).r,t*2.0)
+                     : mix(texture(uHaloM,vUv).r,texture(uHaloL,vUv).r,t*2.0-1.0);
+    // One stroke of width w blurred by sigma reads erf(w / (2 sqrt2 sigma)) on its center
+    // line. The width is recovered from the narrow halo on the stroke itself (where the
+    // coverage is full), so this needs no distance field: w = 2 sqrt2 sigmaS erfinv(haloS).
+    // Beside a crossing both strokes feed the halo, so it exceeds one stroke's value.
+    float haloS=texture(uHaloS,vUv).r;
+    // erfinv on [0,0.95] (Giles' series is overkill here; a rational fit is enough)
+    float y=clamp(haloS,0.0,0.95);
+    float yy=y*y;
+    float erfinv=y*(0.8862+yy*(0.2320+yy*(0.1279+yy*0.0865)));
+    float widthPx=2.0*1.4142*uHaloSigma.x*erfinv;   // half-res px, from the narrow blur
+    // A pixel off the stroke sees a smaller haloS and would underestimate the width; take
+    // the width of the nearest stroke from the broad coverage instead (same source as wide).
+    widthPx=max(widthPx,wide*2.5*0.5*uPx);
+    float z=(widthPx*0.5)/(1.4142*sigmaPx);
+    float single=clamp(z*(1.1284-z*z*0.376)*(1.0-0.12*z*z),0.05,1.0);
+    float ratio=halo/single;
+    float threshold=uHaloRatio+uFiber*0.12*(noise(paper/9.0)-0.5);
+    // Antialiased in screen space: a fixed band in ratio would spread into a gray wash
+    // wherever the ratio drifts slowly near the threshold (tone, stipple).
+    float band=max(0.01,0.7*fwidth(ratio));
+    pool=smoothstep(threshold-band,threshold+band,ratio)*smoothstep(2.0*sigmaPx,1.4*sigmaPx,crossingGap)*(1.0-crowd);
+    // Packed strokes (fur, lashes) cross too, but their halos overlap everywhere; keep
+    // the pools there small by raising the threshold with the surrounding density.
+    float packed=smoothstep(0.06,0.18,thinnest)*(1.0-smoothstep(1.5,2.5,wide));
+    pool*=1.0-0.75*packed;
+    vec4 pigment=texture(uField,vUv);
+    poolInk=pigment.rgb/max(pigment.a,0.004);
+  }
+
+  // Printed-ink look (after ComfyUI-MangaScreen's print_look): the ink spreads a fraction
+  // of a pixel and is thresholded again, so every stroke swells by the same small amount
+  // with a soft edge, whatever its width. Edge sets how far it spreads.
+  float printed=texture(uPrint,vUv).r;
+  float swell=clamp((printed-0.35)/0.4,0.0,1.0)*lineLike;
+  // Solid blacks mottle a little, like uneven printing.
+  float mottle=1.0-0.05*uEdge*(0.5+0.5*tanh(0.62*noise(paper/64.0)+0.38*noise(paper/16.0+3.3)));
+
+  // Everything the ink reaches is painted in the stroke's own color, with no gray between.
+  float reached=max(swell,pool);
+  if(reached<=0.0) return;
+  float aa=0.5*fwidth(reached);
+  float coverage=smoothstep(0.45-aa,0.55+aa,reached)*uAmount;
+  // Solid ink keeps its own color; antialiased stroke edges inside a pool still fill in.
+  // Solid ink keeps its own color (no seam where the pool meets the stroke), while
+  // antialiased edges inside a pool fill in with the pool's ink.
+  vec3 fill=pool>=swell ? poolInk : still.rgb/max(still.a,0.004);
+  coverage*=1.0-smoothstep(0.7,0.9,distance(src.rgb,uPaper)*0.5773503)*smoothstep(0.08,0.2,distance(src.rgb,fill)*0.5773503+0.2);
+
+  // The ink is laid down in the stroke's own color, so a flat area of that color is
+  // unchanged and antialiased stroke edges inside a pool do not show through as seams.
+  vec3 col=mix(src.rgb,fill,coverage);
+  // Mottle only the ink itself (strokes and pools), pulling it slightly toward the paper.
+  float inkiness=smoothstep(0.3,0.8,distance(col,uPaper)*0.5773503);
+  col=mix(col,uPaper,(1.0-mottle)*inkiness);
+  frag=vec4(col,src.a);
 }`);
 
     // Pixel-perfect Outline pass 1: color-aware Scharr gradient + structure-tensor direction.
@@ -3019,7 +3477,7 @@ void main(){
     this._linkDeferred('feedbackProg', `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag;
-uniform sampler2D uTex, uFbTex;
+uniform sampler2D uTex, uAddEcho, uMulEcho;
 uniform float uFbAdd, uFbMultiply, uFbZoom, uFbRot;
 void main(){
   vec3 col = texture(uTex, vUv).rgb;
@@ -3028,10 +3486,224 @@ void main(){
   float fc = cos(fa), fs = sin(fa);
   q = vec2(q.x*fc - q.y*fs, q.x*fs + q.y*fc);
   q /= (1.0 + uFbZoom*0.06);
-  vec3 fb = texture(uFbTex, q + 0.5).rgb;
-  if(uFbAdd > 0.001){ float g = 0.55 + 0.44*clamp(uFbAdd,0.0,1.0); col = max(col, fb*g); }
-  if(uFbMultiply > 0.001){ float g = 0.55 + 0.44*clamp(uFbMultiply,0.0,1.0); col = min(col, mix(vec3(1.0), fb, g)); }
+  if(uFbAdd > 0.001) col=max(col,texture(uAddEcho,q+0.5).rgb);
+  if(uFbMultiply > 0.001) col=min(col,texture(uMulEcho,q+0.5).rgb);
   frag = vec4(col, 1.0);
+}`);
+    this._linkDeferred('fbEchoMergeProg', `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+in vec2 vUv; out vec4 frag;
+uniform sampler2DArray uEcho;
+uniform int uEchoCount;
+uniform int uEchoHead;
+uniform int uSteps;
+uniform int uMode;
+uniform float uFade;
+uniform float uAmount;
+void main(){
+  vec3 col=uMode==0?vec3(0.0):vec3(1.0);
+  int N=min(uEchoCount,uSteps);
+  for(int i=0;i<N;i++){
+    int layer=(uEchoHead-i+12)%12;
+    vec3 fb=texture(uEcho,vec3(vUv,float(layer))).rgb;
+    float g=(0.50+0.48*uAmount)*exp(-float(i)*mix(0.15,1.15,uFade));
+    if(uMode==0) col=max(col,fb*g);
+    else col=min(col,mix(vec3(1.0),fb,g));
+  }
+  frag=vec4(col,1.0);
+}`);
+
+    // FB Residue: 画素の変化とその流れで前の画を運び、溶けた輪郭を残す。
+    this._linkDeferred('fbResiduePolyProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform vec2 uRes;
+uniform float uFaceSize;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+vec4 nearestCell(vec2 p){
+  vec2 base = floor(p);
+  float best = 10.0;
+  vec2 chosen = base;
+  vec2 chosenSite = base;
+  int N = int(min(9.0,9.0+uRes.x*0.0));
+  for(int i=0;i<N;i++){
+    vec2 cell = base + vec2(float(i%3)-1.0,float(i/3)-1.0);
+    vec2 jitter = vec2(hash(cell+vec2(2.7,9.1)),hash(cell+vec2(8.3,1.6))) - 0.5;
+    vec2 site = cell + 0.5 + jitter*0.88;
+    vec2 delta = p - site;
+    float d = dot(delta,delta);
+    if(d < best){ best = d; chosen = cell; chosenSite = site; }
+  }
+  return vec4(chosen,chosenSite);
+}
+float sectorOf(vec2 p, vec4 cell, float sides){
+  vec2 fromSite = p-cell.zw;
+  float rotation = hash(cell.xy+vec2(3.7,41.5))*6.2831853;
+  float angle = atan(fromSite.y,fromSite.x)+rotation+6.2831853;
+  return floor(mod(angle,6.2831853)*sides/6.2831853);
+}
+vec3 fragmentValue(vec2 pixel){
+  // Screen-scale wedges dominate; only a few regions become smaller fragments.
+  float coarseSize = 640.0 * exp2(uFaceSize*2.0) * uRes.y / 1080.0;
+  vec4 parent = nearestCell(pixel/coarseSize);
+  vec2 coarse = parent.xy;
+  float mode = hash(coarse+vec2(18.4,6.7));
+  if(mode < 0.84){
+    float sector = sectorOf(pixel/coarseSize,parent,4.0);
+    float phase = floor(hash(coarse+vec2(24.3,5.8))*2.0);
+    vec2 id = coarse*17.3+vec2(sector*71.7,sector*29.3);
+    return vec3(mix(0.12,0.88,mod(sector+phase,2.0)),hash(id+vec2(4.2,83.1)),hash(id+vec2(65.1,7.9)));
+  }
+  float pieceSize = mode < 0.98 ? coarseSize*0.16 : coarseSize*0.04;
+  vec4 cell = nearestCell(pixel/pieceSize);
+  vec2 id = cell.xy;
+  float splitChance = mode < 0.98 ? 0.72 : 0.60;
+  float split = step(1.0-splitChance,hash(id+coarse*3.7+vec2(7.3,44.2)));
+  float sides = step(0.72,hash(id+vec2(24.3,5.8)))+3.0;
+  float sector = sectorOf(pixel/pieceSize,cell,sides);
+  vec2 piece = id+coarse*17.3+vec2(13.2,39.7)+vec2(split*sector*71.7,split*sector*29.3);
+  return vec3(hash(piece),hash(piece+vec2(4.2,83.1)),hash(piece+vec2(65.1,7.9)));
+}
+void main(){ frag = vec4(fragmentValue(vUv*uRes),1.0); }
+`);
+    this._linkDeferred('fbResidueMaskProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform sampler2D uPrev;
+uniform sampler2D uPoly;
+uniform vec2 uRes;
+float lum(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+float diffAt(vec2 uv){
+  vec3 a = texture(uTex, clamp(uv, 0.0, 1.0)).rgb;
+  vec3 b = texture(uPrev, clamp(uv, 0.0, 1.0)).rgb;
+  return max(max(abs(a.r-b.r), abs(a.g-b.g)), abs(a.b-b.b));
+}
+void main(){
+  vec2 px = 1.0 / uRes;
+  vec2 taps[12] = vec2[12](vec2(5.0,0.0),vec2(-5.0,0.0),vec2(0.0,5.0),vec2(0.0,-5.0),vec2(17.0,0.0),vec2(-17.0,0.0),vec2(0.0,17.0),vec2(0.0,-17.0),vec2(12.0,12.0),vec2(-12.0,12.0),vec2(12.0,-12.0),vec2(-12.0,-12.0));
+  float changed = diffAt(vUv);
+  int N = int(min(12.0, 12.0 + uRes.x * 0.0));
+  for(int i=0;i<N;i++) changed = max(changed, diffAt(vUv + taps[i] * px));
+  vec3 current = texture(uTex, vUv).rgb;
+  vec3 previous = texture(uPrev, vUv).rgb;
+  vec2 grad = vec2(
+    lum(texture(uTex, clamp(vUv + vec2(px.x*3.0,0.0),0.0,1.0)).rgb) - lum(texture(uTex, clamp(vUv - vec2(px.x*3.0,0.0),0.0,1.0)).rgb),
+    lum(texture(uTex, clamp(vUv + vec2(0.0,px.y*3.0),0.0,1.0)).rgb) - lum(texture(uTex, clamp(vUv - vec2(0.0,px.y*3.0),0.0,1.0)).rgb)
+  ) * 0.5;
+  float temporal = lum(current) - lum(previous);
+  vec2 flow = clamp(-6.0 * temporal * grad / (dot(grad,grad)+0.03), vec2(-14.0), vec2(14.0));
+  frag = vec4(smoothstep(0.035,0.22,changed), flow / 28.0 + 0.5, texture(uPoly,vUv).r);
+}`);
+    this._linkDeferred('fbResidueUpdateProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uPrev;
+uniform sampler2D uMask;
+uniform sampler2D uHistory;
+uniform sampler2D uPoly;
+uniform vec2 uRes;
+uniform float uHold;
+uniform float uPull;
+uniform float uDelta;
+uniform float uPolygon;
+uniform float uTime;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.0),f.x),f.y);
+}
+vec2 surfaceOffset(vec2 uv, vec3 face, float time){
+  float phase = face.g*6.2831853;
+  float speed = 0.55+face.b*1.15;
+  vec2 axis = vec2(cos(phase),sin(phase));
+  vec2 across = vec2(-axis.y,axis.x);
+  vec2 xy = uv*uRes;
+  float longWave = sin(dot(xy,axis)*0.010+time*speed*1.3+phase);
+  float crossWave = sin(dot(xy,across)*0.008-time*speed*0.9+phase*1.4);
+  vec2 drift = vec2(sin(time*speed+phase),cos(time*speed*0.73+phase*1.7))*(12.0+face.b*15.0);
+  return drift + axis*longWave*crossWave*(7.0+face.b*9.0);
+}
+void main(){
+  vec4 mask = texture(uMask, vUv);
+  vec2 flow = (mask.gb - 0.5) * 28.0;
+  vec2 grain = vec2(noise(vUv*uRes*0.025+vec2(3.2,19.7)),noise(vUv*uRes*0.025+vec2(31.4,7.8))) - 0.5;
+  vec3 face = vec3(0.0);
+  vec2 surface = vec2(0.0);
+  vec2 surfaceStep = vec2(0.0);
+  float polyMask = 1.0;
+  if(uPolygon > 0.001){
+    face = texture(uPoly,vUv).rgb;
+    surface = surfaceOffset(vUv,face,uTime);
+    surfaceStep = surface-surfaceOffset(vUv,face,uTime-uDelta);
+    polyMask = smoothstep(0.48,0.52,texture(uPoly,clamp(vUv-surface/uRes,0.0,1.0)).r);
+  }
+  vec2 fromUv = clamp(vUv - (flow*uPull*1.8 + grain*uPull*7.0*mask.r + surfaceStep*uPolygon)/uRes,0.0,1.0);
+  vec4 old = texture(uHistory, fromUv);
+  vec3 before = texture(uPrev, clamp(vUv-(flow*uPull*2.0+surface*0.7*uPolygon)/uRes,0.0,1.0)).rgb;
+  float irregular = noise(vUv*uRes*0.019+vec2(17.3,9.1));
+  float small = noise(vUv*uRes*0.11+vec2(8.1,27.6));
+  float cellHold = mix(1.0,mix(0.55,2.2,mask.a),uPolygon);
+  float keep = exp(-uDelta / (mix(0.18,1.15,uHold) * mix(0.6,1.5,irregular) * cellHold));
+  float oldAlpha = old.a * keep;
+  float capture = mask.r * (0.72 + 0.26*smoothstep(0.18,0.8,irregular*0.8+small*0.3+mask.r*0.35));
+  float spray = noise(vUv*uRes*0.014+vec2(41.7,14.1));
+  float sprayAA = max(0.004, fwidth(spray));
+  float organicPunch = smoothstep(0.62-sprayAA,0.62+sprayAA,spray);
+  vec2 powderCell = floor(vUv*uRes*0.45);
+  float powder = step(0.84,hash(powderCell)) * 0.68;
+  float organicMask = mix(1.0,powder,organicPunch);
+  float alpha = mix(max(oldAlpha,capture)*organicMask,max(oldAlpha,capture*polyMask),uPolygon);
+  float replace = smoothstep(oldAlpha-0.10,oldAlpha+0.14,capture);
+  vec3 color = mix(old.rgb,before,replace);
+  frag = vec4(color,alpha);
+}`);
+    this._linkDeferred('fbResidueMergeProg', `#version 300 es
+precision highp float;
+precision highp sampler2DArray;
+in vec2 vUv; out vec4 frag;
+uniform sampler2DArray uEcho;
+uniform int uEchoCount;
+uniform int uEchoHead;
+uniform int uSteps;
+uniform float uFade;
+void main(){
+  vec3 premul=vec3(0.0);
+  float coverage=0.0;
+  int N=min(uEchoCount,uSteps);
+  for(int i=N-1;i>=0;i--){
+    int layer=(uEchoHead-i+12)%12;
+    vec4 h=texture(uEcho,vec3(vUv,float(layer)));
+    float a=h.a*exp(-float(i)*mix(0.12,0.70,uFade));
+    premul=h.rgb*a+premul*(1.0-a);
+    coverage=1.0-(1.0-coverage)*(1.0-a);
+  }
+  frag=vec4(premul/max(coverage,0.001),coverage);
+}`);
+    this._linkDeferred('fbResidueDrawProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform sampler2D uTex;
+uniform sampler2D uHistory;
+uniform vec2 uRes;
+uniform float uAmount;
+float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
+  return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.0),f.x),f.y);
+}
+void main(){
+  vec3 current = texture(uTex, vUv).rgb;
+  vec4 history = texture(uHistory,vUv);
+  float ragged = noise(vUv*uRes*0.043+vec2(11.7,2.3));
+  float aa=max(0.025,fwidth(history.a)*1.5);
+  float cover=smoothstep(0.17+ragged*0.16-aa,0.55+ragged*0.10+aa,history.a)*uAmount*0.92;
+  frag=vec4(mix(current,history.rgb,cover),1.0);
 }`);
 
     this._linkDeferred('pipProg', MINI_FX_FS);
@@ -3180,6 +3852,7 @@ uniform float uTime;
 uniform float uBeat;
 uniform float uMode;
 uniform float uAmt;
+uniform float uTypes;  // bitmask 1=Mondrian 2=Block 4=Melt 8=Tear 16=Freeze (同時に重ねられる)
 float hash12(vec2 p){
   vec3 p3=fract(vec3(p.xyx)*0.1031);
   p3+=dot(p3,p3.yzx+33.33);
@@ -3233,6 +3906,13 @@ void main(){
   ivec2 ip=safePx(ivec2(gl_FragCoord.xy),sz);
   if(uMode < 0.5){
     float a=clamp(uAmt,0.0,1.0);
+    // Each type decides the motion vector and when the warped previous frame is kept;
+    // the accumulation below is shared.
+    // Enabled types each add their motion vector when they want to mosh; the hold decision is shared.
+    vec2 mv=vec2(0.0); bool mosh=false; bool anyGate=false; bool forceHold=false; bool refresh=false;
+    bool tMon=mod(uTypes,2.0)>=1.0, tBlock=mod(floor(uTypes/2.0),2.0)>=1.0, tMelt=mod(floor(uTypes/4.0),2.0)>=1.0;
+    bool tTear=mod(floor(uTypes/8.0),2.0)>=1.0, tFreeze=mod(floor(uTypes/16.0),2.0)>=1.0;
+    if(tMon){
     // Mondrian subdivision supplies irregular MPEG-like prediction regions.
     vec2 uv=(vec2(ip)+0.5)/uRes;
     vec2 cellLo,cellHi;
@@ -3260,7 +3940,7 @@ void main(){
     float vectorBlend=smoothstep(0.0,1.0,fract(vectorPhase));
     float regionTick=floor(uBeat*0.5);
     float regionGate=hash12(region+vec2(regionTick*0.71,regionTick*1.13));
-    bool mosh=regionGate<mix(0.12,0.92,pow(a,0.68));
+    bool moshM=regionGate<mix(0.12,0.92,pow(a,0.68));
 
     // A stable per-region motion vector is applied a few pixels per frame; feedback accumulates it into trails.
     vec2 rnd0=hash22(region+vec2(vectorTick*0.43,vectorTick*0.79));
@@ -3276,15 +3956,15 @@ void main(){
     float speedRnd=mix(speedRnd0,speedRnd1,vectorBlend);
     float speedMul=mix(0.15,4.6,pow(speedRnd,2.65));
     float stepPx=mix(0.85,8.6,pow(a,0.90))*speedMul;
-    vec2 mv=dir*stepPx;
+    vec2 mvM=dir*stepPx;
     // Broad horizontal or vertical prediction errors add directional datamosh pulls.
     float band=floor(((cellLo.y+cellHi.y)*0.5)*uRes.y/72.0);
     float tear=hash12(vec2(band,vectorTick*0.37));
     if(tear<0.10+0.24*a){
       float side=hash12(vec2(band,vectorTick+17.0))<0.5?-1.0:1.0;
       float tearDist=side*mix(3.0,20.0,a)*mix(0.35,1.0,speedRnd);
-      if(hash12(region+vec2(vectorTick,29.3))<0.5) mv.x+=tearDist;
-      else mv.y+=tearDist;
+      if(hash12(region+vec2(vectorTick,29.3))<0.5) mvM.x+=tearDist;
+      else mvM.y+=tearDist;
     }
     // A narrow prediction band races across the frame and leaves its displaced result in feedback.
     float scanClock=uBeat*2.0;                    // one complete sweep per 1/2 beat
@@ -3320,16 +4000,16 @@ void main(){
     float scanDist=scanSide*mix(10.0,132.0,pow(a,0.82))
                   *mix(0.35,1.0,hash12(vec2(scanCycle,77.7)));
     if(longStroke) scanDist*=mix(1.45,2.8,strokeRnd);
-    if(verticalScan) mv.y+=scanMask*scanDist;
+    if(verticalScan) mvM.y+=scanMask*scanDist;
     else{
-      mv.x+=scanMask*scanDist;
+      mvM.x+=scanMask*scanDist;
       float scanWaves=mix(2.0,8.0,hash12(vec2(scanCycle,119.4)));
       float scanWave=sin((float(ip.x)/uRes.x)*6.2831853*scanWaves
                         +uTime*mix(5.0,14.0,a)+scanCycle*1.71);
       float scanWaveAmp=mix(2.0,34.0,pow(a,0.78))
                        *mix(0.35,1.0,hash12(vec2(scanCycle,127.8)));
       if(longStroke) scanWaveAmp*=1.55;
-      mv.y+=scanMask*scanWave*scanWaveAmp;
+      mvM.y+=scanMask*scanWave*scanWaveAmp;
     }
 
     // Clustered scan errors: several hard shifts fire rapidly, followed by a short pause.
@@ -3363,15 +4043,76 @@ void main(){
     float burstSide=hash12(shotSeed+72.5)<0.5?-1.0:1.0;
     float burstDist=burstSide*mix(14.0,190.0,pow(a,0.78))
                    *mix(0.25,1.0,pow(hash12(shotSeed+88.3),0.55));
-    if(burstVertical) mv.y+=burstMask*burstDist;
+    if(burstVertical) mvM.y+=burstMask*burstDist;
     else{
-      mv.x+=burstMask*burstDist;
+      mvM.x+=burstMask*burstDist;
       float burstWaves=mix(3.0,11.0,hash12(shotSeed+131.6));
       float burstWave=sin((float(ip.x)/uRes.x)*6.2831853*burstWaves
                          +uTime*mix(8.0,22.0,a)+shotIndex*1.37);
       float burstWaveAmp=mix(3.0,42.0,pow(a,0.74))
                         *mix(0.3,1.0,hash12(shotSeed+149.2));
-      mv.y+=burstMask*burstWave*burstWaveAmp;
+      mvM.y+=burstMask*burstWave*burstWaveAmp;
+    }
+    bool forceM=scanMask>0.5||burstMask>0.5;
+    if(moshM||forceM) mv+=mvM;
+    mosh=mosh||moshM; anyGate=anyGate||(regionGate<mix(0.035,0.42,a)); forceHold=forceHold||forceM;
+    }
+    if(tBlock){
+      // Block: fixed macroblocks drag the previous frame along a motion vector held per beat;
+      // every 4 beats an I-frame window refreshes the whole picture once.
+      float bs=floor(mix(40.0,14.0,a));
+      vec2 blk=floor(vec2(ip)/bs);
+      vec2 coarse=floor(blk/3.0);
+      float beatsRnd=hash12(blk+vec2(7.1,3.3));
+      float blockBeats=beatsRnd<0.3?0.25:(beatsRnd<0.6?0.5:(beatsRnd<0.85?1.0:2.0));
+      float tick=floor(uBeat/blockBeats);
+      vec2 flow=hash22(coarse+vec2(tick*0.37,tick*0.91))-0.5;
+      vec2 jit=(hash22(blk+vec2(tick*1.7,tick*0.3))-0.5)*0.6;
+      vec2 dir=flow*1.6+jit;
+      dir/=max(length(dir),0.2);
+      float speed=mix(0.6,7.0,pow(a,0.9))*mix(0.3,1.6,hash12(blk+vec2(tick,5.5)));
+      bool moshB=hash12(blk+vec2(floor(uBeat)*0.53,11.7))<mix(0.25,0.95,pow(a,0.7));
+      if(moshB) mv+=dir*speed;
+      mosh=mosh||moshB; anyGate=anyGate||(hash12(blk+vec2(tick*0.77,23.1))<mix(0.15,0.7,a));
+      refresh=refresh||(fract(uBeat/4.0)<0.04);
+    }
+    if(tMelt){
+      // Melt: vertical stripes keep sliding the previous frame downward; stripes are redrawn every 2 beats.
+      float tick=floor(uBeat*0.5);
+      float x=float(ip.x);
+      float sw=mix(10.0,70.0,hash12(vec2(floor(x/90.0),tick)));
+      float stripe=floor(x/sw);
+      float r=hash12(vec2(stripe,tick*1.3));
+      float speed=mix(0.8,9.0,pow(a,0.8))*mix(0.2,1.5,r);
+      float wobble=sin(float(ip.y)*0.03+uTime*2.0+stripe)*mix(0.0,1.5,a);
+      bool moshL=hash12(vec2(stripe,tick+41.0))<mix(0.3,0.9,a);
+      if(moshL) mv+=vec2(wobble,speed);
+      mosh=mosh||moshL; anyGate=anyGate||moshL;
+    }
+    if(tTear){
+      // Tear: horizontal bands hold a sideways offset while the whole frame rolls slowly (VHS tracking).
+      float tick=floor(uBeat*2.0);
+      float y=float(ip.y);
+      float bh=mix(6.0,80.0,hash12(vec2(floor(y/120.0),tick)));
+      float band=floor(y/bh);
+      float r=hash12(vec2(band,tick*0.7));
+      float side=hash12(vec2(band,tick+9.0))<0.5?-1.0:1.0;
+      float shiftX=side*mix(4.0,120.0,pow(a,0.8))*r;
+      float roll=mix(0.0,3.0,a)*(hash12(vec2(floor(uBeat),77.0))<0.6?1.0:0.0);
+      bool moshT=hash12(vec2(band,tick+13.0))<mix(0.2,0.75,a);
+      if(moshT) mv+=vec2(shiftX,roll);
+      mosh=mosh||moshT; anyGate=anyGate||moshT;
+    }
+    if(tFreeze){
+      // Freeze: Mondrian faces lock onto the previous frame for a few beats (a missing I-frame).
+      vec2 uv=(vec2(ip)+0.5)/uRes;
+      vec2 lo,hi; float id;
+      mondrianCell(uv,a,lo,hi,id);
+      vec2 region=vec2(id,hash12(lo+hi)*37.0);
+      float len=floor(mix(1.0,6.0,hash12(region+vec2(3.1,8.8))));
+      float start=floor(uBeat/len);
+      bool moshF=hash12(region+vec2(start*0.61,19.7))<mix(0.2,0.8,pow(a,0.8));
+      mosh=mosh||moshF; anyGate=anyGate||moshF;
     }
     ivec2 shift=ivec2(round(mv));
     ivec2 moved=safePx(ip-shift,sz);
@@ -3382,8 +4123,7 @@ void main(){
     float dl=abs(dot(live.rgb-old.rgb,vec3(0.2126,0.7152,0.0722)));
     bool movingEdge=dl>mix(0.16,0.035,a);
     // Whole broad regions retain the warped previous frame. Static areas refresh from the live source.
-    bool hold=valid&&((mosh&&(movingEdge||regionGate<mix(0.035,0.42,a)))
-                     ||scanMask>0.5||burstMask>0.5);
+    bool hold=valid&&!refresh&&((mosh&&(movingEdge||anyGate))||forceHold);
     frag=hold?vec4(old.rgb,1.0):vec4(live.rgb,1.0);
   } else {
     // The accumulator already contains a complete opaque image.
@@ -3639,7 +4379,7 @@ void main(){
   },
 
   // 描画解像度の既定 (初回訪問時 = vj.res 未保存のときに使用。録画 / Projector 出力サイズの初期値)
-  FIXED_W:960, FIXED_H:540,
+  FIXED_W:1920, FIXED_H:1080,
   // ロストが続いた場合(シェーダ自体が重い等)は解像度を半分に落として負荷を1/4に
   _applyLowResIfNeeded(){
     try{
@@ -4206,6 +4946,20 @@ void main(){
     gl.uniform2f(U('uRes'),       this.canvas.width, this.canvas.height);
     const pRaw = App.post || {};
     const p = App.effectivePost ? App.effectivePost(pRaw) : pRaw;
+    const fbMode = ['add','multiply','residue'].includes(p.fbMode) ? p.fbMode : 'residue';
+    const fbAmount = Math.max(0,Math.min(1,p.fbAmount || 0));
+    p.fbAdd = fbMode==='add' ? fbAmount : 0;
+    p.fbMultiply = fbMode==='multiply' ? fbAmount : 0;
+    p.fbResidue = fbMode==='residue' ? fbAmount : 0;
+    if(this._activeFbMode!==fbMode){
+      if(this._fbTrail){ this._fbTrail.count=0; this._fbTrail.head=-1; }
+      this._activeFbMode=fbMode;
+    }
+    // FB Steps is the number of distinct retained frames; Fade controls their spacing and opacity.
+    this._fbSteps = 1 + Math.round(Math.max(0, Math.min(1, p.fbSteps == null ? 1 : p.fbSteps)) * 11);
+    this._fbFade = Math.max(0, Math.min(1, p.fbFade == null ? 0.5 : p.fbFade));
+    this._fbCaptureInterval = 1 + Math.round((1-this._fbFade)*7);
+    this._fbCaptureTick = ((this._fbFrameCounter = (this._fbFrameCounter || 0) + 1) % this._fbCaptureInterval === 0);
     // Sketch 有効時は合成側の色調補正を中立化し、SketchFX 出力側で適用(二重適用回避)
     const _sk = (typeof SketchFX !== 'undefined') && p && (p.sketch || 0) > 0.001 && !(App.safeMode);
     const _safe = (typeof App !== 'undefined' && App.safeMode);
@@ -4337,7 +5091,7 @@ void main(){
     gl.uniform1f(U('uFbRot'),     p.fbRot || 0);
     gl.uniform1f(U('uGlitchTrail'), p.glitchTrail || 0);   // 軽量(feedback 1サンプル)なのでセーフモードでも有効
     gl.activeTexture(gl.TEXTURE0 + 6);
-    gl.bindTexture(gl.TEXTURE_2D, this._fbTrail ? this._fbTrail.tex : null);
+    gl.bindTexture(gl.TEXTURE_2D, null);
     gl.uniform1i(U('uFbTex'), 6);
     gl.activeTexture(gl.TEXTURE0);
     // Tunnel 2パス: 前段で実 A/B 合成からトンネルを専用 FBO に描き、
@@ -4378,8 +5132,8 @@ void main(){
     //   5) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
     //   6) 折り紙系: Needle → Origami → Kaiser (+Flames)
     //   7) Twist + FB Add/Multiply
-    //   8) FXAA + Outline + Dither Blur + Gaussian Blur + Film Blur
-    //   9) Pollock (最後・他 FX の影響を受けない)
+    //   8) FXAA + Outline + Ink Bleed + Dither Blur + Gaussian Blur + Film Blur
+    //   9) Pollock → FB Residue (動いた輪郭を残す)
 
     // 1) Water (Ballpoint Sketch) / Boltzmann
     if(typeof SketchFX !== 'undefined' && p && (p.sketch || 0) > 0.001 && !(App.safeMode)){
@@ -4391,6 +5145,7 @@ void main(){
 
     // 2) Slit-scan (境界線は Slice / Rings の線と同様この段階で乗る)
     this._applySlitScan(p, _safe);
+    this._applyWaveformPost(p, _safe);
 
     // 3) Barcode / Datamosh / Pixelsort (グリッチ系)
     this._applyBarcodePost(p, _safe);
@@ -4427,31 +5182,32 @@ void main(){
     this._applyTwistPost(p, _safe);
     this._applyFeedbackBlend(p, _safe);
 
-    // 8) 仕上げの線とブラー (FXAA → Outline → Dither Blur → Gaussian Blur → Film Blur)
+    // 8) 仕上げの線とブラー (FXAA → Outline → Ink Bleed → Dither Blur → Gaussian Blur → Film Blur)
     if(App.post && App.post.fxaa){ this._applyFXAA(); }
     this._applyOutlinePost(p, _safe);
+    this._applyInkBleedPost(p, _safe);
     this._applyDitherPost(p, _safe);
     this._applyRingBlurPost(p, _safe);    // Ring Slice と同じ同心円の帯ごとの回転ブラー
     this._applyGaussianPost(p, _safe);
     this._applyFilmBlurPost(p, _safe);
 
-    // 9) Pollock (最後)
+    // 9) Pollock の上から動きの残像を重ねる
     this._applyPollockFinal(p, _safe);
+    this._applyFbResiduePost(p, _safe);
 
-    // Feedback トレイル: Add / Multiply のどちらかが有効なら次フレーム用に保持。
-    if(p && (Math.max(p.fbAdd || 0,p.fbMultiply || 0) > 0.001)){
+    // Feedback トレイル: 個別の時刻の絵を最大12枚保持する。
+    if(!_safe && p && (Math.max(p.fbAdd || 0,p.fbMultiply || 0) > 0.001)){
       const w = this._finalFBO.w, h = this._finalFBO.h;
-      if(!this._fbTrail) this._fbTrail = this._mkFBO(w, h);
-      else if(this._fbTrail.w !== w || this._fbTrail.h !== h) this._resizeFBO(this._fbTrail, w, h);
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._finalFBO.fbo);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._fbTrail.fbo);
-      gl.blitFramebuffer(0,0,w,h, 0,0,w,h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      const ew=Math.max(2,Math.ceil(w*0.5)), eh=Math.max(2,Math.ceil(h*0.5));
+      if(!this._fbTrail || this._fbTrail.w !== ew || this._fbTrail.h !== eh){
+        this._deleteFbEcho(this._fbTrail);
+        this._fbTrail = this._mkFbEcho(ew,eh,true);
+      }
+      if(this._fbCaptureTick || !this._fbTrail.count) this._captureFbEcho(this._fbTrail,this._finalFBO.fbo,w,h);
     } else if(this._fbTrail){
       // 無効時は破棄する。OFF 時点の映像を持ち続けると、後で FB Add/Multiply を
       // 上げた瞬間に「以前表示していた映像」が一瞬混ざって表示される。
-      gl.deleteTexture(this._fbTrail.tex);
-      gl.deleteFramebuffer(this._fbTrail.fbo);
+      this._deleteFbEcho(this._fbTrail);
       this._fbTrail = null;
     }
 
@@ -4690,6 +5446,13 @@ void main(){
   // FXAA: _finalFBO に対して 1パス適用して書き戻す
   // Slit-scan (移動式 / 参照元スクロール) を最終フレームに適用。前フレームバッファを ping-pong で保持。
   // Datamosh: 専用 ping-pong バッファでマクロブロックの時間残留を保持する。
+  GLITCH_TRAIL_TYPES: ['mondrian', 'block', 'melt', 'tear', 'freeze'],
+  // post.glitchTrailType はカンマ区切りで複数持てる ('block,melt')。無効な指定は Mondrian
+  glitchTrailMask(types){
+    let mask = 0;
+    for(const t of String(types || '').split(',')){ const i = this.GLITCH_TRAIL_TYPES.indexOf(t.trim()); if(i >= 0) mask |= 1 << i; }
+    return mask || 1;
+  },
   _applyGlitchTrail(p){
     const gl = this.gl;
     if(!this.glitchProg || !this._finalFBO) return;
@@ -4730,6 +5493,7 @@ void main(){
     gl.uniform1f(U('uBeat'), glitchBeat);
     gl.uniform1f(U('uMode'), 0.0);
     gl.uniform1f(U('uAmt'), amt);
+    gl.uniform1f(U('uTypes'), this.glitchTrailMask(p && p.glitchTrailType));
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     // Pass 2: 表示ブレンド → _glitchDisp  (uPrev=新 acc / uCur=シーン)
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._glitchDisp.fbo);
@@ -5347,6 +6111,182 @@ void main(){
     });
   },
 
+  _applyInkBleedPost(p, safe){
+    const amount = safe ? 0 : p.inkBleed || 0;
+    if(amount <= 0.001 || !this._finalFBO || !this.inkBleedMaskProg ||
+       !this.inkBleedSpreadProg || !this.inkBleedDrawProg) return;
+    const gl = this.gl;
+    const {w, h} = this._finalFBO;
+    const scale = h / 1080;
+    // 解析 (場・被覆率・ハロー) は 1080p 相当の解像度で回す。ぼかしのタップ間隔が
+    // テクセル単位で一定になり、4K でも細い線を取りこぼさず同じ絵になる
+    const lod = Math.max(0, Math.round(Math.log2(scale)));
+    const coarse = 2 << lod;
+    // 線の太り (Edge) を拾うだけなので、場はその届く範囲で足りる
+    const radius = 12 * scale;
+    const nodeAmount = this.inkBleedNodeProg && this.inkBleedBlurProg ? p.inkBleedNode || 0 : 0;
+    const uniform = (program, name) => gl.getUniformLocation(program, name);
+    const color = (program, name, hex) => {
+      const rgb = parseInt(hex.slice(1), 16);
+      gl.uniform3f(uniform(program, name), (rgb >> 16) / 255, ((rgb >> 8) & 255) / 255, (rgb & 255) / 255);
+    };
+    const buffer = (key, divisor, isFloat = false) => {
+      const width = Math.ceil(w / divisor), height = Math.ceil(h / divisor);
+      let f = this[key];
+      if(!f || f.w !== width || f.h !== height){
+        if(f){ gl.deleteTexture(f.tex); gl.deleteFramebuffer(f.fbo); }
+        f = this[key] = isFloat ? this._mkFBO(width, height) : this._mkRGBA8FBO(width, height);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      }
+      return f;
+    };
+    const mask = buffer('_inkBleedMask', 2);
+    const front = buffer('_inkBleedFront', coarse, true), field = buffer('_inkBleedField', coarse, true);
+    const mips = f => {
+      gl.bindTexture(gl.TEXTURE_2D, f.tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.generateMipmap(gl.TEXTURE_2D);
+    };
+    const pass = (program, src, dst, setup) => {
+      gl.useProgram(program);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, dst.fbo);
+      gl.viewport(0, 0, dst.w, dst.h);
+      gl.bindTexture(gl.TEXTURE_2D, src.tex);
+      gl.uniform1i(uniform(program, 'uTex'), 0);
+      gl.uniform2f(uniform(program, 'uRes'), dst.w, dst.h);
+      setup(program);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+    gl.bindVertexArray(this.quadVAO);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.disable(gl.BLEND);
+    gl.disable(gl.DEPTH_TEST);
+    const line = buffer('_inkBleedLine', 2);
+    const measure = (dst, lineDst, srcLod) => {
+      pass(this.inkBleedMaskProg, this._finalFBO, dst, P => {
+        color(P, 'uPaper', p.inkBleedPaper);
+        gl.uniform1f(uniform(P, 'uNode'), 1);
+        gl.uniform1i(uniform(P, 'uLod'), srcLod);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, lineDst.tex, 0);
+        gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1]);
+      });
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0]);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, null, 0);
+    };
+    measure(mask, line, 0);
+    // 4K 以上では解析用にもう一度、元画像の粗い mip から 1080p 相当の大きさで測る
+    // (半解像度の mask / line は印刷風のふくらみに使うので細部を残す)
+    let maskC = mask, lineC = line;
+    if(lod > 0){
+      const minFilter = (gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex), gl.getTexParameter(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER));
+      mips(this._finalFBO);
+      maskC = buffer('_inkBleedMaskC', coarse);
+      lineC = buffer('_inkBleedLineC', coarse);
+      measure(maskC, lineC, lod);
+      gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, minFilter);
+    }
+    const blur = (src, dst, x, y) => pass(this.inkBleedBlurProg, src, dst, P => {
+      gl.uniform2f(uniform(P, 'uStep'), x / w, y / h);
+    });
+    // 周囲の墨の量 (r)。実際の被覆率から取るので線幅に比例する。交点で大きく (角丸)、
+    // 散った点では小さく (にじませない)、トーンやカケアミでは飽和する (にじませない)
+    const sigma = 16 * scale;
+    const blurX = buffer('_inkBleedBlurX', coarse, true), pooled = buffer('_inkBleedBlur', coarse, true);
+    blur(lineC, blurX, sigma / 2.5, 0);
+    blur(blurX, pooled, 0, sigma / 2.5);
+    const nodes = buffer('_inkBleedNodes', coarse);
+    if(nodeAmount > 0){
+      mips(lineC);
+      pass(this.inkBleedNodeProg, lineC, nodes, P => {
+        gl.uniform1f(uniform(P, 'uRadius'), 5 * scale * 2 / coarse);
+        gl.uniform1f(uniform(P, 'uSeed'), Math.round(p.inkBleedSeed));
+        gl.activeTexture(gl.TEXTURE1);
+        gl.bindTexture(gl.TEXTURE_2D, pooled.tex);
+        gl.uniform1i(uniform(P, 'uWidth'), 1);
+        gl.activeTexture(gl.TEXTURE0);
+      });
+    }
+    const spread = (src, dst, x, y) => pass(this.inkBleedSpreadProg, src, dst, P => {
+      gl.uniform2f(uniform(P, 'uStep'), x / w, y / h);
+    });
+    spread(maskC, front, radius, 0);
+    spread(front, field, 0, radius);
+    // 交点の角丸: 線を半径 r で太らせてから同じ r で削る (クロージング)。凹んだ角だけが
+    // 内向きの円弧で埋まる。距離は Jump Flooding で正確に求め、r は線幅に比例させる
+    // 交点のハロー (zenn.dev/7tsu のクリスタの手法): 線に沿って薄く広いぼかしを敷き、
+    // 閾値で切る。1 本では閾値に届かず、交差した所だけハローが重なって埋まる。
+    // ぼかし幅は線幅に比例 (Node で倍率、Spread で上限)。場所ごとの幅を 3 段で補間する
+    const haloBase = (1.0 + 2.5 * nodeAmount) * 1.25 * scale;    // 線幅 2.5px あたりの σ (半解像度 px)
+    const haloMax = (3 + 30 * p.inkBleedSpread) * 0.5 * scale;
+    const haloMid = Math.min(haloMax, haloBase * 2.0), haloTop = Math.min(haloMax, haloBase * 3.0);
+    let halos = null, crossingSeeds = null;
+    if(nodeAmount > 0 && this.inkBleedSeedProg && this.inkBleedJumpProg){
+      const tmp = buffer('_inkBleedHaloX', coarse, true);
+      halos = [[haloBase, 'S'], [haloMid, 'M'], [haloTop, 'L']].map(([sig, key]) => {
+        const dst = buffer('_inkBleedHalo' + key, coarse, true);
+        blur(lineC, tmp, sig / 2.5, 0);
+        blur(tmp, dst, 0, sig / 2.5);
+        return dst;
+      });
+      // 交点の目印は 1/4 解像度で足りる (溜まりの範囲を絞るだけ)
+      const flood = (src, mode, threshold, reach, a, b) => {
+        pass(this.inkBleedSeedProg, src, a, P => {
+          gl.uniform1i(uniform(P, 'uMode'), mode);
+          gl.uniform1f(uniform(P, 'uThreshold'), threshold);
+        });
+        const first = 2 ** Math.floor(Math.log2(Math.max(1, reach)));
+        for(const step of [...Array(Math.log2(first) + 1).keys()].map(i => first >> i).concat(1)){
+          pass(this.inkBleedJumpProg, a, b, P => gl.uniform1f(uniform(P, 'uStep'), step));
+          [a, b] = [b, a];
+        }
+        return a;
+      };
+      crossingSeeds = flood(nodes, 2, 0.1, 1.3 * haloMax * 2 / coarse,
+        buffer('_inkBleedJumpD', 2 * coarse, true), buffer('_inkBleedJumpE', 2 * coarse, true));
+    }
+    // 印刷インク風のふくらみ (print_look): 被覆率を Edge に応じた小さな σ でぼかす
+    const printSigma = (0.3 + 1.4 * p.inkBleedEdge) * scale;
+    const printX = buffer('_inkBleedPrintX', 2, true), print = buffer('_inkBleedPrint', 2, true);
+    blur(line, printX, printSigma / 2.5, 0);
+    blur(printX, print, 0, printSigma / 2.5);
+    this._runFinalPost(this.inkBleedDrawProg, '_inkBleedTmp', P => {
+      color(P, 'uPaper', p.inkBleedPaper);
+      gl.uniform1f(uniform(P, 'uNode'), halos ? nodeAmount : 0);
+      gl.uniform1f(uniform(P, 'uPx'), scale);
+      gl.uniform1f(uniform(P, 'uLodScale'), coarse / 2);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D, crossingSeeds ? crossingSeeds.tex : mask.tex);
+      gl.uniform1i(uniform(P, 'uCrossing'), 2);
+      gl.activeTexture(gl.TEXTURE3);
+      gl.bindTexture(gl.TEXTURE_2D, pooled.tex);
+      gl.uniform1i(uniform(P, 'uBlur'), 3);
+      for(const [k, key] of ['S', 'M', 'L'].entries()){
+        gl.activeTexture(gl.TEXTURE4 + k);
+        gl.bindTexture(gl.TEXTURE_2D, halos ? halos[k].tex : mask.tex);
+        gl.uniform1i(uniform(P, 'uHalo' + key), 4 + k);
+      }
+      gl.uniform3f(uniform(P, 'uHaloSigma'), haloBase, haloMax, haloTop);
+      gl.uniform1f(uniform(P, 'uHaloRatio'), 1.18);
+      gl.uniform1f(uniform(P, 'uFilletMax'), haloMax);
+      gl.activeTexture(gl.TEXTURE7);
+      gl.bindTexture(gl.TEXTURE_2D, print.tex);
+      gl.uniform1i(uniform(P, 'uPrint'), 7);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.uniform2f(uniform(P, 'uSigma'), sigma / w, sigma / h);
+      gl.uniform1f(uniform(P, 'uAmount'), amount);
+      gl.uniform1f(uniform(P, 'uFiber'), p.inkBleedFiber);
+      gl.uniform1f(uniform(P, 'uEdge'), p.inkBleedEdge);
+      gl.uniform1f(uniform(P, 'uSpread'), p.inkBleedSpread);
+      gl.uniform1f(uniform(P, 'uSeed'), Math.round(p.inkBleedSeed));
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, field.tex);
+      gl.uniform1i(uniform(P, 'uField'), 1);
+      gl.activeTexture(gl.TEXTURE0);
+    });
+  },
+
   // Dither Blur (後段パス)。Sketch (Water) 有効時は従来どおり無効化。
   _applyDitherPost(p, safe){
     const sk = (typeof SketchFX !== 'undefined') && p && (p.sketch || 0) > 0.001 && !(App.safeMode);
@@ -5370,6 +6310,21 @@ void main(){
     if(amount <= 0.001 || !this.impastoProg) return;
     this._runFinalPost(this.impastoProg, '_impastoTmp', (P)=>{
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
+    });
+  },
+  _applyWaveformPost(p, safe){
+    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.waveform) || 0));
+    if(amount <= 0.001 || !this.waveformProg) return;
+    this._runFinalPost(this.waveformProg, '_waveformTmp', (P)=>{
+      const gl = this.gl;
+      gl.uniform1f(gl.getUniformLocation(P, 'uAmount'), amount);
+      gl.uniform1f(gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
+      gl.uniform1f(gl.getUniformLocation(P, 'uGain'), 1.5);   // FFT は Audio 側で audioGain 済み。帯が立ちやすいよう少し持ち上げる
+      gl.uniform1f(gl.getUniformLocation(P, 'uOnset'), (typeof Audio !== 'undefined') ? (Audio.onset || 0) : 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.audioTex || null);
+      gl.uniform1i(gl.getUniformLocation(P, 'uFFT'), 1);
+      gl.activeTexture(gl.TEXTURE0);
     });
   },
   _applyBarcodePost(p, safe){
@@ -6262,16 +7217,206 @@ void main(){
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
 
+  _mkFbEcho(w,h,halfFloat=false){
+    const gl=this.gl;
+    const tex=gl.createTexture(), fbo=gl.createFramebuffer();
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY,tex);
+    gl.texImage3D(gl.TEXTURE_2D_ARRAY,0,halfFloat?gl.RGBA16F:gl.RGBA8,w,h,12,0,gl.RGBA,halfFloat?gl.HALF_FLOAT:gl.UNSIGNED_BYTE,null);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MIN_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_MAG_FILTER,gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_S,gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D_ARRAY,gl.TEXTURE_WRAP_T,gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D_ARRAY,null);
+    return {tex,fbo,w,h,head:-1,count:0};
+  },
+  _deleteFbEcho(e){
+    if(!e) return;
+    for(const f of [e.addMerge,e.mulMerge]) if(f){ this.gl.deleteTexture(f.tex); this.gl.deleteFramebuffer(f.fbo); }
+    this.gl.deleteTexture(e.tex);
+    this.gl.deleteFramebuffer(e.fbo);
+  },
+  _captureFbEcho(e,source,w,h){
+    const gl=this.gl;
+    e.head=(e.head+1)%12;
+    e.count=Math.min(12,e.count+1);
+    e.generation=(e.generation||0)+1;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER,source);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER,e.fbo);
+    gl.framebufferTextureLayer(gl.DRAW_FRAMEBUFFER,gl.COLOR_ATTACHMENT0,e.tex,0,e.head);
+    gl.blitFramebuffer(0,0,w,h,0,0,e.w,e.h,gl.COLOR_BUFFER_BIT,gl.LINEAR);
+    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+  },
+
+  _applyFbResiduePost(p, safe){
+    const gl = this.gl;
+    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.fbResidue) || 0));
+    let state = this._fbResidueState;
+    if(amount <= 0.001 || !this.fbResiduePolyProg || !this.fbResidueMaskProg || !this.fbResidueUpdateProg || !this.fbResidueMergeProg || !this.fbResidueDrawProg || !this._finalFBO){
+      if(state){
+        [state.prev, state.mask, state.poly, ...state.history].forEach(f=>{ gl.deleteTexture(f.tex); gl.deleteFramebuffer(f.fbo); });
+        if(state.echoMerge){ gl.deleteTexture(state.echoMerge.tex); gl.deleteFramebuffer(state.echoMerge.fbo); }
+        this._deleteFbEcho(state.echo);
+        this._fbResidueState = null;
+      }
+      return;
+    }
+    const w = this._finalFBO.w, h = this._finalFBO.h;
+    const faceSize = Math.max(0, Math.min(1, +(p && p.fbResidueFaceSize) || 0));
+    const mw = Math.max(2, Math.ceil(w * 0.5)), mh = Math.max(2, Math.ceil(h * 0.5));
+    const copyCurrent = target=>{
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._finalFBO.fbo);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, target.fbo);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    };
+    let fresh = false;
+    if(!state || state.w !== w || state.h !== h){
+      if(state){
+        [state.prev, state.mask, state.poly, ...state.history].forEach(f=>{ gl.deleteTexture(f.tex); gl.deleteFramebuffer(f.fbo); });
+        if(state.echoMerge){ gl.deleteTexture(state.echoMerge.tex); gl.deleteFramebuffer(state.echoMerge.fbo); }
+        this._deleteFbEcho(state.echo);
+      }
+      state = {w, h, faceSize:-1, prev:this._mkRGBA8FBO(w, h), mask:this._mkRGBA8FBO(mw, mh), poly:this._mkRGBA8FBO(mw, mh), history:[this._mkRGBA8FBO(w, h), this._mkRGBA8FBO(w, h)], echo:this._mkFbEcho(mw,mh), echoMerge:this._mkRGBA8FBO(mw,mh), index:0, lastTime:performance.now() / 1000};
+      this._fbResidueState = state;
+      state.history.forEach(f=>{ gl.bindFramebuffer(gl.FRAMEBUFFER, f.fbo); gl.clearBufferfv(gl.COLOR, 0, new Float32Array(4)); });
+      fresh = true;
+    }
+    if(state.faceSize !== faceSize){
+      gl.useProgram(this.fbResiduePolyProg);
+      gl.bindVertexArray(this.quadVAO);
+      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, state.poly.fbo);
+      gl.viewport(0, 0, mw, mh);
+      gl.uniform2f(gl.getUniformLocation(this.fbResiduePolyProg, 'uRes'), w, h);
+      gl.uniform1f(gl.getUniformLocation(this.fbResiduePolyProg, 'uFaceSize'), faceSize);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindVertexArray(null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      state.faceSize = faceSize;
+    }
+    if(fresh){
+      copyCurrent(state.prev);
+      return;
+    }
+    const drawResidue = ()=>{
+      if(!state.echo.count) return;
+      const e=state.echo, M=this.fbResidueMergeProg;
+      const stamp=`${e.generation}:${this._fbSteps}:${this._fbFade}`;
+      if(state.echoMergeStamp!==stamp){
+        gl.useProgram(M);
+        gl.bindVertexArray(this.quadVAO);
+        gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,state.echoMerge.fbo);
+        gl.viewport(0,0,mw,mh);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY,e.tex);
+        gl.uniform1i(gl.getUniformLocation(M,'uEcho'),0);
+        gl.uniform1i(gl.getUniformLocation(M,'uEchoCount'),e.count);
+        gl.uniform1i(gl.getUniformLocation(M,'uEchoHead'),e.head);
+        gl.uniform1i(gl.getUniformLocation(M,'uSteps'),this._fbSteps||12);
+        gl.uniform1f(gl.getUniformLocation(M,'uFade'),this._fbFade==null?0.5:this._fbFade);
+        gl.drawArrays(gl.TRIANGLES,0,3);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+        state.echoMergeStamp=stamp;
+      }
+      this._runFinalPost(this.fbResidueDrawProg, '_fbResidueTmp', prog=>{
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, state.echoMerge.tex);
+      gl.uniform1i(gl.getUniformLocation(prog, 'uHistory'), 1);
+      gl.uniform1f(gl.getUniformLocation(prog, 'uAmount'), amount);
+      gl.activeTexture(gl.TEXTURE0);
+      });
+    };
+    const time = performance.now() / 1000;
+    const dt = Math.min(0.25, Math.max(0, time - state.lastTime));
+    state.lastTime = time;
+    const hold = Math.max(0, Math.min(1, +(p && p.fbResidueHold) || 0));
+    const pull = Math.max(0, Math.min(1, +(p && p.fbResiduePull) || 0));
+    const polygon = Math.max(0, Math.min(1, +(p && p.fbResiduePoly) || 0));
+    const next = state.index ^ 1;
+    const M = this.fbResidueMaskProg;
+    gl.useProgram(M);
+    gl.bindVertexArray(this.quadVAO);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, state.mask.fbo);
+    gl.viewport(0, 0, mw, mh);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, state.prev.tex);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, state.poly.tex);
+    gl.uniform1i(gl.getUniformLocation(M, 'uTex'), 0);
+    gl.uniform1i(gl.getUniformLocation(M, 'uPrev'), 1);
+    gl.uniform1i(gl.getUniformLocation(M, 'uPoly'), 2);
+    gl.uniform2f(gl.getUniformLocation(M, 'uRes'), w, h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    const P = this.fbResidueUpdateProg;
+    gl.useProgram(P);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, state.history[next].fbo);
+    gl.viewport(0, 0, w, h);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, state.mask.tex);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, state.history[state.index].tex);
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, state.poly.tex);
+    gl.uniform1i(gl.getUniformLocation(P, 'uPrev'), 1);
+    gl.uniform1i(gl.getUniformLocation(P, 'uMask'), 2);
+    gl.uniform1i(gl.getUniformLocation(P, 'uHistory'), 3);
+    gl.uniform1i(gl.getUniformLocation(P, 'uPoly'), 4);
+    gl.uniform2f(gl.getUniformLocation(P, 'uRes'), w, h);
+    gl.uniform1f(gl.getUniformLocation(P, 'uHold'), hold);
+    gl.uniform1f(gl.getUniformLocation(P, 'uPull'), pull);
+    gl.uniform1f(gl.getUniformLocation(P, 'uDelta'), dt);
+    gl.uniform1f(gl.getUniformLocation(P, 'uPolygon'), polygon);
+    gl.uniform1f(gl.getUniformLocation(P, 'uTime'), time);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+    gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    copyCurrent(state.prev);
+    state.index = next;
+    if(this._fbCaptureTick || !state.echo.count) this._captureFbEcho(state.echo,state.history[next].fbo,w,h);
+    drawResidue();
+  },
+
   _applyFeedbackBlend(p, safe){
     const gl = this.gl;
-    if(!this.feedbackProg || !this._finalFBO || !this._fbTrail) return;
+    if(!this.feedbackProg || !this.fbEchoMergeProg || !this._finalFBO || !this._fbTrail || !this._fbTrail.count) return;
     const fbAdd = safe ? 0 : (p && p.fbAdd || 0);
     const fbMul = safe ? 0 : (p && p.fbMultiply || 0);
     if(Math.max(fbAdd, fbMul) <= 0.001) return;
+    const e=this._fbTrail, M=this.fbEchoMergeProg;
+    const merge=(key,mode,amount)=>{
+      if(amount<=0.001) return;
+      if(!e[key]) e[key]=this._mkFBO(e.w,e.h);
+      const stamp=`${e.generation}:${this._fbSteps}:${this._fbFade}:${amount}`;
+      if(e[key+'Stamp']===stamp) return;
+      gl.useProgram(M);
+      gl.bindVertexArray(this.quadVAO);
+      gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,e[key].fbo);
+      gl.viewport(0,0,e.w,e.h);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D_ARRAY,e.tex);
+      gl.uniform1i(gl.getUniformLocation(M,'uEcho'),0);
+      gl.uniform1i(gl.getUniformLocation(M,'uEchoCount'),e.count);
+      gl.uniform1i(gl.getUniformLocation(M,'uEchoHead'),e.head);
+      gl.uniform1i(gl.getUniformLocation(M,'uSteps'),this._fbSteps||12);
+      gl.uniform1i(gl.getUniformLocation(M,'uMode'),mode);
+      gl.uniform1f(gl.getUniformLocation(M,'uFade'),this._fbFade==null?0.5:this._fbFade);
+      gl.uniform1f(gl.getUniformLocation(M,'uAmount'),amount);
+      gl.drawArrays(gl.TRIANGLES,0,3);
+      gl.bindVertexArray(null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER,null);
+      e[key+'Stamp']=stamp;
+    };
+    merge('addMerge',0,fbAdd);
+    merge('mulMerge',1,fbMul);
     this._runFinalPost(this.feedbackProg, '_feedbackTmp', (P)=>{
       gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this._fbTrail.tex);
-      gl.uniform1i(gl.getUniformLocation(P, 'uFbTex'), 1);
+      gl.bindTexture(gl.TEXTURE_2D,e.addMerge?e.addMerge.tex:null);
+      gl.uniform1i(gl.getUniformLocation(P,'uAddEcho'),1);
+      gl.activeTexture(gl.TEXTURE2);
+      gl.bindTexture(gl.TEXTURE_2D,e.mulMerge?e.mulMerge.tex:null);
+      gl.uniform1i(gl.getUniformLocation(P,'uMulEcho'),2);
       gl.uniform1f(gl.getUniformLocation(P, 'uFbAdd'), fbAdd);
       gl.uniform1f(gl.getUniformLocation(P, 'uFbMultiply'), fbMul);
       gl.uniform1f(gl.getUniformLocation(P, 'uFbZoom'), (p && p.fbZoom) || 0);
@@ -6528,7 +7673,7 @@ void main(){
     {key:'darken',     label:'Dark'},
     {key:'lighten',    label:'Lite'},
     {key:'difference', label:'Diff'},
-    {key:'overlay',    label:'Ovl'}
+    {key:'overlay',    label:'IMG'}
   ],
   // A/B を 1 ピクセル分ブレンド (mi = blend mode index)。式は sampleAB と同一。
   _blendPix(ar, ag, av, aa, br, bg, bv, ba, mi, mix, out){
@@ -8213,7 +9358,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -8441,7 +9586,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Warp', smear:'Brush: Smear', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -9042,20 +10187,23 @@ const MIDI = {
       const pk = pname.slice(8);
       const r = MIDI.postRange[pk];
       if(!r) return;
-      const cur = App.post[pk];
+      const legacyFbMode = {fbAdd:'add',fbMultiply:'multiply',fbResidue:'residue'}[pk];
+      const targetKey = legacyFbMode ? 'fbAmount' : pk;
+      const cur = App.post[targetKey];
       const centered = pk === 'sat' || pk === 'con';
       const displayCur = centered ? (cur - 1.0) : cur;
       const init = (r[1] !== r[0] && typeof displayCur === 'number' && isFinite(displayCur)) ? (displayCur - r[0]) / (r[1]-r[0]) * 127 : 0;
       const vv = this._continuousValue(pname, v, init, c);           // フェーダー以外は相対モードの仮想絶対値
       if(!fromLoad && this._pickupBlocks(pname, vv, r, c)) return;   // 取り込み待ち: 基準点を通るまで反映しない
-      if(!this.relative && !fromLoad && this._reversalFade(pname, pk, vv, r)) return;   // 逆回転フェード(絶対モード時のみ)
+      if(!this.relative && !fromLoad && this._reversalFade(pname, targetKey, vv, r)) return;   // 逆回転フェード(絶対モード時のみ)
       if(this._suppress[pname]) return;                             // フェード中は無視
       const displayValue = r[0] + (r[1]-r[0])*(vv/127);
-      const targetVal = App.snapPost(pk, centered ? displayValue + 1.0 : displayValue); // 生値保存 (描画時に deadParam)
+      const targetVal = App.snapPost(targetKey, centered ? displayValue + 1.0 : displayValue); // 生値保存 (描画時に deadParam)
+      if(legacyFbMode) App.post.fbMode = legacyFbMode;
       // Param Fade 有効時は MIDI ノブの目標値へ拍数かけてランプ追従 (即時=従来どおりスナップ)。
       // ノブを回すたびに現在値→最新目標へ再フェード → 手の動きに ~拍数ぶん遅れて滑らかに追う。
-      if(App._fadeBeatsLive() > 0) App.fadePostNum(pk, targetVal);
-      else App.post[pk] = targetVal;
+      if(App._fadeBeatsLive() > 0) App.fadePostNum(targetKey, targetVal);
+      else App.post[targetKey] = targetVal;
       if(UI.refreshPost) UI.refreshPost();
       return vv;
     }
@@ -9514,7 +10662,11 @@ const Projector = {
     this._attachStream(w);
   },
   close(){
-    if(this.win) this.win.close();
+    if(this.win){
+      // アプリ側の意図した close。デスクトップ版はタイトルの印を見て閉じ確認を出さない
+      try{ this.win.document.title = 'VJ Output (closing)'; }catch(e){}
+      this.win.close();
+    }
     this.win = null;
     if(this._watch){ clearInterval(this._watch); this._watch = null; }
     try{ localStorage.removeItem('vj.projector.open'); }catch(e){}
@@ -10777,11 +11929,12 @@ const App = {
   //   対象外: 色調補正 (Post FX 見出し配下) と Grad / Auto Map、および Audio FX 見出し配下
   //   (後者は元から音駆動なので二重に掛けない)。設定値・離散値も対象外。
   AUDIO_MOD_EXCLUDE: {
+    inkBleedSpread:1, inkBleedFiber:1, inkBleedEdge:1, inkBleedNode:1, inkBleedSeed:1,
     inv:1, gamma:1, bri:1, con:1, sat:1, hue:1, hueRot:1, hueRotSpeed:1, hueAuto:1,
     palette:1, cosPalette:1, paletteAmt:1, gradMix:1, cosGrad:1, gradA:1, gradB:1, gradStops:1,
-    gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1,
+    gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, waveform:1,
     // Slice / Ring Slice / Ring Blur: 値で常時掛ける切り裂き・ぼかしなので音で持ち上げない (2026-10-16)
-    slice:1, ringSlice:1, ringBlur:1,
+    slice:1, ringSlice:1, ringBlur:1, fbSteps:1, fbFade:1, fbResidueHold:1, fbResiduePull:1, fbResiduePoly:1, fbResidueFaceSize:1,
     audioTarget:1, audioGain:1, audioBand:1, audioAttack:1, mir:1, fxaa:1,
     texNoiseScale:1, unsharpRadius:1, postScale:1, audioFx:1, audioFxAttack:1, audioFxRelease:1,
     // Material (質感): 音で暴れると絵肌が壊れるので対象外
@@ -10902,6 +12055,7 @@ const App = {
   //   Audio FX 見出し配下(音/拍に対して瞬時に反応する必要があり、フェードすると
   //   トリガーが鈍る)を対象外にする。
   POST_FADE_IMMEDIATE: {
+    inkBleedSeed:1,
     palette:1, cosPalette:1, mir:1,
     // Post FX (inv / hue はフェード対象に変更: プリセット切替でも Param Fade でなめらかに反転・回頭する)
     gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1, hueRot:1,
@@ -11205,10 +12359,13 @@ const App = {
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, barcode:0.0,
+    waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
-    fbAdd:0.0, fbMultiply:0.0, fbZoom:0.0, fbRot:0.0, glitchTrail:0.0,
+    fbAdd:0.0, fbMultiply:0.0, fbZoom:0.0, fbRot:0.0, glitchTrail:0.0, glitchTrailType:'mondrian',
+    fbMode:'residue', fbAmount:0.0, fbSteps:1.0, fbFade:0.5, fbResidue:0.0, fbResidueHold:0.55, fbResiduePull:0.35, fbResiduePoly:0.0, fbResidueFaceSize:0.5,
     clarity:0.0, denoise:0.0, deband:0.0, vibrance:0.0,
     texNoise:0, texNoiseScale:8,
     unsharp:0, unsharpRadius:1.0,
@@ -11255,21 +12412,108 @@ const App = {
       if(typeof p.fbMultiply !== 'number') p.fbMultiply = Math.max(0,-p.fb);
       delete p.fb;
     }
+    if(!['add','multiply','residue'].includes(p.fbMode)){
+      const options=[['add',p.fbAdd||0],['multiply',p.fbMultiply||0],['residue',p.fbResidue||0]];
+      options.sort((a,b)=>b[1]-a[1]);
+      p.fbMode=options[0][1]>0 ? options[0][0] : 'residue';
+      p.fbAmount=Math.max(0,Math.min(1,options[0][1]));
+    } else if(typeof p.fbAmount!=='number'){
+      p.fbAmount=Math.max(0,Math.min(1,p[p.fbMode==='residue'?'fbResidue':p.fbMode==='multiply'?'fbMultiply':'fbAdd']||0));
+    }
     // inv: 旧仕様は真偽値のハード切替。0..1 の連続量(Param Fade 対応)へ移行。
     if(typeof p.inv === 'boolean') p.inv = p.inv ? 1 : 0;
     return p;
   },
-  postDefaults(){ return {
+  fbSavedDefault(){
+    try{
+      const v=JSON.parse(localStorage.getItem('vj.fbDefault')||'null');
+      const keys=['fbAmount','fbSteps','fbFade','fbZoom','fbRot','fbResidueHold','fbResiduePull','fbResiduePoly','fbResidueFaceSize'];
+      if(v && ['add','multiply','residue'].includes(v.fbMode) && keys.every(k=>typeof v[k]==='number' && isFinite(v[k])))
+        return {fbMode:v.fbMode,...Object.fromEntries(keys.map(k=>[k,v[k]]))};
+    }catch(e){}
+    try{
+      const old=JSON.parse(localStorage.getItem('vj.fbResidueDefault')||'null');
+      if(old && typeof old.fbResidue==='number') return {fbMode:'residue',fbAmount:old.fbResidue,fbSteps:1,fbFade:0.5,fbZoom:0,fbRot:0,fbResidueHold:old.fbResidueHold??0.55,fbResiduePull:old.fbResiduePull??0.35,fbResiduePoly:old.fbResiduePoly??0,fbResidueFaceSize:old.fbResidueFaceSize??0.5};
+    }catch(e){}
+    return {fbMode:'residue',fbAmount:0,fbSteps:1,fbFade:0.5,fbZoom:0,fbRot:0,fbResidueHold:0.55,fbResiduePull:0.35,fbResiduePoly:0,fbResidueFaceSize:0.5};
+  },
+  saveFbDefault(){
+    const keys=['fbMode','fbAmount','fbSteps','fbFade','fbZoom','fbRot','fbResidueHold','fbResiduePull','fbResiduePoly','fbResidueFaceSize'];
+    const v=Object.fromEntries(keys.map(k=>[k,this.post[k]]));
+    try{ localStorage.setItem('vj.fbDefault',JSON.stringify(v)); }catch(e){}
+    toast('デフォルト保存: FB');
+  },
+  resetFbDefault(){
+    try{ localStorage.removeItem('vj.fbDefault'); localStorage.removeItem('vj.fbResidueDefault'); }catch(e){}
+    Object.assign(this.post,this.fbSavedDefault());
+    if(typeof UI !== 'undefined' && UI.refreshPost) UI.refreshPost();
+    ['pxFbAmount','pxFbSteps','pxFbFade','pxFbZoom','pxFbRot','pxFbResidueHold','pxFbResiduePull','pxFbResiduePoly','pxFbResidueFaceSize'].forEach(id=>{
+      const el = document.getElementById(id);
+      if(el) el.dataset.defval = el.value;
+    });
+    toast('デフォルトをリセット: FB');
+  },
+  // Post FX のグループ既定値: 各見出し (Quality / Material / …) の Save で現在値を
+  // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
+  POST_GROUPS: {
+    color:      ['inv','gamma','bri','con','sat','gradMix','hue','hueRotSpeed'],
+    quality:    ['clarity','denoise','deband','vibrance','unsharp','unsharpRadius','fxaa'],
+    material:   ['sdfChrome','bleed','impasto','chrome','rain','sketch','pollockGloss','pollockMatt','pollockFlat'],
+    texture:    ['scn','grn','texNoise','texNoiseScale','pos','blm','voxel'],
+    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','split','pixsort','rings','gain'],
+    distortion: ['vig','chr','pix','mir','candy','twist','origami','kaiser','kaiserOld','uzumaki','river','boltz'],
+    blur:       ['slit2','filmBlur','glass','dither','mblur'],
+    glitch:     ['slice','ringSlice','ringBlur','slitScan','outline','inkBleed','barcode','glitchTrail','glitchTrailType'],
+  },
+  postGroupSaved(group){
+    try{ const d = JSON.parse(localStorage.getItem('vj.def.post.' + group) || 'null'); return (d && typeof d === 'object') ? d : null; }
+    catch(e){ return null; }
+  },
+  postDefaults(){
+    const d = this.postFactoryDefaults();
+    for(const group in this.POST_GROUPS){
+      const saved = this.postGroupSaved(group);
+      if(!saved) continue;
+      for(const key of this.POST_GROUPS[group]){
+        if(saved[key] === undefined || typeof saved[key] !== typeof d[key]) continue;
+        d[key] = saved[key];
+      }
+    }
+    return d;
+  },
+  savePostGroupDefault(group){
+    const keys = this.POST_GROUPS[group]; if(!keys) return;
+    const values = {};
+    for(const k of keys) if(this.post[k] !== undefined) values[k] = this.post[k];
+    try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs(); toast('デフォルト保存: ' + group); }
+    catch(e){ toast('保存失敗'); }
+  },
+  // ライブ調整を捨てて保存値 (無ければ工場出荷値) へ戻す。保存自体は消さない
+  resetPostGroupDefault(group){
+    const keys = this.POST_GROUPS[group]; if(!keys) return;
+    const d = this.postDefaults();
+    for(const k of keys){
+      if(d[k] === undefined) continue;
+      this.post[k] = d[k];
+      if(this._presetDefaults && this._presetDefaults.post) this._presetDefaults.post[k] = d[k];
+    }
+    if(typeof UI !== 'undefined' && UI.refreshPost) UI.refreshPost();
+    toast('保存値へ戻しました: ' + group);
+  },
+  postFactoryDefaults(){ const fbDefault = this.fbSavedDefault(); return {
     hueLive:1,   // Hue ライブ適用世代のマーカー (旧保存 = 焼き込み済みストップ との判別用)
     gamma:1.0, sat:1.0, hue:0.0, bri:0.0, con:1.0,
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, barcode:0.0,
+    waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
-    fbAdd:0.0, fbMultiply:0.0, fbZoom:0.0, fbRot:0.0, glitchTrail:0.0,
+    fbAdd:0.0, fbMultiply:0.0, fbZoom:0.0, fbRot:0.0, glitchTrail:0.0, glitchTrailType:'mondrian',
+    ...fbDefault, fbAdd:0, fbMultiply:0, fbResidue:0,
     clarity:0.0, denoise:0.0, deband:0.0, vibrance:0.0,
     texNoise:0, texNoiseScale:8,
     unsharp:0, unsharpRadius:1.0,
@@ -11361,6 +12605,7 @@ const App = {
     await this.applyServerDefaults();
     // 保存デフォルト (vj.def.*) をサーバーから同期 (別端末でも同じデフォルトになる)
     await this._loadServerDefs();
+    this.applyInkBleedDefault();
     // プリセットで欠落している項目を戻す基準を、保存状態の復元前に確定する。
     this._capturePresetDefaults();
     // 前回起動でコンテキストロスト(GPU過負荷)が起きていたらセーフモードで起動
@@ -11809,7 +13054,7 @@ ${outBlock}
           if(!Overlay.P.enabled && Overlay.clear) Overlay.clear();
           const cb = document.getElementById('ovEnable'); if(cb) cb.checked = Overlay.P.enabled;
           if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
-          toast('Overlay: ' + (Overlay.P.enabled ? 'ON' : 'OFF'));
+          toast('IMAGON: ' + (Overlay.P.enabled ? 'ON' : 'OFF'));
         }
       }
       else if(k==='x'){
@@ -12991,6 +14236,32 @@ ${outBlock}
       while(Pen.strokes.length < (Pen.P.count||0)) Pen.strokes.push(Pen.makeRandomStroke((Pen.clock||0) - Pen._rand(0,1.5)));
     }
   },
+  applyInkBleedDefault(){
+    let saved;
+    try{ saved = JSON.parse(localStorage.getItem('vj.def.inkBleed')); }catch(_){}
+    const defaults = this.postDefaults();
+    for(const key of ['inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper']){
+      const value = saved && saved[key];
+      const fallback = defaults[key];
+      const valid = typeof fallback === 'number'
+        ? Number.isFinite(value) && value >= 0 && value <= (key === 'inkBleedSeed' ? 999 : 1)
+        : typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+      this.post[key] = valid ? (key === 'inkBleedSeed' ? Math.round(value) : value) : fallback;
+      if(this._presetDefaults) this._presetDefaults.post[key] = this.post[key];
+    }
+  },
+  saveInkBleedDefault(){
+    const values = {};
+    for(const key of ['inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper']){
+      values[key] = this.post[key];
+    }
+    try{
+      localStorage.setItem('vj.def.inkBleed', JSON.stringify(values));
+      Object.assign(this._presetDefaults.post, values);
+      this.uploadDefs();
+      toast('デフォルト保存: Ink Bleed');
+    }catch(_){ toast('保存失敗'); }
+  },
   // ─── Mix パネル(crossfade/blend/transition)のデフォルト値保存 ───────
   saveMixDefault(){
     const d = { crossfade:this.crossfade, blendMode:this.blendMode, slotABg:this.slotABg, mixControls:this._captureMixControls() };
@@ -13922,7 +15193,7 @@ ${outBlock}
       this.gradAuto.mode = 0;
       this._gradFade = null;            // 移行中の Grad が終わったときに gradMix を戻さないように
       this._gradPreview = null;
-      this.fadePostNum('gradMix', 0);
+      this.fadePostNum('gradMix', 0, dur);
       this._activeGradPreset = 9;
       if(UI.refreshPost) UI.refreshPost();
       if(UI._refreshGradList) UI._refreshGradList();
@@ -15269,7 +16540,8 @@ void mainImage(out vec4 o, in vec2 f){
         e.preventDefault();
         e.stopPropagation();
         const kind = b.dataset.kind;
-        if(b.classList.contains('randDefBtn')){ UI.randomizeSection(b.closest('.section'), kind); return; }
+        const defaultScope = kind === 'fb' ? b.closest('.fb-group') : b.closest('.section');
+        if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
           if(kind === 'overlay'){
             const m = Overlay.resetModeDefault();
@@ -15281,30 +16553,36 @@ void mainImage(out vec4 o, in vec2 f){
           else if(kind === 'ugomekiMd') UI.resetUgomekiMdDefault();
           else if(kind === 'spacetypeMd') UI.resetSpaceTypeMdDefault();
           else if(kind === 'slicerImg') UI.resetSlicerImgDefault();
+          else if(kind === 'inkBleed'){ App.applyInkBleedDefault(); UI.refreshPost(); }
           else if(kind === 'mix') App.resetMixDefault();
           else if(kind === 'transition') App.resetTransDefault();
           else if(kind === 'audioTransport') App.resetAudioTransportDefault();
           else if(kind === 'audioDetect') App.resetAudioDetectDefault();
           else if(kind === 'midiRelative') MIDI.resetRelativeDefault();
+          else if(kind === 'fb') App.resetFbDefault();
+          else if(kind && kind.indexOf('post:') === 0) App.resetPostGroupDefault(kind.slice(5));
           else if(kind === 'sparam') App.clearShaderParamDefaults(App.activeSlot);
           else if(kind === 'image') UI.resetImageDefault();
           else App.resetEngineDefault(kind);
           return;
         }
-        if(!/Md$/.test(kind || '')) UI._snapshotCtlDefaults(b.closest('.section'));
+        if(!/Md$/.test(kind || '')) UI._snapshotCtlDefaults(defaultScope);
         // Save で「既定値」が変わるので、ダブルクリック復帰用の控えも更新する
-        { const sec = b.closest('.section');
+        { const sec = defaultScope;
           if(sec) sec.querySelectorAll('input[type=range]').forEach(el=>{ el.dataset.defval = el.value; }); }
-        if(kind === 'overlay'){ const m = Overlay.saveModeDefault(); toast('デフォルト保存: overlay ('+m+')'); }
+        if(kind === 'overlay'){ const m = Overlay.saveModeDefault(); toast('デフォルト保存: IMAGON ('+m+')'); }
         else if(kind === 'textdeformMd') UI.saveTextDeformMdDefault();
         else if(kind === 'ugomekiMd') UI.saveUgomekiMdDefault();
         else if(kind === 'spacetypeMd') UI.saveSpaceTypeMdDefault();
         else if(kind === 'slicerImg') UI.saveSlicerImgDefault();
+        else if(kind === 'inkBleed') App.saveInkBleedDefault();
         else if(kind === 'mix') App.saveMixDefault();
         else if(kind === 'transition') App.saveTransDefault();
         else if(kind === 'audioTransport') App.saveAudioTransportDefault();
         else if(kind === 'audioDetect') App.saveAudioDetectDefault();
         else if(kind === 'midiRelative') MIDI.saveRelativeDefault();
+        else if(kind === 'fb') App.saveFbDefault();
+        else if(kind && kind.indexOf('post:') === 0) App.savePostGroupDefault(kind.slice(5));
         else if(kind === 'sparam') App.saveShaderParamDefaults(App.activeSlot);
         else if(kind === 'image') UI.saveImageDefault();
         else App.saveEngineDefault(kind);
@@ -15357,7 +16635,7 @@ void mainImage(out vec4 o, in vec2 f){
 
     // Clear Canvas
     const cc = $('#btnOverlayClear');
-    if(cc) cc.addEventListener('click', ()=>{ Overlay.clear(); toast('Overlay cleared'); });
+    if(cc) cc.addEventListener('click', ()=>{ Overlay.clear(); toast('IMAGON cleared'); });
 
     // Random 🎲 (NOVEL 等と同じ「パラメータのみランダム化」。Brush の選択と Trigger / Paint Mode / Max Strokes は変えない)
     const rb = $('#btnOverlayRandom');
@@ -15368,6 +16646,7 @@ void mainImage(out vec4 o, in vec2 f){
       O.strokeLen    = +R(0.3, 4.5).toFixed(2);
       O.strokeLenVar = +R(0, 1).toFixed(2);
       O.curveAmt     = +R(-1, 1).toFixed(2);
+      O.freq         = 1 + ((Math.random()*5)|0);
       O.stamps       = 2 + ((Math.random()*118)|0);
       O.smudgeSpeed  = +R(0.1, 2.0).toFixed(2);
       O.searchPhase  = +R(0.05, 0.6).toFixed(2);
@@ -15393,7 +16672,7 @@ void mainImage(out vec4 o, in vec2 f){
       for(const k of (Overlay.BRUSH_KEYS || [])) if(O[k] !== undefined) Overlay.saveBrushParam(k, O[k]);
       UI.refreshOverlay();
       App._undoSchedule();
-      toast('Overlay randomize');
+      toast('IMAGON randomize');
     });
 
     // range スライダー (Post と同じヘルパー)。BRUSH_KEYS の場合は brushParams にも保存
@@ -15419,6 +16698,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('ovStrokeLen',    'strokeLen',    f2);
     slid('ovStrokeLenVar', 'strokeLenVar', f2);
     slid('ovCurve',        'curveAmt',     f2);
+    slid('ovFreq',         'freq',         fi);
     slid('ovStamps',       'stamps',       fi);
     slid('ovSmudgeSpeed',  'smudgeSpeed',  f2);
     { const ts = $('#ovTipShape'); if(ts){   // 筆先形状 select (brushParams にも保存)
@@ -15497,6 +16777,7 @@ void mainImage(out vec4 o, in vec2 f){
     setR('ovStrokeLen',    O.strokeLen,    f2, 'strokeLen');
     setR('ovStrokeLenVar', O.strokeLenVar, f2, 'strokeLenVar');
     setR('ovCurve',        O.curveAmt,     f2, 'curveAmt');
+    setR('ovFreq',         O.freq == null ? 1 : O.freq, fi, 'freq');
     setR('ovStamps',       O.stamps,       fi, 'stamps');
     setR('ovSmudgeSpeed',  O.smudgeSpeed == null ? 0.5 : O.smudgeSpeed, f2, 'smudgeSpeed');
     { const ts = $('#ovTipShape'); if(ts) ts.value = O.tipShape || 'round'; }
@@ -15544,6 +16825,8 @@ void mainImage(out vec4 o, in vec2 f){
 	    const fr = document.getElementById('ovFinishRow');
 	    if(fr) fr.style.display = isSmudgeMode(O.brushMode) ? '' : 'none';
     const ssr = document.getElementById('ovSmudgeSpeedRow');
+    const fqr = document.getElementById('ovFreqRow');
+    if(fqr) fqr.style.display = (O.brushMode === 'flat' || O.brushMode === 'gpen') ? '' : 'none';
     if(ssr) ssr.style.display = isSmudgeMode(O.brushMode) ? '' : 'none';
     const tfr = document.getElementById('ovTipShapeRow');
     if(tfr) tfr.style.display = isSmudgeMode(O.brushMode) ? '' : 'none';
@@ -16155,7 +17438,12 @@ void mainImage(out vec4 o, in vec2 f){
       } }
     slid('pxGradMix','gradMix', f2);
     { const m = $('#pxGradAuto'), b = $('#pxGradAutoBeats');
-      m.addEventListener('change', ()=>{ const v = parseInt(m.value, 10); if(v) App.gradAuto.mode = v; else App.applyGradPreset(9); });
+      // Off にしたときは右で選んだ拍数を掛けて通常色へ戻る (切り替え中の Grad も含めて滑らかに消える)
+      m.addEventListener('change', ()=>{
+        const v = parseInt(m.value, 10);
+        if(v) App.gradAuto.mode = v;
+        else App.applyGradPreset(9, false, App.gradAuto.beats * 60 / Math.max(20, BPM.bpm));
+      });
       b.addEventListener('change', ()=>{ App.gradAuto.beats = parseFloat(b.value); App.gradAuto.cycle = null; }); }
     slid('pxPaletteAmt','paletteAmt', f2);
     { const pa = $('#pxPaletteAmt'); if(pa) pa.addEventListener('input', ()=>{ if(Math.abs(App.post.paletteAmt||0) > 0.001 && App.post.palette !== 8){ App.post.palette = 8; } }); }
@@ -16527,6 +17815,14 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFilmBlur','filmBlur', f2);
     slid('pxGlass','glass', f2);
     slid('pxOutline','outline', f2);
+    slid('pxInkBleed','inkBleed', f2);
+    slid('pxInkBleedSpread','inkBleedSpread', f2);
+    slid('pxInkBleedFiber','inkBleedFiber', f2);
+    slid('pxInkBleedEdge','inkBleedEdge', f2);
+    slid('pxInkBleedNode','inkBleedNode', f2);
+    slid('pxInkBleedSeed','inkBleedSeed', fi);
+    const inkBleedPaper = $('#pxInkBleedPaper');
+    if(inkBleedPaper) inkBleedPaper.addEventListener('input', ()=>{ App.post.inkBleedPaper = inkBleedPaper.value; });
     slid('pxDither','dither', f2);
     slid('pxCandy','candy', f2);
     slid('pxOrigami','origami', f2);
@@ -16541,11 +17837,24 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxSketch', 'sketch', f2);
     slid('pxPixsort', 'pixsort', f2);
     slid('pxRings', 'rings', f2);
-    slid('pxFbAdd', 'fbAdd', f2);
-    slid('pxFbMultiply', 'fbMultiply', f2);
+    slid('pxFbAmount', 'fbAmount', f2);
+    { const mode=$('#pxFbMode'); if(mode) mode.addEventListener('change',()=>{ App.post.fbMode=mode.value; UI.refreshPost(); }); }
     slid('pxFbZoom', 'fbZoom', f2);
     slid('pxFbRot', 'fbRot', f2);
+    slid('pxFbSteps', 'fbSteps', v=>String(1+Math.round(v*11)));
+    slid('pxFbFade', 'fbFade', f2);
+    slid('pxFbResidueHold', 'fbResidueHold', f2);
+    slid('pxFbResiduePull', 'fbResiduePull', f2);
+    slid('pxFbResiduePoly', 'fbResiduePoly', f2);
+    slid('pxFbResidueFaceSize', 'fbResidueFaceSize', f2);
     slid('pxGlitchTrail', 'glitchTrail', f2);
+    { const box = $('#pxGlitchTrailTypes'); if(box) box.addEventListener('click', (e)=>{
+        const b = e.target.closest('button[data-type]'); if(!b) return;
+        const on = new Set(String(App.post.glitchTrailType || 'mondrian').split(',').map(x=>x.trim()).filter(x=>GL.GLITCH_TRAIL_TYPES.includes(x)));
+        if(on.has(b.dataset.type)){ if(on.size > 1) on.delete(b.dataset.type); } else on.add(b.dataset.type);
+        App.post.glitchTrailType = GL.GLITCH_TRAIL_TYPES.filter(t=>on.has(t)).join(',');
+        UI.refreshPost();
+      }); }
     slid('pxSdfChrome', 'sdfChrome', f2);
     slid('pxRiver',     'river',     f2);
     slid('pxBleed',   'bleed',   f2);
@@ -16610,6 +17919,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxAStrobe',  'aStrobe',  f2);
     slid('pxAShock',   'aShock',   f2);
     slid('pxAExplode', 'aExplode', f2);
+    slid('pxWaveform', 'waveform', f2);
     slid('pxSlitScan', 'slitScan', f2);
     const cpal = $('#pxCosPalette');
     if(cpal){
@@ -16635,6 +17945,7 @@ void mainImage(out vec4 o, in vec2 f){
     const reset = $('#btnPostReset');
     if(reset) reset.addEventListener('click', ()=>{
       App.post = App.postDefaults();
+      App.applyInkBleedDefault();
       this.refreshPost();
       toast('Post FX reset');
     });
@@ -16697,6 +18008,8 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxFilmBlur', p.filmBlur || 0, f2);
     set('pxGlass', p.glass || 0, f2);
     set('pxOutline', p.outline || 0, f2);
+    // Numeric sliders are refreshed by _postSlid above.
+    set('pxInkBleedPaper', p.inkBleedPaper);
     set('pxDither', p.dither || 0, f2);
     set('pxCandy', p.candy || 0, f2);
     set('pxOrigami', p.origami || 0, f2);
@@ -16711,11 +18024,24 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxSketch', p.sketch, f2);
     set('pxPixsort', p.pixsort, f2);
     set('pxRings', p.rings || 0, f2);
-    set('pxFbAdd', p.fbAdd || 0, f2);
-    set('pxFbMultiply', p.fbMultiply || 0, f2);
+    { const mode=$('#pxFbMode'); if(mode) mode.value=['add','multiply','residue'].includes(p.fbMode)?p.fbMode:'residue';
+      const light=$('.fb-light-options'), residue=$('.fb-residue-options');
+      if(light) light.style.display=p.fbMode==='residue'?'none':'';
+      if(residue) residue.style.display=p.fbMode==='residue'?'':'none'; }
+    set('pxFbAmount', p.fbAmount || 0, f2);
     set('pxFbZoom', p.fbZoom || 0, f2);
     set('pxFbRot', p.fbRot || 0, f2);
+    set('pxFbSteps', p.fbSteps == null ? 1 : p.fbSteps, v=>String(1+Math.round(v*11)));
+    set('pxFbFade', p.fbFade == null ? 0.5 : p.fbFade, f2);
+    set('pxFbResidueHold', p.fbResidueHold || 0, f2);
+    set('pxFbResiduePull', p.fbResiduePull || 0, f2);
+    set('pxFbResiduePoly', p.fbResiduePoly || 0, f2);
+    set('pxFbResidueFaceSize', p.fbResidueFaceSize == null ? 0.5 : p.fbResidueFaceSize, f2);
     set('pxGlitchTrail', p.glitchTrail || 0, f2);
+    { const box = $('#pxGlitchTrailTypes'); if(box){
+        const mask = GL.glitchTrailMask(p.glitchTrailType);
+        box.querySelectorAll('button[data-type]').forEach(b=>{ const on = (mask >> GL.GLITCH_TRAIL_TYPES.indexOf(b.dataset.type)) & 1; b.style.opacity = on ? '1' : '.4'; b.style.borderColor = on ? 'var(--acc, #7c4dff)' : '#444'; });
+      } }
     set('pxClarity', p.clarity || 0, f2);
     set('pxDenoise', p.denoise || 0, f2);
     set('pxDeband', p.deband || 0, f2);
@@ -16739,6 +18065,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxAStrobe', p.aStrobe||0, f2);
     set('pxAShock', p.aShock||0, f2);
     set('pxAExplode', p.aExplode||0, f2);
+    set('pxWaveform', p.waveform||0, f2);
     set('pxSlitScan', p.slitScan||0, f2);
     set('pxPaletteAmt', p.paletteAmt||0, f2);
     if($('#pxCosPalette')) $('#pxCosPalette').value = String(p.cosPalette||0);
@@ -17186,7 +18513,7 @@ void mainImage(out vec4 o, in vec2 f){
 
     // 合成のみ: 出力全体の状態
     if(typeof Overlay !== 'undefined' && Overlay.P && Overlay.P.enabled && (Overlay.strokes||[]).length)
-      main.push({ t:'OVL', title:'Overlay 描画中' });
+      main.push({ t:'IMG', title:'IMAGON 描画中' });
     if(App._drawFrozen) main.push({ t:'FREEZE', c:'warn', title:'Draw フリーズ中 (Space)' });
     if(App.blendMode && App.blendMode !== 'normal')
       main.push({ t:String(App.blendMode).toUpperCase().slice(0,6), title:'Blend: ' + App.blendMode });
@@ -17373,6 +18700,9 @@ void mainImage(out vec4 o, in vec2 f){
       MediaImport.local().then(ok=>{
         mBtn.title = ok ? '画像 / 動画を images/drop/ ・ movies/ へ取り込む (次回起動でも残る)'
                         : '画像 / 動画を読み込む (このセッション限り。リロードで消えます)';
+        this._mediaLocal = ok;
+        const grid = $('#imageFolderGrid'); if(grid) grid.dataset.sig = '';   // × ボタン付きで作り直す
+        this.refreshImageMode();
       });
     }
     try{ indexedDB.deleteDatabase('gara.media'); }catch(e){}   // 旧・次回復元用 IndexedDB の保存データを掃除
@@ -17475,6 +18805,20 @@ void mainImage(out vec4 o, in vec2 f){
           lab.textContent = f.name + ' (' + f.count + ')';
           lab.style.cssText = 'position:absolute;left:0;bottom:0;right:0;font:600 10px/1.4 var(--mono);color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;pointer-events:none';
           tile.appendChild(cv); tile.appendChild(lab);
+          // 個別画像 (images/ 直下の臨時ファイル) はローカル起動なら × で実ファイルごと消せる。フォルダは対象外
+          if(f.single && this._mediaLocal){
+            const del = document.createElement('button');
+            del.textContent = '×';
+            del.title = 'この画像を削除 (images/ から実ファイルを消す)';
+            del.style.cssText = 'position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border:0;border-radius:3px;background:rgba(0,0,0,.65);color:#fff;font:700 12px/18px var(--mono);cursor:pointer';
+            del.addEventListener('click', async (e)=>{
+              e.stopPropagation();
+              if(!confirm('削除しますか: ' + f.name + '\n(' + f.dir + ' の実ファイルを消します)')) return;
+              try{ await MediaImport.remove(f.dir); toast('削除: ' + f.name); }
+              catch(err){ toast('削除失敗: ' + (err && err.message || err)); }
+            });
+            tile.appendChild(del);
+          }
           tile.addEventListener('click', ()=>{
             if(!m.initialized && typeof GL !== 'undefined' && GL.gl) m.init(GL.gl);
             m.setFolder(f.dir);

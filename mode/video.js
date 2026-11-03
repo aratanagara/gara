@@ -12,6 +12,8 @@ const Movie = {
   prog:null, locs:null, vbo:null,
   library:[],   // [{url, name}, ...] — movies/ フォルダから自動列挙
   _cache:{},    // URL → {frames:[...]|null, complete:bool, persistent?:bool}
+  _cacheKeys:[],    // _cache の LRU 順 (末尾が最新)
+  _cacheBudgetBytes: 1536 * 1024 * 1024,   // RAM 上のフレーム合計の上限。超えたぶんは古い順に捨てる (IndexedDB から戻せる)
   _preloadActive:false,
   _fullCacheEnabled:false, // Load ON 中は復号済み要素/全区間フレームをセッション中ずっと保持
   _bufferDbPromise:null,
@@ -225,6 +227,33 @@ void main(){
       delete this._elCache[old];
     }
   },
+  // RAM 上の全区間フレーム (_cache) は上限なしだと動画を渡り歩くうちにレンダラのメモリが
+  // 膨らんで落ちる (ブラウザは Aw, Snap / アプリは自動リロード)。使った順に並べ、合計が
+  // 予算を超えたら、どのスロットも表示していない古いものから捨てる。永続化済みのものは
+  // 次回 loadUrl で IndexedDB から戻る
+  _touchCache(url){
+    const i = this._cacheKeys.indexOf(url); if(i >= 0) this._cacheKeys.splice(i, 1);
+    this._cacheKeys.push(url);
+    this._trimCache();
+  },
+  _trimCache(){
+    const bytes = e => (e && e.frames) ? e.frames.reduce((n, f) => n + (f.data ? f.data.byteLength : 0), 0) : 0;
+    let total = 0;
+    for(const url of this._cacheKeys) total += bytes(this._cache[url]);
+    if(total <= this._cacheBudgetBytes) return;
+    const inUse = new Set();
+    for(const k in this._slots){ const s = this._slots[k]; if(s && s._frames) inUse.add(s._frames); }
+    for(const url of this._cacheKeys.slice()){
+      if(total <= this._cacheBudgetBytes) break;
+      const e = this._cache[url];
+      if(!e || (e.frames && inUse.has(e.frames))) continue;
+      total -= bytes(e);
+      // 共有フレームの GPU テクスチャは _freeFrame が守るので、捨てるときはここで解放する
+      for(const f of e.frames || []){ if(f.tex){ try{ if(this.gl) this.gl.deleteTexture(f.tex); }catch(_){} f.tex = null; } }
+      delete this._cache[url];
+      this._cacheKeys.splice(this._cacheKeys.indexOf(url), 1);
+    }
+  },
   setFullCacheEnabled(on){
     this._fullCacheEnabled = !!on;
     if(!this._fullCacheEnabled){
@@ -411,6 +440,7 @@ void main(){
         cached:true, persistent:true,
       }));
       this._cache[url] = {frames, complete:true, persistent:true};
+      this._touchCache(url);
       return frames;
     }catch(e){
       console.warn('video buffer restore failed:', url, e);
@@ -522,6 +552,7 @@ void main(){
       s.videoEl = v;
       s.loaded = false;
       v.addEventListener('loadeddata', ()=>{ s.loaded = true; }, {once:true});
+      this._watchLoad(s, v, url, key, req);
       v.play().catch(err=>console.warn('video play:', err));
       this._elCache[key] = v; this._elCacheKeys.push(key);
       this._trimElCache(s);
@@ -533,11 +564,41 @@ void main(){
       if(s._loadReq !== req) return;
       if(frames && frames.length) cached = this._cache[url];
     }
+    if(cached && cached.frames) this._touchCache(url);
     // ライブ取込ぶんの GPU テクスチャは解放してから差し替え。
     this._freeFrames(s._frames);
     if(cached && cached.complete && cached.frames && cached.frames.length){ s._frames = cached.frames; s._bufferComplete = true; }
     else { s._frames = []; s._bufferComplete = false; }
     this._resetPlaybackState(s, !!(cached && cached.complete && cached.frames && cached.frames.length));
+  },
+
+  // 読み込み失敗 (会場の弱い Wi-Fi など) で黒のまま沈黙しないよう、間を置いて読み直す。
+  // 1 回目は同じ src、2 回目以降は Cache Storage の Blob を捨ててサーバーから直接取る。
+  // それでも駄目なら要素をキャッシュから外し、次の選択で新しい要素を作らせる
+  _watchLoad(s, v, url, key, req){
+    const delays = [1000, 3000, 8000];
+    let tries = 0;
+    v.addEventListener('error', ()=>{
+      if(s._loadReq !== req || s.videoEl !== v) return;
+      if(tries >= delays.length){
+        console.warn('video load failed:', url, v.error && v.error.code);
+        if(this._elCache[key] === v){ delete this._elCache[key]; const i = this._elCacheKeys.indexOf(key); if(i >= 0) this._elCacheKeys.splice(i, 1); }
+        return;
+      }
+      const delay = delays[tries++];
+      setTimeout(()=>{
+        if(s._loadReq !== req || s.videoEl !== v) return;
+        const direct = this._assetUrl(url);
+        if(tries > 1){
+          const blobUrl = this._blobUrlBySrc[direct];
+          if(blobUrl){ try{ URL.revokeObjectURL(blobUrl); }catch(_){} delete this._blobUrlBySrc[direct]; }
+          v.src = direct + (direct.includes('?') ? '&' : '?') + 'retry=' + Date.now();
+        }
+        try{ v.load(); }catch(_){}
+        v.play().catch(()=>{});
+        console.warn('video load retry', tries, url);
+      }, delay);
+    });
   },
 
   // video/ フォルダから .mp4 / .webm / .mov / .m4v / .ogv を列挙
@@ -1084,6 +1145,7 @@ void main(){
         const frames = await this._prefillToCache(item.url);
         if(frames && frames.length){
           this._cache[item.url] = { frames, complete: true };
+          this._touchCache(item.url);
         }
       }catch(e){ console.warn('preload failed:', item.url, e); }
       done++;
