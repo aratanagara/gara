@@ -177,6 +177,24 @@ function importMedia(root, req, res, u){
   req.pipe(ws);
 }
 
+// images/ 直下の 1 枚もの (Visual の個別画像) を削除する。フォルダや他の場所は対象外
+function deleteMedia(roots, res, u){
+  const rel = String(u.searchParams.get('path') || '');
+  const name = path.basename(rel);
+  if(!/^images\/[^/]+$/.test(rel) || !IMG_RE.test(name) || name.startsWith('.')){ sendJson(res, 400, { ok:false, error:'not deletable: ' + rel }); return; }
+  for(const root of roots){
+    const file = path.join(root, 'images', name);
+    let isFile = false;
+    try{ isFile = fs.statSync(file).isFile(); }catch(_){}
+    if(!isFile) continue;
+    try{ fs.unlinkSync(file); }catch(e){ sendJson(res, 500, { ok:false, error: String(e && e.message || e) }); return; }
+    try{ regenImages(roots[0], roots[1] || null); }catch(_){}
+    sendJson(res, 200, { ok:true, path: rel });
+    return;
+  }
+  sendJson(res, 404, { ok:false, error:'not found: ' + rel });
+}
+
 function serveFile(req, res, file, st){
   const mime = MIME[path.extname(file).toLowerCase()] || 'application/octet-stream';
   const range = req.headers.range;
@@ -262,6 +280,7 @@ function createServer(root, mediaRoot){
       // GET = 取り込み可否の問い合わせ / POST = ファイル本体を取り込む
       if(req.method === 'GET'){ sendJson(res, 200, { ok:true, writable: writable(importRoot()), mediaRoot: mediaRoot || null, movies:'movies', images:'images/' + DROP_FOLDER }); return; }
       if(req.method === 'POST'){ importMedia(importRoot(), req, res, u); return; }
+      if(req.method === 'DELETE'){ deleteMedia(mediaRoot ? [mediaRoot, root] : [root], res, u); return; }
       res.writeHead(405); res.end(); return;
     }
     if(urlPath === '/') urlPath = '/index.html';
