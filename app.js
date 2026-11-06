@@ -8437,6 +8437,18 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
+    if(slot.kind === 'rhizome'){
+      if(typeof Rhizome === 'undefined') return;
+      if(!Rhizome.initialized) Rhizome.init(this.gl);
+      Rhizome.update();
+      const target = slot.fbos[slot.fbIdx];
+      Rhizome.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
     if(slot.kind === 'surrealfloat'){
       if(typeof SurrealFloat === 'undefined') return;
       if(!SurrealFloat.initialized) SurrealFloat.init(this.gl);
@@ -11480,8 +11492,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -12646,6 +12658,7 @@ const App = {
     PRESETS.unshift({ name:'★ TRANSMUTE FLOCK (錬成痕)', kind:'transflock', ch:[], src:'' });
     PRESETS.unshift({ name:'★ LIQUID PEEL (剥離)', kind:'liquidpeel', ch:[], src:'' });
     PRESETS.unshift({ name:'★ WIND FLOCK (風の面)', kind:'windflock', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ RHIZOME (リゾーム)', kind:'rhizome', ch:[], src:'' });
     PRESETS.unshift({ name:'★ SURREAL FLOAT (浮遊する構造物)', kind:'surrealfloat', ch:[], src:'' });
     PRESETS.unshift({ name:'★ FUDE (毛筆)', kind:'fude', ch:[], src:'' });
     PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
@@ -14000,6 +14013,16 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'rhizome'){
+      s.kind = 'rhizome';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'rhizome';
+      if(typeof Rhizome !== 'undefined' && !Rhizome.initialized) Rhizome.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('rhizome');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'surrealfloat'){
       s.kind = 'surrealfloat';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'surrealfloat';
@@ -14117,6 +14140,7 @@ ${outBlock}
       case 'transflock': return (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null;
       case 'liquidpeel': return (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null;
       case 'windflock': return (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null;
+      case 'rhizome': return (typeof Rhizome !== 'undefined' && Rhizome.P) ? Rhizome.P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
       case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
@@ -14655,6 +14679,7 @@ ${outBlock}
 	      transflock: (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null,
 	      liquidpeel: (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null,
 	      windflock: (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null,
+	      rhizome: (typeof Rhizome !== 'undefined' && Rhizome.P) ? Rhizome.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
@@ -15347,7 +15372,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -15774,7 +15799,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -18260,7 +18285,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -18340,6 +18365,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'transflock') ? 'TRANSMUTE\nFLOCK'
                      : (p.kind === 'liquidpeel') ? 'LIQUID\nPEEL'
                      : (p.kind === 'windflock') ? 'WIND\nFLOCK'
+                     : (p.kind === 'rhizome') ? 'RHIZOME'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
                      : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
@@ -18697,7 +18723,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'rhizome' && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -18721,6 +18747,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isWF = slot.kind === 'windflock';
     $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
     if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
+    const isRZ = slot.kind === 'rhizome';
+    $$('.rhizome-mode').forEach(el => el.style.display = isRZ ? '' : 'none');
+    if(isRZ && this.refreshRhizomeParams) this.refreshRhizomeParams();
     const isSF = slot.kind === 'surrealfloat';
     $$('.surrealfloat-mode').forEach(el => el.style.display = isSF ? '' : 'none');
     if(isSF && this.refreshSurrealParams) this.refreshSurrealParams();
@@ -19274,6 +19303,36 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshTransflockParams();
       });
       row.appendChild(b); }
+  },
+  refreshRhizomeParams(){
+    const root = document.getElementById('rhizomeParams'); if(!root) return;
+    if(typeof Rhizome === 'undefined' || !Rhizome.initialized){
+      root.innerHTML = '<div class="help">RHIZOME preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = Rhizome.P;
+    const formats = { pct:v=>String(Math.round(v))+'%', f2:v=>v.toFixed(2), int:v=>String(Math.round(v)) };
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    root.innerHTML = '';
+    for(const spec of Rhizome.SPECS){
+      const row=document.createElement('div'); row.className='row'; root.appendChild(row);
+      const lab=document.createElement('label'); lab.textContent=spec.label || spec[0];
+      if(spec.sel){
+        // 選択式 (Style)
+        const sel=document.createElement('select'); sel.style.flex='1';
+        spec.opts.forEach((o, i)=>{ const op=document.createElement('option'); op.value=String(i); op.textContent=o; sel.appendChild(op); });
+        sel.value = String(Math.round(P[spec.key]) || 0);
+        sel.addEventListener('change', ()=>{ P[spec.key] = parseInt(sel.value, 10) || 0; });
+        row.appendChild(lab); row.appendChild(sel);
+        continue;
+      }
+      const [label,key,mi,ma,step,f] = spec;
+      const fmt = formats[f];
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const show = (v)=> key === 'seed' ? fmt(v) : disp(v, fmt);   // Seed はデッドゾーン表示をしない
+      const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    }
   },
   refreshWindflockParams(){
     const root = document.getElementById('windflockParams'); if(!root) return;
