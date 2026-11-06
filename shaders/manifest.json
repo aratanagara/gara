@@ -324,19 +324,19 @@
      "name": "Crystal Flow (Julia)"
     },
     {
-     "file": "bg_windline.frag",
-     "func": "bg_windline",
-     "name": "Windline"
-    },
-    {
      "file": "bg_smear_tear.frag",
      "func": "bg_smear_tear",
      "name": "Smear Tear"
     },
     {
-     "file": "bg_fur_fold.frag",
-     "func": "bg_fur_fold",
-     "name": "Fur Fold"
+     "file": "bg_flowcollage.frag",
+     "func": "bg_flowcollage",
+     "name": "Flow Collage"
+    },
+    {
+     "file": "bg_shard_collage.frag",
+     "func": "bg_shard_collage",
+     "name": "Shard Collage"
     }
    ],
    "exclude": [
