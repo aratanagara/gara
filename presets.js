@@ -5274,358 +5274,234 @@ void mainImage( out vec4 o, in vec2 fragCoord )
 {
   name: "Decal Scaffold (7lt3DN)",
   ch: ["","","",""],
-  src: `// Shadertoy 7lt3DN "spqr: decal scaffold 5" by Fahrenheitrequited (単一パス)。https://www.shadertoy.com/view/7lt3DN
-// 原作は NuSan の CorrodedBeasts (Bonzomatic) 改変。
-// VJ: 黄土色/オレンジをクロムシルバー(法線ベース擬似環境反射)に置換。マーチ上限を 800 步に制限。
+  src: `// S112 Decal Scaffold。出自は Shadertoy 7lt3DN "spqr: decal scaffold 5"
+// (Fahrenheitrequited / NuSan CorrodedBeasts) の床と柱。
+// 幾何は三角プレートの塊と、左と下へ伸びる針。レイマーチは使わない。
+// 各プレートを三角形の交差で一発判定するので、縁が揺れず、差分法線も AO も無い。
+// 名前は Decal Scaffold (7lt3DN) のまま。カタログ S112 は動かない。
 // @param speed 0..3 = 1
+// @param spike 0..2.5 = 1
+// @param fold 0..2 = 1
+// @param spin 0..2 = 1
+// @param yaw -2..2 = 1
+// @param pitch -2..2 = 1
+// @param roll -2..2 = 1
+// @param sheen 0..1.5 = 1
 uniform float speed;
-float T9_;
+uniform float spike;
+uniform float fold;
+uniform float spin;
+uniform float yaw;
+uniform float pitch;
+uniform float roll;
+uniform float sheen;
+uniform float uSlotIsA;
 
-float PI = acos(-1.0);
-
-mat2 rot(float a) {
-  float ca=cos(a);
-  float sa=sin(a);
-  return mat2(ca,sa,-sa,ca);
+mat2 rot(float a){
+  float c = cos(a), s = sin(a);
+  return mat2(c, s, -s, c);
 }
 
-float tick (float t) {
-  float i = floor(t);
-  float r = fract(t);
-  for (int z = 0; z < 2; z++) {
-    r = smoothstep(0.,1.,r);
+float bestT;
+vec3 bestN;
+float bestId;
+vec3 bestAxis;
+
+void toObject(inout vec3 p, float pitch, float yaw, float roll){
+  p.xy *= rot(0.10);
+  p.xz *= rot(-0.18);
+  p.xy *= rot(-roll);
+  p.xz *= rot(-yaw);
+  p.yz *= rot(-pitch);
+}
+
+void toWorld(inout vec3 p, float pitch, float yaw, float roll){
+  p.yz *= rot(pitch);
+  p.xz *= rot(yaw);
+  p.xy *= rot(roll);
+  p.xz *= rot(0.18);
+  p.xy *= rot(-0.10);
+}
+
+bool sphereHit(vec3 ro, vec3 rd, vec3 c, float r){
+  vec3 oc = ro - c;
+  float b = dot(oc, rd);
+  float h = b * b - (dot(oc, oc) - r * r);
+  if(h < 0.0) return false;
+  h = sqrt(h);
+  if(-b + h < 0.0008) return false;
+  if(-b - h > bestT) return false;
+  return true;
+}
+
+void tri(vec3 ro, vec3 rd, vec3 a, vec3 b, vec3 c, float id, vec3 axis){
+  vec3 e1 = b - a;
+  vec3 e2 = c - a;
+  vec3 pv = cross(rd, e2);
+  float det = dot(e1, pv);
+  if(abs(det) < 1e-7) return;
+  float inv = 1.0 / det;
+  vec3 tv = ro - a;
+  float u = dot(tv, pv) * inv;
+  if(u < 0.0 || u > 1.0) return;
+  vec3 qv = cross(tv, e1);
+  float v = dot(rd, qv) * inv;
+  if(v < 0.0 || u + v > 1.0) return;
+  float t = dot(e2, qv) * inv;
+  if(t < 0.0008 || t >= bestT) return;
+  vec3 n = cross(e1, e2);
+  float ln = length(n);
+  if(ln < 1e-8) return;
+  n /= ln;
+  if(dot(n, rd) > 0.0) n = -n;
+  bestT = t;
+  bestN = n;
+  bestId = id;
+  bestAxis = axis;
+}
+
+void blade(vec3 ro, vec3 rd, vec3 dir, float len, float wide, float thin, float twist, vec3 origin, float faceAmt, float id){
+  if(spike < 0.001) return;
+  dir = normalize(dir);
+  vec3 up = abs(dir.y) < 0.82 ? vec3(0.0, 1.0, 0.0) : vec3(1.0, 0.0, 0.0);
+  vec3 x = normalize(cross(up, dir));
+  vec3 y = cross(dir, x);
+  float c = cos(twist), s = sin(twist);
+  vec3 x2 = x * c + y * s;
+  vec3 camN = normalize(vec3(-0.08, 0.12, 1.0));
+  x2 = normalize(mix(x2, camN, clamp(faceAmt, 0.0, 0.80)));
+  if(abs(dot(x2, dir)) > 0.96) x2 = normalize(camN + vec3(0.0, 1.0, 0.0));
+  vec3 y2 = normalize(cross(dir, x2));
+  x2 = normalize(cross(y2, dir));
+  float grow = max(spike, 0.0);
+  float spr = mix(0.70, 1.28, clamp(fold, 0.0, 2.0) * 0.5);
+  origin *= spr;
+  vec3 tip = origin + dir * (len * grow);
+  vec3 baseC = origin - dir * 0.16;
+  vec3 v1 = baseC - x2 * thin - y2 * (wide * 0.15);
+  vec3 v2 = baseC + x2 * thin - y2 * (wide * 0.15);
+  vec3 v3 = baseC + y2 * wide;
+  vec3 cen = (tip + v1 + v2 + v3) * 0.25;
+  float rad = max(length(tip - cen), max(length(v1 - cen), max(length(v2 - cen), length(v3 - cen)))) + 0.004;
+  if(!sphereHit(ro, rd, cen, rad)) return;
+  tri(ro, rd, v1, v2, v3, id, dir);
+  tri(ro, rd, tip, v2, v1, id, dir);
+  tri(ro, rd, tip, v3, v2, id, dir);
+  tri(ro, rd, tip, v1, v3, id, dir);
+}
+
+void trace(vec3 ro, vec3 rd){
+  bestT = 1e9;
+  bestN = vec3(0.0, 1.0, 0.0);
+  bestId = 0.0;
+  bestAxis = vec3(0.0, 1.0, 0.0);
+  if(!sphereHit(ro, rd, vec3(0.08, 0.02, 0.0), 2.7 * max(spike, 0.2) + 1.35)) return;
+  blade(ro, rd, vec3( 0.18,  1.00,  0.12), 1.25, 0.62, 0.040, 0.20, vec3(-0.20, -0.35,  0.04), 0.62, 1.0);
+  blade(ro, rd, vec3(-0.92, -0.16,  0.22), 1.55, 0.50, 0.038, 0.85, vec3( 0.42,  0.10, -0.06), 0.58, 2.0);
+  blade(ro, rd, vec3( 0.10, -0.96, -0.18), 1.15, 0.55, 0.036, 1.40, vec3( 0.02,  0.38,  0.12), 0.70, 3.0);
+  blade(ro, rd, vec3( 0.22,  0.16,  1.00), 1.05, 0.58, 0.034, 0.45, vec3(-0.08, -0.05, -0.32), 0.48, 4.0);
+  blade(ro, rd, vec3(-0.28,  0.78,  0.42), 1.10, 0.46, 0.036, 1.10, vec3( 0.28, -0.28, -0.08), 0.55, 5.0);
+  blade(ro, rd, vec3( 0.72, -0.38, -0.55), 0.95, 0.48, 0.034, 0.60, vec3(-0.22,  0.18,  0.22), 0.42, 6.0);
+  blade(ro, rd, vec3(-0.55, -0.35,  0.75), 0.90, 0.42, 0.032, 1.75, vec3( 0.30,  0.16, -0.18), 0.66, 7.0);
+  blade(ro, rd, vec3( 0.85,  0.48,  0.18), 0.85, 0.40, 0.034, 0.30, vec3(-0.18, -0.16,  0.06), 0.60, 8.0);
+  blade(ro, rd, vec3(-1.00, -0.05,  0.06), 2.35, 0.16, 0.048, 0.15, vec3( 0.28,  0.02,  0.02), 0.72, 9.0);
+  blade(ro, rd, vec3(-0.78, -0.52,  0.12), 2.05, 0.14, 0.044, 0.90, vec3( 0.22,  0.16,  0.00), 0.64, 10.0);
+  blade(ro, rd, vec3(-0.22, -0.96,  0.10), 1.75, 0.12, 0.058, 0.40, vec3( 0.18,  0.22,  0.06), 0.28, 11.0);
+  blade(ro, rd, vec3(-0.96,  0.24,  0.10), 1.60, 0.13, 0.046, 1.25, vec3( 0.16, -0.08,  0.08), 0.38, 12.0);
+  blade(ro, rd, vec3( 0.08, -0.28,  0.96), 1.15, 0.18, 0.040, 0.70, vec3( 0.10,  0.06, -0.12), 0.46, 13.0);
+  blade(ro, rd, vec3( 0.55,  0.78, -0.28), 0.72, 0.34, 0.032, 0.50, vec3(-0.06, -0.10,  0.14), 0.68, 14.0);
+  blade(ro, rd, vec3(-0.40,  0.22, -0.88), 0.68, 0.30, 0.030, 1.55, vec3( 0.18,  0.04,  0.20), 0.44, 15.0);
+  blade(ro, rd, vec3( 0.92, -0.12,  0.32), 0.64, 0.36, 0.030, 0.25, vec3(-0.14,  0.08, -0.08), 0.62, 16.0);
+  blade(ro, rd, vec3(-0.15,  0.92,  0.35), 0.70, 0.22, 0.040, 1.05, vec3( 0.12, -0.20,  0.02), 0.34, 17.0);
+  blade(ro, rd, vec3( 0.40, -0.86,  0.28), 0.66, 0.28, 0.032, 1.90, vec3(-0.04,  0.24,  0.06), 0.52, 18.0);
+  blade(ro, rd, vec3(-0.66,  0.62,  0.40), 0.60, 0.26, 0.030, 0.15, vec3( 0.24, -0.12, -0.10), 0.58, 19.0);
+  blade(ro, rd, vec3( 0.30,  0.25,  0.92), 0.55, 0.32, 0.028, 2.10, vec3( 0.00,  0.02, -0.16), 0.74, 20.0);
+  blade(ro, rd, vec3(-0.88, -0.40, -0.22), 0.85, 0.20, 0.036, 0.75, vec3( 0.36,  0.18,  0.10), 0.50, 21.0);
+  blade(ro, rd, vec3( 0.15,  0.55, -0.82), 0.62, 0.30, 0.030, 1.30, vec3( 0.06, -0.08,  0.24), 0.40, 22.0);
+  blade(ro, rd, vec3( 0.68,  0.62,  0.38), 0.58, 0.24, 0.034, 0.55, vec3(-0.10, -0.14,  0.02), 0.36, 23.0);
+  blade(ro, rd, vec3(-0.48, -0.78,  0.38), 0.74, 0.22, 0.034, 1.65, vec3( 0.20,  0.26, -0.06), 0.48, 24.0);
+}
+
+vec3 envMap(vec3 r){
+  float y = r.y;
+  vec3 sky = mix(vec3(0.030, 0.036, 0.048), vec3(0.50, 0.60, 0.74), smoothstep(-0.05, 0.50, y));
+  sky = mix(sky, vec3(0.94, 0.96, 0.99), smoothstep(0.58, 1.0, y));
+  vec3 key = normalize(vec3(0.32, 0.80, 0.40));
+  sky += vec3(1.0) * pow(max(dot(r, key), 0.0), 40.0) * 1.7;
+  vec3 fill = normalize(vec3(-0.80, 0.22, 0.40));
+  sky += vec3(0.22, 0.38, 0.72) * pow(max(dot(r, fill), 0.0), 5.0) * 0.9;
+  sky += vec3(0.88, 0.92, 0.98) * exp(-abs(y - 0.03) * 28.0);
+  vec3 ground = vec3(0.010, 0.011, 0.014);
+  float warm = pow(max(dot(r, normalize(vec3(-0.15, -1.0, 0.45))), 0.0), 4.5);
+  ground += vec3(0.36, 0.20, 0.07) * warm * 0.55;
+  float band = smoothstep(0.18, 0.0, abs(r.x + 0.2));
+  sky = mix(sky, sky * 0.22, band * smoothstep(0.15, -0.45, y));
+  return mix(ground, sky, smoothstep(-0.20, 0.08, y));
+}
+
+vec3 shade(vec3 rd, vec3 n, float id){
+  vec3 r = reflect(rd, n);
+  float ndv = max(dot(n, -rd), 0.0);
+  float fres = pow(1.0 - ndv, 2.4);
+  vec3 col = envMap(r);
+  col *= 0.55 + 0.45 * ndv;
+  col += vec3(0.72, 0.80, 0.92) * fres * 0.75;
+  vec3 L = normalize(vec3(0.38, 0.88, 0.26));
+  col += vec3(1.0) * pow(max(dot(r, L), 0.0), 64.0) * 0.9;
+  float pick = fract(id * 1.618034);
+  float filmGate = smoothstep(0.40, 0.62, pick);
+  float film = sheen * fres * (0.08 + 0.55 * filmGate);
+  float phase = dot(n, vec3(0.6, 1.3, 0.45)) * 0.75 + id * 0.51 + fres * 1.4;
+  vec3 oil = 0.5 + 0.5 * cos(6.2831853 * (phase + vec3(0.00, 0.33, 0.67)));
+  col = mix(col, col * (0.35 + oil), clamp(film, 0.0, 0.65));
+  col = max(col, 0.0);
+  col = col / (1.0 + col * 0.26);
+  return col;
+}
+
+void mainImage(out vec4 fragColor, in vec2 fragCoord){
+  vec2 uv = (fragCoord.xy - 0.5 * iResolution.xy) / iResolution.y;
+  uv -= iPan * (0.5 * iResolution.xy / iResolution.y);
+  uv /= max(iZoom, 0.20);
+
+  // Pulled back a little from the previous close camera, with a slightly wider lens
+  // so the needles sit inside the frame instead of being cropped.
+  vec3 ta = vec3(0.04, -0.02, 0.00);
+  vec3 ro = ta + vec3(0.32, 0.24, 1.62) * 1.22;
+  vec3 ww = normalize(ta - ro);
+  vec3 uu = normalize(cross(ww, vec3(0.0, 1.0, 0.0)));
+  vec3 vv = cross(uu, ww);
+  vec3 rd = normalize(uu * uv.x + vv * uv.y + ww * 1.05);
+
+  float tt = iTime * speed;
+  float spn = spin;
+  // Each axis is a constant rate, so the angle runs through full turns.
+  // Pitch is not a nod: at 1 it keeps going past upside-down and back.
+  // Rates differ so the three loops do not lock together. Negative reverses.
+  float yawA = tt * 0.85 * yaw * spn;
+  float pitchA = tt * 0.55 * pitch * spn;
+  float rollA = tt * 0.38 * roll * spn;
+  vec3 roO = ro;
+  vec3 rdO = rd;
+  toObject(roO, pitchA, yawA, rollA);
+  toObject(rdO, pitchA, yawA, rollA);
+
+  trace(roO, rdO);
+
+  vec3 col = vec3(0.0);
+  float alpha = 0.0;
+  if(bestT < 1e8){
+    vec3 n = bestN;
+    toWorld(n, pitchA, yawA, rollA);
+    col = shade(rd, normalize(n), bestId);
+    alpha = 1.0;
   }
-
-  return i + r;
+  // Coverage stays in alpha. Shader.preprocess forces uSlotIsA to 0 and
+  // composites Slot A (opaque + uBgColor) in the entrypoint.
+  alpha *= 1.0 + uSlotIsA * 0.0;
+  fragColor = vec4(col, alpha);
 }
-
-float box( vec2 p, vec2 b )
-{
-  vec2 q = abs(p) - b;
-  return max(q.x,q.y);
-}
-
-
-vec2 replim( in vec2 p, in float c, in vec2 l){
-    return p-c*clamp(floor(p/c),-l,l);
-
-}
-
-float m1(vec2 uv) {
-  float a = 3.141592/4.;
-  float thing = 10000.;
-
-  for( float i = 0.; i <5.; i++){
-
-    uv *= rot(i * a *2.);
-
-    uv = abs(uv);
-    uv -= vec2(2,7);
-    uv = -abs(uv);
-
-
-    float x1 =  box(uv, vec2(1,1));
-    float x2 =  box(uv + vec2(2,11), vec2(1.,5.));
-    float x3 =  box(uv + vec2(14,14), vec2(.1,53.));
-    vec2 q = replim(uv, 10., vec2(11,2));
-    float x4 =  box(q , vec2(.2,2.));
-
-    float x = min(x4,min(x1,(min(x2,x3))));
-
-    thing = min(thing,x);
-  }
-  return thing ;
-
-}
-
-float a = 3.141592;
-float glow = 0.;
-float m2(vec2 uv) {
-
-  vec2 uv2 = uv;
-  float q = 1.4  + 1. *  sin(tick(tick(T9_ * sqrt(2.)/2.1 )));
-
-  float z = 10000.;
-  vec2 off = vec2(58,20);
-  for (float i = 0.; i <5.; i++) {
-    off *= rot(i/4.);
-
-    uv.x *= q;
-
-    uv *= rot(a/2.);
-
-
-    float a1 =m1(uv  + off);
-    z = min(z,a1);
-
-  }
-  vec2 arm = vec2(24);
-  arm *= rot(T9_ * 7.1);
-  float u = length(uv2  + arm) -2.;
-
-  glow += .01/(.02 + u);
-
-  return z/1.4;
-}
-
-float ink(vec2 uv) {
-
-  return m2(uv);
-}
-
-float box( vec3 p, vec3 b )
-{
-  vec3 q = abs(p) - b;
-  return length(max(q,0.0)) + min(max(q.x,max(q.y,q.z)),0.0);
-}
-
-float sph(vec3 p, float r) {
-  return length(p) - r;
-}
-
-vec3 rep( vec3 p, vec3 c )
-{
-    return mod(p,c) - 0.5 * c;
-}
-
-float rand(float t) {
-  return fract( sin(t * 7361.994) * 4518.442);
-}
-
-vec3 lattice (float t ) {
-
-  float m = t;
-  float mx = floor((m-2.)/3.);
-  float my = floor((m-1.)/3.);
-  float mz = floor((m-0.)/3.);
-
-  float n= m+1.;
-  float nx = floor((n-2.)/3.);
-  float ny = floor((n-1.)/3.);
-  float nz = floor((n-0.)/3.);
-
-  vec3 a =
-  mix(
-      vec3(
-          rand(mx)-.5,
-          rand(my)-.5,
-          rand(mz)-.5
-      ),
-      vec3(
-          rand(nx)-.5,
-          rand(ny)-.5,
-          rand(nz)-.5
-      ) ,
-      fract(t)
-  );
-  return a;
-}
-
-int matter = 1;
-
-
-vec3 delta;
-
-float building(vec3 p) {
-
-  // probe
-  vec3 fwd = delta;
-
-  vec3 pp = p - fwd;
-
-  float pr1= sph(pp, 1.);
-  float pr2 = box(pp, vec3(1.));
-  float probe = mix(pr1, pr2, .7);
-
-  // floors and collumns
-  p.xz = abs(p.xz)- 91.;
-  p = rep(p, vec3(0.,50.,0.));
-  float floors = box(p, vec3(110,5.1,110));
-  float collumns = box(p, vec3(10,10,10));
-
-
-  // merge
-  float all = min(min(floors,collumns),probe);
-
-  if ( floors == all) {
-    matter = 1;
-  }
-  if ( collumns == all) {
-    matter = 2;
-  }
-  if ( probe == all) {
-    matter = 3;
-  }
-
-  return all;
-
-}
-
-
-
-float map (vec3 p) {
-  float t = building(p);
-  return t;
-}
-vec3 norm(vec3 p) {
-  vec2 off=vec2(0.01,0.0);
-  return normalize(map(p)-vec3(map(p-off.xyy), map(p-off.yxy), map(p-off.yyx))+0.000001);
-}
-
-float rnd(vec2 t) {
-  return fract(dot(sin(t*vec2(789.451)+t.yx*vec2(842.544)),vec2(7541.223)));
-}
-
-
-
-vec3 flit(float t) {
-
-  vec3 x = normalize(vec3(1));
-  float t1 = tick(t);
-  float t2 = tick(t * .71);
-  float t3 = tick(t * .55);
-  x.yz *= rot(t1);
-  x.xz *= rot(t2);
-  x.yx *= rot(t3);
-
-  return x;
-}
-
-vec3 bezier( float t ){
-  vec3 one = lattice(floor(t));
-  vec3 two = lattice(floor(t+1.));
-  float per = fract(t);
-
-  return mix(one,two,per);
-
-}
-void mainImage( out vec4 fragColor, in vec2 fragCoord )
-{
-  T9_ = iTime*speed;
-
-  vec2 uv = vec2(fragCoord.x / iResolution.x, fragCoord.y / iResolution.y);
-  uv -= 0.5;
-  uv /= vec2(iResolution.y / iResolution.x, 1);
-
-  // nav
-
-  float tt = T9_ + 391.;
-  vec3 source = bezier(tt) * 350.;
-  vec3 target = bezier(tt + 10.) * 350.;
-
-  source += flit(tt * 1.31) * 17.1;
-  target += flit(tt * 1.51) * 17.1;
-
-
-  vec3 arm = vec3(0,0,1);
-  arm.xz *= rot(tt * .25);
-  arm.yz *= rot(tt * .28);
-  arm.xy *= rot(tt * .11);
-
-  target += arm * 100.;
-
-  vec3 down = vec3(0.,  tick(T9_ * .3) * 331., 0.);
-  source += down;
-  target += down;
-
-  delta = target - source;
-
-  vec3 cz=normalize(target-source);
-  vec3 cx=normalize(cross(cz,vec3(0,1,0)));
-  vec3 cy=normalize(cross(cz,cx));
-  vec3 r=normalize(cx*uv.x+cy*uv.y+cz*0.7);
-
-  r.xy *= rot(sin(T9_/2.1)/4.1);
-
-  vec3 p=source;
-  float d = 10000.0;
-  float dd = 0.;
-
-  // march (上限は uniform 依存にして 800 步に制限)
-  float MAXZ = 800. + min(iResolution.x, 0.);
-
-  int transp = int(mod(T9_ * .7,2.));
-  bool hit = false;
-  for(float z=0.; z < MAXZ; ++z) {
-    d=map(p);
-    d = abs(d);
-    if(d<0.1) {
-      if ( matter == 1) {
-        float i = ink(mod(p.xz,150.));
-
-        if ( transp == 0) {
-
-          if (i > .2) {
-            d = .15;
-          } else {
-            hit = true;
-            break;
-          }
-        } else {
-          hit = true;
-          break;
-        }
-
-      }
-
-      else if (matter == 2) {
-        hit = true;
-        break;
-      } else if ( matter ==3) {
-       vec3 n = norm(p);
-       r = reflect(r,n);
-       d = 0.2;
-      }
-    }
-    if ( dd > 50000.) break;
-    dd += d;
-    p+=r*d;
-  }
-
-  // hue
-
-  vec3 col;
-  bool chrome = false;
-
-  if ( matter == 1) {
-    float i = ink(mod(p.xz + vec2(0,100), 110. ));
-    col = vec3(1);
-    if ( i < 0.2) {
-      col = vec3(0);
-    }
-    if (i < -0.1) {
-      chrome = true;   // 原作の黄土色 vec3(.8,.5,.1) をクロムシルバーに
-    }
-  }
-  if (matter == 2) {
-    col = vec3(0);
-  }
-
-  if ( matter == 3 ) {
-    chrome = true;     // 原作のオレンジ vec3(1,.5,0.) もクロムシルバーに
-  }
-
-  vec3 n = norm(p);
-
-  if (chrome) {
-    // クロムシルバー: 法線ベースの擬似環境反射 (急峻な明暗の帯 + 青白いハイライト)
-    vec3 rr = reflect(r, n);
-    float v = clamp(rr.y*0.5+0.5, 0., 1.);
-    col = mix(vec3(0.06,0.07,0.09), vec3(1.02,1.05,1.10), smoothstep(0.28,0.62,v));
-    float band = smoothstep(0.44,0.46,v) - smoothstep(0.54,0.56,v);
-    col = mix(col, vec3(0.30,0.33,0.38), band*0.8);
-    vec3 sun = normalize(vec3(4.,12.,2.));
-    float spec = pow(max(dot(rr, sun), 0.), 60.);
-    col += vec3(0.9,0.95,1.0)*spec*1.2;
-  }
-
-  // sky
-  if (! hit ) {
-    col = mix(vec3(.0,.5,1.), vec3(.0,.5,1.) * .3, abs(r.y));
-  }
-
-  fragColor = vec4(col, 1);
-}`
+`
 }
 ,
 {
@@ -6066,178 +5942,6 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 }
 ,
 {
-  name: "Drifting Fractal Asteroids (3lBczV)",
-  ch: ["","","",""],
-  src: `// Adapted from Shadertoy 3lBczV "Fractal asteroid field" by jarble.
-// https://www.shadertoy.com/view/3lBczV
-// Original concept based on https://www.shadertoy.com/view/4tcGDr
-// VJ: カメラを滑らかな疑似ランダム軌道へ変更し、岩塊ごとに異なる流動を追加。
-//     Slot A=黒背景、Slot B=背景を実alphaで透過。
-// @param speed 0..3 = 0.7
-// @param camRandomPct 0..100 = 68
-// @param rockMotionPct 0..100 = 48
-// @param travelPct 0..150 = 75
-// @param colorPct 0..100 = 62
-uniform float speed;
-uniform float camRandomPct;
-uniform float rockMotionPct;
-uniform float travelPct;
-uniform float colorPct;
-uniform float uSlotIsA;
-
-const int DEPTH_LAYERS = 4;
-
-mat2 rot2(float a){
-    float c = cos(a), s = sin(a);
-    return mat2(c, s, -s, c);
-}
-
-float hash11(float p){
-    p = fract(p*0.1031);
-    p *= p + 33.33;
-    p *= p + p;
-    return fract(p);
-}
-
-// 時間方向に連続する値ノイズ。カメラを急に切り替えずランダムに蛇行させる。
-float smoothRand(float x){
-    float i = floor(x);
-    float f = fract(x);
-    f = f*f*(3.0-2.0*f);
-    return mix(hash11(i), hash11(i+1.0), f)*2.0-1.0;
-}
-
-vec3 randomCurve(float x){
-    return vec3(smoothRand(x), smoothRand(x+19.17), smoothRand(x+43.71));
-}
-
-vec3 hash33(vec3 p){
-    p = fract(p*vec3(0.1031,0.1030,0.0973));
-    p += dot(p,p.yxz+33.33);
-    return fract((p.xxy+p.yxx)*p.zyx);
-}
-
-float triWave(float x){
-    return abs(fract(x)*2.0-1.0)*2.0-1.0;
-}
-
-vec3 surfaceColor(vec3 p, vec3 n, float materialId){
-    // 原作の紫・苔色・赤褐色を軽い空間変化で再構成。
-    vec3 bands = 0.5 + 0.5*sin(vec3(materialId*2.3,materialId*3.7,materialId*5.1)
-                                   + p*vec3(0.21,0.17,0.19));
-    vec3 mauve = vec3(0.36,0.22,0.31);
-    vec3 moss = vec3(0.32,0.38,0.23);
-    vec3 clay = vec3(0.43,0.25,0.20);
-    vec3 tint = mix(mauve, moss, bands.y);
-    tint = mix(tint, clay, bands.x*bands.z*0.72);
-    float luma = dot(tint, vec3(0.299,0.587,0.114));
-    tint = mix(vec3(luma), tint, colorPct*0.01);
-    float grain = 0.86 + 0.14*sin(dot(p,vec3(0.91,1.17,0.73)) + n.y*4.0);
-    return tint*grain;
-}
-
-void mainImage(out vec4 fragColor, in vec2 fragCoord){
-    vec2 uv = (fragCoord*2.0-iResolution.xy)/iResolution.y;
-    float t = iTime*speed;
-    float camAmt = camRandomPct*0.01;
-    float travelSpeed = mix(0.045,0.23,clamp(travelPct/150.0,0.0,1.0));
-
-    // 複数周期の値ノイズを混ぜ、同じ旋回を繰り返さないカメラパスにする。
-    vec3 slow = randomCurve(t*0.115);
-    vec3 detail = randomCurve(t*0.31+71.0);
-    float roll = 0.24*camAmt*smoothRand(t*0.17+101.0);
-    vec2 cameraShift = (slow.xy*0.62+detail.yx*0.18)*camAmt;
-
-    float bestDepth = 100000.0;
-    float bestId = 0.0;
-    vec2 bestQ = vec2(0.0);
-    vec2 bestDir = vec2(1.0,0.0);
-    vec3 bestCenter = vec3(0.0);
-    float motion = rockMotionPct*0.01;
-
-    // 4枚の奥行き層だけを評価。各層は画面空間に多数の岩セルを持つ。
-    for(int i=0; i<DEPTH_LAYERS; i++){
-        float fi = float(i);
-        float cycle = t*travelSpeed+fi/float(DEPTH_LAYERS);
-        float z = fract(cycle);
-        float epoch = floor(cycle);
-        float depth = mix(11.5,1.25,z);
-
-        float layerTurn = roll+0.08*camAmt*smoothRand(epoch+fi*13.7);
-        vec2 p = rot2(layerTurn)*(uv*depth*0.72);
-        p += cameraShift*(0.34+0.66*z);
-        p += vec2(epoch*1.71+fi*7.3,epoch*-1.23+fi*3.9);
-
-        vec2 cell = floor(p);
-        vec2 local = fract(p)-0.5;
-        vec3 rnd = hash33(vec3(cell,epoch+fi*17.0));
-        vec2 driftRate = vec2(0.51+0.61*rnd.x,0.48+0.57*rnd.y);
-        vec2 center = (rnd.xy-0.5)*0.13;
-        center += vec2(triWave(t*driftRate.x*0.18+rnd.z),
-                       triWave(t*driftRate.y*0.18+rnd.x))*0.075*motion;
-
-        float radius = mix(0.245,0.405,rnd.z);
-        vec2 axis = radius*vec2(mix(0.72,1.18,rnd.x),mix(0.76,1.15,rnd.y));
-        vec2 dir = normalize((rnd.xy-0.5)+0.22*motion*vec2(
-            triWave(t*0.11+rnd.z),triWave(t*0.13+rnd.x)));
-        vec2 perp = vec2(-dir.y,dir.x);
-        vec2 delta = local-center;
-        vec2 q = vec2(dot(delta,dir),dot(delta,perp))/axis;
-
-        // 大小2ローブを重ね、完全な球ではない欠けた岩の輪郭にする。
-        vec2 qLobe = (q-(rnd.zy-0.5)*0.34)/vec2(0.76+0.16*rnd.x,0.78+0.14*rnd.y);
-        float shape = dot(q,q);
-        float lobeShape = dot(qLobe,qLobe);
-        if(lobeShape < shape){
-            shape = lobeShape;
-            q = qLobe;
-        }
-        shape += 0.28*(rnd.z-0.5)*q.x*q.y;
-        shape += 0.18*((rnd.x-0.5)*q.x*q.x*q.x+(rnd.y-0.5)*q.y*q.y*q.y);
-        if(shape < 1.0){
-            float frontDepth = depth-radius*0.55*sqrt(max(1.0-shape,0.0));
-            if(frontDepth >= bestDepth) continue;
-            bestDepth = frontDepth;
-            bestId = dot(rnd,vec3(1.0,7.0,13.0))+epoch*0.31+fi;
-            bestQ = q;
-            bestDir = dir;
-            bestCenter = vec3(cell,depth);
-        }
-    }
-
-    float hit = step(bestDepth,999.0);
-    vec3 col = vec3(0.0);
-
-    if(hit > 0.5){
-        float nz = sqrt(max(1.0-dot(bestQ,bestQ),0.0));
-        vec2 planar = bestDir*bestQ.x+vec2(-bestDir.y,bestDir.x)*bestQ.y;
-        vec3 n = normalize(vec3(planar,-nz));
-        vec3 crag = sin(vec3(bestQ.x*5.1+bestId,
-                             bestQ.y*6.3-bestId*0.7,
-                             (bestQ.x-bestQ.y)*4.4+bestId*1.3));
-        n = normalize(n+crag*vec3(0.23,0.23,0.11));
-        vec3 lightDir = normalize(vec3(-0.42,0.68,-0.62));
-        vec3 viewDir = vec3(0.0,0.0,-1.0);
-        vec3 halfDir = normalize(lightDir+viewDir);
-        float diff = max(dot(n,lightDir),0.0);
-        float back = max(dot(n,-lightDir),0.0);
-        float spec = pow(max(dot(n,halfDir),0.0),22.0);
-        float rim = pow(1.0-max(dot(n,viewDir),0.0),3.0);
-
-        vec3 base = surfaceColor(bestCenter,n,bestId);
-        col = base*(0.32+0.74*diff+0.12*back);
-        col += vec3(0.72,0.66,0.62)*spec*0.38;
-        col += base*rim*0.20;
-        float fog = exp(-bestDepth*0.070);
-        col *= fog;
-        col = pow(max(col,0.0),vec3(0.88));
-    }
-
-    fragColor = vec4(col, mix(hit,1.0,uSlotIsA));
-}`
-}
-,
-{
   name: "Deep Chrome Twisty (MsyyRc)",
   ch: ["","","",""],
   src: `// Adapted from Shadertoy MsyyRc "Twisty" by felipunkerito.
@@ -6621,125 +6325,6 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec3 c = painty(uv, iTime*speed);
 
 	fragColor = vec4(c, 1.0);
-}`
-}
-,
-{
-  name: "Fractal Chrome Shell (4stSz7)",
-  ch: ["","","",""],
-  src: `// Based on Shadertoy 4stSz7 "Fractal Experiment 10" by Stephane Cuillerdier / Aiekick.
-// Original license: CC BY-NC-SA 3.0. Fractal geometry only; original sky, checker material, fog, AO and shadows removed.
-// VJ: monochrome procedural chrome. Slot A=black background, Slot B=transparent background.
-// @param speed 0..3 = 0.75
-// @param twist 0.4..1.6 = 0.9
-uniform float speed;
-uniform float twist;
-uniform float uSlotIsA;
-
-mat2 rot2(float a){ float c=cos(a),s=sin(a); return mat2(c,-s,s,c); }
-
-vec3 objectSpace(vec3 p){
-  float tm=iTime*speed;
-  p.yz=rot2(0.22*sin(tm*0.31))*p.yz;
-  p.xz=rot2(-tm*0.18)*p.xz;
-  return p;
-}
-
-// Original 4stSz7 Mandelbrot distance fragment.
-float fractus(vec3 p){
-  vec2 z=p.xz;
-  vec2 c=vec2(0.0,sin(iTime*speed*0.10)*0.8);
-  float z2=dot(z,z),md2=1.0;
-  for(int i=0;i<17;i++){
-    md2*=max(4.0*z2,1e-7);
-    z2=dot(z,z);
-    if(z2>4.0) break;
-    z=vec2(z.x*z.x-z.y*z.y,2.0*z.x*z.y)+c;
-  }
-  return 0.25*sqrt(max(z2,1e-7)/max(md2,1e-7))*log(max(z2,1e-7));
-}
-
-float fractalShape(vec3 wp){
-  vec3 p=objectSpace(wp);
-  float ay=atan(p.x,p.z);
-  float az=atan(p.x,p.y);
-  float ax=atan(p.y,p.z);
-  float r=length(p)*twist;
-  vec3 q=cos(vec3(ax,ay,az)+r);
-  float fractal=fractus(q);
-  // The thin spherical domain from the original isolates only its fractal sculpture.
-  float l=length(p);
-  float shell=max(0.91-l,l-1.08);
-  return max(fractal,shell);
-}
-
-vec3 normalAt(vec3 p){
-  const float e=0.0018;
-  const vec2 h=vec2(1.0,-1.0)*e;
-  return normalize(
-    h.xyy*fractalShape(p+h.xyy)+h.yyx*fractalShape(p+h.yyx)+
-    h.yxy*fractalShape(p+h.yxy)+h.xxx*fractalShape(p+h.xxx));
-}
-
-vec2 raySphere(vec3 ro,vec3 rd,float r){
-  float b=dot(ro,rd),h=b*b-dot(ro,ro)+r*r;
-  if(h<0.0) return vec2(-1.0);
-  h=sqrt(h); return vec2(-b-h,-b+h);
-}
-
-vec3 chromeEnv(vec3 d){
-  d=normalize(d);
-  float horizon=exp(-22.0*abs(d.y));
-  float broad=0.5+0.5*cos(5.0*d.x-3.0*d.y+1.2);
-  float ribs=pow(0.5+0.5*cos(18.0*atan(d.z,d.x)+4.0*d.y),7.0);
-  float top=smoothstep(-0.15,0.85,d.y);
-  float v=0.075+0.38*top+0.68*horizon+0.30*broad+0.82*ribs;
-  v+=1.4*pow(max(dot(d,normalize(vec3(-0.45,0.72,0.53))),0.0),96.0);
-  return vec3(v);
-}
-
-void mainImage(out vec4 fragColor,in vec2 fragCoord){
-  vec2 uv=(fragCoord-0.5*iResolution.xy)/iResolution.y;
-  float tm=iTime*speed;
-  vec3 ro=vec3(0.0,0.05,3.15);
-  ro.xz=rot2(0.10*sin(tm*0.23))*ro.xz;
-  vec3 ta=vec3(0.0);
-  vec3 fw=normalize(ta-ro),rt=normalize(cross(fw,vec3(0,1,0))),up=cross(rt,fw);
-  vec3 rd=normalize(fw+uv.x*rt+uv.y*up);
-
-  vec2 bh=raySphere(ro,rd,1.13);
-  if(bh.y<0.0){ fragColor=vec4(0.0,0.0,0.0,uSlotIsA); return; }
-
-  float t=max(bh.x,0.0),tEnd=bh.y;
-  bool hit=false;
-  vec3 p=ro+rd*t;
-  for(int i=0;i<84;i++){
-    p=ro+rd*t;
-    float d=fractalShape(p);
-    if(abs(d)<0.0015){ hit=true; break; }
-    t+=max(d*0.68,0.0008);
-    if(t>tEnd) break;
-  }
-  if(!hit){ fragColor=vec4(0.0,0.0,0.0,uSlotIsA); return; }
-
-  vec3 n=normalAt(p);
-  vec3 v=-rd;
-  if(dot(n,v)<0.0) n=-n;
-  vec3 refl=reflect(rd,n);
-  vec3 col=chromeEnv(refl);
-  float fres=pow(1.0-max(dot(n,v),0.0),5.0);
-  vec3 key=normalize(vec3(-0.55,0.75,0.40));
-  vec3 fill=normalize(vec3(0.65,-0.20,0.73));
-  col+=vec3(1.0)*pow(max(dot(reflect(-key,n),v),0.0),80.0)*1.15;
-  col+=vec3(1.0)*pow(max(dot(reflect(-fill,n),v),0.0),44.0)*0.48;
-  col*=0.52+0.68*max(dot(n,key),0.0);
-  col+=vec3(0.10)+vec3(0.68)*fres;
-  col=col/(1.0+0.36*col);
-
-  // Premultiplied edge coverage keeps Slot B clean over arbitrary backgrounds.
-  float coverage=smoothstep(0.015,0.12,abs(dot(n,v)));
-  if(uSlotIsA<0.5) col*=coverage;
-  fragColor=vec4(col,mix(coverage,1.0,uSlotIsA));
 }`
 }
 ];

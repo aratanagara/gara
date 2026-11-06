@@ -3521,6 +3521,7 @@ in vec2 vUv;
 out vec4 frag;
 uniform vec2 uRes;
 uniform float uFaceSize;
+uniform float uTime;
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 vec4 nearestCell(vec2 p){
   vec2 base = floor(p);
@@ -3530,8 +3531,14 @@ vec4 nearestCell(vec2 p){
   int N = int(min(9.0,9.0+uRes.x*0.0));
   for(int i=0;i<N;i++){
     vec2 cell = base + vec2(float(i%3)-1.0,float(i/3)-1.0);
+    // 種点をセル内で周回させ、ボロノイ境界 (= 面の外形) を連続変形する。
+    // 速さは一巡 3〜7 秒。変位は ±0.49 に収め、3x3 探索の外へ種点が出て境界が飛ぶのを防ぐ。
     vec2 jitter = vec2(hash(cell+vec2(2.7,9.1)),hash(cell+vec2(8.3,1.6))) - 0.5;
-    vec2 site = cell + 0.5 + jitter*0.88;
+    float ph = hash(cell+vec2(5.1,2.4))*6.2831853;
+    float spd = (0.22 + hash(cell+vec2(9.9,3.3))*0.26) * 4.0;
+    vec2 drift = 0.36*vec2(sin(uTime*spd+ph), cos(uTime*spd*0.81+ph*1.7));
+    jitter = clamp(jitter*0.72 + drift, vec2(-0.49), vec2(0.49));
+    vec2 site = cell + 0.5 + jitter*0.92;
     vec2 delta = p - site;
     float d = dot(delta,delta);
     if(d < best){ best = d; chosen = cell; chosenSite = site; }
@@ -3539,9 +3546,17 @@ vec4 nearestCell(vec2 p){
   return vec4(chosen,chosenSite);
 }
 float sectorOf(vec2 p, vec4 cell, float sides){
-  vec2 fromSite = p-cell.zw;
-  float rotation = hash(cell.xy+vec2(3.7,41.5))*6.2831853;
+  // 切断の起点と開き角を時間で動かし、扇形の分割面を変形させる。
+  // 回転は一巡 3〜6 秒、開き角の伸縮は 2〜4 秒。wobble の振幅は 1 未満なので
+  // 角度は単調で、面が裏返ったり本数が増えたりしない。
+  float ph = hash(cell.xy+vec2(3.7,41.5))*6.2831853;
+  float spd = (0.28 + hash(cell.xy+vec2(11.2,6.4))*0.34) * 4.0;
+  vec2 pivot = 0.16*vec2(sin(uTime*spd*0.73+ph), cos(uTime*spd*0.61+ph*1.3));
+  vec2 fromSite = p-(cell.zw+pivot);
+  float rotation = ph + uTime*spd;
+  float wobble = 0.50*sin(uTime*(0.45+hash(cell.xy+vec2(2.2,8.8))*0.45)*4.0+ph);
   float angle = atan(fromSite.y,fromSite.x)+rotation+6.2831853;
+  angle += wobble*sin(angle+ph);
   return floor(mod(angle,6.2831853)*sides/6.2831853);
 }
 vec3 fragmentValue(vec2 pixel){
@@ -4570,7 +4585,7 @@ void main(){
     gl.attachShader(prog, this.vs);
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
-    const rec = { slotKey, src, pp, fs, prog };
+    const rec = { slotKey, src, pp, fs, prog, params: opts.params || null };
     // 並列コンパイル対応 & 同期強制でなければ、ステータス照会を tick へ遅延(UI を固めない)。
     //   旧 slot.prog はそのまま描画し続け、完了後に差し替える(黒フラッシュ無し)。
     if(this._parallelCompileExt && !opts.sync){
@@ -4631,6 +4646,14 @@ void main(){
     slot.bKey = /@bkey/.test(src);
     slot.params = pp.params;
     if(typeof App !== 'undefined' && App.applyShaderParamDefaults) App.applyShaderParamDefaults(slot);   // 保存済みシェーダ既定値を反映
+    // 状態の復元 (opts.params): 保存した値を同名のパラメータへ戻す。
+    // 非同期コンパイルでは、完了したここで初めて slot.params が新しいシェーダのものになる
+    if(rec.params){
+      for(const p of slot.params){
+        const m = rec.params.find(x=>x.name===p.name);
+        if(m && (typeof m.value==='number' || Array.isArray(m.value))) p.value = m.value;
+      }
+    }
     slot.errors = '';
     slot.ready = true;
     slot.format = pp.format;
@@ -7281,7 +7304,11 @@ void main(){
       state.history.forEach(f=>{ gl.bindFramebuffer(gl.FRAMEBUFFER, f.fbo); gl.clearBufferfv(gl.COLOR, 0, new Float32Array(4)); });
       fresh = true;
     }
-    if(state.faceSize !== faceSize){
+    const time = performance.now() / 1000;
+    const polygon = Math.max(0, Math.min(1, +(p && p.fbResiduePoly) || 0));
+    // 分割面の形は uTime 依存。Polygon が効いている間だけ毎フレーム焼き直す。
+    // 0 のときは Face Size 変更時だけ更新し、有機的な残像パスの負荷は変えない。
+    if(state.faceSize !== faceSize || polygon > 0.001){
       gl.useProgram(this.fbResiduePolyProg);
       gl.bindVertexArray(this.quadVAO);
       gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
@@ -7289,6 +7316,7 @@ void main(){
       gl.viewport(0, 0, mw, mh);
       gl.uniform2f(gl.getUniformLocation(this.fbResiduePolyProg, 'uRes'), w, h);
       gl.uniform1f(gl.getUniformLocation(this.fbResiduePolyProg, 'uFaceSize'), faceSize);
+      gl.uniform1f(gl.getUniformLocation(this.fbResiduePolyProg, 'uTime'), time);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       gl.bindVertexArray(null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -7327,12 +7355,10 @@ void main(){
       gl.activeTexture(gl.TEXTURE0);
       });
     };
-    const time = performance.now() / 1000;
     const dt = Math.min(0.25, Math.max(0, time - state.lastTime));
     state.lastTime = time;
     const hold = Math.max(0, Math.min(1, +(p && p.fbResidueHold) || 0));
     const pull = Math.max(0, Math.min(1, +(p && p.fbResiduePull) || 0));
-    const polygon = Math.max(0, Math.min(1, +(p && p.fbResiduePoly) || 0));
     const next = state.index ^ 1;
     const M = this.fbResidueMaskProg;
     gl.useProgram(M);
@@ -8393,6 +8419,18 @@ void main(){
       WindFlock.update();
       const target = slot.fbos[slot.fbIdx];
       WindFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
+    if(slot.kind === 'surrealfloat'){
+      if(typeof SurrealFloat === 'undefined') return;
+      if(!SurrealFloat.initialized) SurrealFloat.init(this.gl);
+      SurrealFloat.update();
+      const target = slot.fbos[slot.fbIdx];
+      SurrealFloat.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -11430,8 +11468,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -12596,6 +12634,7 @@ const App = {
     PRESETS.unshift({ name:'★ TRANSMUTE FLOCK (錬成痕)', kind:'transflock', ch:[], src:'' });
     PRESETS.unshift({ name:'★ LIQUID PEEL (剥離)', kind:'liquidpeel', ch:[], src:'' });
     PRESETS.unshift({ name:'★ WIND FLOCK (風の面)', kind:'windflock', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ SURREAL FLOAT (浮遊する構造物)', kind:'surrealfloat', ch:[], src:'' });
     PRESETS.unshift({ name:'★ FUDE (毛筆)', kind:'fude', ch:[], src:'' });
     PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
     PRESETS.unshift({ name:'★ VIDEO (Loop Player)', kind:'video', ch:[], src:'' });
@@ -12640,6 +12679,7 @@ const App = {
     // 何が起きても最終的にローディング画面は消す(ハング時の保険。準備完了で即消える)
     setTimeout(()=>{ try{ window.__vjLoadDone && window.__vjLoadDone(); }catch(_){} }, 15000);
     this._shadersReadyPromise.then(async ()=>{
+      this._flushPendingSlotRestores();   // 「なし」を入れる下の判定より先に、復元を待たせたスロットを戻す
       LOAD('Applying startup preset…', 96);
       let dv = PRESETS.findIndex(p => p && /liquid/i.test(p.name || ''));
       if(dv < 0) dv = PRESETS.findIndex(p => p && /vangogh/i.test(p.name || ''));  // フォールバック
@@ -12654,10 +12694,13 @@ const App = {
       const ni = PRESETS.findIndex(p => p && p.kind === 'none');
       if(ni < 0) return;
       let changed = false;
-      if(!GL.slots.A.src && GL.slots.A.kind === 'shader'){ this.loadPreset(ni,'A'); changed = true; }
-      if(!GL.slots.B.src && GL.slots.B.kind === 'shader'){ this.loadPreset(ni,'B'); changed = true; }
+      // 非同期コンパイル中のスロット (直前に復元したもの) は src がまだ空でも「なし」にしない
+      const compiling = (k)=> (GL._pendingCompiles || []).some(r => r.slotKey === k);
+      if(!GL.slots.A.src && GL.slots.A.kind === 'shader' && !compiling('A')){ this.loadPreset(ni,'A'); changed = true; }
+      if(!GL.slots.B.src && GL.slots.B.kind === 'shader' && !compiling('B')){ this.loadPreset(ni,'B'); changed = true; }
       if(changed) MIDI.applyAll();
     }).finally(()=>{
+      this._flushPendingSlotRestores();   // 読み込みが失敗しても復元待ちのまま残さない
       // ステージを描ける状態(本命 or フォールバックの合成が完成)になり、最初の描画フレームが出てから
       // ローディング画面を消す。本命の巨大合成(Windows/FXC で数十秒かかりうる)はバックグラウンドで
       // コンパイルを続け、完成したら自動で差し替わる。
@@ -13945,6 +13988,16 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'surrealfloat'){
+      s.kind = 'surrealfloat';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'surrealfloat';
+      if(typeof SurrealFloat !== 'undefined' && !SurrealFloat.initialized) SurrealFloat.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('surrealfloat');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'fude'){
       s.kind = 'fude';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'fude';
@@ -13988,6 +14041,7 @@ ${outBlock}
     }
     s.kind = 'shader';
     s._presetName = p.name;   // shader params デフォルト保存/適用のキー
+    s.edited = false;
     const ok = GL.compileSlot(slotKey, p.src);
     if(ok){
       // apply channel hints
@@ -14041,6 +14095,7 @@ ${outBlock}
       case 'transflock': return (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null;
       case 'liquidpeel': return (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null;
       case 'windflock': return (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null;
+      case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
       case 'textdeform': return (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null;
       case 'ugomeki': return (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null;
@@ -14544,8 +14599,8 @@ ${outBlock}
     });
     return {
       slots:{
-        A:{src:GL.slots.A.src, kind:GL.slots.A.kind, channels:chOf('A'), params:GL.slots.A.params, presetName: pn('A'), video: vidOf('A'), mouse: mouseOf('A'), renderScale:GL.slots.A.renderScale},
-        B:{src:GL.slots.B.src, kind:GL.slots.B.kind, channels:chOf('B'), params:GL.slots.B.params, presetName: pn('B'), video: vidOf('B'), mouse: mouseOf('B'), renderScale:GL.slots.B.renderScale}
+        A:{src:GL.slots.A.src, edited:!!GL.slots.A.edited, kind:GL.slots.A.kind, channels:chOf('A'), params:GL.slots.A.params, presetName: pn('A'), video: vidOf('A'), mouse: mouseOf('A'), renderScale:GL.slots.A.renderScale},
+        B:{src:GL.slots.B.src, edited:!!GL.slots.B.edited, kind:GL.slots.B.kind, channels:chOf('B'), params:GL.slots.B.params, presetName: pn('B'), video: vidOf('B'), mouse: mouseOf('B'), renderScale:GL.slots.B.renderScale}
       },
       beatMode: this.beatMode,
       audioTime: Object.assign({}, this.audioTime),
@@ -14577,6 +14632,7 @@ ${outBlock}
 	      transflock: (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null,
 	      liquidpeel: (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null,
 	      windflock: (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null,
+	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
 	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null,
 	      ugomeki: (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null,
@@ -14586,6 +14642,8 @@ ${outBlock}
     };
   },
   saveLocal(){
+    // 復元待ちのスロットがある間に保存すると、空のスロットで vj.state を上書きしてしまう
+    if(Object.keys(this._pendingSlotRestores).length) return;
     try{ localStorage.setItem('vj.state', JSON.stringify(this._collectState())); }catch(e){}
   },
   // ─── Undo / Redo (Cmd+Z / Cmd+Shift+Z) ───────────────
@@ -15265,7 +15323,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -15494,9 +15552,55 @@ ${outBlock}
   loadLocal(){
     try{
       const s = JSON.parse(localStorage.getItem('vj.state')||'null'); if(!s) return;
-      this._applyState(s, {restoreMixControls:true});
+      this._applyState(s, {restoreMixControls:true, freshShaders:true});
       this.crossfade = 1.0;   // Mix は起動時は常に既定100%(復元しても 100%)
     }catch(e){ console.warn(e); }
+  },
+  // loadLocal が待たせたシェーダスロット ({A, B}: 保存されたスロット state)。待っている間は autosave しない
+  _pendingSlotRestores:{},
+  _extShadersLoaded:false,
+  // 外部シェーダの読み込み後に、待たせたスロットを復元する。プリセット名が見つかればいまのコード、
+  // 見つからなければ (削除・改名) 保存時のコードで復元する
+  _flushPendingSlotRestores(){
+    this._extShadersLoaded = true;
+    const pend = this._pendingSlotRestores;
+    this._pendingSlotRestores = {};
+    const keys = Object.keys(pend);
+    for(const k of keys){
+      const sk = pend[k];
+      const fresh = PRESETS.find(p => p && p.name === sk.presetName && p.src);
+      this._restoreShaderSlot(k, sk, fresh ? fresh.src : sk.src);
+    }
+    if(keys.length && typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
+  },
+  // 保存されたスロット state (sk) のシェーダを src でコンパイルし、チャンネル・パラメータ・表示を戻す
+  _restoreShaderSlot(k, sk, src){
+    // エンジン → シェーダ切替時に kind を 'shader' へ戻す(残っていると描画系がエンジンを描き続ける)
+    GL.slots[k].kind = sk.kind || 'shader';
+    GL.slots[k].edited = !!sk.edited;
+    // 旧保存データには renderScale が無いため、プリセット名から現在の推奨値を補完する。
+    const renderPreset = sk.presetName ? PRESETS.find(p => p && p.name === sk.presetName) : null;
+    const restoredScale = sk.renderScale != null ? Number(sk.renderScale)
+      : Number(renderPreset && renderPreset.renderScale);
+    GL.slots[k].renderScale = Math.max(0.25,Math.min(1,restoredScale||1));
+    if(GL._resizeSlotBuffers) GL._resizeSlotBuffers(GL.slots[k],false);
+    GL.compileSlot(k, src, {params: sk.params});   // 保存したパラメータ値はコンパイル完了時に戻る
+    GL.slots[k].channels = (sk.channels || [null,null,null,null]).slice();
+    // パス保存された画像チャンネルを再束縛 (Inputs の ID はセッション限りのため)
+    (sk.channels || []).forEach((c, ci) => {
+      if(typeof c === 'string' && /\.(png|jpe?g|webp|gif)$/i.test(c)){
+        const slotKey2 = k;
+        GL.slots[slotKey2].channels[ci] = null;
+        Inputs.addImageURL(c, c).then(id => {
+          if(id){ GL.slots[slotKey2].channels[ci] = id; if(typeof UI !== 'undefined' && UI.refreshChannels) UI.refreshChannels(); }
+        });
+      }
+    });
+    // UI 同期: プリセット名からインデックスを引いてサムネ/スロット表示を更新
+    if(sk.presetName && typeof UI !== 'undefined'){
+      const pi = PRESETS.findIndex(p => p && p.name === sk.presetName);
+      if(pi >= 0) UI.activePresetIdx[k] = pi;
+    }
   },
   // 起動プリセット: リポジトリ直下の startup.json (state 形式) を起動時に自動適用する。
   //   保存状態を復元した場合(復元ON + vj.state あり)は、ユーザーの最新状態を優先してスキップ。
@@ -15646,7 +15750,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','fude'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -15703,39 +15807,16 @@ ${outBlock}
           }
         }
         if(sk && sk.src){
-          // エンジン → シェーダ切替時に kind を 'shader' へ戻す(残っていると描画系がエンジンを描き続ける)
-          GL.slots[k].kind = sk.kind || 'shader';
-          // 旧保存データには renderScale が無いため、プリセット名から現在の推奨値を補完する。
-          const renderPreset = sk.presetName ? PRESETS.find(p => p && p.name === sk.presetName) : null;
-          const restoredScale = sk.renderScale != null ? Number(sk.renderScale)
-            : Number(renderPreset && renderPreset.renderScale);
-          GL.slots[k].renderScale = Math.max(0.25,Math.min(1,restoredScale||1));
-          if(GL._resizeSlotBuffers) GL._resizeSlotBuffers(GL.slots[k],false);
-          GL.compileSlot(k, sk.src);
-          GL.slots[k].channels = (sk.channels || [null,null,null,null]).slice();
-          // パス保存された画像チャンネルを再束縛 (Inputs の ID はセッション限りのため)
-          (sk.channels || []).forEach((c, ci) => {
-            if(typeof c === 'string' && /\.(png|jpe?g|webp|gif)$/i.test(c)){
-              const slotKey2 = k;
-              GL.slots[slotKey2].channels[ci] = null;
-              Inputs.addImageURL(c, c).then(id => {
-                if(id){ GL.slots[slotKey2].channels[ci] = id; if(typeof UI !== 'undefined' && UI.refreshChannels) UI.refreshChannels(); }
-              });
-            }
-          });
-          // restore param values
-          if(sk.params){
-            const saved = sk.params;
-            for(const p of GL.slots[k].params){
-              const m = saved.find(x=>x.name===p.name);
-              if(m && (typeof m.value==='number' || Array.isArray(m.value))) p.value = m.value;
-            }
+          // 落ちた後の再起動 (loadLocal) では、エディタで編集していないシェーダは保存時のコードではなく
+          // いまのプリセットのコードを読み直す。フォルダシェーダ (shaders/*.frag) がまだ PRESETS に無いときは、
+          // 古いコードを先に描かないよう、外部シェーダの読み込み後 (_flushPendingSlotRestores) まで復元を待つ
+          const fresh = opts.freshShaders && !sk.edited && sk.presetName
+            ? PRESETS.find(p => p && p.name === sk.presetName && p.src) : null;
+          if(opts.freshShaders && !sk.edited && sk.presetName && !fresh && !this._extShadersLoaded){
+            this._pendingSlotRestores[k] = sk;
+            continue;
           }
-          // UI 同期: プリセット名からインデックスを引いてサムネ/スロット表示を更新
-          if(sk.presetName && typeof UI !== 'undefined'){
-            const pi = PRESETS.findIndex(p => p && p.name === sk.presetName);
-            if(pi >= 0) UI.activePresetIdx[k] = pi;
-          }
+          this._restoreShaderSlot(k, sk, fresh ? fresh.src : sk.src);
         }
       }
       // スロット表示/サムネのハイライトを同期
@@ -17838,7 +17919,11 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxPixsort', 'pixsort', f2);
     slid('pxRings', 'rings', f2);
     slid('pxFbAmount', 'fbAmount', f2);
-    { const mode=$('#pxFbMode'); if(mode) mode.addEventListener('change',()=>{ App.post.fbMode=mode.value; UI.refreshPost(); }); }
+    { const box=$('#pxFbMode'); if(box) box.addEventListener('click',(e)=>{
+        const b = e.target.closest('button[data-type]'); if(!b) return;
+        App.post.fbMode = b.dataset.type;   // FB は同時に 1 種類だけ
+        UI.refreshPost();
+      }); }
     slid('pxFbZoom', 'fbZoom', f2);
     slid('pxFbRot', 'fbRot', f2);
     slid('pxFbSteps', 'fbSteps', v=>String(1+Math.round(v*11)));
@@ -18024,7 +18109,9 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxSketch', p.sketch, f2);
     set('pxPixsort', p.pixsort, f2);
     set('pxRings', p.rings || 0, f2);
-    { const mode=$('#pxFbMode'); if(mode) mode.value=['add','multiply','residue'].includes(p.fbMode)?p.fbMode:'residue';
+    // トグルボタン列 (.toggle-btns) の選択表示
+    const press = (box, isOn)=> box.querySelectorAll('button[data-type]').forEach(b=> b.setAttribute('aria-pressed', isOn(b.dataset.type) ? 'true' : 'false'));
+    { const box=$('#pxFbMode'); if(box){ const m=['add','multiply','residue'].includes(p.fbMode)?p.fbMode:'residue'; press(box, t=>t===m); }
       const light=$('.fb-light-options'), residue=$('.fb-residue-options');
       if(light) light.style.display=p.fbMode==='residue'?'none':'';
       if(residue) residue.style.display=p.fbMode==='residue'?'':'none'; }
@@ -18040,7 +18127,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxGlitchTrail', p.glitchTrail || 0, f2);
     { const box = $('#pxGlitchTrailTypes'); if(box){
         const mask = GL.glitchTrailMask(p.glitchTrailType);
-        box.querySelectorAll('button[data-type]').forEach(b=>{ const on = (mask >> GL.GLITCH_TRAIL_TYPES.indexOf(b.dataset.type)) & 1; b.style.opacity = on ? '1' : '.4'; b.style.borderColor = on ? 'var(--acc, #7c4dff)' : '#444'; });
+        press(box, t=> (mask >> GL.GLITCH_TRAIL_TYPES.indexOf(t)) & 1);
       } }
     set('pxClarity', p.clarity || 0, f2);
     set('pxDenoise', p.denoise || 0, f2);
@@ -18149,7 +18236,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','fude'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -18229,6 +18316,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'transflock') ? 'TRANSMUTE\nFLOCK'
                      : (p.kind === 'liquidpeel') ? 'LIQUID\nPEEL'
                      : (p.kind === 'windflock') ? 'WIND\nFLOCK'
+                     : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
                      : (p.kind === 'fude') ? 'FUDE'
                      : (p.kind === 'spacetype') ? 'SPACE\nTYPE'
                      : (p.kind === 'ribbon') ? 'RIBBON\nLINES'
@@ -18442,6 +18530,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Editor からのコンパイルはシェーダモードへ切替。手動編集は即時エラー表示のため同期コンパイル。
     GL.slots[App.activeSlot].kind = 'shader';
     const ok = GL.compileSlot(App.activeSlot, src, {sync:true});
+    if(ok) GL.slots[App.activeSlot].edited = true;   // 落ちた後の復元でプリセットのコードに戻さない
     if(ok){ this.hideError(); this.refreshParams(); this.updateGutter([]); this.refreshFmt(); this.refreshSlot(); toast('Compiled ('+GL.slots[App.activeSlot].format+')'); }
     else { this.showError(GL.slots[App.activeSlot].errors); this.updateGutter(Shader.errorLines(GL.slots[App.activeSlot].errors)); this.refreshFmt(); }
   },
@@ -18583,7 +18672,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'fude';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'surrealfloat' && slot.kind !== 'fude';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -18607,6 +18696,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isWF = slot.kind === 'windflock';
     $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
     if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
+    const isSF = slot.kind === 'surrealfloat';
+    $$('.surrealfloat-mode').forEach(el => el.style.display = isSF ? '' : 'none');
+    if(isSF && this.refreshSurrealParams) this.refreshSurrealParams();
     const isFude = slot.kind === 'fude';
     $$('.fude-mode').forEach(el => el.style.display = isFude ? '' : 'none');
     if(isFude && this.refreshFudeParams) this.refreshFudeParams();
@@ -18976,6 +19068,12 @@ void mainImage(out vec4 o, in vec2 f){
       sl.dispatchEvent(new Event('change', {bubbles:true}));
       n++;
     });
+    // 1 つだけ選ぶトグルボタン列 (FB Mode) も select と同じく選び直す
+    sec.querySelectorAll('.toggle-btns[data-single]').forEach(box=>{
+      const bs = box.querySelectorAll('button[data-type]'); if(!bs.length) return;
+      bs[Math.floor(Math.random()*bs.length)].click();
+      n++;
+    });
     if(typeof MIDI !== 'undefined' && MIDI.refreshLeds) MIDI.refreshLeds();
     App._undoSchedule && App._undoSchedule();
     toast('ランダム化: ' + (kind || 'section') + ' (' + n + ' 項目)');
@@ -19255,6 +19353,70 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshWindflockParams();
       });
       row.appendChild(b); }
+  },
+  refreshSurrealParams(){
+    const root = document.getElementById('surrealParams'); if(!root) return;
+    if(typeof SurrealFloat === 'undefined' || !SurrealFloat.initialized){
+      root.innerHTML = '<div class="help">SURREAL FLOAT preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = SurrealFloat.P;
+    const pct = v=>String(Math.round(v))+'%';
+    const int = v=>String(Math.round(v));
+    const specs = [
+      ['Speed',     'speed',    0, 300, 1, pct],
+      ['Depth',     'depth',    0, 300, 1, pct],
+      ['Drift',     'drift',    0, 300, 1, pct],
+      ['Spin',      'spin',     0, 300, 1, pct],
+      ['Morph',     'morph',    0, 300, 1, pct],
+      ['Count',     'count',    1, 36,  1, int],
+      ['Size',      'size',     20, 300, 1, pct],
+      ['Size Var',  'sizeVar',  0, 200, 1, pct],
+      ['Weird',     'weird',    0, 300, 1, pct],
+      ['Debris',    'debris',   0, 200, 1, pct],
+      ['Oddity',    'oddity',   0, 250, 1, pct],
+      ['Tanguy',    'tanguy',   0, 250, 1, pct],
+      ['Pan',       'pan',      0, 300, 1, pct],
+      ['Cloud',     'cloud',    0, 200, 1, pct],
+      ['Cloud Spd', 'cloudSpd', 0, 300, 1, pct],
+      ['Dunes',     'dunes',    0, 200, 1, pct],
+      ['Haze',      'haze',     0, 300, 1, pct],
+      ['Shadow',    'shadow',   0, 200, 1, pct],
+      ['Brush',     'brush',    0, 300, 1, pct],
+      ['Kick',      'kick',     0, 200, 1, pct],
+      ['Seed',      'seed',     0, 100, 1, int],
+    ];
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    const NO_DEAD = { seed:1, count:1 };
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    {   // 雰囲気 (Mood): 選ぶと 空・雲・砂・光・色調 がまとめて変わる (約 1 秒でなめらかに)。空と砂の色は下のピッカーで続けて調整できる
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent='Mood';
+      const sel=document.createElement('select'); sel.style.flex='1';
+      (SurrealFloat.MOODS || []).forEach((m, i)=>{ const o=document.createElement('option'); o.value=String(i); o.textContent=m.name; sel.appendChild(o); });
+      sel.value = String(Math.round(+P.mood || 0));
+      sel.addEventListener('change', ()=>{ SurrealFloat.setMood(parseInt(sel.value, 10)); this.refreshSurrealParams(); });
+      row.appendChild(lab); row.appendChild(sel);
+    }
+    for(const [label,key,mi,ma,step,fmt] of specs){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
+      const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    }
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    for(const [label,key] of [['Sky Top','skyTop'],['Sky Low','skyLow'],['Sand','sand']]){
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.dataset.default = toHex((SurrealFloat.PDefaults && SurrealFloat.PDefaults[key]) || P[key]);
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const val=document.createElement('div'); val.className='val'; val.textContent='';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    }
   },
   refreshFudeParams(){
     const root = document.getElementById('fudeParams'); if(!root) return;

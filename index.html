@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1793696406">
+<link rel="stylesheet" href="style.css?v=1793926088">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -774,6 +774,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div id="windflockParams" style="margin-top:6px"></div>
         </div>
 
+        <div class="section surrealfloat-mode" style="display:none">
+          <h3>Surreal Float <span class="pill section-tag">浮遊する構造物 / instanced</span> <span class="default-actions"><button class="saveDefBtn" data-kind="surrealfloat" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="surrealfloat" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="surrealfloat" title="パラメータをランダムに変える (色は変えない)">Random 🎲</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">白い砂漠の上空を、マグリット風の構造物 (板・管・石膏球・輪・小窓・白い布) とイヴ・タンギー風の不定形が、それぞれの速さと向きで近づいたり遠ざかったりする。Depth=行き交う速さ、Pan=カメラの横回転、Morph=部品の組み替え。シェーダ版 (Surreal Float) をジオメトリで描き直した軽量版。</div>
+          <div id="surrealParams" style="margin-top:6px"></div>
+        </div>
+
         <div class="section fude-mode" style="display:none">
           <h3>Fude <span class="pill section-tag">毛筆 / ribbon</span> <span class="default-actions"><button class="resetDefBtn" data-kind="fude" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="fude" title="現在の値をデフォルトとして保存">Save</button></span></h3>
           <div class="help" style="font-size:10px;margin-top:4px">入力した文字の骨格を取り出し、筆で書き直す。太さ・はらい・かすれ・にじみは全部ライブで動く。Write=Loop で一画ずつ書いていく (C で一画目へ)。Ease は 1 画の、Ease All は文章全体の速度カーブで、強さは Ease Pow。Beat Write で A: Beat ごとに 1 筆 / B: 1 文字 / C: 全文字列 を選べる (間隔は Beat Rate、Attack を上げるとその拍の中で筆で書く)。beat モードは Bar Beats (既定 4 拍) の中で全部を書き切って次のセットへ移る (Off は C と同じ。A / B は Beat Rate で進み、収まらなければ詰める)。drone モードは選んだとおりで、Off は Write の設定で書く。Text Pick で Word Set (1 行 1 文字列、/ で改行。空なら既定のセット) からランダムか順番に読む。Exit でフェード / 一気に消える / 1 筆・1 文字ずつ を選ぶ。Color で指定色 / セットから選ぶ / セットからランダム / 完全ランダム を選ぶ。1 筆・1 文字ずつは Beat Write の A / B で効き、書いた順に消えて、消えきった拍で次のセットが始まる。C や Off ではフェードになる。Set Trans を入れると、セットが変わるときに Transition が掛かる (演出は Trans Style、既定は Mix の設定)。このとき文字は Exit に関わらず切替まで残る。beat モードのフェードも切替まで文字を残す。Reseed=毎回変える なら周回・C・読込のたびに Seed を引き直して別の書きぶりになる (幅は Vary)。気に入ったら Reseed を固定にするとその Seed で止まる。Style で楷書 / 行書 / 草書 / 隷書 / 篆書 のパラメータと筆運び (Ease・画の間・速さのばらつき) をまとめて入れられる (そのあと個別に動かせる)。Font はこの端末で使えるものだけ出る。Layout は横組 / 縦組 / ランダム配置と、それをセットごとに選び直す毎回ランダムで、ランダム配置は Placement=構成 ならポスターの型 16 種で組む (大きい字は画面の外へ出る)。1 文字ごとの位置・ずらし・傾き・大きさも指定できる (Size Min と Max を離すと大きさがばらける)。Aspect は文字の縦横比で、Aspect Rand / Slant Rand で 1 文字ごとにばらせる。Random Unit で書体・フォント・筆・配置の変わる単位を 1 文字ごと / 1 セットごと (文章を 1 回書く間) から選ぶ。セットは Reseed=毎回変える なら文章を 1 回書くごとに切り替わる。線が崩れる書体は Smooth / Spur / Merge で骨格を調整する。Random は筆・毛・墨だけを引き直す。</div>
@@ -1003,7 +1009,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Motion Blur</label><input type="range" id="pxMblur" min="0" max="1" step="0.01" value="0"><div class="val" id="pxMblurVal">0.00</div></div>
           <div class="fb-group" style="margin-top:10px;padding-top:8px;border-top:1px solid #383838">
             <h3>FB <span class="default-actions"><button class="resetDefBtn" data-kind="fb" title="保存したFBの既定値を消して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="fb" title="FBの種類と全設定を既定値として保存">Save</button></span></h3>
-            <div class="row"><label>Mode</label><select id="pxFbMode" title="FBの種類。Add は明るい残像、Multiply は暗い残像、Residue は動いた形の残像"><option value="add">Add</option><option value="multiply">Multiply</option><option value="residue" selected>Residue</option></select></div>
+            <div class="row"><label>Mode</label><div id="pxFbMode" class="toggle-btns" data-single title="FBの種類 (同時に掛けるのは 1 種類)"><button data-type="add" title="Add: 明るい残像">Add</button><button data-type="multiply" title="Multiply: 暗い残像">Multiply</button><button data-type="residue" title="Residue: 動いた形の残像">Residue</button></div></div>
             <div class="row"><label>Amount</label><input type="range" id="pxFbAmount" min="0" max="1" step="0.01" value="0" title="選んだFBの量。0で無効"><div class="val" id="pxFbAmountVal">0.00</div></div>
             <div class="row"><label>Steps</label><input type="range" id="pxFbSteps" min="0" max="1" step="0.01" value="1" title="保持する残像の枚数。1〜12 段。増やすほど別々の時刻の絵が重なる"><div class="val" id="pxFbStepsVal">12</div></div>
             <div class="row"><label>Fade</label><input type="range" id="pxFbFade" min="0" max="1" step="0.01" value="0.5" title="残像が消える速さ。左は長く残り、右は早く消える。残像の採取間隔と段ごとの濃さを調整"><div class="val" id="pxFbFadeVal">0.50</div></div>
@@ -1014,7 +1020,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <div class="fb-residue-options">
             <div class="row"><label>Echo Hold</label><input type="range" id="pxFbResidueHold" min="0" max="1" step="0.01" value="0.55" title="前の画が崩れながら残る長さ"><div class="val" id="pxFbResidueHoldVal">0.55</div></div>
             <div class="row"><label>Echo Pull</label><input type="range" id="pxFbResiduePull" min="0" max="1" step="0.01" value="0.35" title="動きに沿って前の画を引き延ばす強さ。0 で位置ずれなし"><div class="val" id="pxFbResiduePullVal">0.35</div></div>
-            <div class="row"><label>Polygon</label><input type="range" id="pxFbResiduePoly" min="0" max="1" step="0.01" value="0" title="選ばれた大きな多角形の面がそれぞれ独立して揺れ、たわみながら前の映像を運ぶ。Polygon 1 では粉を出さない。0 は従来の有機的な残像"><div class="val" id="pxFbResiduePolyVal">0.00</div></div>
+            <div class="row"><label>Polygon</label><input type="range" id="pxFbResiduePoly" min="0" max="1" step="0.01" value="0" title="選ばれた大きな多角形の面がそれぞれ独立して揺れ、たわみながら前の映像を運ぶ。分割面の形は時間で連続的に変わる。Polygon 1 では粉を出さない。0 は従来の有機的な残像"><div class="val" id="pxFbResiduePolyVal">0.00</div></div>
             <div class="row"><label>Face Size</label><input type="range" id="pxFbResidueFaceSize" min="0" max="1" step="0.01" value="0.5" title="Polygon の面の大きさ。上げるほど分割数が指数的に減り、最大では画面をまたぐ大きな面になる"><div class="val" id="pxFbResidueFaceSizeVal">0.50</div></div>
             <div class="help">人物・物体・文字など、動いた部分にだけ残像が生じます。</div>
             </div>
@@ -1030,7 +1036,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxInkBleed">Ink Bleed</label><input type="range" id="pxInkBleed" min="0" max="1" step="0.01" value="0" title="線と輪郭の色を保ったまま紙ににじませる。背景が黒いときは Paper を黒に設定する"><div class="val" id="pxInkBleedVal">0</div></div>
           <div class="row"><label>Barcode</label><input type="range" id="pxBarcode" min="0" max="1" step="0.01" value="0" title="ランダムなピクセルを横に引き延ばし、ランダムな周期・高さのバーコード状の行に。行ごとに違う速さで変異する"><div class="val" id="pxBarcodeVal">0.00</div></div>
           <div class="row"><label>Datamosh</label><input type="range" id="pxGlitchTrail" min="0" max="1" step="0.01" value="0" title="細面ほど1/16〜1/4拍で速く動き、未分割の大面を遅く残しながら分節スキャンを刻むデータモッシュ。0=OFF"><div class="val" id="pxGlitchTrailVal">0.00</div></div>
-          <div class="row"><label>Datamosh Type</label><div id="pxGlitchTrailTypes" style="flex:1;display:flex;gap:3px" title="Datamosh の種類 (複数を同時に重ねられる)"><button data-type="mondrian" title="面ごとの動き + 走査帯" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Mondrian</button><button data-type="block" title="マクロブロックの流れ + 4 拍ごとの I フレーム" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Block</button><button data-type="melt" title="縦の帯が下へ垂れる" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Melt</button><button data-type="tear" title="横帯の横ずれ + ロール" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Tear</button><button data-type="freeze" title="面が数拍そのまま固まる" style="flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer">Freeze</button></div></div>
+          <div class="row"><label>Datamosh Type</label><div id="pxGlitchTrailTypes" class="toggle-btns" title="Datamosh の種類 (複数を同時に重ねられる)"><button data-type="mondrian" title="面ごとの動き + 走査帯">Mondrian</button><button data-type="block" title="マクロブロックの流れ + 4 拍ごとの I フレーム">Block</button><button data-type="melt" title="縦の帯が下へ垂れる">Melt</button><button data-type="tear" title="横帯の横ずれ + ロール">Tear</button><button data-type="freeze" title="面が数拍そのまま固まる">Freeze</button></div></div>
           <div class="help" style="margin-top:6px">visual.frag の glitchMode 1/2/3/4 + 5 を移植。BPM/Tap でテンポを合わせると拍に同期します。</div>
         </div>
         <div class="section">
@@ -1419,39 +1425,40 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1793696406"></script>
-<script src="mode/layer.js?v=1793696406"></script>
-<script src="vendor/iro.min.js?v=1793696406"></script>
-<script src="vendor/mediabunny.min.js?v=1793696406"></script>
-<script src="mode/textdeform.js?v=1793696406"></script>
-<script src="mode/textdeform-comp.js?v=1793696406"></script>
-<script src="mode/ugomeki.js?v=1793696406"></script>
-<script src="mode/slicer.js?v=1793696406"></script>
-<script src="mode/video.js?v=1793696406"></script>
-<script src="mode/aratanagara.js?v=1793696406"></script>
-<script src="vendor/p5.min.js?v=1793696406"></script>
-<script src="mode/cyberui.js?v=1793696406"></script>
-<script src="mode/novel.js?v=1793696406"></script>
-<script src="shaders/inkelly.js?v=1793696406"></script>
-<script src="sketchfx.js?v=1793696406"></script>
-<script src="pixelsortfx.js?v=1793696406"></script>
-<script src="shaders/boltzmann.js?v=1793696406"></script>
-<script src="mode/pen.js?v=1793696406"></script>
-<script src="shaders/caverns.js?v=1793696406"></script>
-<script src="mode/shelf.js?v=1793696406"></script>
-<script src="shaders/ribbon.js?v=1793696406"></script>
-<script src="mode/photoplane.js?v=1793696406"></script>
-<script src="mode/shredder.js?v=1793696406"></script>
-<script src="mode/transflock.js?v=1793696406"></script>
-<script src="mode/liquidpeel.js?v=1793696406"></script>
-<script src="mode/windflock.js?v=1793696406"></script>
-<script src="mode/fude.js?v=1793696406"></script>
-<script src="mode/image.js?v=1793696406"></script>
-<script src="mode/spacetype.js?v=1793696406"></script>
-<script src="pollockfx.js?v=1793696406"></script>
-<script src="overlay.js?v=1793696406"></script>
-<script src="gif.js?v=1793696406"></script>
-  <script src="app.js?v=1793696406"></script>
-<script src="camroll.js?v=1793696406" defer></script>
+<script src="presets.js?v=1793926088"></script>
+<script src="mode/layer.js?v=1793926088"></script>
+<script src="vendor/iro.min.js?v=1793926088"></script>
+<script src="vendor/mediabunny.min.js?v=1793926088"></script>
+<script src="mode/textdeform.js?v=1793926088"></script>
+<script src="mode/textdeform-comp.js?v=1793926088"></script>
+<script src="mode/ugomeki.js?v=1793926088"></script>
+<script src="mode/slicer.js?v=1793926088"></script>
+<script src="mode/video.js?v=1793926088"></script>
+<script src="mode/aratanagara.js?v=1793926088"></script>
+<script src="vendor/p5.min.js?v=1793926088"></script>
+<script src="mode/cyberui.js?v=1793926088"></script>
+<script src="mode/novel.js?v=1793926088"></script>
+<script src="shaders/inkelly.js?v=1793926088"></script>
+<script src="sketchfx.js?v=1793926088"></script>
+<script src="pixelsortfx.js?v=1793926088"></script>
+<script src="shaders/boltzmann.js?v=1793926088"></script>
+<script src="mode/pen.js?v=1793926088"></script>
+<script src="shaders/caverns.js?v=1793926088"></script>
+<script src="mode/shelf.js?v=1793926088"></script>
+<script src="shaders/ribbon.js?v=1793926088"></script>
+<script src="mode/photoplane.js?v=1793926088"></script>
+<script src="mode/shredder.js?v=1793926088"></script>
+<script src="mode/transflock.js?v=1793926088"></script>
+<script src="mode/liquidpeel.js?v=1793926088"></script>
+<script src="mode/windflock.js?v=1793926088"></script>
+<script src="mode/surrealfloat.js?v=1793926088"></script>
+<script src="mode/fude.js?v=1793926088"></script>
+<script src="mode/image.js?v=1793926088"></script>
+<script src="mode/spacetype.js?v=1793926088"></script>
+<script src="pollockfx.js?v=1793926088"></script>
+<script src="overlay.js?v=1793926088"></script>
+<script src="gif.js?v=1793926088"></script>
+  <script src="app.js?v=1793926088"></script>
+<script src="camroll.js?v=1793926088" defer></script>
 </body>
 </html>

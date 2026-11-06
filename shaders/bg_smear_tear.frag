@@ -6,7 +6,7 @@
 //   ・塗り: 2 本の滑らかな場 A/B を量子化した 2 次元 LUT = ポスタライズされた面と輪郭線。
 //     色は川筋の帯で決まる。流れ方向に櫛歯状に裂ける (uComb)
 //   ・線: 紙の上の等高線。アンチエイリアスしない (圧縮された所で点線に崩れる)
-//   ・縞: テクスチャのクランプのような 1 行ベタ塗りの塊が画面を漂って現れては消え、星が流れる (uRows / uStars)
+//   ・縞: テクスチャのクランプのような 1 行ベタ塗りの塊が画面を漂って現れては消える (uRows)
 //   ・配色: uPalTime 秒ごとに 6 種のパレットを順にクロスフェードで巡る (uPalFade / uPalette)。紙の灰は変えない
 //   ・既定は灰の紙 (uBgColor が黒のとき Slot A の紙 = #c8c8c8)。Slot B では紙が透過
 //   ・beat モードは拍頭で流れが加速してうねりが跳ね、行が総入れ替え + 裂けが増え、4 拍ごとに帯の並びと縞の塊が飛ぶ (uKick)。
@@ -22,7 +22,6 @@
 // @param uFill    0..200    = 100.0
 // @param uComb    0..300    = 100.0
 // @param uRows    0..200    = 100.0
-// @param uStars   0..200    = 100.0
 // @param uChrome  0..200    = 100.0
 // @param uPixel   1..8      = 2.0
 // @param uKick    0..200    = 100.0
@@ -38,7 +37,6 @@ uniform float uLines;   // 等高線の密度 (%)
 uniform float uFill;    // 塗り面の広さ (%)
 uniform float uComb;    // 櫛歯の裂け (%)
 uniform float uRows;    // 行クランプ縞の広さ (%)
-uniform float uStars;   // 星の量 (%)
 uniform float uChrome;  // 青いクロームの広さ (%)
 uniform float uPixel;   // 画素の粗さ (px)
 uniform float uKick;    // 拍 / 音での変化 (%)
@@ -106,20 +104,6 @@ vec3 st_rowNeon(float t){
   if(t < 5.0) return vec3(0.04, 0.10, 0.96);
   return vec3(0.54, 1.00, 0.26);
 }
-// 五芒星の SDF (外接半径 1)
-float st_star(vec2 p){
-  const vec2 k1 = vec2(0.809017, -0.587785);
-  const vec2 k2 = vec2(-0.809017, -0.587785);
-  p.x = abs(p.x);
-  p -= 2.0*max(dot(k1, p), 0.0)*k1;
-  p -= 2.0*max(dot(k2, p), 0.0)*k2;
-  p.x = abs(p.x);
-  p.y -= 1.0;
-  vec2  ba = 0.42*vec2(-k1.y, k1.x) - vec2(0.0, 1.0);
-  float h  = clamp(dot(p, ba)/dot(ba, ba), 0.0, 1.0);
-  return length(p - ba*h)*sign(p.y*ba.x - p.x*ba.y);
-}
-
 // 流れ関数: 等値線が川筋になる。中心点を作らないよう q.y の勾配を土台に sin のうねりだけを足す
 float st_psi(vec2 q, float T, float k){
   return q.y + k*(0.30*sin(q.x*2.1 + T*0.37)
@@ -309,28 +293,13 @@ vec3 bg_smear_tear(vec2 fc){
   float oliv = st_band(th, 6.0, 11.0)*step(0.34, rc)*step(0.42, A + 0.3*tooth);
   if(oliv > 0.5){ col = (A > 0.50) ? vec3(0.28, 0.28, 0.03) : vec3(0.20, 0.20, 0.07); cov = 1.0; }
 
-  // 蛍光の縞 + 星
+  // 蛍光の縞
   float neonM = st_band(th, 27.0, 42.5)*step(0.50, rc + 0.04*rh)*step(0.44, B)*step(0.01, amt);
   if(neonM > 0.5){
     col = st_rowNeon(uv.y*4.0 + T*0.09 + 0.45*(rh3 - 0.5) + 0.25*(rh - 0.5));
     col = mix(col, vec3(0.78), step(0.88, rh));
     col = mix(col, vec3(0.03), step(0.95, rh));
     cov = 1.0;
-    // 星: 横へ流れながら回り、行ごとにずれて縞に解ける
-    float gs = 0.062*resolution.y;
-    vec2  sp = vec2(I.x + (rh3 - 0.5)*3.0*px, I.y)/gs + vec2(T*0.5, 0.0);
-    vec2  ci = floor(sp);
-    float sh = st_hash2(ci + 3.0);
-    if(sh < 0.42*uStars*0.01){
-      vec2  o = 0.3 + 0.4*vec2(st_hash2(ci), st_hash2(ci + 5.0));
-      float r = 0.14 + 0.34*pow(st_hash2(ci + 7.0), 2.0);
-      float a = sh*40.0 + T*(sh*6.0 - 1.0);
-      vec2  q = (sp - ci - o)/r;
-      q = mat2(cos(a), sin(a), -sin(a), cos(a))*q;
-      if(st_star(q) < 0.0){
-        col = st_hash2(ci + 9.0) > 0.45 ? vec3(0.66, 0.92, 0.16) : vec3(0.30, 0.68, 0.60);
-      }
-    }
   }
   // クリームのリボン
   float crm = step(abs(fract(F*2.3 + 0.2 - T*0.07) - 0.5), 0.010 + 0.030*tooth)*st_band(th, 24.0, 42.0)*step(0.72, rc)*step(rc, 1.05 + 0.4*(B - 0.5));
