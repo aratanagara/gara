@@ -8425,6 +8425,18 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
+    if(slot.kind === 'tower4149'){
+      if(typeof Tower4149 === 'undefined') return;
+      if(!Tower4149.initialized) Tower4149.init(this.gl);
+      Tower4149.update();
+      const target = slot.fbos[slot.fbIdx];
+      Tower4149.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
     if(slot.kind === 'surrealfloat'){
       if(typeof SurrealFloat === 'undefined') return;
       if(!SurrealFloat.initialized) SurrealFloat.init(this.gl);
@@ -11468,8 +11480,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -13998,6 +14010,16 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'tower4149'){
+      s.kind = 'tower4149';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'tower4149';
+      if(typeof Tower4149 !== 'undefined' && !Tower4149.initialized) Tower4149.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('tower4149');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'fude'){
       s.kind = 'fude';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'fude';
@@ -14096,6 +14118,7 @@ ${outBlock}
       case 'liquidpeel': return (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null;
       case 'windflock': return (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
+      case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
       case 'textdeform': return (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null;
       case 'ugomeki': return (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null;
@@ -14633,6 +14656,7 @@ ${outBlock}
 	      liquidpeel: (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null,
 	      windflock: (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
+	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
 	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null,
 	      ugomeki: (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null,
@@ -15323,8 +15347,8 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'];
-    const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'];
+    const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
   // 既定のシェーダ並び順(本番 vj.aratanagara.com の現行順を焼き込み)。
@@ -15750,7 +15774,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -18236,9 +18260,9 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','fude'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','surrealfloat','tower4149','fude'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
-      const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon'];
+      const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
 
     App._applyShaderOrder();   // 保存済みのシェーダ並び順を適用(ドラッグ並べ替え)
@@ -18317,6 +18341,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'liquidpeel') ? 'LIQUID\nPEEL'
                      : (p.kind === 'windflock') ? 'WIND\nFLOCK'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
+                     : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
                      : (p.kind === 'spacetype') ? 'SPACE\nTYPE'
                      : (p.kind === 'ribbon') ? 'RIBBON\nLINES'
@@ -18672,7 +18697,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'surrealfloat' && slot.kind !== 'fude';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -18699,6 +18724,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isSF = slot.kind === 'surrealfloat';
     $$('.surrealfloat-mode').forEach(el => el.style.display = isSF ? '' : 'none');
     if(isSF && this.refreshSurrealParams) this.refreshSurrealParams();
+    const isT4 = slot.kind === 'tower4149';
+    $$('.tower4149-mode').forEach(el => el.style.display = isT4 ? '' : 'none');
+    if(isT4 && this.refreshTower4149Params) this.refreshTower4149Params();
     const isFude = slot.kind === 'fude';
     $$('.fude-mode').forEach(el => el.style.display = isFude ? '' : 'none');
     if(isFude && this.refreshFudeParams) this.refreshFudeParams();
@@ -19351,6 +19379,46 @@ void mainImage(out vec4 o, in vec2 f){
         }
         App._undoSchedule && App._undoSchedule();
         this.refreshWindflockParams();
+      });
+      row.appendChild(b); }
+  },
+  refreshTower4149Params(){
+    const root = document.getElementById('tower4149Params'); if(!root) return;
+    if(typeof Tower4149 === 'undefined' || !Tower4149.initialized){
+      root.innerHTML = '<div class="help">41/49 TOWER preset を選ぶと初期化されます</div>'; return;
+    }
+    const P = Tower4149.P;
+    const f2 = v=>v.toFixed(2);
+    const pct = v=>String(Math.round(v))+'%';
+    const deg = v=>String(Math.round(v))+'°';
+    const int = v=>String(Math.round(v));
+    const formats = { pct, f2, int, deg };
+    const specs = Tower4149.SPECS.map(([label,key,mi,ma,step,fmt])=>[label,key,mi,ma,step,formats[fmt]]);
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    for(const spec of specs){
+      const [label,key,mi,ma,step,fmt] = spec;
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const show = (v)=> key === 'seed' ? fmt(v) : disp(v, fmt);   // Seed はデッドゾーン表示をしない
+      const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    }
+    // Random 🎲 (スライダーのパラメータのみ。背景色は変えない。保存は右上の Save)
+    { const row = mkRow();
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      b.title='スパイクのパラメータをランダム生成 (背景色は変えない。保存は右上の Save)';
+      b.addEventListener('click', ()=>{
+        for(const spec of specs){
+          const [label,key,mi,ma,step] = spec;
+          const v = mi + Math.random()*(ma - mi);
+          P[key] = +(Math.round(v/step)*step).toFixed(4);
+        }
+        App._undoSchedule && App._undoSchedule();
+        this.refreshTower4149Params();
       });
       row.appendChild(b); }
   },
