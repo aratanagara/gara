@@ -19310,7 +19310,7 @@ void mainImage(out vec4 o, in vec2 f){
       root.innerHTML = '<div class="help">RHIZOME preset を選ぶと初期化されます</div>'; return;
     }
     const P = Rhizome.P;
-    const formats = { pct:v=>String(Math.round(v))+'%', f2:v=>v.toFixed(2), int:v=>String(Math.round(v)) };
+    const formats = { pct:v=>String(Math.round(v))+'%', f2:v=>v.toFixed(2), int:v=>String(Math.round(v)), deg:v=>String(Math.round(v))+'°' };
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
     for(const spec of Rhizome.SPECS){
