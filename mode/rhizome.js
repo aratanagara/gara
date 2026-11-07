@@ -13,7 +13,7 @@
      繰り返す。斜めのときは地面が奥へ倒れ (Tilt)、回り (Yaw)、四角は菱形に、楕円は潰れた楕円に見える。
      横長の面 (どれも平行に奥へ向く) が蝶番のように 90° 立ち上がり (面ごとに少しずつずれる)、面には人の外側の輪郭が下辺から切り抜かれている
      (腕と股から内側の線は無く、下辺は体の幅だけ切れる。頭が上辺から出る人は上辺も首の幅だけ切れる)。流れる青い矢印は宙に浮き、うねる赤線と
-     手前の色鉛筆の緑の帯が現れる。立ち上がると楕円の半分が菱形に変わり、そこをつなぐ線も灰茶になる (図 1 → 図 2)。
+     (Band を上げると) 手前の色鉛筆の緑の帯が現れる。立ち上がると楕円の半分が菱形に変わり、そこをつなぐ線も灰茶になる (図 1 → 図 2)。
      Rise 0 で平らのまま (以前と同じ見た目)。
    - Style: 網 (図 1) は平らなときに縦の面・矢印・赤線・帯が出ず、立ち上がるときだけ現れる。
      面と流れ (図 2) / 両方 は菱形が主になり、それらが常に出る (平らなときの面は地面に寝ている)。
@@ -55,7 +55,7 @@ const Rhizome = {
     planes:100,     // 縦に立つ面の量 (%)
     figures:100,    // 面に人の輪郭が切り抜かれている割合 (%)
     meander:100,    // うねる赤い線の量 (%)
-    band:100,       // 手前の緑の波の帯の濃さ (%)
+    band:0,         // 手前の色鉛筆の緑の帯の濃さ (%)。既定は 0 (出さない)
     diamonds:8,     // 菱形の割合 (%。図 2 では菱形が主になる)
     spread:100,     // 子が親から離れて生まれる距離 (%)
     line:100,       // 線の太さ (%)
@@ -68,7 +68,7 @@ const Rhizome = {
     rise:100,       // 立ち上がる量 (%)。0 で平らのまま
     cycle:16,       // 平ら → 立ち上がり → 平ら の周期 (秒。beat では拍)
     tilt:60,        // 立ち上がったときの地面の倒れ (deg)
-    yaw:45,         // 立ち上がったときの地面の回り (deg)
+    yaw:45,         // 立ち上がったときの地面の回りの振れ幅 (deg)。周期ごとに -Yaw〜+Yaw の間でゆるやかに変わる
     seed:0,         // 乱数のシード
     paper:[0.965, 0.958, 0.935],   // 紙の色 (Slot A)。Slot B は透過
   },
@@ -397,6 +397,7 @@ void main(){
 
   init(gl){
     this.gl = gl;
+    this._drift0 = Math.random() * 1000;   // 画面の流れの始めの向きを起動ごとに変える
     this.prog = this._link(this.VS, this.FS);
     this.ok = !!this.prog;
     if(this.ok){
@@ -434,18 +435,44 @@ void main(){
   },
 
   // 画面のゆっくりした流れ (時間の単位ごと)
-  _camX(t){ return this._cfg.drift * (0.05 * t + 0.15 * Math.sin(t * 0.07)); },
-  _camY(t){ return this._cfg.drift * 0.10 * Math.sin(t * 0.05 + 1.0); },
+  // 周期の違う正弦波の和で、向きがゆるやかに変わりながらさまよう (一方向へ流れ続けない)。
+  // 始めの向きは起動ごとにランダム (init で決める _drift0) と Seed で決まる (位相は cfg.camPh)
+  _camW:[[1.2, 0.021], [0.8, 0.034], [0.5, 0.055]],   // [振れ幅, 角速度]
+  _cam(t){
+    const c = this._cfg, ph = c.camPh;
+    let x = 0, y = 0;
+    for(let k = 0; k < 3; k++){ const a = this._camW[k][0], w = this._camW[k][1]; x += a * Math.sin(w * t + ph[k]); y += a * Math.sin(1.13 * w * t + ph[k + 3]); }
+    return [c.drift * x, c.drift * y];
+  },
+  _camV(t){
+    const c = this._cfg, ph = c.camPh;
+    let x = 0, y = 0;
+    for(let k = 0; k < 3; k++){ const a = this._camW[k][0], w = this._camW[k][1]; x += a * w * Math.cos(w * t + ph[k]); y += 1.13 * a * w * Math.cos(1.13 * w * t + ph[k + 3]); }
+    return [c.drift * x, c.drift * y];
+  },
+  // 時刻 s に生まれ、およそ T 続く要素の置き場所の基準: そのときのカメラから、進む向きへ T の半分ぶん先
+  // (生まれてから画面の中ほどを通り過ぎるので、カメラの進む先が空かない)
+  _camAt(s, T){
+    const p = this._cam(s), v = this._camV(s);
+    return [p[0] + v[0] * T * 0.5, p[1] + v[1] * T * 0.5];
+  },
 
-  // 立ち上がりきったときの向き (yaw) の座標 (qx = 画面の横, qy = 奥) から地面へ
-  _fromYaw(qx, qy, tx, ty){
+  // 立ち上がるときの地面の回り (rad)。周期ごとにゆるやかに変わる (Yaw が振れ幅。始まりは起動ごとにランダム)。
+  // 周期の切り替わりは平らな間 (周期の 15%) に置くので、回りが変わっても絵は跳ねない
+  _yawAt(t){
     const c = this._cfg;
-    return [tx + qx * c.cpsM + qy * c.spsM, ty - qx * c.spsM + qy * c.cpsM];
+    return c.yawM * Math.sin(0.8 * Math.floor(t / c.cyc + 0.85) + c.yawPh);
+  },
+  // 時刻 s の周期で立ち上がりきったときの向き (yaw) の座標 (qx = 画面の横, qy = 奥) から地面へ
+  _fromYaw(qx, qy, tx, ty, s){
+    const a = this._yawAt(s), cp = Math.cos(a), sp = Math.sin(a);
+    return [tx + qx * cp + qy * sp, ty - qx * sp + qy * cp];
   },
   // 地面の点 (中心からのずれ) が、立ち上がりきったときの画面に入るか
-  _inRisen(dx, dy){
+  _inRisen(dx, dy, s){
     const c = this._cfg;
-    const qx = dx * c.cpsM - dy * c.spsM, qy = dx * c.spsM + dy * c.cpsM;
+    const a = this._yawAt(s), cp = Math.cos(a), sp = Math.sin(a);
+    const qx = dx * cp - dy * sp, qy = dx * sp + dy * cp;
     const depth = qy * c.sphM + c.D;
     if(depth < 0.3) return false;
     const k = c.D / depth;
@@ -520,12 +547,12 @@ void main(){
       r.parent = p;
     }
     if(!r.parent){
-      const tx = this._camX(r.s), ty = this._camY(r.s);
+      const [tx, ty] = this._camAt(r.s, r.T);
       r.x = tx + (this._hash(r.i, r.n, 10) - 0.5) * c.aspect * 1.04;
       r.y = ty + (this._hash(r.i, r.n, 11) - 0.5) * 1.0;
       for(let k = 0; k < 6 && c.riseK > 0; k++){
         const dx = (this._hash(r.i, r.n, 30 + 2 * k) - 0.5) * 3.2, dy = (this._hash(r.i, r.n, 31 + 2 * k) - 0.5) * 3.2;
-        if((Math.abs(dx) < c.aspect * 0.52 && Math.abs(dy) < 0.5) || this._inRisen(dx, dy)){ r.x = tx + dx; r.y = ty + dy; break; }
+        if((Math.abs(dx) < c.aspect * 0.52 && Math.abs(dy) < 0.5) || this._inRisen(dx, dy, r.s)){ r.x = tx + dx; r.y = ty + dy; break; }
       }
     }
     // 親がいれば線が伸びて届いた所でポップ
@@ -601,7 +628,7 @@ void main(){
     for(let g = 0; g < nF; g++){
       const id = 600000 + g, cy2 = this._pool(id, t, 2.6), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.85 || x > 0.95) continue;
-      const tx = this._camX(s), ty = this._camY(s);
+      const [tx, ty] = this._camAt(s, cy2.T);
       const sx = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, sy = ty + (H(id, n, 5) - 0.5) * 0.7;
       const dir = Math.atan2(ty - sy, tx - sx + 1e-6) + (H(id, n, 6) - 0.5) * 1.2;   // おおむね画面の中ほどへ向く
       const open = (0.8 + 0.9 * H(id, n, 7)) * openK;
@@ -665,7 +692,7 @@ void main(){
     for(let g = 0; g < nR; g++){
       const id = 700000 + g, cy2 = this._pool(id, t, 3.2), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.85 || x > 0.97) continue;
-      const tx = this._camX(s), ty = this._camY(s);
+      const [tx, ty] = this._camAt(s, cy2.T);
       const ox = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, oy = ty + (H(id, n, 5) - 0.5) * 0.7;
       const R = (0.09 + 0.12 * H(id, n, 6)) * K.spread;
       const m = Math.max(5, Math.min(40, Math.round((9 + 12 * H(id, n, 7)) * memK)));
@@ -765,7 +792,7 @@ void main(){
     for(let g = 0; g < nCol; g++){
       const id = 900000 + g, cy2 = this._pool(id, t, 3.0), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.9 || x > 0.96) continue;
-      const tx = this._camX(s), ty = this._camY(s);
+      const [tx, ty] = this._camAt(s, cy2.T);
       const R = (0.035 + 0.02 * H(id, n, 6)) * K.sizeK, Hc = (0.30 + 0.20 * H(id, n, 7)) * hK, M = nLay;
       // 根元は、寝ているとき柱の中ほどが画面の高さの中ほどに来る所 (上が画面からはみ出さない)
       const ox = tx + ((g + 0.5) / nCol - 0.5) * 0.85 * K.aspect + (H(id, n, 4) - 0.5) * 0.2, oy = ty - Hc * 0.5 + (H(id, n, 5) - 0.5) * 0.2;
@@ -870,12 +897,14 @@ void main(){
     for(let g = 0; g < nL; g++){
       const id = 1000000 + g, cy2 = this._pool(id, t, 3.5), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.9 || x > 0.95) continue;
-      const tx = this._camX(s), ty = this._camY(s);
+      const [tx, ty] = this._camAt(s, cy2.T);
       const fade = 1 - sm((x - 0.86) / 0.08);
-      // 扇の向き (おおむね右。少し上下に振れる) と、網の中心 (画面の左寄り)
-      const dir = (H(id, n, 4) - 0.5) * 0.5, cd = [Math.cos(dir), Math.sin(dir)], cn = [-cd[1], cd[0]];
-      const gofs = g - (nL - 1) / 2;
-      const ccx = tx - K.aspect * (0.30 + 0.06 * H(id, n, 5)) + gofs * 0.06, ccy = ty + (H(id, n, 6) - 0.5) * 0.3 + gofs * 0.32;
+      // 扇の向きは発射ごとに全方位から選ぶ (枠ごとに受け持ちの向きを分け、同時に出る流れは別の向きになる)。
+      // 網はその反対側の画面の端寄りに置き、流れが画面の中ほどを横切る
+      const dir = (g + H(id, n, 4)) / nL * Math.PI * 2, cd = [Math.cos(dir), Math.sin(dir)], cn = [-cd[1], cd[0]];
+      const edge = Math.min(K.aspect * 0.5 / Math.max(Math.abs(cd[0]), 1e-3), 0.5 / Math.max(Math.abs(cd[1]), 1e-3));
+      const back = edge * (0.55 + 0.10 * H(id, n, 5)), side = (H(id, n, 6) - 0.5) * 0.3;
+      const ccx = tx - cd[0] * back + cn[0] * side, ccy = ty - cd[1] * back + cn[1] * side;
       // ── 網の楕円 (ひまわりの並びで散らす) ──
       const nodes = [];
       for(let k = 0; k < nN; k++){
@@ -1068,24 +1097,26 @@ void main(){
       drift: Math.max(0, dz(P.drift) * 0.01) * 0.4,
       pop: Math.max(0, dz(P.pop) * 0.01),
       aspect, riseK, D:2.2,
-      cphM: Math.cos(tiltM), sphM: Math.sin(tiltM), cpsM: Math.cos(yawM), spsM: Math.sin(yawM),
+      cphM: Math.cos(tiltM), sphM: Math.sin(tiltM), yawM, cyc: Math.max(2, dz(P.cycle)),
     };
-    const sig = [cfg.N, cfg.life, cfg.beat, cfg.spread, cfg.links, cfg.pSquare, cfg.pDiamond, cfg.pTendril, cfg.drift, aspect.toFixed(3), seed, tiltM.toFixed(4), yawM.toFixed(4)].join('|');
+    const sig = [cfg.N, cfg.life, cfg.beat, cfg.spread, cfg.links, cfg.pSquare, cfg.pDiamond, cfg.pTendril, cfg.drift, aspect.toFixed(3), seed, tiltM.toFixed(4), yawM.toFixed(4), cfg.cyc].join('|');
     if(sig !== this._sig || this._memo.size > 60000){ this._memo.clear(); this._sig = sig; }
     this._cfg = cfg;
     this._salt = Math.imul(seed + 1, 0x6a09e667) | 0;
+    cfg.camPh = [0, 1, 2, 3, 4, 5].map((k)=> 6.2831853 * this._hash(k, 77, 0) + (this._drift0 || 0) * (k + 1));
+    cfg.yawPh = 6.2831853 * this._hash(6, 77, 0) + (this._drift0 || 0) * 7;
 
     // 平ら ↔ 立ち上がり: 周期の 0〜30% 平ら / 30〜50% 立ち上がる / 50〜80% 立った / 80〜100% 倒れる
     const sm = (x)=> x * x * (3 - 2 * x);
-    const cyc = Math.max(2, dz(P.cycle));
+    const cyc = cfg.cyc;
     let ph = (t / cyc) % 1;
     if(ph < 0) ph += 1;
     const rn = riseK <= 0 ? 0 : (ph < 0.3 ? 0 : ph < 0.5 ? sm((ph - 0.3) / 0.2) : ph < 0.8 ? 1 : 1 - sm((ph - 0.8) / 0.2));
     const v2 = style === 0 ? rn : (style > 0 ? 1 : 0);   // 図 2 の要素 (面・流れ・赤線・帯) の出方
     const v1 = (style === 0 || style === 2) ? 1 : 0;     // 図 1 の要素 (青い弧)
-    const phi = rn * tiltM, psi = rn * yawM;
+    const phi = rn * tiltM, psi = rn * this._yawAt(t);
     const cph = Math.cos(phi), sph = Math.sin(phi), cps = Math.cos(psi), sps = Math.sin(psi), D = cfg.D;
-    const cx = this._camX(t), cy = this._camY(t);
+    const [cx, cy] = this._cam(t);
     // 地面 (x, y) と高さ z を画面へ。[x, y, 奥行き]。平らなとき (phi = psi = 0) は x, y そのまま
     const P3 = (x, y, z)=>{
       const qx0 = x - cx, qy0 = y - cy;
@@ -1298,8 +1329,9 @@ void main(){
       if(H(id, n, 3) > 0.75) continue;
       const lf = life2(cy2.x, 0.25, 0.70, 0.82);
       if(!lf) continue;
-      const ccx = this._camX(s) + (H(id, n, 4) - 0.5) * aspect * 0.95;
-      const ccy = this._camY(s) + (H(id, n, 5) - 0.5) * 0.9;
+      const [ax0, ay0] = this._camAt(s, cy2.T);
+      const ccx = ax0 + (H(id, n, 4) - 0.5) * aspect * 0.95;
+      const ccy = ay0 + (H(id, n, 5) - 0.5) * 0.9;
       const rr = (0.06 + 0.10 * H(id, n, 6)) * cfg.spread;
       const a0 = H(id, n, 7) * Math.PI * 2;
       const sw = (0.9 + 1.1 * H(id, n, 8)) * (H(id, n, 9) < 0.5 ? -1 : 1);
@@ -1317,10 +1349,10 @@ void main(){
         if(H(id, n, 3) > 0.8) continue;
         const lf = life2(cy2.x, 0.30, 0.65, 0.80);
         if(!lf) continue;
-        const tx = this._camX(s), ty = this._camY(s);
-        const [x0, y0] = this._fromYaw((H(id, n, 4) - 0.62) * aspect * 1.2, (H(id, n, 5) - 0.45) * 1.4, tx, ty);
+        const [tx, ty] = this._camAt(s, cy2.T);
+        const [x0, y0] = this._fromYaw((H(id, n, 4) - 0.62) * aspect * 1.2, (H(id, n, 5) - 0.45) * 1.4, tx, ty, s);
         const th = 0.12 + (H(id, n, 6) - 0.5) * 0.9, L = (0.35 + 0.55 * H(id, n, 7)) * cfg.spread;
-        const [dxw, dyw] = this._fromYaw(Math.cos(th) * L, Math.sin(th) * L, 0, 0);
+        const [dxw, dyw] = this._fromYaw(Math.cos(th) * L, Math.sin(th) * L, 0, 0, s);
         const x1 = x0 + dxw, y1 = y0 + dyw;
         const bend = (H(id, n, 8) - 0.5) * 0.45, xc = (x0 + x1) / 2 - dyw * bend, yc = (y0 + y1) / 2 + dxw * bend;
         const z0 = rn * (0.05 + 0.30 * H(id, n, 10)), z1 = rn * (0.05 + 0.30 * H(id, n, 11));
@@ -1342,15 +1374,15 @@ void main(){
         const yo = Math.max(0, Math.min(1, (x - 0.82) / 0.06));
         const sc = Math.max(0, g * (1 - yo * yo * (3 - 2 * yo)));
         if(sc <= 0.001) continue;
-        const tx = this._camX(s), ty = this._camY(s);
+        const [tx, ty] = this._camAt(s, cy2.T);
         // 人の面は横長 (幅は高さの 1.3〜1.7 倍)。どれも平行に奥へ約 60° 向けて置くので、斜めから細く見える (図 2)。
         // 面ごとに横の持ち場を決め、画面での横の広がり (幅 × cos) がその中に収まる位置にする (隣の面と重ならない)
         const slot = aspect * 1.15 / nPlane;
         const ja = 1.05 + (H(id, n, 8) - 0.5) * 0.16;          // 下辺の向き (画面の横から奥へ)
         const Hb = (0.42 + 0.22 * H(id, n, 6)) * sizeK;
         const W = Math.min(Hb * (1.3 + 0.4 * H(id, n, 7)), slot * 0.9 / Math.cos(ja)), Hh = Hb * sc;
-        const [bx, by] = this._fromYaw(-aspect * 0.575 + k * slot + Math.max(0, slot - W * Math.cos(ja)) * H(id, n, 4), (H(id, n, 5) - 0.75) * 0.7, tx, ty);
-        const [ex, ey] = this._fromYaw(Math.cos(ja), Math.sin(ja), 0, 0);   // 下辺の向き (地面)
+        const [bx, by] = this._fromYaw(-aspect * 0.575 + k * slot + Math.max(0, slot - W * Math.cos(ja)) * H(id, n, 4), (H(id, n, 5) - 0.75) * 0.7, tx, ty, s);
+        const [ex, ey] = this._fromYaw(Math.cos(ja), Math.sin(ja), 0, 0, s);   // 下辺の向き (地面)
         const nx0 = -ey, ny0 = ex;                             // 地面で下辺に直交
         // 立ち上がりは面ごとにずれ、少し弾んで (90° を少し越えてから) 立つ
         const th = (Math.PI / 2) * riseK * this._ease(Math.max(0, Math.min(1, (rn - 0.3 * H(id, n, 12)) / 0.7)), 0.5 * cfg.pop);
@@ -1397,7 +1429,7 @@ void main(){
         if(H(id, n, 3) > 0.85) continue;
         const lf = life2(cy2.x, 0.40, 0.78, 0.92);
         if(!lf) continue;
-        const tx = this._camX(s), ty = this._camY(s);
+        const [tx, ty] = this._camAt(s, cy2.T);
         const qx0 = (H(id, n, 4) - 0.6) * aspect * 0.6, qx1 = qx0 + 0.35 + 0.35 * H(id, n, 5);
         const ph2 = H(id, n, 6) * 6.28, lp = 0.45 + 0.25 * H(id, n, 7), lr = 0.025 + 0.02 * H(id, n, 8);
         const dqx = qx1 - qx0, dqy = -1.12, dl = Math.hypot(dqx, dqy), nqx = -dqy / dl, nqy = dqx / dl;
@@ -1405,7 +1437,7 @@ void main(){
           const wv = 0.035 * Math.sin(v * 14 + ph2) + 0.02 * Math.sin(v * 31 + ph2 * 1.7);
           const lv = Math.max(0, Math.min(1, (v - lp) / 0.08));
           const la = lv * Math.PI * 2, lx = lv > 0 && lv < 1 ? lr * Math.sin(la) : 0, ly = lv > 0 && lv < 1 ? lr * (1 - Math.cos(la)) : 0;
-          const [wx, wy] = this._fromYaw(qx0 + dqx * v + nqx * wv + lx, 0.56 + dqy * v + nqy * wv + ly, tx, ty);
+          const [wx, wy] = this._fromYaw(qx0 + dqx * v + nqx * wv + lx, 0.56 + dqy * v + nqy * wv + ly, tx, ty, s);
           return [wx, wy, 0];
         };
         pushPoly(arcs, f, 90, lf[0], lf[1], hwL, C.red, 0.85 * v2, false, H(id, n, 20));
