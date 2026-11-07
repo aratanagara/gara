@@ -16,6 +16,8 @@ const ChromeType = {
   prog:null, U:null, vao:null, ibo:null, nIdx:0,
   sdfTex:null, bake:null,           // bake = 最後に入った焼き結果 (w,h,cols,rows,grid,F)
   _sdfBack:null, _iboBack:null,     // 焼きは裏へ書き、描くセルが決まったら表と入れ替える (文字が替わっても画面が欠けない)
+  _morphTex:null, _morphBack:null,  // 移り変わり: 前の形を今の形の座標へ写したもの (表と裏)
+  _morphOn:false, _morph0:0, _morphDur:0, _aspect:16/9,
   depthRBO:null, depthW:0, depthH:0,
   msaa:null,                        // {fbo,color,depth,w,h,samples}
   _bakeKey:'', _pendKey:'', _bakeDirtyAt:0, _baking:false, _bakeTy:'', _fontKey:'',
@@ -38,6 +40,7 @@ const ChromeType = {
     tyHold:4,            // 打ち終えてから次の文字列へ移るまでの拍数
     tyOrder:1,           // 0 = 順番 / 1 = ランダム
     tyErase:0,           // 0 = 一度に消す / 1 = 1 字ずつ消す
+    tyMorph:70,          // 1 字ごとの形の移り変わり (1 字の間隔に対する %、0 = 切り替え)。距離場を混ぜて溶けるようにつなぐ
     style:1,             // 形のプリセットの番号 (STYLES)。選ぶと形のパラメータがまとめて入れ替わる
     font:'',             // 空 = MT_FONTS[1] (ゴシック)。値は font-family 文字列
     weight:900,          // 400 / 700 / 900
@@ -257,7 +260,7 @@ void main(){
   float gy = floor(id/uCols), gx = id - gy*uCols;
   vec2 px = min(vec2(gx, gy)*uGrid, uTexSize - 1.0);
   vec2 uv = (px + 0.5)/uTexSize;
-  vec4 S = textureLod(uSDF, uv, 0.0);
+  vec4 S = ct_S(uv);
   float d = layer == 0 ? S.r : (layer == 1 ? S.g : S.b);
   float th = uThick*(layer == 0 ? 1.0 : uFinThick);
   float h = ct_prof(d, layer, uv, 1.0);
@@ -451,7 +454,19 @@ void main(){
   _glslProf(){ return `
 uniform float uLump;
 uniform float uEdge;             // 縁の線形区間 (F 単位)。格子で補間したときに縁がギザにならないよう、0 の前後は距離に比例させる
-float ct_sd(vec2 uv, int L){ vec4 s = textureLod(uSDF, uv, 0.0); return L == 0 ? s.r : (L == 1 ? s.g : s.b); }
+uniform sampler2D uSDFPrev;      // 移り変わり: 前の形 (今の形の座標へ写したもの)
+uniform float uMorph;            // 0 = 前の形 → 1 = 今の形
+vec4 ct_smax(vec4 a, vec4 b, float k){ vec4 h = max(k - abs(a - b), 0.0)/k; return max(a, b) + h*h*k*0.25; }
+// 前半で今の形が芯から育ち、後半で前の形が縁から溶けて消える。なめらかな和でつなぐので途中で痩せない
+// (距離をそのまま混ぜると、前後で重ならない所が途中で消えて小さくなる)。削る深さ (F 単位) は浅く一定に進め、両端だけ深くして形を残さない
+vec4 ct_S(vec2 uv){
+  vec4 s = textureLod(uSDF, uv, 0.0);
+  if(uMorph >= 0.999) return s;
+  vec4 p = textureLod(uSDFPrev, uv, 0.0);
+  float gb = 1.0 - clamp(uMorph*2.0, 0.0, 1.0), ga = clamp(uMorph*2.0 - 1.0, 0.0, 1.0);
+  return ct_smax(p - (0.22*ga + 0.8*pow(ga, 6.0)), s - (0.22*gb + 0.8*pow(gb, 6.0)), 0.35);
+}
+float ct_sd(vec2 uv, int L){ vec4 s = ct_S(uv); return L == 0 ? s.r : (L == 1 ? s.g : s.b); }
 float ct_h2(vec2 p){ p = fract(p*vec2(0.1031, 0.1030)); p += dot(p, p.yx + 33.33); return fract((p.x + p.y)*p.x); }
 float ct_vn2(vec2 p){ vec2 i = floor(p), f = fract(p); f = f*f*(3.0 - 2.0*f);
   return mix(mix(ct_h2(i), ct_h2(i + vec2(1,0)), f.x), mix(ct_h2(i + vec2(0,1)), ct_h2(i + vec2(1,1)), f.x), f.y); }
@@ -799,11 +814,25 @@ void main(){
   o = vec4((on1 > 0.5 && e > need) ? 0.0 : 1.0, 0.0, 0.0, 1.0);
 }`,
       // 描く格子の頂点ごとの「形の近く」フラグ (読み戻して描くセルを選ぶ)
-      occ: H + `uniform sampler2D uSDF; uniform float uGrid, uMargin; uniform vec2 uTexSize;
+      occ: H + `uniform sampler2D uSDF, uSDF2; uniform float uGrid, uMargin, uUse2; uniform vec2 uTexSize;
 void main(){
   vec2 px = min((gl_FragCoord.xy - 0.5)*uGrid, uTexSize - 1.0);
-  vec4 s = textureLod(uSDF, (px + 0.5)/uTexSize, 0.0);
+  vec2 uv = (px + 0.5)/uTexSize;
+  vec4 s = textureLod(uSDF, uv, 0.0);
+  if(uUse2 > 0.5) s = max(s, textureLod(uSDF2, uv, 0.0));   // 移り変わり中は前の形のセルも描く
   o = vec4(max(s.r, max(s.g, s.b)) > uMargin ? 1.0 : 0.0, 0.0, 0.0, 1.0);
+}`,
+      // 移り変わり: いま見えている形 (uA = 表、uB = 表の前の形。uT で混ぜる) を、この焼きの画素へ写す。距離は uK 倍して今の形の単位に
+      warp: H + `uniform sampler2D uA, uB; uniform vec2 uWA, uWB, uSrcSize; uniform float uT, uK;
+void main(){
+  vec2 pp = uWA*(gl_FragCoord.xy - 0.5) + uWB;
+  vec4 v = vec4(-4.0, -4.0, -4.0, 0.0);
+  if(all(greaterThanEqual(pp, vec2(0.0))) && all(lessThanEqual(pp, uSrcSize - 1.0))){
+    vec2 uv = (pp + 0.5)/uSrcSize;
+    v = mix(textureLod(uB, uv, 0.0), textureLod(uA, uv, 0.0), uT);
+    v.rgb = max(v.rgb*uK, vec3(-4.0));
+  }
+  o = v;
 }`,
     };
     const progs = {};
@@ -859,13 +888,14 @@ void main(){
       B.mask = [0, 1, 2, 3].map(()=>this._bkTex('r8', W, H, true));
       B.W = W; B.H = H;
     }
-    const bs = this._sdfBack && B.size.get(this._sdfBack);   // 裏の sdf だけ大きさを合わせる (表は入れ替えまで描くのに使う)
-    if(!bs || bs[0] !== W || bs[1] !== H){
-      if(this._sdfBack){
-        const f = B.fbos.get(this._sdfBack); if(f){ gl.deleteFramebuffer(f); B.fbos.delete(this._sdfBack); }
-        gl.deleteTexture(this._sdfBack); B.size.delete(this._sdfBack);
+    for(const k of ['_sdfBack', '_morphBack']){   // 裏だけ大きさを合わせる (表は入れ替えまで描くのに使う)
+      const t = this[k], bs = t && B.size.get(t);
+      if(bs && bs[0] === W && bs[1] === H) continue;
+      if(t){
+        const f = B.fbos.get(t); if(f){ gl.deleteFramebuffer(f); B.fbos.delete(t); }
+        gl.deleteTexture(t); B.size.delete(t);
       }
-      this._sdfBack = this._bkTex('f16', W, H, true);
+      this[k] = this._bkTex('f16', W, H, true);
     }
     if(!B.occ || B.occW !== cols || B.occH !== rows){
       if(B.occ){ const f = B.fbos.get(B.occ); if(f){ gl.deleteFramebuffer(f); B.fbos.delete(B.occ); } gl.deleteTexture(B.occ); B.size.delete(B.occ); }
@@ -972,7 +1002,18 @@ void main(){
       writeChannel(L, B.hC, 2);
     }
     // 描くセルを選ぶ: 格子の頂点ごとに形の近くかを出して読み戻す (焼きのときだけの小さな同期読み出し)
-    run('occ', B.occ, { uGrid:cs, uMargin:-2.5*cs*invF, uTexSize:size }, { uSDF:dst });
+    const meta = { w:W, h:H, cols, rows, grid:cs, F:job.F, bbox:job.bbox };
+    // 移り変わり (タイピング中): いま見えている形を、この焼きの座標へ写して裏の morph に置く (画面上の位置と大きさはそのまま)
+    const morph = mode === 'async' && !!this.bake && this._dz(this.P.tyMorph) > 0;
+    if(morph){
+      const A = this.bake, fa = this._fit(A, this._aspect), fc = this._fit(meta, this._aspect);
+      const r = fc.fit/fa.fit, ax = r*A.F/job.F;
+      const bx = ((-W/2/job.F - fc.center[0])*r + fa.center[0])*A.F + A.w/2;
+      const by = A.h/2 - ((H/2/job.F - fc.center[1])*r + fa.center[1])*A.F;
+      run('warp', this._morphBack, { uWA:[ax, ax], uWB:[bx, by], uSrcSize:[A.w, A.h], uT:this._morphT(), uK:fa.fit/fc.fit },
+          { uA:this.sdfTex, uB:this._morphTex || this.sdfTex });
+    }
+    run('occ', B.occ, { uGrid:cs, uMargin:-2.5*cs*invF, uTexSize:size, uUse2:morph ? 1 : 0 }, { uSDF:dst, uSDF2:morph ? this._morphBack : dst });
     const build = (occ)=>{
       const keep = (i)=> occ[i*4] > 127;
       const idx = [];
@@ -982,14 +1023,13 @@ void main(){
       }
       return idx;
     };
-    const meta = { w:W, h:H, cols, rows, grid:cs, F:job.F, bbox:job.bbox };
     const tok = ++this._occTok;
     let occNow = null;
     if(mode === 'async' && typeof GL !== 'undefined' && GL.asyncReadPixels){
       GL.asyncReadPixels(cols, rows, (px)=>{
         if(tok !== this._occTok) return;            // あとの焼きが来ている
         if(!px){ this._bakeTy = ''; this._occSync = true; return; }   // 読めなかった: 次のフレームで同期して焼き直す
-        this._present(build(px), meta);
+        this._present(build(px), meta, morph);
       });
     } else {
       occNow = new Uint8Array(cols*rows*4);
@@ -1004,10 +1044,10 @@ void main(){
     for(let u=0;u<3;u++){ gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, null); }
     gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(null);
-    if(occNow) this._present(build(occNow), meta);
+    if(occNow) this._present(build(occNow), meta, morph);
   },
   // 裏に焼いた sdf と描くセルを表と入れ替える
-  _present(idx, meta){
+  _present(idx, meta, morph){
     const gl = this.gl;
     const prev = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
     gl.bindVertexArray(this.vao);
@@ -1018,6 +1058,30 @@ void main(){
     [this.ibo, this._iboBack] = [this._iboBack, this.ibo];
     this.nIdx = idx.length;
     this.bake = meta;
+    this._morphOn = !!morph;
+    if(morph){
+      [this._morphTex, this._morphBack] = [this._morphBack, this._morphTex];
+      this._morph0 = performance.now();
+      const P = this.P, rate = Math.max(0.05, +P.tyRate || 1);
+      const beatSec = (typeof App !== 'undefined' && App.beatMode === 'beat' && typeof BPM !== 'undefined' && BPM.bpm) ? 60/BPM.bpm/(App.beatScale || 1) : 0.5;
+      this._morphDur = 1000*Math.min(1, this._dz(P.tyMorph)*0.01)*beatSec/rate;   // 1 字の間隔に対する割合
+    }
+  },
+  // 移り変わりの進み (0〜1)。移り変わっていないときは 1 (緩急はシェーダの削り方でつける)
+  _morphT(){
+    if(!this._morphOn) return 1;
+    const t = (performance.now() - this._morph0)/Math.max(1, this._morphDur);
+    if(t >= 1){ this._morphOn = false; return 1; }
+    return t;
+  },
+  // 形を画面に収める: 世界の大きさ (F 単位)・外形の幅と高さ・中心・倍率 (Size の前)。描画と移り変わりの写像で共有
+  _fit(B, aspect){
+    const world = B ? [B.w/B.F, B.h/B.F] : [1, 1];
+    const bb = B ? B.bbox : [0, 0, 1, 1];
+    const bw = B ? Math.max(0.2, (bb[2] - bb[0])/B.F) : 1, bh = B ? Math.max(0.2, (bb[3] - bb[1])/B.F) : 1;
+    const center = B ? [((bb[0] + bb[2])*0.5/B.w - 0.5)*world[0], (0.5 - (bb[1] + bb[3])*0.5/B.h)*world[1]] : [0, 0];
+    const half = 6.0*Math.tan(15*Math.PI/180);   // カメラ距離 6・画角 30° の画面の半分の高さ
+    return { world, bw, bh, center, fit:Math.min(half*aspect*0.88/(bw*0.5), half*0.85/(bh*0.5)) };
   },
 
   // ===== 画像テクスチャ (images/ のフォルダ。ImageMode のフォルダ一覧を使う) =====
@@ -1130,12 +1194,9 @@ void main(){
     // カメラと大きさ
     const fov = 30*deg, camZ = 6.0;
     const B = this.bake;
-    const world = B ? [B.w/B.F, B.h/B.F] : [1, 1];
-    const bb = B ? B.bbox : [0, 0, 1, 1];
-    const bw = B ? Math.max(0.2, (bb[2] - bb[0])/B.F) : 1, bh = B ? Math.max(0.2, (bb[3] - bb[1])/B.F) : 1;
-    const center = B ? [((bb[0] + bb[2])*0.5/B.w - 0.5)*world[0], (0.5 - (bb[1] + bb[3])*0.5/B.h)*world[1]] : [0, 0];
+    this._aspect = aspect;
+    const { world, bw, center, fit } = this._fit(B, aspect);
     const halfW = camZ*Math.tan(fov/2)*aspect, halfH = camZ*Math.tan(fov/2);
-    const fit = Math.min(halfW*0.88/(bw*0.5), halfH*0.85/(bh*0.5));
     const scale = fit*Math.max(0.05, dz(P.size)*0.01);
     const f = 1/Math.tan(fov/2), near = 0.1, far = 40;
     const proj = [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
@@ -1170,6 +1231,9 @@ void main(){
       const i1 = (n, v)=>{ if(U[n]) gl.uniform1i(U[n], v); };
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.sdfTex); i1('uSDF', 0);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.texTex); i1('uTex', 1);
+      const mt = this._morphT();
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, mt < 1 ? this._morphTex : this.sdfTex); i1('uSDFPrev', 2);
+      u1('uMorph', mt);
       if(U.uTexSize) gl.uniform2f(U.uTexSize, B.w, B.h);
       u1('uCols', B.cols); u1('uGrid', B.grid);
       if(U.uWorld) gl.uniform2f(U.uWorld, world[0], world[1]);
@@ -1225,6 +1289,7 @@ void main(){
       gl.frontFace(gl.CCW); gl.disable(gl.CULL_FACE);
       gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       gl.bindVertexArray(null);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, null);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null);
       gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, null);
     }
