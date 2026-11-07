@@ -494,6 +494,9 @@ uniform float uBKeyWhite;  // Slot B が白背景(ribbon 等)のとき、白を�
 uniform int   uPalette;    // 統一パレット: 0=off 1..7=プリセット 8=Slot A 抽出
 uniform float uPaletteAmt; // パレット適用量(0=元のまま, 1=完全にパレット化)
 uniform vec3  uAutoPal0, uAutoPal1, uAutoPal2, uAutoPal3;  // 抽出元スロット(Auto Map 符号で A/B)の 4 色(暗→明)
+uniform float uAutoColorful;  // 両スロットがカラフルな度合い(0..1)。>0 で色相分布を参照側へ写す
+uniform vec4  uAutoHueLut[8]; // 適用先の色相(32 等分) → 参照側の色相(周回数, 単調増加)。色相ヒストグラムの CDF マッチング
+uniform float uAutoChromaK;   // 彩度(Oklab chroma)の倍率 = 参照側平均 / 適用先平均
 uniform float uGradMix;       // グラデーションマップ強度
 uniform vec3  uGradStops[8];  // グラデ停止点の色 (最大8)
 uniform float uGradPos[8];    // 停止点の位置 (0..1)
@@ -626,6 +629,27 @@ vec2 applyMirror(vec2 uv, int mode){
 vec3 _blendOverlay(vec3 a, vec3 b){
   return mix(2.0*a*b, 1.0 - 2.0*(1.0-a)*(1.0-b), step(0.5, a));
 }
+// sRGB(γ2.2 近似) ⇄ Oklab。CPU 側 (App._oklab) と同じ式
+vec3 _toOklab(vec3 c){
+  vec3 l = pow(max(c, 0.0), vec3(2.2));
+  vec3 lms = vec3(0.4122214708*l.r + 0.5363325363*l.g + 0.0514459929*l.b,
+                  0.2119034982*l.r + 0.6806995451*l.g + 0.1073969566*l.b,
+                  0.0883024619*l.r + 0.2817188376*l.g + 0.6299787005*l.b);
+  lms = pow(lms, vec3(1.0/3.0));
+  return vec3(0.2104542553*lms.x + 0.7936177850*lms.y - 0.0040720468*lms.z,
+              1.9779984951*lms.x - 2.4285922050*lms.y + 0.4505937099*lms.z,
+              0.0259040371*lms.x + 0.7827717662*lms.y - 0.8086757660*lms.z);
+}
+vec3 _fromOklab(vec3 o){
+  vec3 lms = vec3(o.x + 0.3963377774*o.y + 0.2158037573*o.z,
+                  o.x - 0.1055613458*o.y - 0.0638541728*o.z,
+                  o.x - 0.0894841775*o.y - 1.2914855480*o.z);
+  lms = lms*lms*lms;
+  vec3 l = vec3( 4.0767416621*lms.x - 3.3077115913*lms.y + 0.2309699292*lms.z,
+                -1.2684380046*lms.x + 2.6097574011*lms.y - 0.3413193965*lms.z,
+                -0.0041960863*lms.x - 0.7034186147*lms.y + 1.7076147010*lms.z);
+  return pow(max(l, 0.0), vec3(1.0/2.2));
+}
 // Auto Map のパレット再彩色 (適用先は sampleAB で uPaletteAmt の符号により切替)
 vec3 fl_applyPalette(vec3 c){
   if(uPalette == 0 || abs(uPaletteAmt) < 0.0001) return c;
@@ -652,7 +676,19 @@ vec3 fl_applyPalette(vec3 c){
   float t = (uPalette == 8) ? L : mix(L, hue, smoothstep(0.06, 0.35, sat));
   vec3 pc = t<0.333 ? mix(p0,p1,t/0.333) : t<0.666 ? mix(p1,p2,(t-0.333)/0.333) : mix(p2,p3,(t-0.666)/0.334);
   pc *= 0.45 + 1.10*L;
-  return mix(c, clamp(pc, 0.0, 1.0), abs(uPaletteAmt));
+  pc = clamp(pc, 0.0, 1.0);
+  // 両スロットがカラフル: 輝度パレットに潰さず、色相の分布を参照側へ写す(明度は適用先のまま)
+  if(uPalette == 8 && uAutoColorful > 0.0001){
+    vec3 lab = _toOklab(c);
+    float x = fract(atan(lab.z, lab.y) / 6.2831853) * 32.0;
+    int i0 = min(int(x), 31), i1 = (i0 + 1) % 32;
+    float h0 = uAutoHueLut[i0 / 4][i0 % 4];
+    float h1 = uAutoHueLut[i1 / 4][i1 % 4] + (i1 == 0 ? 1.0 : 0.0);
+    float a = 6.2831853 * mix(h0, h1, x - float(i0));
+    vec3 cc = _fromOklab(vec3(lab.x, vec2(cos(a), sin(a)) * length(lab.yz) * uAutoChromaK));
+    pc = mix(pc, clamp(cc, 0.0, 1.0), uAutoColorful);
+  }
+  return mix(c, pc, abs(uPaletteAmt));
 }
 // Grad Map (輝度 → 多色グラデーション)。中央0/負値で反転。スロット単位で適用するため関数化。
 vec3 _gradMap(vec3 c){
@@ -5019,7 +5055,10 @@ void main(){
       gl.uniform3f(U('uAutoPal0'), ap[0][0], ap[0][1], ap[0][2]);
       gl.uniform3f(U('uAutoPal1'), ap[1][0], ap[1][1], ap[1][2]);
       gl.uniform3f(U('uAutoPal2'), ap[2][0], ap[2][1], ap[2][2]);
-      gl.uniform3f(U('uAutoPal3'), ap[3][0], ap[3][1], ap[3][2]); }
+      gl.uniform3f(U('uAutoPal3'), ap[3][0], ap[3][1], ap[3][2]);
+      const ac = App._autoColor;
+      gl.uniform1f(U('uAutoColorful'), ac ? ac.w : 0);
+      if(ac){ gl.uniform4fv(U('uAutoHueLut'), ac.lut); gl.uniform1f(U('uAutoChromaK'), ac.chromaK); } }
     gl.uniform1f(U('uHueRot'),    0);
     _uploadGradStops(gl, U, p);
     // Grad Map は sampleAB 内で全スロットにスロット単位で適用(両スロット均一)。シェーダの in-shader cosGrad は廃止。
@@ -15057,18 +15096,21 @@ ${outBlock}
   extractSlotAPalette(){
     try{
       // 抽出元: Auto Map 正 = Slot A (B を A に合わせる) / 負 = Slot B (A を B に合わせる)
-      const gl = GL.gl, slot = GL.slots[((this.post && this.post.paletteAmt) || 0) < 0 ? 'B' : 'A'];
+      //   適用先(もう一方)も右半分へ並べて 1 回で読み戻し、両方カラフルかの判定と色分布の統計に使う
+      const gl = GL.gl, srcKey = ((this.post && this.post.paletteAmt) || 0) < 0 ? 'B' : 'A';
+      const slot = GL.slots[srcKey], dstSlot = GL.slots[srcKey === 'A' ? 'B' : 'A'];
       if(!gl || !slot || !slot.fbos) return false;
       const src = slot.fbos[slot.fbIdx ^ 1];
       if(!src || !src.fbo) return false;
+      const dst = (dstSlot && dstSlot.fbos) ? dstSlot.fbos[dstSlot.fbIdx ^ 1] : null;
       // Slot A は RGBA16F(HALF_FLOAT)で UNSIGNED_BYTE/FLOAT 読み不可 → 小さな RGBA8 へ blit して読む
-      const tw = 128, th = Math.max(1, Math.round(128 * src.h / src.w));
+      const tw = 128, th = Math.max(1, Math.round(128 * src.h / src.w)), fw = tw * 2;
       let d = this._palFBO;
-      if(!d || d.w !== tw || d.h !== th){
+      if(!d || d.w !== fw || d.h !== th){
         if(d){ gl.deleteFramebuffer(d.fbo); gl.deleteTexture(d.tex); }
         const tex = gl.createTexture();
         gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, fw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
         gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
@@ -15077,16 +15119,25 @@ ${outBlock}
         gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
         gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
         gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        d = this._palFBO = { fbo, tex, w: tw, h: th };
+        d = this._palFBO = { fbo, tex, w: fw, h: th };
       }
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src.fbo);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, d.fbo);
+      gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);   // 適用先が無いときは右半分=黒(=統計なし)
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src.fbo);
       gl.blitFramebuffer(0, 0, src.w, src.h, 0, 0, tw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      if(dst && dst.fbo){
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, dst.fbo);
+        gl.blitFramebuffer(0, 0, dst.w, dst.h, tw, 0, fw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      }
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, d.fbo);
       this._palPending = true;
-      GL.asyncReadPixels(tw, th, (px)=>{   // 非同期: パレットが数フレーム遅れて更新されるだけ
+      GL.asyncReadPixels(fw, th, (px)=>{   // 非同期: パレットが数フレーム遅れて更新されるだけ
         this._palPending = false;
-        this._autoPalRetry = !(px && this._applyExtractedPalette(px));
+        if(!px){ this._autoPalRetry = true; return; }
+        const half = (x0)=>{ const o = new Uint8Array(tw*th*4); for(let y=0;y<th;y++) o.set(px.subarray((y*fw + x0)*4, (y*fw + x0 + tw)*4), y*tw*4); return o; };
+        const sp = half(0);
+        this._autoPalRetry = !this._applyExtractedPalette(sp);
+        this._updateAutoColor(sp, half(tw));
       });
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
@@ -15121,6 +15172,70 @@ ${outBlock}
       this._autoPal = pal;
       return true;
     }catch(e){ return false; }
+  },
+  // sRGB(γ2.2 近似) → Oklab。シェーダの _toOklab と同じ式
+  _oklab(r, g, b){
+    r = Math.pow(r, 2.2); g = Math.pow(g, 2.2); b = Math.pow(b, 2.2);
+    const l = Math.cbrt(0.4122214708*r + 0.5363325363*g + 0.0514459929*b);
+    const m = Math.cbrt(0.2119034982*r + 0.6806995451*g + 0.1073969566*b);
+    const s = Math.cbrt(0.0883024619*r + 0.2817188376*g + 0.6299787005*b);
+    return [0.2104542553*l + 0.7936177850*m - 0.0040720468*s,
+            1.9779984951*l - 2.4285922050*m + 0.4505937099*s,
+            0.0259040371*l + 0.7827717662*m - 0.8086757660*s];
+  },
+  // 縮小ピクセルの色の多様さ (平均彩度 × 彩度重み付き色相の円周分散) と Oklab 色相ヒストグラム(chroma 重み)。黒(背景)は除外
+  _colorStats(px){
+    const NB = 72, hist = new Float64Array(NB);
+    let n = 0, satSum = 0, hx = 0, hy = 0, hs = 0, cSum = 0;
+    for(let i=0;i<px.length;i+=4){
+      const r=px[i]/255, g=px[i+1]/255, b=px[i+2]/255;
+      if(r+g+b < 0.06) continue;
+      const mx = Math.max(r,g,b), mn = Math.min(r,g,b), c = mx - mn, s = c / mx;
+      if(c > 1e-4){
+        let h = mx === r ? ((g-b)/c) % 6 : mx === g ? (b-r)/c + 2 : (r-g)/c + 4;
+        h *= Math.PI / 3;
+        hx += s*Math.cos(h); hy += s*Math.sin(h); hs += s;
+      }
+      satSum += s;
+      const o = this._oklab(r, g, b), C = Math.hypot(o[1], o[2]);
+      cSum += C;
+      if(C > 0.02){ const t = Math.atan2(o[2], o[1]) / (2*Math.PI); hist[Math.floor((t - Math.floor(t)) * NB) % NB] += C; }
+      n++;
+    }
+    if(n < 8) return null;
+    const spread = hs > 1e-6 ? 1 - Math.hypot(hx, hy) / hs : 0;
+    return { colorful: (satSum / n) * spread, hist, chroma: cSum / n };
+  },
+  // 色相ヒストグラムの CDF マッチング: 適用先の色相(32 等分) → 参照側の色相(周回数, 単調増加)。
+  //   円周の切れ目は各ヒストグラムで最も空いているビン(色が無い所で切る)
+  _hueMatchLut(T, R){
+    const NB = T.length, eps = 1e-4;
+    const cutOf = H => { let k = 0, best = Infinity; for(let i=0;i<NB;i++){ const v = H[(i+NB-1)%NB] + 2*H[i] + H[(i+1)%NB]; if(v < best){ best = v; k = i; } } return k; };
+    const cdf = (H, cut) => { const c = new Float64Array(NB + 1); let t = 0; for(let i=0;i<NB;i++) t += H[(cut+i)%NB] + eps; for(let i=0;i<NB;i++) c[i+1] = c[i] + (H[(cut+i)%NB] + eps) / t; return c; };
+    const cT = cutOf(T), cR = cutOf(R), FT = cdf(T, cT), FR = cdf(R, cR);
+    const lut = new Float32Array(32);
+    for(let k=0;k<32;k++){
+      let u = k/32 - cT/NB; u = (u - Math.floor(u)) * NB;          // 適用先の切れ目からのビン位置
+      const j = Math.min(NB - 1, Math.floor(u)), q = FT[j] + (FT[j+1] - FT[j]) * (u - j);
+      let m = 0; while(m < NB - 1 && FR[m+1] < q) m++;              // 参照側 CDF の逆関数
+      const v = (m + (q - FR[m]) / Math.max(1e-9, FR[m+1] - FR[m])) / NB;
+      lut[k] = cR/NB + v;
+    }
+    for(let k=1;k<32;k++) while(lut[k] < lut[k-1]) lut[k] += 1;   // 周回をほどいて単調増加に
+    return lut;
+  },
+  // 両スロットがカラフルなら Auto Map を「色相分布の転写」寄りにする (片方がモノクロ/単色に近ければ w=0 = 従来の輝度パレット)
+  _updateAutoColor(srcPx, dstPx){
+    const R = this._colorStats(srcPx), T = this._colorStats(dstPx);
+    const ss = x => Math.max(0, Math.min(1, (x - 0.08) / 0.08));
+    const sm = x => { const t = ss(x); return t*t*(3 - 2*t); };
+    const target = (R && T) ? Math.min(sm(R.colorful), sm(T.colorful)) : 0;
+    const prev = this._autoColor;
+    let w = prev ? prev.w + (target - prev.w) * 0.4 : target;   // 抽出ごとに平滑化 (しきい値付近の点滅防止)
+    if(w < 0.002) w = 0;
+    this._autoColor = (R && T && target > 0)
+      ? { w, lut: this._hueMatchLut(T.hist, R.hist), chromaK: Math.max(0.5, Math.min(2, R.chroma / Math.max(1e-4, T.chroma))), cR: R.colorful, cT: T.colorful }
+      : (prev ? Object.assign({}, prev, { w, cR: R ? R.colorful : 0, cT: T ? T.colorful : 0 }) : null);
   },
   // 最終出力のスナップショット (全mode対応のサムネ dataURL)。失敗時は null。
   _grabPresetThumb(){
