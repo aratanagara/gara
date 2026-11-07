@@ -7,16 +7,22 @@
      親がいなければ画面のどこかに単独で出る。現れたあと、近くにいる他のノードへも線を伸ばす。
      消えるときは先に線が縮み、続いてノードがしぼむ。親が先に消えても子は残る。
      親子の深さは周期ごとの段 (0〜3) で決め、段の浅いノードにだけつながる (再帰が必ず止まる)。
-   - 種類: 黄緑の楕円 (大半) / 線の端の点 (巻きひげ) / 茶色の四角 (茶色の線でつながる) / サーモン色の菱形
+   - 種類: 黄緑の楕円 (大半) / 線の端の点 (巻きひげ) / 茶色の四角 (茶色の線でつながる) / ベージュの水彩の菱形 (灰茶の線でつながる)
    - 青い弧: 別の枠で、弧が伸びて矢印が付き、しばらくして尾が先端へ追いついて消える。
    - 平らと立ち上がり (Rise / Cycle): 網はすべて地面に置いてあり、Cycle ごとに「平らに見下ろす」と「斜めから見る」を
      繰り返す。斜めのときは地面が奥へ倒れ (Tilt)、回り (Yaw)、四角は菱形に、楕円は潰れた楕円に見える。
      横長の面 (どれも平行に奥へ向く) が蝶番のように 90° 立ち上がり (面ごとに少しずつずれる)、面には人の外側の輪郭が下辺から切り抜かれている
      (腕と股から内側の線は無く、下辺は体の幅だけ切れる。頭が上辺から出る人は上辺も首の幅だけ切れる)。流れる青い矢印は宙に浮き、うねる赤線と
-     手前の緑の波の帯が現れる。立ち上がると楕円の半分が菱形に変わり、そこをつなぐ線もサーモン色になる (図 1 → 図 2)。
+     手前の色鉛筆の緑の帯が現れる。立ち上がると楕円の半分が菱形に変わり、そこをつなぐ線も灰茶になる (図 1 → 図 2)。
      Rise 0 で平らのまま (以前と同じ見た目)。
    - Style: 網 (図 1) は平らなときに縦の面・矢印・赤線・帯が出ず、立ち上がるときだけ現れる。
      面と流れ (図 2) / 両方 は菱形が主になり、それらが常に出る (平らなときの面は地面に寝ている)。
+     扇 / 群れの輪 / 樹と根 は網を使わない別の図 (_fan / _packs / _tree)。地面の倒れ (Rise / Cycle) と手描きの描き方は共通。
+   - 手描き: 線は全体でわずかにたわみ (伸びる途中でも形が変わらないよう、線の全体の両端で測る)、ペン先を置いた両端にインクがたまる。
+     楕円は透けるマーカーの塗り (下の線が透ける) で、筆の帯の重なりと片側の影があり、縁のペン線は描き始めと終わりが食い違う。
+     四角と菱形は水彩 (縁にたまって濃く、中はむら) で、ペンの縁は角で少し突き抜け、角にインクがたまる。破線は線と隙間の長さがばらつく。
+     手前の帯は色鉛筆の斜めの線。手描きのばらつきは要素ごとの種 (地面の位置などから決める) で決まり、地面が倒れても揺れない。
+     Boil で一定のコマごとに描き直す (手描きアニメの線の震え)。
    - 時刻だけから決まる (状態を持たない)。逆再生や拍の飛びでもそのまま。C キーでスロットの時計が 0 に戻ると最初から。
      beat モードは拍が時間の単位で、生まれる時刻が半拍にそろい、拍頭でノードがふくらむ (Kick)。drone は秒が単位。
    - 3D は CPU で点を画面へ投影し、1 要素 = 1 インスタンスの四角形を頂点シェーダで置く。形 (線分・楕円・点・四角形) は
@@ -33,7 +39,7 @@ const Rhizome = {
 
   // ── パラメータ (UI から操作)。数値は使う直前に App.deadParam を通す ──
   P:{
-    style:0,        // 0 = 網 (図 1) / 1 = 面と流れ (図 2) / 2 = 両方
+    style:0,        // 0 = 網 (図 1) / 1 = 面と流れ (図 2) / 2 = 両方 / 3 = 扇 / 4 = 群れの輪 / 5 = 樹と根
     speed:100,      // 時間の速さ (%)
     life:6,         // ノードの寿命の目安 (秒。beat では拍)
     nodes:180,      // ノードの枠の数 (同時に見えるのはおよそ 6〜7 割)
@@ -50,8 +56,9 @@ const Rhizome = {
     spread:100,     // 子が親から離れて生まれる距離 (%)
     line:100,       // 線の太さ (%)
     pencil:100,     // 色鉛筆のかすれと塗りむら (%)
-    hand:100,       // 手描きの揺れ (%)。線がうねり、縁が揺れ、線の太さにむらが出る
-    pop:100,        // ポップの弾み (%)
+    hand:100,       // 手描きの揺れ (%)。線がたわみ、縁が揺れ、線の太さにむらが出て、ペン先にインクがたまる
+    boil:0,         // 描き直しの速さ (%)。100 で毎秒 8 コマ (beat では 1 拍 2 コマ) ごとに手描きのばらつきを引き直す。0 で止まったまま
+    pop:100,       // ポップの弾み (%)
     kick:60,        // 拍でノードがふくらむ量 (%)
     drift:40,       // 画面がゆっくり流れる量 (%)
     rise:100,       // 立ち上がる量 (%)。0 で平らのまま
@@ -63,7 +70,7 @@ const Rhizome = {
   },
 
   SPECS:[
-    {sel:true, label:'Style', key:'style', opts:['網 (図 1)', '面と流れ (図 2)', '両方']},
+    {sel:true, label:'Style', key:'style', opts:['網 (図 1)', '面と流れ (図 2)', '両方', '扇', '群れの輪', '樹と根']},
     ['Speed',    'speed',    0,   300, 1,   'pct'],
     ['Life',     'life',     1,   32,  0.5, 'f2'],
     ['Nodes',    'nodes',    10,  400, 1,   'int'],
@@ -81,6 +88,7 @@ const Rhizome = {
     ['Line',     'line',     20,  400, 1,   'pct'],
     ['Pencil',   'pencil',   0,   200, 1,   'pct'],
     ['Hand',     'hand',     0,   300, 1,   'pct'],
+    ['Boil',     'boil',     0,   300, 1,   'pct'],
     ['Pop',      'pop',      0,   300, 1,   'pct'],
     ['Kick',     'kick',     0,   200, 1,   'pct'],
     ['Drift',    'drift',    0,   300, 1,   'pct'],
@@ -91,10 +99,12 @@ const Rhizome = {
     ['Seed',     'seed',     0,   99,  1,   'int'],
   ],
 
+  // lime は透けるマーカーの色 (塗りの不透明度 0.74 で紙に重ねたとき、およそ [0.73, 0.94, 0.17] に見える)
   COL:{
-    lime:[0.73, 0.94, 0.17], limeRim:[0.45, 0.73, 0.15], green:[0.40, 0.73, 0.38], dot:[0.30, 0.58, 0.28],
-    salmon:[0.86, 0.52, 0.45], brown:[0.50, 0.28, 0.23], sqLine:[0.58, 0.38, 0.34], sqFill:[0.93, 0.83, 0.80],
-    blue:[0.24, 0.54, 0.88], ink:[0.20, 0.19, 0.19], red:[0.85, 0.22, 0.18], band:[0.45, 0.78, 0.40],
+    lime:[0.65, 0.93, 0.02], limeRim:[0.33, 0.58, 0.18], green:[0.40, 0.73, 0.38], dot:[0.30, 0.58, 0.28],
+    taupe:[0.55, 0.47, 0.44], brown:[0.50, 0.28, 0.23], sqLine:[0.58, 0.38, 0.34], sqFill:[0.93, 0.85, 0.80],
+    blue:[0.24, 0.54, 0.88], ink:[0.20, 0.19, 0.19], red:[0.85, 0.22, 0.18], band:[0.30, 0.62, 0.27],
+    hub:[0.18, 0.50, 0.16],
   },
 
   // 立っている人の外側の輪郭 (足元の中央が原点、背の高さ 1)。右の足元 → 頭 → 左の足元。
@@ -132,14 +142,14 @@ const Rhizome = {
   VS:`#version 300 es
 precision highp float;
 layout(location=0) in vec2 aCorner;
-layout(location=1) in vec4 iA;   // 線: 両端 / 楕円・点: 中心 xy と半径 zw / 四角形: 1・2 番目の角
-layout(location=2) in vec4 iB;   // 種類, 回転 (四角形は塗りの濃さ), 線の半幅, 不透明度
-layout(location=3) in vec4 iC;   // 色
-layout(location=4) in vec4 iD;   // 楕円: 縁の色 / 四角形: 3・4 番目の角
+layout(location=1) in vec4 iA;   // 線・色鉛筆の帯: 両端 / 楕円・点: 中心 xy と半径 zw / 四角形: 1・2 番目の角
+layout(location=2) in vec4 iB;   // 種類, 回転 (線: 全体の両端あり / 四角形: 塗りの濃さ / 帯: 帯に沿った位置), 線の半幅, 不透明度
+layout(location=3) in vec4 iC;   // 色, 手描きのばらつきの種 (0..1。帯は区間の地面での長さ px)
+layout(location=4) in vec4 iD;   // 線: 全体の両端 / 楕円: 縁の色と地面の x 軸の画面での向き / 四角形: 3・4 番目の角 / 帯: 両端の継ぎ目の向き
 uniform vec2 uCam;               // 画面の中心
 uniform vec2 uHalf;              // 画面の半幅・半高
 uniform float uPx;               // 1px の長さ
-uniform float uHand;             // 手描きの揺れ (形が最大で約 8px × uHand ずれる)
+uniform float uHand;             // 手描きの揺れ (線のたわみは最大で約 5px × uHand)
 out vec2 vW;
 flat out vec4 vA;
 flat out vec4 vB;
@@ -148,9 +158,9 @@ flat out vec4 vD;
 void main(){
   vA = iA; vB = iB; vC = iC; vD = iD;
   float type = iB.x;
-  float pad = iB.z * 1.35 + (3.0 + 8.0 * uHand) * uPx;
+  float pad = type > 4.5 ? iB.z * 1.3 + 3.0 * uPx : iB.z * 2.0 + (3.0 + 7.0 * uHand) * uPx;
   vec2 w;
-  if(type < 0.5){                                   // 線分
+  if(type < 0.5 || type > 4.5){                     // 線分・色鉛筆の帯
     vec2 a = iA.xy, b = iA.zw;
     vec2 d = b - a;
     float L = length(d);
@@ -181,6 +191,7 @@ flat in vec4 vD;
 uniform float uPx;
 uniform float uPencil;
 uniform float uHand;
+uniform float uBoil;             // 描き直しのコマごとの種のずれ (0..1。0 = 描き直さない)
 uniform vec3 uSqFill;
 out vec4 o;
 float h2(vec2 p){
@@ -201,58 +212,151 @@ float seg(vec2 p, vec2 a, vec2 b){
   return length(pa - ba * h);
 }
 float cr(vec2 a, vec2 b){ return a.x * b.y - a.y * b.x; }
+// 手で引いた線 a→b までの距離 (x) と、線に沿った位置 (y, px)。S→E はその線の全体 (伸びる途中でも形が変わらないよう全体で測る)。
+// bowK = 1 で全体がわずかにたわみ、細かくうねる。0 でまっすぐ (折れ線で描く曲線は区間ごとに測ると継ぎ目で折れるので 0)
+vec2 stroke(vec2 w, vec2 a, vec2 b, vec2 S, vec2 E, float sd, float bowK){
+  vec2 dE = E - S;
+  float Lf = max(length(dE), 1e-7);
+  vec2 tf = dE / Lf, nf = vec2(-tf.y, tf.x);
+  float hf = clamp(dot(w - S, tf) / Lf, 0.0, 1.0);
+  float sp = hf * Lf / uPx;
+  float bow = (sd - 0.5) * 2.0 * min(0.012 * Lf, 5.0 * uPx) * 4.0 * hf * (1.0 - hf);
+  float wig = (vn(vec2(sp / 34.0 + sd * 91.0, sd * 7.0)) - 0.5) * 1.5 * uPx;
+  return vec2(seg(w - nf * (bow + wig) * uHand * bowK, a, b), sp);
+}
 void main(){
   float type = vB.x;
   float px = uPx;
   vec2 w = vW;
-  // 色鉛筆のかすれ (紙の目に沿う) と線の太さのむら
-  float tooth = vn(w * vec2(900.0, 340.0));
-  float grain = 1.0 - uPencil * 0.42 * smoothstep(0.25, 0.95, tooth);
-  float wob = (vn(w * 70.0 + 3.1) - 0.5) * 0.9 * px * uPencil;
-  // 手描きの揺れ (uHand): 形を測る位置をゆるいノイズ (波長およそ 90px と 30px) でずらす。線は横へうねり、楕円・四角の縁も揺れる。
-  // 紙の目とかすれ (上) はずらさない。線の太さには筆圧のようなむらを付ける
-  vec2 hq = w / (90.0 * px);
-  w += ((vec2(vn(hq + 1.7), vn(hq + 8.3)) - 0.5) * 9.0 + (vec2(vn(hq * 3.1 + 4.4), vn(hq * 3.1 + 2.2)) - 0.5) * 2.2) * px * uHand;
-  float press = 1.0 + 0.56 * uHand * (vn(hq * 1.7 + 6.0) - 0.5);
+  float sd = fract((type > 4.5 ? 0.37 : vC.w) + uBoil);
+  float hk = min(uHand, 1.0);
+  // 紙の目 (紙に付くので画面の画素で測る) と色鉛筆のかすれ
+  float tooth = vn(gl_FragCoord.xy * 0.83) * 0.65 + vn(gl_FragCoord.xy * 0.21 + 7.0) * 0.35;
+  float grain = 1.0 - uPencil * 0.42 * smoothstep(0.30, 0.90, tooth);
   vec3 col = vC.rgb;
   float a = 0.0;
   if(type < 0.5){                                   // 線分
-    float d = seg(w, vA.xy, vA.zw);
-    float hw = vB.z * clamp(press, 0.6, 1.3);
-    a = (1.0 - smoothstep(hw - 0.5 * px, hw + px, d + wob)) * grain;
-  } else if(type < 1.5){                            // 楕円 (塗り + 濃い縁 + 塗りの筆致)
-    vec2 q = rot(-vB.y) * (w - vA.xy);
-    float de = (length(q / vA.zw) - 1.0) * vA.w;
-    // マーカーの塗りは縁から少しずれ、はみ出したり足りなかったりする (uHand。0 で縁と同じ形)
-    vec2 fo = (vec2(h2(vA.xy * 913.0), h2(vA.xy * 577.0 + 3.0)) - 0.5) * 0.30 * vA.zw * uHand;
-    float dfl = (length((q - fo) / vA.zw) - 1.0) * vA.w;
-    float hatch = 0.5 + 0.5 * sin(dot(w, vec2(0.62, 0.78)) * 1100.0 + wob / max(px, 1e-7) * 4.0);
-    float rim = smoothstep(-2.6 * px, -0.3 * px, de) * (1.0 - smoothstep(-px, px, de));   // 縁の内側の濃い帯
+    bool full = vB.y > 0.5;
+    vec2 st = stroke(w, vA.xy, vA.zw, full ? vD.xy : vA.xy, full ? vD.zw : vA.zw, sd, full ? 1.0 : 0.0);
+    // 筆圧のむらとインクの出のむら (まっすぐな線は線に沿って、折れ線の曲線は場所で測る)
+    vec2 sq = full ? vec2(st.y, sd * 37.0) : w / px;
+    float press = 1.0 + 0.45 * uHand * (vn(vec2(sq.x / 70.0, sq.y / 70.0 + 3.0)) - 0.5);
+    float ink = 1.0 - 0.26 * uPencil * vn(vec2(sq.x / 16.0, sq.y / 16.0 + 9.0));
+    float hw = vB.z * clamp(press, 0.6, 1.4);
+    a = (1.0 - smoothstep(hw - 0.5 * px, hw + px, st.x)) * grain * ink;
+    // 折れ線の曲線は区間の両端を丸めず平らに切る (継ぎ目で両隣が重なって濃い粒にならない)
+    vec2 sab = vA.zw - vA.xy;
+    float hs = dot(w - vA.xy, sab) / max(dot(sab, sab), 1e-12);
+    if(!full && (hs < 0.0 || hs >= 1.0)) a = 0.0;
+    if(full){   // ペン先を置いた所と離した所のインクだまり
+      float rb = max(hw * 1.45, 1.0 * px) * (0.85 + 0.3 * h2(vec2(sd, 3.0)));
+      float db = min(length(w - vA.xy), length(w - vA.zw)) - rb;
+      a = max(a, (1.0 - smoothstep(-0.5 * px, px, db)) * 0.95 * hk);
+    }
+  } else if(type < 1.5){                            // 楕円 (透けるマーカーの塗り + ペンの縁)
+    // 形は主軸の向き (vB.y, ab) で測る。手描きのばらつきは楕円自身の地面の x 軸の向き (vD.w) で測る
+    // (主軸は真円をまたぐと 90° 入れ替わるので、ばらつきをそれで測ると地面が倒れる途中で跳ねる)
+    vec2 ab = vA.zw;
+    vec2 dw = w - vA.xy;
+    vec2 q = rot(-vB.y) * dw;
+    vec2 g = rot(-vD.w) * dw;
+    mat2 g2q = rot(vD.w - vB.y);
+    float rq = length(q / ab);
+    float de = (rq - 1.0) * rq / max(length(q / (ab * ab)), 1e-6);   // 縁までの距離 (細長くても縁の太さがそろう)
+    // 塗りは縁から少しずれ、はみ出したり足りなかったりする (uHand。0 で縁と同じ形)
+    // (ずれは大きさに比例させず、大きい楕円でも数 px まで)
+    vec2 fo = (vec2(h2(vec2(sd, 1.3)), h2(vec2(sd, 7.9))) - 0.5) * min(0.24 * min(ab.x, ab.y), 5.0 * px) * uHand;
+    vec2 fab = ab + min(0.07 * min(ab.x, ab.y), 3.0 * px) * uHand * (h2(vec2(sd, 4.1)) - 0.6);
+    vec2 qf = q - g2q * fo, gf = g - fo;
+    float rf = length(qf / fab);
+    float dfl = (rf - 1.0) * rf / max(length(qf / (fab * fab)), 1e-6);
     float fil = 1.0 - smoothstep(-px, px, dfl);
-    col = mix(vC.rgb * (1.0 - (uPencil * 0.07 + uHand * 0.07) * hatch), vD.rgb, rim / max(max(rim, fil), 1e-4));
-    a = max(rim, fil) * 0.94;
+    // マーカーの筆致: 太いペン先で一方向に塗った帯。帯の重なりが濃く、帯の中もむらになる。縁にインクがたまる
+    float sa = -0.6 + 1.0 * h2(vec2(sd, 9.2));
+    vec2 sdir = vec2(cos(sa), sin(sa));
+    float v = dot(gf, vec2(-sdir.y, sdir.x)) / (9.0 * px) + sd * 5.0 + 0.7 * vn(vec2(dot(gf, sdir) / (55.0 * px), sd * 3.0));
+    float fv = fract(v);
+    float lap = smoothstep(0.80, 0.95, fv) * (1.0 - smoothstep(0.95, 1.0, fv)) * (0.4 + 0.6 * h2(vec2(floor(v), sd * 13.0)));
+    float streak = vn(vec2(dot(gf, sdir) / (40.0 * px), floor(v) * 3.7 + sd * 11.0));
+    float pool = smoothstep(-3.0 * px, -0.5 * px, dfl);
+    // 片側の影 (縁に近く、楕円ごとに決まった側が濃い)
+    float la = 6.2831853 * h2(vec2(sd, 3.3));
+    float shade = smoothstep(0.45, 1.0, rf) * smoothstep(-0.3, 0.9, dot(qf / fab / max(rf, 1e-4), g2q * vec2(cos(la), sin(la))));
+    float dark = uPencil * (0.08 * lap + 0.06 * streak + 0.06 * pool) + hk * 0.13 * shade;
+    vec3 fc = vC.rgb * (1.0 - dark);
+    float fa = fil * 0.74;
+    // ペンの縁: 一周でわずかに内外へずれて描き始めと終わりが食い違い、描き終わりは少し重なる
+    float u = fract((atan(g.y, g.x) - 6.2831853 * h2(vec2(sd, 5.5))) / 6.2831853);
+    float drift = (h2(vec2(sd, 6.6)) - 0.5) * 2.6 * px * uHand;
+    float wobR = (vn(vec2(u * 6.0 + sd * 17.0, 2.0)) - 0.5) * 1.3 * px * uHand;
+    float d1 = abs(de - drift * (u - 0.5) - wobR);
+    float d2 = u < 0.10 ? abs(de - drift * (u + 0.5) - wobR) : 1e9;
+    float rhw = vB.z * (1.0 + 0.35 * uHand * (vn(vec2(u * 9.0, sd * 23.0)) - 0.5));
+    float rim = (1.0 - smoothstep(rhw - 0.5 * px, rhw + px, min(d1, d2))) * grain;
+    float A = rim + fa * (1.0 - rim);
+    o = vec4((vD.rgb * rim + fc * fa * (1.0 - rim)) * vB.w, A * vB.w);
+    return;
   } else if(type < 2.5){                            // 点
-    float d = length(w - vA.xy) - vA.z;
+    float d = length(w - vA.xy) - vA.z * (0.85 + 0.3 * h2(vec2(sd, 2.0)));
     a = 1.0 - smoothstep(-0.5 * px, px, d);
-  } else if(type < 3.5){                            // 四角形 (淡い塗り vB.y + 縁)
-    vec2 p0 = vA.xy, p1 = vA.zw, p2 = vD.xy, p3 = vD.zw;
-    float d = min(min(seg(w, p0, p1), seg(w, p1, p2)), min(seg(w, p2, p3), seg(w, p3, p0)));
-    float c0 = cr(p1 - p0, w - p0), c1 = cr(p2 - p1, w - p1), c2 = cr(p3 - p2, w - p2), c3 = cr(p0 - p3, w - p3);
+  } else if(type < 3.5){                            // 四角形 (水彩の塗り vB.y + ペンの縁)
+    vec2 P0 = vA.xy, P1 = vA.zw, P2 = vD.xy, P3 = vD.zw;
+    // ペンの縁: 辺ごとに少したわみ、角で少し突き抜ける
+    float ov = 2.4 * px * uHand;
+    float d = 1e9;
+    for(int k = 0; k < 4; k++){
+      vec2 pa = k == 0 ? P0 : (k == 1 ? P1 : (k == 2 ? P2 : P3));
+      vec2 pb = k == 0 ? P1 : (k == 1 ? P2 : (k == 2 ? P3 : P0));
+      float sk = h2(vec2(sd * 7.0, float(k)));
+      vec2 td = normalize(pb - pa + 1e-9);
+      vec2 a2 = pa - td * ov * (0.2 + 0.8 * sk), b2 = pb + td * ov * (1.0 - 0.8 * sk);
+      d = min(d, stroke(w, a2, b2, a2, b2, fract(sd + 0.37 * float(k)), 0.6).x);
+    }
+    // 水彩: 縁から少しずれ、縁にたまって濃く、中はむら
+    vec2 ww = w - (vec2(h2(vec2(sd, 2.1)), h2(vec2(sd, 8.4))) - 0.5) * 3.0 * px * uHand;
+    float di = min(min(seg(ww, P0, P1), seg(ww, P1, P2)), min(seg(ww, P2, P3), seg(ww, P3, P0)));
+    float c0 = cr(P1 - P0, ww - P0), c1 = cr(P2 - P1, ww - P1), c2 = cr(P3 - P2, ww - P2), c3 = cr(P0 - P3, ww - P3);
     bool inside = (c0 >= 0.0 && c1 >= 0.0 && c2 >= 0.0 && c3 >= 0.0) || (c0 <= 0.0 && c1 <= 0.0 && c2 <= 0.0 && c3 <= 0.0);
-    float sd = inside ? -d : d;
-    float fa = (1.0 - smoothstep(-px, px, sd)) * vB.y * (1.0 - uPencil * 0.25 * tooth);
-    float hw = vB.z * 1.2 * clamp(press, 0.6, 1.3);
-    float oa = (1.0 - smoothstep(hw, hw + px, d + wob)) * 0.92 * grain;
+    float sdist = inside ? -di : di;
+    vec2 e1 = P1 - P0, e3 = P3 - P0;
+    float det = cr(e1, e3);
+    vec2 st2 = abs(det) > 1e-12 ? vec2(cr(ww - P0, e3), cr(e1, ww - P0)) / det : vec2(0.0);   // 四角の中の位置 (0..1)
+    float blot = vn(st2 * 3.0 + sd * 20.0);
+    float edge = smoothstep(-2.6 * px, -0.3 * px, sdist);
+    float fa = (1.0 - smoothstep(-px, px, sdist)) * vB.y * (0.80 + uPencil * (0.32 * (blot - 0.5) + 0.40 * edge)) * (1.0 - uPencil * 0.18 * tooth);
+    float hw = vB.z * 1.2;
+    float oa = (1.0 - smoothstep(hw - 0.5 * px, hw + px, d)) * 0.92 * grain;
+    // 角のインクだまり
+    float dc = min(min(length(w - P0), length(w - P1)), min(length(w - P2), length(w - P3))) - max(hw * 1.5, 1.0 * px);
+    oa = max(oa, (1.0 - smoothstep(-0.5 * px, px, dc)) * 0.9 * hk);
+    fa = clamp(fa, 0.0, 1.0);
     float A = (oa + fa * (1.0 - oa)) * vB.w;
     o = vec4((vC.rgb * oa + uSqFill * fa * (1.0 - oa)) * vB.w, A);
     return;
-  } else {                                          // 紙
-    col = vC.rgb * (0.985 + 0.03 * vn(vW * vec2(140.0, 52.0)));
+  } else if(type < 4.5){                            // 紙
+    col = vC.rgb * (0.99 + 0.016 * vn(gl_FragCoord.xy * 0.35) + 0.01 * vn(gl_FragCoord.xy * 0.04));
     a = 1.0;
+  } else {                                          // 色鉛筆の帯 (折れ線の 1 区間。継ぎ目は両隣と同じ向きで切って重ならない)
+    vec2 pa = vA.xy, pb = vA.zw;
+    vec2 tt = normalize(pb - pa + 1e-9), nn = vec2(-tt.y, tt.x);
+    if(dot(w - pa, vD.xy) < 0.0 || dot(w - pb, vD.zw) >= 0.0){ o = vec4(0.0); return; }
+    float hw = vB.z;
+    float x = dot(w - pa, nn) / hw;                 // 帯の幅の向き (-1..1)
+    float s = vB.y + vC.w * dot(w - pa, tt) / max(length(pb - pa), 1e-7);   // 帯に沿った位置 (地面で測った px。倒れても筆致が滑らない)
+    float edge = 1.0 - smoothstep(0.70, 1.0, abs(x) + 0.24 * (vn(vec2(s / 22.0, sign(x) * 3.0 + sd * 9.0)) - 0.5));
+    // 斜めの短い線を密に重ねて塗る (帯に対して 35° と 50° の 2 方向)。濃さは帯の中でゆっくりむらになり、紙の目で白く抜ける
+    vec2 p = vec2(s, x * 92.0);
+    float h1 = vn(vec2(dot(p, vec2(0.819, 0.574)) / 9.0, dot(p, vec2(-0.574, 0.819)) / 1.3 + sd * 40.0));
+    float hh2 = vn(vec2(dot(p, vec2(0.643, 0.766)) / 12.0 + 5.0, dot(p, vec2(-0.766, 0.643)) / 1.5));
+    float tex = 0.55 * h1 + 0.45 * hh2;
+    float dens = edge * (0.68 + 0.28 * (vn(vec2(s / 140.0, sd * 5.0)) - 0.5));
+    a = dens * (0.30 + 0.70 * smoothstep(0.30, 0.78, tex)) * (1.0 - 0.6 * smoothstep(0.45, 0.85, tooth));
+    col = vC.rgb * (0.86 + 0.26 * tex);
   }
   a *= vB.w;
   o = vec4(col * a, a);
 }`,
+
 
   _compile(type, src){
     const gl = this.gl;
@@ -277,7 +381,7 @@ void main(){
     this.ok = !!this.prog;
     if(this.ok){
       const U = (n)=>gl.getUniformLocation(this.prog, n);
-      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), sqFill:U('uSqFill') };
+      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), boil:U('uBoil'), sqFill:U('uSqFill') };
       this.vao = gl.createVertexArray();
       gl.bindVertexArray(this.vao);
       this.cornerVBO = gl.createBuffer();
@@ -457,6 +561,224 @@ void main(){
     return Math.max(0, g * k);
   },
 
+  // 周期の中の位置 x で、xPop にふくらんで (弾んで) 現れ、xDie からしぼむ大きさ。pin = ふくらむ・しぼむ長さ
+  _popAt(x, xPop, xDie, pin, pop){
+    if(x < xPop || x > xDie + pin) return 0;
+    const g = this._ease(Math.min(1, (x - xPop) / pin), pop);
+    const y = Math.max(0, Math.min(1, (x - xDie) / pin));
+    return Math.max(0, g * (1 - y * y * (3 - 2 * y)));
+  },
+  _clamp01(v){ return v < 0 ? 0 : (v > 1 ? 1 : v); },
+
+  // 扇 (逃走線): 小さなバネから青い線が同じ向きに巻きながら扇形に伸び、届いた先で黄緑の円盤がふくらむ。
+  // 円盤は流れに向き合い、遠いほど大きい。いくつかは黒い種。緑の線が円盤を抜けて先へ伸びる (Links)。
+  // 最後は尾が先へ追いついて消える (intro-08 / 08b / 08c の雰囲気)
+  _fan(K){
+    const {t, H, C} = K;
+    const nC = Math.round(14 * K.arcsK);
+    if(nC <= 0) return;
+    const c01 = this._clamp01;
+    for(let g = 0; g < 5; g++){
+      const id = 600000 + g, cy2 = this._pool(id, t, 2.6), n = cy2.n, s = cy2.s, x = cy2.x;
+      if(H(id, n, 3) > 0.85 || x > 0.95) continue;
+      const tx = this._camX(s), ty = this._camY(s);
+      const sx = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, sy = ty + (H(id, n, 5) - 0.5) * 0.7;
+      const dir = Math.atan2(ty - sy, tx - sx + 1e-6) + (H(id, n, 6) - 0.5) * 1.2;   // おおむね画面の中ほどへ向く
+      const open = 0.8 + 0.9 * H(id, n, 7);
+      const len = (0.55 + 0.4 * H(id, n, 8)) * K.spread;
+      const sw = (H(id, n, 9) < 0.5 ? -1 : 1) * (0.5 + 0.6 * H(id, n, 10));
+      const al = 0.9 * c01(x / 0.03) * (1 - c01((x - 0.88) / 0.07));
+      // 源のバネ: 線の根元の後ろに小さく巻く
+      const ca = Math.cos(dir), sa = Math.sin(dir), cL = 0.07 * K.sizeK, cr = 0.012 * K.sizeK;
+      const coil = (v)=>{
+        const k = v * 10 * Math.PI, along = -cL * (1 - v) + cr * 0.6 * Math.cos(k), side = cr * Math.sin(k);
+        return [sx + ca * along - sa * side, sy + sa * along + ca * side, 0];
+      };
+      K.pushPoly(K.arcs, coil, 90, 0, c01(x / 0.06), K.hwB, C.ink, al, false, H(id, n, 11));
+      for(let j = 0; j < nC; j++){
+        const hj = (c)=>H(id * 64 + j, n, c);
+        const th = dir + open * ((nC > 1 ? j / (nC - 1) : 0.5) - 0.5) + (hj(1) - 0.5) * 0.08;
+        const Lj = len * (0.75 + 0.45 * hj(2));
+        const ex = sx + Math.cos(th) * Lj, ey = sy + Math.sin(th) * Lj;
+        // 3 次の曲線: 出だしは巻く向きへ振れ、先は流れに沿って入る
+        const a1 = th + sw * 0.9, a2 = th - sw * 0.4;
+        const c1x = sx + Math.cos(a1) * Lj * 0.5, c1y = sy + Math.sin(a1) * Lj * 0.5;
+        const c2x = ex - Math.cos(a2) * Lj * 0.35, c2y = ey - Math.sin(a2) * Lj * 0.35;
+        const f = (v)=>{
+          const w0 = (1 - v) * (1 - v) * (1 - v), w1 = 3 * (1 - v) * (1 - v) * v, w2 = 3 * (1 - v) * v * v, w3 = v * v * v;
+          return [w0 * sx + w1 * c1x + w2 * c2x + w3 * ex, w0 * sy + w1 * c1y + w2 * c2y + w3 * ey, 0];
+        };
+        const st = 0.04 + 0.22 * hj(3), xe = 0.80 - st * 0.4;
+        const lf = K.life2(x - st, 0.20, 0.62 - st * 0.5, xe - st);
+        if(!lf) continue;
+        const colL = hj(4) < 0.22 ? C.green : C.blue, dashed = hj(5) < 0.18;
+        K.pushPoly(K.arcs, f, dashed ? 34 : 26, lf[0], lf[1], K.hwL, colL, al, dashed, hj(6));
+        if(lf[1] >= 1 && lf[0] <= 0 && !dashed) K.pushArrow(K.arcs, f(1), f(0.97), K.hwL, colL, al, hj(7));
+        // 先の円盤 (4 分の 1 は黒い種): 線が 0.86 まで届いたらふくらむ
+        const xp = st + 0.20 * 0.86;
+        const sc = this._popAt(x, xp, xe - 0.06, 0.05, K.pop) * (1 + 0.15 * K.kick);
+        if(sc <= 0.001) continue;
+        const pc = f(0.86), pn = f(0.88), tang = Math.atan2(pn[1] - pc[1], pn[0] - pc[0]);
+        if(hj(8) < 0.25){
+          K.pushEllipse(pc[0], pc[1], 0.008 * K.sizeK * sc, 0.005 * K.sizeK * sc, tang + Math.PI / 2, C.ink, C.ink, hj(9));
+        } else {
+          const r = 0.115 * (0.10 + 0.18 * hj(10)) * K.sizeK * (0.6 + 0.6 * Lj / len) * sc;
+          K.pushEllipse(pc[0], pc[1], r, r * (0.38 + 0.15 * hj(11)), tang + Math.PI / 2, C.lime, C.limeRim, hj(9));
+        }
+        if(hj(12) < 0.5 * K.links){
+          const q0 = f(0.8), q1 = [pc[0] + Math.cos(tang) * 0.12 * K.spread, pc[1] + Math.sin(tang) * 0.12 * K.spread, 0];
+          const g2 = Math.min(c01((x - xp) / 0.08), 1 - c01((x - xe + 0.06) / 0.05));
+          K.line3(K.lines, q0, q1, K.hwG, al * 0.9, C.green, hj(13), g2);
+          if(g2 >= 1) K.pushArrow(K.lines, q1, [q0[0] + (q1[0] - q0[0]) * 0.9, q0[1] + (q1[1] - q0[1]) * 0.9, 0], K.hwG, C.green, al * 0.9, hj(14));
+        }
+      }
+    }
+  },
+
+  // 群れの輪: 黄緑の楕円が輪をまわって順にふくらみ、輪の上の宙の一点 (濃い緑) から全員へ線が伸びる。
+  // 輪はゆっくり回り、隣どうしが短い線でつながり、ときどき一つが輪を離れて外へ逃げる (Links)。別の輪とも線でつながる。
+  // 平らなときは真上から見るので一点から放射状に、地面が倒れると円錐に見える (1914-08 / 11 / 12a の雰囲気)
+  _packs(K){
+    const {t, H, C} = K;
+    const c01 = this._clamp01, al = 0.88, rings = [];
+    for(let g = 0; g < 6; g++){
+      const id = 700000 + g, cy2 = this._pool(id, t, 3.2), n = cy2.n, s = cy2.s, x = cy2.x;
+      if(H(id, n, 3) > 0.85 || x > 0.97) continue;
+      const tx = this._camX(s), ty = this._camY(s);
+      const ox = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, oy = ty + (H(id, n, 5) - 0.5) * 0.7;
+      const R = (0.09 + 0.12 * H(id, n, 6)) * K.spread;
+      const m = Math.max(5, Math.min(40, Math.round((9 + 12 * H(id, n, 7)) * K.nodesK)));
+      const z = H(id, n, 8) < 0.35 ? 0.10 + 0.20 * H(id, n, 9) : 0;          // 宙に浮く輪
+      const hub = [ox + (H(id, n, 10) - 0.5) * R * 0.4, oy + (H(id, n, 11) - 0.5) * R * 0.4, z + 0.22 + 0.25 * H(id, n, 12)];
+      const a0 = H(id, n, 13) * Math.PI * 2 + (H(id, n, 14) - 0.5) * 0.5 * (t - s);
+      const sh = this._popAt(x, 0.02, 0.86, 0.04, K.pop);
+      if(sh > 0.001) K.pushEllipse(hub[0], hub[1], 0.016 * K.sizeK * sh, 0.010 * K.sizeK * sh, H(id, n, 15) * 3, C.hub, C.limeRim, H(id, n, 16), hub[2]);
+      const pos = [];
+      for(let j = 0; j < m; j++){
+        const hj = (c)=>H(id * 64 + j, n, c);
+        const aj = a0 + Math.PI * 2 * (j + (hj(1) - 0.5) * 0.35) / m;
+        const esc = hj(3) < 0.12 * K.links ? c01((x - 0.5 - 0.15 * hj(4)) / 0.3) : 0;   // 輪を離れて逃げる
+        const rr = R * (0.92 + 0.16 * hj(2)) * (1 + 1.6 * esc * esc);
+        const p = [ox + Math.cos(aj) * rr, oy + Math.sin(aj) * rr, z];
+        pos.push(p);
+        const xp = 0.06 + 0.28 * j / m, xd = 0.78 + 0.10 * j / m;
+        const sc = this._popAt(x, xp, xd, 0.05, K.pop) * (1 + 0.15 * K.kick);
+        const rx = Math.min(R * Math.PI / m * 0.8, 0.05) * (0.8 + 0.4 * hj(5)) * K.sizeK * sc;
+        if(sc > 0.001) K.pushEllipse(p[0], p[1], rx, rx * (0.5 + 0.15 * hj(6)), aj + Math.PI / 2, C.lime, C.limeRim, hj(7), z);
+        // 宙の一点から伸びる線 (現れたあと点の側から伸び、消える前に点へ縮む)
+        const gl = Math.min(c01((x - xp - 0.04) / 0.10), 1 - c01((x - xd + 0.06) / 0.06));
+        if(gl > 0) K.line3(K.lines, hub, p, K.hwG * 0.85, al, C.green, hj(8), gl);
+        if(esc > 0.05 && sc > 0.001){
+          const ux = Math.cos(aj), uy = Math.sin(aj), L0 = rx * 1.2, L1 = rx * 1.2 + 0.05 * K.spread * esc;
+          const q0 = [p[0] + ux * L0, p[1] + uy * L0, z], q1 = [p[0] + ux * L1, p[1] + uy * L1, z];
+          K.line3(K.lines, q0, q1, K.hwG, al, C.green, hj(9));
+          K.pushArrow(K.lines, q1, q0, K.hwG, C.green, al, hj(10));
+        }
+      }
+      // 隣どうしを短い線で (鎖)
+      for(let j = 0; j < m; j++){
+        if(H(id * 64 + j, n, 11) > 0.8) continue;
+        const k = (j + 1) % m, st = 0.06 + 0.28 * Math.max(j, k) / m + 0.04;
+        const gc = Math.min(c01((x - st) / 0.05), 1 - c01((x - 0.76 - 0.10 * Math.min(j, k) / m) / 0.05));
+        if(gc > 0) K.line3(K.lines, pos[j], pos[k], K.hwG, al, C.green, H(id * 64 + j, n, 12), gc);
+      }
+      rings.push({id, n, x, pos});
+    }
+    // 別の輪どうしも長い線でつながる (どちらも輪がそろっている間)
+    for(let a = 0; a < rings.length; a++){
+      for(let b = a + 1; b < rings.length; b++){
+        const A = rings[a], B = rings[b];
+        for(let e = 0; e < 2; e++){
+          if(H(A.id * 31 + B.id, A.n * 7 + B.n, 40 + e) > 0.6 * K.links) continue;
+          const pa = A.pos[Math.floor(H(A.id, A.n, 50 + e) * A.pos.length)], pb = B.pos[Math.floor(H(B.id, B.n, 50 + e) * B.pos.length)];
+          const st = 0.4 + 0.1 * H(A.id + B.id, A.n + B.n, 60 + e);
+          const gx = Math.min(c01((Math.min(A.x, B.x) - st) / 0.12), 1 - c01((Math.max(A.x, B.x) - 0.74) / 0.05));
+          if(gx > 0) K.line3(K.lines, pa, pb, K.hwG, al * 0.8, C.green, H(A.id + B.id, A.n + B.n, 70 + e), gx);
+        }
+      }
+    }
+  },
+
+  // 樹と根: 赤い二重線の枝が上から二股に分かれながら下へ伸び、白い楕円の節を結ぶ。根の先は赤い矢印。
+  // やがて節のいくつかが黄緑に変わり、枝をまたいで緑の線でつながる (樹からリゾームへ)。脇を緑と青の流れが下る。
+  // 最後は深い枝から縮んで消える (intro-10 / 04-5 の雰囲気)
+  _tree(K){
+    const {t, H, C} = K;
+    const c01 = this._clamp01, al = 0.88;
+    for(let g = 0; g < 3; g++){
+      const id = 800000 + g, cy2 = this._pool(id, t, 4.0), n = cy2.n, s = cy2.s, x = cy2.x;
+      if(H(id, n, 3) > 0.9 || x > 0.97) continue;
+      const tx = this._camX(s), ty = this._camY(s);
+      const depth = H(id, n, 4) < 0.3 ? 5 : 4;
+      const Wt = (0.40 + 0.25 * H(id, n, 5)) * K.spread * 0.9, Ht = (0.55 + 0.2 * H(id, n, 6)) * K.spread * 0.9;
+      const rx0 = tx + (g - 1) * 0.30 * K.aspect + (H(id, n, 7) - 0.5) * 0.2, ry0 = ty + Ht * 0.5;
+      const hn = (l, i, c)=>H(id * 1024 + (1 << l) + i, n, c);
+      // 節の位置: 段 l (0..depth)、段の中の番号 i
+      const node = (l, i)=>{
+        const fx = (i + 0.5) / (1 << l) - 0.5;
+        return [rx0 + fx * Wt * Math.pow(l / depth, 0.7) + (hn(l, i, 1) - 0.5) * 0.4 * Wt / (1 << l), ry0 - Ht * l / depth + (hn(l, i, 2) - 0.5) * 0.15 * Ht / depth, 0];
+      };
+      const xl = (l)=> 0.03 + 0.075 * (l - 1);        // l 段への枝が伸び始める
+      const xr = (l)=> 0.78 + 0.035 * (depth - l);    // l 段への枝が縮み始める
+      // 枝 (赤い二重線。親の真下へ出てから子へ曲がる)
+      for(let l = 1; l <= depth; l++){
+        const gg = Math.min(c01((x - xl(l)) / 0.075), 1 - c01((x - xr(l)) / 0.04));
+        if(gg <= 0) continue;
+        const tb = 0.006 * (1 - 0.15 * l) * K.sizeK;
+        for(let i = 0; i < (1 << l); i++){
+          const a = node(l - 1, i >> 1), b = node(l, i);
+          const dx = b[0] - a[0], dy = b[1] - a[1], Lb = Math.hypot(dx, dy) || 1, nx = -dy / Lb, ny = dx / Lb;
+          for(const sg of [-1, 1]){
+            const f = (v)=>{
+              const w0 = (1 - v) * (1 - v), w1 = 2 * (1 - v) * v, w2 = v * v;
+              return [w0 * a[0] + w1 * a[0] + w2 * b[0] + nx * tb * sg, w0 * a[1] + w1 * (a[1] + dy * 0.55) + w2 * b[1] + ny * tb * sg, 0];
+            };
+            K.pushPoly(K.arcs, f, 14, 0, gg, K.hwG, C.red, al, false, hn(l, i, sg > 0 ? 3 : 4));
+          }
+          // 根の先: 短い赤い線と矢印
+          if(l === depth && gg >= 1){
+            const q1 = [b[0] + (hn(l, i, 5) - 0.5) * 0.02, b[1] - 0.05 * K.spread, 0];
+            K.line3(K.arcs, b, q1, K.hwG, al, C.red, hn(l, i, 6));
+            K.pushArrow(K.arcs, q1, [b[0] + (q1[0] - b[0]) * 0.8, b[1] + (q1[1] - b[1]) * 0.8, 0], K.hwG, C.red, al, hn(l, i, 7));
+          }
+        }
+      }
+      // 節 (白い楕円。いくつかは黄緑に変わる)
+      const lime = [];
+      for(let l = 0; l <= depth; l++){
+        for(let i = 0; i < (1 << l); i++){
+          const p = node(l, i);
+          const xp = l === 0 ? 0.02 : xl(l) + 0.075;
+          const sc = this._popAt(x, xp, (l < depth ? xr(l + 1) : xr(l)) + 0.03, 0.04, K.pop) * (1 + 0.15 * K.kick);
+          if(sc <= 0.001) continue;
+          const x0 = 0.42 + 0.15 * hn(l, i, 9);
+          const lk = (l > 0 && hn(l, i, 8) < 0.42) ? (()=>{ const y = c01((x - x0) / 0.06); return y * y * (3 - 2 * y); })() : 0;
+          const r = 0.022 * (1.2 - 0.17 * l) * K.sizeK * sc;
+          K.pushEllipse(p[0], p[1], r, r * 0.62, (hn(l, i, 10) - 0.5) * 0.3, K.mixC(K.paper, C.lime, lk), K.mixC(C.ink, C.limeRim, lk), hn(l, i, 11));
+          if(lk > 0.5) lime.push({p, x0, h:hn(l, i, 12)});
+        }
+      }
+      // 黄緑の節どうしを、枝をまたいで緑の線で
+      for(let k = 0; k < lime.length; k++){
+        for(let e = 0; e < 2; e++){
+          if(H(id * 97 + k, n, 20 + e) > 0.7 * K.links) continue;
+          const j = Math.floor(H(id * 97 + k, n, 22 + e) * lime.length);
+          if(j === k) continue;
+          const A = lime[k], B = lime[j];
+          const gx = Math.min(c01((x - Math.max(A.x0, B.x0) - 0.06) / 0.08), 1 - c01((x - 0.76) / 0.05));
+          if(gx > 0) K.line3(K.lines, A.p, B.p, K.hwG, al, C.green, H(id * 97 + k, n, 24 + e), gx);
+        }
+      }
+      // 脇を下る緑と青の流れ
+      const sgx = H(id, n, 32) < 0.5 ? -1 : 1, fx0 = rx0 + sgx * Wt * 0.62, ph = H(id, n, 30) * 6.28;
+      const gs = Math.min(c01(x / 0.3), 1 - c01((x - 0.85) / 0.08));
+      for(const [o, col] of [[0, C.green], [0.014, C.blue], [0.028, C.green]]){
+        const f = (v)=>[fx0 + o + 0.025 * Math.sin(v * 5 + ph) + 0.01 * Math.sin(v * 13 + ph), ry0 + 0.12 - (Ht + 0.3) * v, 0];
+        K.pushPoly(K.arcs, f, 40, 0, gs, K.hwG, col, al * 0.9, false, H(id, n, 31) + o);
+      }
+    }
+  },
+
   render(opts){
     const gl = this.gl;
     if(!this.initialized || !this.ok || !opts.fbo) return;
@@ -470,7 +792,7 @@ void main(){
 
     // 設定と記憶 (設定が変わったら引き直す)
     const seed = Math.round(dz(P.seed) || 0);
-    const style = Math.max(0, Math.min(2, Math.round(P.style) || 0));   // 0 = 図 1 / 1 = 図 2 / 2 = 両方
+    const style = Math.max(0, Math.min(5, Math.round(P.style) || 0));   // 0 = 図 1 / 1 = 図 2 / 2 = 両方 / 3 = 扇 / 4 = 群れの輪 / 5 = 樹と根
     const sqK = Math.max(0, dz(P.squares) * 0.01), diaK = Math.max(0, dz(P.diamonds) * 0.01), tenK = Math.max(0, dz(P.tendrils) * 0.01);
     const riseK = Math.max(0, Math.min(1, dz(P.rise) * 0.01));
     const deg = Math.PI / 180;
@@ -502,8 +824,9 @@ void main(){
     let ph = (t / cyc) % 1;
     if(ph < 0) ph += 1;
     const rn = riseK <= 0 ? 0 : (ph < 0.3 ? 0 : ph < 0.5 ? sm((ph - 0.3) / 0.2) : ph < 0.8 ? 1 : 1 - sm((ph - 0.8) / 0.2));
-    const v2 = style === 0 ? rn : 1;                     // 図 2 の要素 (面・流れ・赤線・帯) の出方
-    const v1 = style === 1 ? 0 : 1;                      // 図 1 の要素 (青い弧)
+    const net = style <= 2;                              // 網 (ノードと線) を使う図
+    const v2 = style === 0 ? rn : (net ? 1 : 0);         // 図 2 の要素 (面・流れ・赤線・帯) の出方
+    const v1 = (style === 0 || style === 2) ? 1 : 0;     // 図 1 の要素 (青い弧)
     const phi = rn * tiltM, psi = rn * yawM;
     const cph = Math.cos(phi), sph = Math.sin(phi), cps = Math.cos(psi), sps = Math.sin(psi), D = cfg.D;
     const cx = this._camX(t), cy = this._camY(t);
@@ -522,73 +845,104 @@ void main(){
     const lineK = Math.max(0.05, dz(P.line) * 0.01);
     const kick = Math.max(0, dz(P.kick) * 0.01) * (beatMode ? Math.pow(1 - (opts.beat - Math.floor(opts.beat)), 2) : 0);
     const u = 1 / 1080;                        // 1080p の 1px (線幅の単位)
-    const hwG = 0.60 * u * lineK, hwB = 0.72 * u * lineK, hwL = 0.90 * u * lineK, rDot = 1.8 * u * lineK;
+    const hwG = 0.60 * u * lineK, hwB = 0.72 * u * lineK, hwL = 0.90 * u * lineK, rDot = 1.8 * u * lineK, hwE = 0.62 * u * lineK;
     const mx = aspect * 0.5 + 0.1, my = 0.6;
     const onScreen = (p)=> p && Math.abs(p[0] - cx) < mx + 0.2 && Math.abs(p[1] - cy) < my + 0.2;
+    // 手描きのばらつきの種 (0..1)。地面の位置や要素の番号から決めるので、地面が倒れて画面での位置が変わっても同じ
+    const sd2 = (x, y)=>{ const v = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return v - Math.floor(v); };
+    const fr = (v)=> v - Math.floor(v);
 
-    const inst = (arr, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3)=>{
-      arr.push(a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], 0, d0, d1, d2, d3);
+    const inst = (arr, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3, sd)=>{
+      arr.push(a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], sd || 0, d0, d1, d2, d3);
     };
     const lines = [], arcs = [], figs = [], back = [], fills = [];   // fills: [奥行き, 層, インスタンス 16 個] (奥から重ねる。同じ奥行きは四角 → 楕円・菱形)
-    const fill = (depth, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3)=>{
-      fills.push([depth, (b0 === 3 && b1 > 0) ? 0 : 1, [a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], 0, d0, d1, d2, d3]]);
+    const fill = (depth, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3, sd)=>{
+      fills.push([depth, (b0 === 3 && b1 > 0) ? 0 : 1, [a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], sd || 0, d0, d1, d2, d3]]);
     };
-    // 地面/空中の線分 (3D の両端) を画面へ
-    const seg3 = (arr, ax, ay, az, bx, by, bz, hw, al, col)=>{
+    // 地面/空中の線分 (3D の両端) を画面へ。full = その線の全体の両端 (3D の 6 数)。あれば手描きのたわみとインクだまりを全体で測る
+    const seg3 = (arr, ax, ay, az, bx, by, bz, hw, al, col, sd, full)=>{
       const pa = P3(ax, ay, az), pb = P3(bx, by, bz);
       if(!pa || !pb || al <= 0.002) return;
       if(!onScreen(pa) && !onScreen(pb) && Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < 0.3) return;
-      inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 0, hw, al, col, 0, 0, 0, 0);
+      const fa = full ? P3(full[0], full[1], full[2]) : null, fb = full ? P3(full[3], full[4], full[5]) : null;
+      if(fa && fb) inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 1, hw, al, col, fa[0], fa[1], fb[0], fb[1], sd);
+      else inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 0, hw, al, col, 0, 0, 0, 0, sd);
+    };
+    // 3D の点 a→b の 1 本の手描きの線のうち [0, g] (伸びる途中も、たわみは全体で測る)
+    const line3 = (arr, a, b, hw, al, col, sd, g)=>{
+      g = g == null ? 1 : g;
+      if(g <= 1e-4) return;
+      seg3(arr, a[0], a[1], a[2], a[0] + (b[0] - a[0]) * g, a[1] + (b[1] - a[1]) * g, a[2] + (b[2] - a[2]) * g, hw, al, col, sd, [a[0], a[1], a[2], b[0], b[1], b[2]]);
     };
     // 地面の線分 S→E のうち [u0, u1]
     const pushLine = (sx, sy, ex, ey, u0, u1, hw, col)=>{
       if(u1 <= u0 + 1e-4) return;
-      seg3(lines, sx + (ex - sx) * u0, sy + (ey - sy) * u0, 0, sx + (ex - sx) * u1, sy + (ey - sy) * u1, 0, hw, 0.88, col);
+      seg3(lines, sx + (ex - sx) * u0, sy + (ey - sy) * u0, 0, sx + (ex - sx) * u1, sy + (ey - sy) * u1, 0, hw, 0.88, col,
+        sd2(sx + 1.7 * ex, sy + 2.3 * ey), [sx, sy, 0, ex, ey, 0]);
     };
-    // 曲線 f(u) = [x, y, z] (u = 0..1) のうち [u0, u1] を M 分割の折れ線で描く。dashed で 1 区間おきに抜く
-    const pushPoly = (arr, f, M, u0, u1, hw, col, al, dashed)=>{
+    // 曲線 f(u) = [x, y, z] (u = 0..1) のうち [u0, u1] を M 分割の折れ線で描く。
+    // dashed は手で引いた破線: 線と隙間の長さがばらつき、線 1 本ずつがペンの 1 画 (両端にインクがたまる)
+    const pushPoly = (arr, f, M, u0, u1, hw, col, al, dashed, sd)=>{
       if(u1 <= u0 || al <= 0.002) return;
-      for(let k = 0; k < M; k++){
-        if(dashed && (k & 1)) continue;
-        const a = Math.max(u0, k / M), b = Math.min(u1, (k + 1) / M);
-        if(b <= a) continue;
-        const pa = f(a), pb = f(b);
-        seg3(arr, pa[0], pa[1], pa[2], pb[0], pb[1], pb[2], hw, al, col);
+      sd = sd || 0;
+      if(!dashed){
+        for(let k = Math.floor(u0 * M); k < Math.ceil(u1 * M); k++){
+          const a = Math.max(u0, k / M), b = Math.min(u1, (k + 1) / M);
+          if(b <= a) continue;
+          const pa = f(a), pb = f(b);
+          seg3(arr, pa[0], pa[1], pa[2], pb[0], pb[1], pb[2], hw, al, col, sd, null);
+        }
+        return;
+      }
+      const hs = Math.floor(sd * 1e6), base = 1.6 / M;
+      for(let v = 0, k = 0; v < u1 && k < 4 * M; k++){
+        const dash = base * (0.5 + 1.1 * this._hash(hs, k, 50)), gap = base * (0.45 + 0.5 * this._hash(hs, k, 51));
+        const a = Math.max(u0, v), b = Math.min(u1, v + dash);
+        if(b > a){
+          const pa = f(a), pb = f(b), fa = f(v), fb = f(Math.min(1, v + dash));
+          seg3(arr, pa[0], pa[1], pa[2], pb[0], pb[1], pb[2], hw, al, col, fr(sd + k * 0.137), [fa[0], fa[1], fa[2], fb[0], fb[1], fb[2]]);
+        }
+        v += dash + gap;
       }
     };
-    // 矢印の頭: 画面上の最後の向きで描く
-    const pushArrow = (arr, tip3, prev3, hw, col, al)=>{
+    // 矢印の頭: 画面上の最後の向きで描く。左右の羽の長さと開きは少しずつ違う
+    const pushArrow = (arr, tip3, prev3, hw, col, al, sd)=>{
       const pt = P3(tip3[0], tip3[1], tip3[2]), pp = P3(prev3[0], prev3[1], prev3[2]);
       if(!pt || !pp || al <= 0.002) return;
       const dx = pt[0] - pp[0], dy = pt[1] - pp[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, nx = -uy, ny = ux, L = 0.015 * lineK;
-      inst(arr, pt[0], pt[1], pt[0] - ux * L + nx * L * 0.55, pt[1] - uy * L + ny * L * 0.55, 0, 0, hw, al, col, 0, 0, 0, 0);
-      inst(arr, pt[0], pt[1], pt[0] - ux * L - nx * L * 0.55, pt[1] - uy * L - ny * L * 0.55, 0, 0, hw, al, col, 0, 0, 0, 0);
+      const hs = Math.floor((sd || 0) * 1e6);
+      for(const sg of [1, -1]){
+        const Lk = L * (0.8 + 0.4 * this._hash(hs, sg, 52)), ok = 0.55 * (0.75 + 0.5 * this._hash(hs, sg, 53));
+        const bx = pt[0] - ux * Lk + sg * nx * Lk * ok, by = pt[1] - uy * Lk + sg * ny * Lk * ok;
+        inst(arr, pt[0], pt[1], bx, by, 0, 1, hw, al, col, pt[0], pt[1], bx, by, fr((sd || 0) + 0.3 * sg));
+      }
     };
-    // 地面の楕円 (中心・半径・向き) を画面の楕円へ (共役半径から主軸を求める)
-    const pushEllipse = (x, y, rx, ry, ang, col, col2)=>{
-      const c0 = P3(x, y, 0);
+    // 地面 (高さ z) の楕円 (中心・半径・向き) を画面の楕円へ (共役半径から主軸を求める)
+    const pushEllipse = (x, y, rx, ry, ang, col, col2, sd, z)=>{
+      z = z || 0;
+      const c0 = P3(x, y, z);
       if(!c0 || !onScreen(c0)) return;
       const ca = Math.cos(ang), sa = Math.sin(ang);
-      const pa = P3(x + rx * ca, y + rx * sa, 0), pb = P3(x - ry * sa, y + ry * ca, 0);
+      const pa = P3(x + rx * ca, y + rx * sa, z), pb = P3(x - ry * sa, y + ry * ca, z);
       if(!pa || !pb) return;
       const ax = pa[0] - c0[0], ay = pa[1] - c0[1], bx = pb[0] - c0[0], by = pb[1] - c0[1];
       const p = ax * ax + bx * bx, q = ay * ay + by * by, rr = ax * ay + bx * by;
       const df = Math.sqrt((p - q) * (p - q) + 4 * rr * rr);
       const l1 = (p + q + df) / 2, l2 = Math.max(1e-12, (p + q - df) / 2);
-      fill(c0[2], c0[0], c0[1], Math.sqrt(l1), Math.sqrt(l2), 1, 0.5 * Math.atan2(2 * rr, p - q), 0, 1, col, col2[0], col2[1], col2[2], 0);
+      fill(c0[2], c0[0], c0[1], Math.sqrt(l1), Math.sqrt(l2), 1, 0.5 * Math.atan2(2 * rr, p - q), hwE, 1, col, col2[0], col2[1], col2[2], Math.atan2(ay, ax), sd);
     };
     // 地面の四角形 (4 隅) を画面の四角形へ。fa = 塗りの濃さ
-    const pushQuad = (cs4, fa, hw, col)=>{
+    const pushQuad = (cs4, fa, hw, col, sd)=>{
       const pp = cs4.map(([x, y])=>P3(x, y, 0));
       if(pp.some(p=>!p) || !pp.some(onScreen)) return;
       const dep = (pp[0][2] + pp[1][2] + pp[2][2] + pp[3][2]) / 4;
-      fill(dep, pp[0][0], pp[0][1], pp[1][0], pp[1][1], 3, fa, hw, 1, col, pp[2][0], pp[2][1], pp[3][0], pp[3][1]);
+      fill(dep, pp[0][0], pp[0][1], pp[1][0], pp[1][1], 3, fa, hw, 1, col, pp[2][0], pp[2][1], pp[3][0], pp[3][1], sd);
     };
     const dots = [];
-    const pushDot = (x, y, r0, col, sc)=>{
+    const pushDot = (x, y, r0, col, sc, sd)=>{
       const p = P3(x, y, 0);
       if(!p || !onScreen(p)) return;
-      inst(dots, p[0], p[1], r0 * Math.min(sc, 1.3), 0, 2, 0, 0, 1, col, 0, 0, 0, 0);
+      inst(dots, p[0], p[1], r0 * Math.min(sc, 1.3), 0, 2, 0, 0, 1, col, 0, 0, 0, 0, sd);
     };
     // 線の出方: start から dur で伸び、end の rd 前から縮む。縮む向きは先に消える側へ
     const span = (start, dur, end, rd, shrinkToStart)=>{
@@ -604,12 +958,12 @@ void main(){
       return sm(Math.max(0, Math.min(1, (rn - 0.4 * this._hash(r.i, r.n, 41)) / 0.6)));
     };
     const mixC = (a, b, k)=>[a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
-    // 線の色: 四角がらみは茶色、菱形どうしはサーモン (変わる途中は混ぜる)、ほかは緑
-    const lineCol = (a, b)=> (a.kind === 's' || b.kind === 's') ? [C.brown, hwB] : [mixC(C.green, C.salmon, Math.min(morphOf(a), morphOf(b))), hwG];
+    // 線の色: 四角がらみは茶色、菱形どうしは灰茶 (変わる途中は混ぜる)、ほかは緑
+    const lineCol = (a, b)=> (a.kind === 's' || b.kind === 's') ? [C.brown, hwB] : [mixC(C.green, C.taupe, Math.min(morphOf(a), morphOf(b))), hwG];
 
     // ── ノードと線 (すべて地面) ──
     const reach = 1.9;   // 立ち上がると見える地面が広がるので、中心からこの範囲までは描く
-    for(let i = 0; i < cfg.N; i++){
+    for(let i = 0; net && i < cfg.N; i++){
       const r = this._cycAt(i, t);
       if(!r.present) continue;
       this._place(r);
@@ -637,24 +991,24 @@ void main(){
       if(sc <= 0.001) continue;
       const hh = r.h;
       if(r.kind === 'd'){
-        pushDot(r.x, r.y, rDot, C.dot, sc);
+        pushDot(r.x, r.y, rDot, C.dot, sc, sd2(r.x, r.y));
       } else if(r.kind === 's'){
         // 茶色の四角 (地面に置いた正方形。斜めから見ると菱形)
         const hs = 0.115 * (0.30 + 0.12 * hh) * sizeK * sc, a = ((hh * 7.7) % 1 - 0.5) * 0.16, ca = Math.cos(a), sa = Math.sin(a);
         const cs4 = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([ux, uy])=>[r.x + (ux * ca - uy * sa) * hs, r.y + (ux * sa + uy * ca) * hs]);
-        pushQuad(cs4, 0.5, hwB, C.sqLine);
+        pushQuad(cs4, 0.5, hwB, C.sqLine, sd2(r.x, r.y));
       } else {
         const mo = morphOf(r);
         if(mo > 0.001){
-          // サーモン色の菱形 (縁だけ)
+          // ベージュの水彩の菱形 (灰茶の縁)
           const rx = 0.115 * (0.12 + 0.20 * hh) * sizeK * sc * mo, ry = rx * 0.62, a = ((hh * 5.7) % 1 - 0.5) * 0.5, ca = Math.cos(a), sa = Math.sin(a);
           const cs4 = [[rx, 0], [0, ry], [-rx, 0], [0, -ry]].map(([ux, uy])=>[r.x + ux * ca - uy * sa, r.y + ux * sa + uy * ca]);
-          pushQuad(cs4, 0, hwG / 1.2, C.salmon);
+          pushQuad(cs4, 0.42, hwG, C.taupe, sd2(r.x + 0.5, r.y));
         }
         if(mo < 0.999){
           const rx = 0.115 * (0.10 + 0.30 * Math.pow(hh, 1.5)) * sizeK * sc * (1 - mo);
           const ry = rx * (0.58 + 0.24 * ((hh * 7.3) % 1));
-          pushEllipse(r.x, r.y, rx, ry, ((hh * 13.1) % 1 - 0.5) * 0.7, C.lime, C.limeRim);
+          pushEllipse(r.x, r.y, rx, ry, ((hh * 13.1) % 1 - 0.5) * 0.7, C.lime, C.limeRim, sd2(r.x, r.y));
         }
       }
     }
@@ -666,6 +1020,18 @@ void main(){
     };
     const H = (id, n, c)=>this._hash(id, n, c);
     const arcsK = Math.max(0, dz(P.arcs) * 0.01);
+
+    // ── 扇 / 群れの輪 / 樹と根 (網を使わない図。描く道具を渡す) ──
+    if(!net){
+      const K = {
+        t, aspect, sizeK, kick, arcsK, C, H, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs,
+        hwG, hwB, hwL, pop:cfg.pop, spread:cfg.spread, links:cfg.links, nodesK:Math.max(0.05, dz(P.nodes) / 180),
+        paper:Array.isArray(P.paper) ? P.paper : this.PDefaults.paper,
+      };
+      if(style === 3) this._fan(K);
+      else if(style === 4) this._packs(K);
+      else this._tree(K);
+    }
 
     // ── 図 1: 青い弧と矢印 (地面の円弧) ──
     const nArc = v1 > 0 ? Math.round(8 * arcsK) : 0;
@@ -680,8 +1046,8 @@ void main(){
       const a0 = H(id, n, 7) * Math.PI * 2;
       const sw = (0.9 + 1.1 * H(id, n, 8)) * (H(id, n, 9) < 0.5 ? -1 : 1);
       const f = (v)=>[ccx + rr * Math.cos(a0 + sw * v), ccy + rr * Math.sin(a0 + sw * v), 0];
-      pushPoly(arcs, f, 24, lf[0], lf[1], hwL, C.blue, 0.9 * v1, false);
-      if(lf[1] >= 1 && lf[0] <= 0) pushArrow(arcs, f(1), f(0.97), hwL, C.blue, 0.9 * v1);
+      pushPoly(arcs, f, 24, lf[0], lf[1], hwL, C.blue, 0.9 * v1, false, H(id, n, 20));
+      if(lf[1] >= 1 && lf[0] <= 0) pushArrow(arcs, f(1), f(0.97), hwL, C.blue, 0.9 * v1, H(id, n, 21));
     }
 
     // ── 図 2: 流れる矢印・縦の面と切り抜かれた人・うねる赤線・波の帯 ──
@@ -702,8 +1068,8 @@ void main(){
         const z0 = rn * (0.05 + 0.30 * H(id, n, 10)), z1 = rn * (0.05 + 0.30 * H(id, n, 11));
         const f = (v)=>{ const a = (1 - v) * (1 - v), b = 2 * (1 - v) * v, c2 = v * v; return [a * x0 + b * xc + c2 * x1, a * y0 + b * yc + c2 * y1, z0 + (z1 - z0) * v]; };
         const dashed = H(id, n, 9) < 0.3;
-        pushPoly(arcs, f, dashed ? 30 : 20, lf[0], lf[1], hwL, C.blue, 0.85 * v2, dashed);
-        if(lf[1] >= 1 && lf[0] <= 0 && !dashed) pushArrow(arcs, f(1), f(0.96), hwL, C.blue, 0.85 * v2);
+        pushPoly(arcs, f, dashed ? 30 : 20, lf[0], lf[1], hwL, C.blue, 0.85 * v2, dashed, H(id, n, 20));
+        if(lf[1] >= 1 && lf[0] <= 0 && !dashed) pushArrow(arcs, f(1), f(0.96), hwL, C.blue, 0.85 * v2, H(id, n, 21));
       }
       // 縦の面 (下辺を蝶番に、寝た状態から 90° 立ち上がる。面ごとに少しずつずれる) と切り抜かれた人
       const nPlane = Math.round(5 * Math.max(0, dz(P.planes) * 0.01));
@@ -745,25 +1111,26 @@ void main(){
           const fp = (q)=>at(s0 + q[0] * iw, q[1] * hf);
           for(let m = 0; m + 1 < FIG.length; m++){
             const a3 = fp(FIG[m]), b3 = fp(FIG[m + 1]);
-            seg3(figs, a3[0], a3[1], a3[2], b3[0], b3[1], b3[2], hwB, al, C.ink);
+            seg3(figs, a3[0], a3[1], a3[2], b3[0], b3[1], b3[2], hwB, al, C.ink, H(id, n, 17), null);
           }
           gapBot = [s0 - this.FIG_FOOT * iw, s0 + this.FIG_FOOT * iw];
           if(tall){ const hx = this._figHalfAt(Hh / Math.max(hf, 1e-6)) * iw; gapTop = [s0 - hx, s0 + hx]; }
         }
-        // 辺 (a→b) を、切れ目 gap (0..1 の区間) を除いて描く
+        // 辺 (a→b) を、切れ目 gap (0..1 の区間) を除いて描く (たわみは辺の全体で測る)
         const edge = (ya, sa0, sa1, gp)=>{
+          const e0 = at(sa0, ya), e1 = at(sa1, ya), full = [e0[0], e0[1], e0[2], e1[0], e1[1], e1[2]];
           const parts = gp ? [[sa0, Math.max(sa0, gp[0])], [Math.min(sa1, gp[1]), sa1]] : [[sa0, sa1]];
           for(const [u0, u1] of parts){
             if(u1 - u0 < 1e-4) continue;
             const a3 = at(u0, ya), b3 = at(u1, ya);
-            seg3(figs, a3[0], a3[1], a3[2], b3[0], b3[1], b3[2], hwB, al, C.ink);
+            seg3(figs, a3[0], a3[1], a3[2], b3[0], b3[1], b3[2], hwB, al, C.ink, H(id, n, ya > 0 ? 23 : 18), full);
           }
         };
         const p0 = at(0, 0), p1 = at(1, 0), p2 = at(1, Hh), p3 = at(0, Hh);
         edge(0, 0, 1, gapBot);
         edge(Hh, 0, 1, gapTop);
-        seg3(figs, p1[0], p1[1], p1[2], p2[0], p2[1], p2[2], hwB, al, C.ink);
-        seg3(figs, p3[0], p3[1], p3[2], p0[0], p0[1], p0[2], hwB, al, C.ink);
+        line3(figs, p1, p2, hwB, al, C.ink, H(id, n, 19));
+        line3(figs, p3, p0, hwB, al, C.ink, H(id, n, 22));
       }
       // うねる赤い線 (奥から手前の右へ。途中で輪をつくる)
       const nM = Math.round(1.5 * Math.max(0, dz(P.meander) * 0.01));
@@ -783,24 +1150,46 @@ void main(){
           const [wx, wy] = this._fromYaw(qx0 + dqx * v + nqx * wv + lx, 0.56 + dqy * v + nqy * wv + ly, tx, ty);
           return [wx, wy, 0];
         };
-        pushPoly(arcs, f, 90, lf[0], lf[1], hwL, C.red, 0.85 * v2, false);
+        pushPoly(arcs, f, 90, lf[0], lf[1], hwL, C.red, 0.85 * v2, false, H(id, n, 20));
       }
-      // 手前の緑の波の帯 (地面。いまの向きで画面の下端に横いっぱい。中に青い線が 2 本)
+      // 手前の色鉛筆の緑の帯 (地面。いまの向きで画面の下端に横いっぱい。太さが波打つ。中に青い線が 2 本)
       const bandK = Math.max(0, dz(P.band) * 0.01);
       if(bandK > 0){
-        for(let k = 0; k < 16; k++){
-          const blue = k === 4 || k === 11;
+        const toW = (qx, qy)=>[cx + qx * cps + qy * sps, cy - qx * sps + qy * cps];
+        const M = 56, ctr = [], bhw = [];
+        for(let j = 0; j <= M; j++){
+          const qx = (j / M - 0.5) * (aspect + 1.2);
+          const qy = -0.42 - 0.25 * rn + 0.079 + 0.03 * Math.sin(qx * 5 + 2.6 + t * 0.15) + 0.012 * Math.sin(qx * 13 + 7.5);
+          const hwq = 0.085 * (1 + 0.22 * Math.sin(qx * 3.1 + 1.3 + t * 0.1));
+          const c0 = toW(qx, qy), c1 = toW(qx, qy + hwq);
+          const p0 = P3(c0[0], c0[1], 0), p1 = P3(c1[0], c1[1], 0);
+          ctr.push(p0); bhw.push(p0 && p1 ? Math.hypot(p1[0] - p0[0], p1[1] - p0[1]) : 0);
+        }
+        // 区間ごとの帯。継ぎ目は両隣の向きの中間で切る (隣と重ならず、隙間も出ない)
+        const dirOf = (a, b)=>{ const dx = b[0] - a[0], dy = b[1] - a[1], l = Math.hypot(dx, dy) || 1; return [dx / l, dy / l]; };
+        const bis = (d0, d1)=>{ const x = d0[0] + d1[0], y = d0[1] + d1[1], l = Math.hypot(x, y) || 1; return [x / l, y / l]; };
+        const alB = Math.min(1, 0.95 * bandK) * v2, dS = (aspect + 1.2) / M * 1080;   // 区間の地面での長さ (1080p の px)
+        for(let j = 0; j < M && alB > 0.002; j++){
+          const a = ctr[j], b = ctr[j + 1];
+          if(!a || !b) continue;
+          const d = dirOf(a, b);
+          const mA = (j > 0 && ctr[j - 1]) ? bis(dirOf(ctr[j - 1], a), d) : d;
+          const mB = (j + 2 <= M && ctr[j + 2]) ? bis(d, dirOf(b, ctr[j + 2])) : d;
+          inst(back, a[0], a[1], b[0], b[1], 5, j * dS, 0.5 * (bhw[j] + bhw[j + 1]), alB, C.band, mA[0], mA[1], mB[0], mB[1], dS);
+        }
+        for(const k of [4, 11]){
           const f = (v)=>{
             const qx = (v - 0.5) * (aspect + 1.2);
             const qy = -0.42 - 0.25 * rn + k * 0.0105 + 0.03 * Math.sin(qx * 5 + k * 0.35 + t * 0.15) + 0.012 * Math.sin(qx * 13 + k);
-            return [cx + qx * cps + qy * sps, cy - qx * sps + qy * cps, 0];
+            const wv = toW(qx, qy);
+            return [wv[0], wv[1], 0];
           };
-          pushPoly(back, f, 64, 0, 1, blue ? hwL : hwG * 1.5, blue ? C.blue : C.band, Math.min(1, (blue ? 0.7 : 0.6) * bandK) * v2, false);
+          pushPoly(back, f, 64, 0, 1, hwL, C.blue, Math.min(1, 0.7 * bandK) * v2, false, k * 0.05);
         }
       }
     }
 
-    // ── 描く: 紙 → 波の帯 → 線 → 弧・流れ・赤線 → 面と人 → 点 → 四角と楕円と菱形 (奥から手前) ──
+    // ── 描く: 紙 → 色鉛筆の帯 → 線 → 弧・流れ・赤線 → 面と人 → 点 → 四角と楕円と菱形 (奥から手前) ──
     const opaque = opts.opaque !== false;
     const paper = Array.isArray(P.paper) ? P.paper : this.PDefaults.paper;
     const bg = [];
@@ -824,6 +1213,10 @@ void main(){
       gl.uniform1f(this.U.px, 1 / Math.max(1, h));
       gl.uniform1f(this.U.pencil, Math.max(0, dz(P.pencil) * 0.01));
       gl.uniform1f(this.U.hand, Math.max(0, dz(P.hand) * 0.01));
+      // 描き直しのコマ: 100% で毎秒 8 コマ (beat では 1 拍 2 コマ)
+      const boilK = Math.max(0, dz(P.boil) * 0.01);
+      const boilN = boilK > 0 ? Math.floor(t * boilK * (beatMode ? 2 : 8 / Math.max(spd, 1e-3))) : 0;
+      gl.uniform1f(this.U.boil, boilN * 0.6180339 - Math.floor(boilN * 0.6180339));   // 小数部だけ渡す (長く回しても桁落ちしない)
       gl.uniform3f(this.U.sqFill, C.sqFill[0], C.sqFill[1], C.sqFill[2]);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instVBO);
       if(data.byteLength > this.instCap){
