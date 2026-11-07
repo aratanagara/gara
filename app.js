@@ -4764,11 +4764,10 @@ void main(){
       if(id === '__feedback__'){
         const fb = slot.fbos[slot.fbIdx ^ 1]; // previous
         tex = fb.tex; w=fb.w; h=fb.h;
-      }else if(id === '__slotA__'){
-        const fb = this.slots.A.fbos[this.slots.A.fbIdx];
-        tex = fb.tex; w=fb.w; h=fb.h;
-      }else if(id === '__slotB__'){
-        const fb = this.slots.B.fbos[this.slots.B.fbIdx];
+      }else if(id === '__slotA__' || id === '__slotB__'){
+        // 自分自身の出力を読むときは前のフレーム (描いている先を読むとフィードバックループで描画が止まる)
+        const src = id === '__slotA__' ? this.slots.A : this.slots.B;
+        const fb = src.fbos[src === slot ? src.fbIdx ^ 1 : src.fbIdx];
         tex = fb.tex; w=fb.w; h=fb.h;
       }else if(id === '__audio__'){
         tex = this.audioTex; w=512; h=2;
@@ -15491,14 +15490,13 @@ ${outBlock}
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
-  // 既定のシェーダ並び順(本番 vj.aratanagara.com の現行順を焼き込み)。
-  //   localStorage['vj.shaderOrder'] が無いとき(新規ブラウザ/ローカル)にこの順を適用 → 本番と sid が一致。
-  _defaultShaderOrder: ["Webcam Mirror","Ribbon Surface (7tBGDd)","★ SDF CAVERNS (Triquadratic)","★ INKELLY (Feedback Ink)","★ BOLTZMANN (Fluid)","Alien Megacity (tlBcDh)","Flight Over Dunes (3syGWc)","Krypto Planes (MdVBRy)","Viscous Drip (ttVcRt/tlKcDd)","Fractal Junkyard Glitch (dsBGRh)","Deterioration (3dBSW3)","Diffraction Grating (Ds2XRd)","Tunnel of Bones (3lByWh)","OSTSEE (mdjXDd)","Alien Neurons Glitch (ctsyDj)","Bechamel (4djBzz)","Vangogh","Meguru","Hinotori_03","Hinotori_01","Hinotori_02","NdsSzl","newSinFract","cos20","sinFBM","Liquid","moreFract","crystalPath","mandelbaum","metalSlab","Iridiscious","Rainbow Water","Water","Watercolors","Flowing Metal","Rain (B/W)","Flowers (CPPN)","Echeveria (Chrome)","fLOWER","Voronoi Marble","Rave Cube (Chrome)","Matrix Decon","Ghost Chamber","Matrix Julia (R/B/Silver)","TRON Clouds","Spell Demon Souls","Liquicolor","Crystal Ice Flight","Noise Racer","Bone Tunnel","Sine Deform","Paper Fractal (Blue)","Formation","Origami","Another Abstract","Reflective Ribbon","Grey Liquid","Slime Frame (Chrome)","Patch SDF (Chrome)","Spiky (Chrome)","Twistors (Chrome)","KuKo Helix","Color Puffs","Spike Ball (Audio Chrome)","Space Shield (Asagi)","Storming Pixels","Liquid Mountains (Chrome)","Discharge","Crystal Flow (Julia)","Crystal Noise","ROMHACK (CD)","Nebula","Nitrostasis","Fragile (Glass)","Stractium","ngRay (Morph Blobs)","Manga","Wildstyle SDF","Cube Surface II (Mty3DV)","Hand Model (msSXDc)","HV Splits (MlcGRl)","Metal Meta (4ssGWS)","Spicy Plasma (DsffWM)","Ice Cave Spikes (w3GSR3)","Strange Lab Goop (dt2cD3)","Gyroid Cavern","Jungle Burrow (Wd23RD)","4D Julia Fractal (tt2fRw)","Glitch Aesthetic (wfjfRm)","EvilSeed (llBGRd)","SigInt Bands (4syfDV)","Cave at the Edge of the Universe (ttfBDH)","Wierd Moving Voronoi (WsX3zS)","Klaksrotate (MljyDt)","Smoked Cherry (4cBcz1)","Polar Rings (ctsfWM)","City Maker (lscGz2)","Flickering Crystals (tdSfRd)","Redmond Wrinkle Petals (7lGyD1)","Distant Rings of Light (3ssfD8)","Cellular Tiling Clouds (NscSWs)"],
-  // 保存済みの並び順(名前配列)に合わせて PRESETS 内のシェーダ項目を並べ替える(非シェーダの位置は不変)
+  // 保存済みの並び順(名前配列)に合わせて PRESETS 内のシェーダ項目を並べ替える(非シェーダの位置は不変)。
+  //   並び順は保存デフォルト vj.def.shaderOrder = サーバー store (?name=defs) が正で、全端末・全オリジンで共通。
+  //   sid (S001〜) はこの表示順の連番なので、本番とローカルで同じシェーダが同じ番号になる。
+  //   並びに無いシェーダ (新規追加分) は読込順のまま末尾に続く。
   _applyShaderOrder(){
     let order = null;
-    try{ order = JSON.parse(localStorage.getItem('vj.shaderOrder') || 'null'); }catch(e){}
-    if(!Array.isArray(order) || !order.length) order = this._defaultShaderOrder;   // 既定=本番の現行並び順
+    try{ order = JSON.parse(localStorage.getItem('vj.def.shaderOrder') || 'null'); }catch(e){}
     if(!Array.isArray(order) || !order.length) return;
     const pos = [];
     PRESETS.forEach((p, i)=>{ if(this._isShaderPreset(p)) pos.push(i); });
@@ -15519,7 +15517,8 @@ ${outBlock}
     let ti = names.indexOf(toName);
     if(ti < 0) return;
     names.splice(before ? ti : ti + 1, 0, fromName);
-    try{ localStorage.setItem('vj.shaderOrder', JSON.stringify(names)); }catch(e){}
+    try{ localStorage.setItem('vj.def.shaderOrder', JSON.stringify(names)); }catch(e){}
+    this._putServerDef('shaderOrder', names);   // 並び順 = sid を全端末へ同期
     if(UI && UI.populatePresets) UI.populatePresets();
   },
   // ─── プリセットバンク (数字キー 1〜0 に全状態を保存/呼出) ───────────────
@@ -15675,6 +15674,18 @@ ${outBlock}
         if(this._storeWritable && !this._storeWritable()) return;
         fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)}).catch(()=>{});
       }
+    }catch(e){}
+  },
+  // defs の 1 キーだけをサーバーへ反映する (GET → そのキーだけ差し替え → POST)。
+  //   uploadDefs はこの端末の vj.def.* 一式で全体を置き換えるため、読込後に別端末が保存した値を戻してしまう。
+  async _putServerDef(k, v){
+    try{
+      const r = await fetch(this._defsUrl(), {cache:'no-store'});
+      if(!r.ok) return;
+      const server = await r.json();
+      if(!server || typeof server !== 'object' || Array.isArray(server)) return;   // 到達不可/形式不正 → 送らない
+      server[k] = v;
+      await fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)});
     }catch(e){}
   },
   uploadDefs(){
