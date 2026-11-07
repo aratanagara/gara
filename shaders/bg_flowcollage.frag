@@ -11,7 +11,8 @@
 //   5. 刷りのマチエール: インクのかすれ粒・スクラッチ・版ズレ
 //   動き: drone は常にゆっくり流れ、場そのものも漂って新しい構図が入ってくる (uDrift)。
 //         beat は拍頭ごとに水をかき混ぜるような渦が入り、帯が一気にねじれて 2〜4 拍かけて収まる (uJump)。
-//         一部の帯の柄と色も拍ごとに振り直される (uReroll)。
+//         一部の帯の柄と色も拍ごとに振り直され、拍の最初の 1/4 で溶けるように入れ替わる (uReroll)。
+//         拍の境目ではどの動きも途切れない (飛ばない)。
 //         拍頭ではうねりも一瞬強まる。iAudio も同じ (uKick)。bgZoom・bgCamPx でズーム/パン
 //   性能: 値ノイズ 4 オクターブの fbm を 7 回 + 定数回の柄計算のみ (ループの
 //         レイマーチなし)。重いときは uDetail を下げる (fbm のオクターブ数)
@@ -57,6 +58,7 @@ uniform float uJump;     // beat: 拍頭でかき混ぜる渦の強さ (%。0 = 
 uniform float uDrift;    // drone: 場が漂って新しい構図が入ってくる量 (%)
 uniform float uReroll;   // beat: 拍ごとに柄と色を振り直す帯の割合 (%)
 float FC_ROLL = 0.0;     // 振り直しの拍番号 (beat のみ。drone は 0 = 振り直さない)
+float FC_FADE = 1.0;     // 振り直しの溶け具合 (拍の最初の 1/4 で前の拍の柄から溶ける。1 = 溶け終わり)
 uniform vec3  uPaperCol; // 紙の色
 
 // ─── 乱数 / ノイズ ────────────────────────────────────────
@@ -189,7 +191,7 @@ vec3 bg_flowcollage(vec2 fc){
   } else {
     float fb = fract(bt);
     T = (floor(bt) + mix(fb, 1.0 - pow(1.0 - fb, 3.0), clamp(kick, 0.0, 1.0))) * 0.5;
-    burst = pow(1.0 - fb, 4.0) * kick;
+    burst = smoothstep(0.0, 0.08, fb) * pow(1.0 - fb, 3.0) * kick;   // 拍頭で 0 から立ち上げる (拍の境目で飛ばない)
   }
   T *= uSpeed * 0.01;
   float audio = clamp(iAudio, 0.0, 1.0) * kick;
@@ -199,7 +201,7 @@ vec3 bg_flowcollage(vec2 fc){
   vec2 p  = (I - 0.5*resolution) / resolution.y * 3.0 * sc;
   // drone: 場がゆっくり漂う
   // beat : 水をかき混ぜる。拍頭ごとに場所・大きさ・向きが違う渦を入れ、一気にねじる。
-  //        渦はそのあとも少し回り続け、2〜4 拍かけて収まる (直近 4 拍分を重ねる)
+  //        渦は 1/4 拍で立ち上がり、そのあとも少し回り続け、2〜4 拍かけて収まる (直近 4 拍分を重ねる)
   if(isFree()){
     p += vec2(0.06, 0.025) * T * uDrift * 0.01;
   } else {
@@ -212,13 +214,14 @@ vec3 bg_flowcollage(vec2 fc){
       vec2  c   = (vec2(fc_h1(m*1.31 + 4.0), fc_h1(m*2.17 + 9.0)) - 0.5) * vec2(3.0*asp, 3.0) * sc;
       float R   = (0.9 + 1.4*fc_h1(m*3.7 + 2.0)) * sc;
       float dirS = fc_h1(m*5.3 + 1.0) < 0.5 ? -1.0 : 1.0;
-      float ang = dirS * 3.2 * st * (smoothstep(0.0, 0.1, age) + 0.25*age) * (1.0 - smoothstep(1.5, 4.0, age));
+      float ang = dirS * 3.2 * st * (smoothstep(0.0, 0.25, age) + 0.25*age) * (1.0 - smoothstep(1.5, 4.0, age));
       vec2  d   = p - c;
       float a   = ang * exp(-dot(d, d)/(R*R));
       float ca  = cos(a), sa = sin(a);
       p = c + mat2(ca, sa, -sa, ca) * d;
     }
     FC_ROLL = n + 1.0;
+    FC_FADE = smoothstep(0.0, 0.25, fract(bt));
   }
   vec2 px = I;                                                   // 網点・粒は画素基準 (ズームで粗くなる)
 
@@ -251,6 +254,18 @@ vec3 bg_flowcollage(vec2 fc){
   vec4 L2 = fc_pattern(b2, a2, r + 3.7, px, 1.0, dens, paper);
   col = mix(col, L2.rgb, L2.a);
   float ink = max(L1.a, L2.a);
+  // 振り直しの溶け: 拍の最初の 1/4 だけ前の拍の柄も描いて、そこから溶かす (拍頭で柄が飛ばない)
+  if(FC_FADE < 1.0 && uReroll > 0.0){
+    FC_ROLL -= 1.0;
+    vec3 c0 = uPaperCol;
+    vec4 P1 = fc_pattern(b1, a1, r, px, 0.0, dens, paper);
+    c0 = mix(c0, P1.rgb, P1.a);
+    vec4 P2 = fc_pattern(b2, a2, r + 3.7, px, 1.0, dens, paper);
+    c0 = mix(c0, P2.rgb, P2.a);
+    FC_ROLL += 1.0;
+    col = mix(c0, col, FC_FADE);
+    ink = mix(max(P1.a, P2.a), ink, FC_FADE);
+  }
 
   // ─── 等高線: 流れに沿う細い黒線 (領域ごとに出たり消えたり) ───
   float lineAmt = uLines * 0.01;
