@@ -40,6 +40,7 @@
 // @param uReroll   0..100    = 40.0
 // @param uMixCol   0..100    = 0.0
 // @param uPaperCol color     = #c9ad8e
+// @param uWhiteLines 0..200  = 100.0
 uniform float uSpeed;    // 流れの速さ (%)
 uniform float uScale;    // 柄の大きさ (%)
 uniform float uWarp;     // うねり (ドメインワーピングの強さ, %)
@@ -64,6 +65,7 @@ uniform float uReroll;   // beat: 拍ごとに柄と色を振り直す帯の割�
 float FC_ROLL = 0.0;     // 振り直しの拍番号 (beat のみ。drone は 0 = 振り直さない)
 float FC_FADE = 1.0;     // 振り直しの溶け具合 (拍の最初の 1/4 で前の拍の柄から溶ける。1 = 溶け終わり)
 uniform vec3  uPaperCol; // 紙の色
+uniform float uWhiteLines; // 暗い帯の上の白抜きの等高線 (%。0 = 出さない / 〜100 = 濃さ / 100〜 = 太さ)
 
 // ─── 乱数 / ノイズ ────────────────────────────────────────
 float fc_h1(float n){ return fract(sin(n*127.1 + uSeed*17.37)*43758.5453); }
@@ -308,7 +310,13 @@ vec3 bg_flowcollage(vec2 fc){
     float ln   = (1.0 - smoothstep(0.5, 1.3, dd)) * gate * clamp(lineAmt, 0.0, 1.0);
     // 暗い帯の上では白抜きの線にする
     float lum  = dot(col, vec3(0.299, 0.587, 0.114));
-    col = mix(col, lum < 0.28 ? vec3(0.90, 0.86, 0.77) : vec3(0.08, 0.08, 0.10), ln);
+    if(lum < 0.28){
+      // 白抜きの線: uWhiteLines 〜100% は濃さ、100% を超えると線が太くなる
+      float wl = uWhiteLines*0.01;
+      float lw = (1.0 - smoothstep(0.5, 1.3, dd/max(1.0, wl))) * gate * clamp(lineAmt, 0.0, 1.0);
+      col = mix(col, vec3(0.90, 0.86, 0.77), lw*min(wl, 1.0));
+    }
+    else           col = mix(col, vec3(0.08, 0.08, 0.10), ln);
   }
 
   // ─── 太陽モチーフ: 放射線つきの半円 ───
