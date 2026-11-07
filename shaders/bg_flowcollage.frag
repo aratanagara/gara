@@ -35,6 +35,7 @@
 // @param uDetail   2..5      = 4.0
 // @param uSeed     0..100    = 0.0
 // @param uJump     0..300    = 100.0
+// @param uBeatFlow 0..300    = 100.0
 // @param uDrift    0..300    = 100.0
 // @param uReroll   0..100    = 40.0
 // @param uPaperCol color     = #c9ad8e
@@ -54,6 +55,7 @@ uniform float uWorn;     // インクのかすれ・スクラッチ (%)
 uniform float uKick;     // 拍 / 音の効き (%)
 uniform float uDetail;   // fbm のオクターブ数 (下げると軽く、輪郭が丸くなる)
 uniform float uSeed;     // 柄と配色の乱数シード
+uniform float uBeatFlow; // beat: 1 拍で元の帯が流れる量 (%。渦 (uJump) とは別に、帯そのものが拍ごとに押し流される)
 uniform float uJump;     // beat: 拍頭でかき混ぜる渦の強さ (%。0 = 従来どおりその場で揺れる)
 uniform float uDrift;    // drone: 場が漂って新しい構図が入ってくる量 (%)
 uniform float uReroll;   // beat: 拍ごとに柄と色を振り直す帯の割合 (%)
@@ -183,14 +185,14 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
 vec3 bg_flowcollage(vec2 fc){
   float bt   = getBeat();
   float kick = uKick * 0.01;
-  // 時間: beat モードは拍頭で押し出してから減速 (単調増加)、drone は一定の速さ
+  // 時間: beat モードは拍頭で押し出してから減速 (単調増加。1 拍の量は uBeatFlow)、drone は一定の速さ
   float T, burst;
   if(isFree()){
     T = time;
     burst = 0.0;
   } else {
     float fb = fract(bt);
-    T = (floor(bt) + mix(fb, 1.0 - pow(1.0 - fb, 3.0), clamp(kick, 0.0, 1.0))) * 0.5;
+    T = (floor(bt) + mix(fb, 1.0 - pow(1.0 - fb, 3.0), clamp(kick, 0.0, 1.0))) * 1.5 * uBeatFlow * 0.01;   // 100% = 1 拍で従来の 3 倍流れる
     burst = smoothstep(0.0, 0.08, fb) * pow(1.0 - fb, 3.0) * kick;   // 拍頭で 0 から立ち上げる (拍の境目で飛ばない)
   }
   T *= uSpeed * 0.01;
