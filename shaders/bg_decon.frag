@@ -14,6 +14,17 @@ float dc_noise(vec2 p){
   return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
 }
 
+// @param uSize   50..200 = 100.0
+// @param uColumn 50..300 = 100.0
+// @param uGlow   25..300 = 100.0
+// @param uFill   10..90  = 45.0
+// @param uAngle -180..180 = 0.0
+uniform float uSize;      // 文字 (グリフ) の大きさ (%)
+uniform float uColumn;    // コードの帯の幅 (%)
+uniform float uGlow;      // 帯の明るさ (%)
+uniform float uFill;      // 文字のドットの埋まり具合 (%)
+uniform float uAngle; // コード雨全体の傾き (度)
+
 // 縦に流れるコードの帯(緑のストリーク)
 vec3 dc_codeLines(vec2 fc, float reps, vec3 baseCol, float sm){
   fc.x -= mod(fc.x, reps);
@@ -21,7 +32,7 @@ vec3 dc_codeLines(vec2 fc, float reps, vec3 baseCol, float sm){
   float speed  = cos(fc.x)*0.1 + sm;
   float vrep   = dc_rand(fc.x);
   float y = fract((fc.y/resolution.y)*vrep + offset + time*speed);
-  return baseCol / (y*20.0);
+  return baseCol * (uGlow / 100.0) / (y*20.0);
 }
 
 // 手続き的グリフ(フォントatlas の代替)。セルごとに時間で切り替わる文字状パターン
@@ -30,19 +41,21 @@ float dc_chars(vec2 fc, float reps){
   vec2 luv  = fract(fc/reps);
   float gid = floor(dc_noise(cell*0.7 + floor(time*3.0)*0.13) * 48.0);
   vec2 sub  = floor(luv*5.0);                              // 5x5 のドットグリッド
-  float on  = step(0.45, dc_hash(sub + gid*9.1));
+  float on  = step(uFill / 100.0, dc_hash(sub + gid*9.1));
   float margin = step(0.06,luv.x)*step(luv.x,0.94)*step(0.06,luv.y)*step(luv.y,0.94);
   return on * margin;
 }
 
 vec3 bg_decon(vec2 fc){
   vec2 I0 = (fc - resolution*0.5) / max(bgZoom, 0.001);
+  float aD = radians(uAngle);
+  I0 = mat2(cos(aD), -sin(aD), sin(aD), cos(aD)) * I0;
   I0 *= 1.3333;                                       // 拡大率を75%に(パターンを縮小)
   vec2 I  = I0 + resolution*0.5 + bgCamPx;
   vec2 uv = I / resolution;
 
-  vec3 col  = dc_codeLines(I, 4.0, vec3(.2,.8,.2),  .15) * dc_chars(I, 8.0);
-  col      += dc_codeLines(I, 8.0, vec3(.05,.75,.25), .25) * dc_chars(I, 16.0);
+  vec3 col  = dc_codeLines(I, 4.0 * (uColumn / 100.0), vec3(.2,.8,.2),  .15) * dc_chars(I, 8.0 * (uSize / 100.0));
+  col      += dc_codeLines(I, 8.0 * (uColumn / 100.0), vec3(.05,.75,.25), .25) * dc_chars(I, 16.0 * (uSize / 100.0));
 
   // iChannel1 の色変調の代替(ノイズで明滅)
   vec3 nz = vec3(dc_noise(uv*8.0 + time*0.10),

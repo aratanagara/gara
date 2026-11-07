@@ -1,6 +1,17 @@
 // Source : https://www.shadertoy.com/view/7sSGWD
 // License: Shadertoy default (CC BY-NC-SA 3.0) unless noted by the author
 // 4) 7sSGWD
+// @param uDetail 2..6 = 6.0
+// @param uDensity 25..400 = 100.0
+// @param uSize 20..150 = 100.0
+// @param uSoft 10..300 = 100.0
+// @param uContrast 0..800 = 100.0
+uniform float uDetail;   // 反復回数 (下げると模様が粗くなる)
+uniform float uDensity;   // マス目の密度 (%)
+uniform float uSize;   // 円が広がる大きさ (%)
+uniform float uSoft;   // 円の縁のぼかし幅 (%)
+uniform float uContrast;   // 円の内外の明暗差 (%)
+
 vec3 bg_7sSGWD(vec2 fc){
   float bt = getBeat();
   float tx = randomMoveTime(bt, TAU * 0.07, 401.0);
@@ -15,6 +26,7 @@ vec3 bg_7sSGWD(vec2 fc){
     float scale1 = 1.4;
     float s1 = scale1 * scale;
     for(int i=0;i<6;i++){
+      if(i >= int(uDetail + 0.5)) break;
       uv = fract(uv / s1) * s1;
       uv = -fract(uv / (2.0 - abs((uv.x - uv.y) / 16.0)) - (uv / (2.5 + fract(uv.x + uv.y))) / scale) * scale / scale1 + s1;
       uv /= scale1 + col.yx;
@@ -23,13 +35,14 @@ vec3 bg_7sSGWD(vec2 fc){
       col[c] = fract((0.25 * col[c] + col.x + uv.y - uv.x) / 2.5);
     }
   }
-  vec2 cell = floor(uv * 6.0);
-  vec2 lc = fract(uv * 6.0) - 0.5;
+  float gridK = 6.0 * (uDensity / 100.0);
+  vec2 cell = floor(uv * gridK);
+  vec2 lc = fract(uv * gridK) - 0.5;
   float ph = fract(sin(dot(cell, vec2(27.13, 61.97))) * 9123.7);
   float grow = easeOutQuint(fract(fract(bt) + ph));
-  float radius = grow * 0.72;
+  float radius = grow * 0.72 * (uSize / 100.0);
   float dl = length(lc);
-  float reveal = smoothstep(radius + 0.06, radius - 0.12, dl);
+  float reveal = smoothstep(radius + 0.06 * (uSoft / 100.0), radius - 0.12 * (uSoft / 100.0), dl);
   vec3 grey = clamp(col, 0.0, 1.0);
   vec3 outCol = grey;
   if(abs(uCosGrad) > 0.0001){
@@ -44,6 +57,7 @@ vec3 bg_7sSGWD(vec2 fc){
     vec3 cosCol = cosGradColor(t + cgInv);
     outCol = mix(grey, cosCol, abs(uCosGrad));
   }
-  outCol *= mix(0.92, 1.06, reveal);
+  float ctK = uContrast / 100.0;
+  outCol *= mix(mix(1.0, 0.92, ctK), mix(1.0, 1.06, ctK), reveal);
   return outCol;
 }

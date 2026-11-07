@@ -11,19 +11,33 @@ float lm_h(vec3 p){
   return (sin(p.x*0.9 + time) + 0.7*cos(p.z*1.1 + time)) / 2.0;
 }
 
+// @param uDetail 1..4 = 4.0
+// @param uRelief 20..200 = 100.0
+// @param uDensity 60..300 = 100.0
+// @param uChrome 10..300 = 100.0
+// @param uGlow 0..400 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail;   // 波の重ね回数 (下げると面がなめらかで軽い)
+uniform float uRelief;   // 山の起伏の高さ (%)
+uniform float uDensity;   // 波の細かさ (%)
+uniform float uChrome;   // クローム化する暗部の範囲 (%)
+uniform float uGlow;   // 鏡面の筋・太陽のハイライトの強さ (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 float lm_SDF(vec3 p){
   p /= 1.5;
   vec3 q = p;
   float scale = 0.2;
   float amplitude = 0.5;
-  float freq = 2.0;
-  p.y += lm_h(q);
+  float freq = 2.0 * (uDensity / 100.0);
+  p.y += lm_h(q) * (uRelief / 100.0);
   for(int i=0; i<4; i++){    // 高周波を削ってなめらかな面に(液体クローム向き)
+    if(i >= int(uDetail + 0.5)) break;
     q *= freq;
     q.xz *= mat2(4.0/5.0, -3.0/5.0, 3.0/5.0, 4.0/5.0);
     amplitude *= 0.6;
     scale *= freq;
-    p.y += lm_h(q) * amplitude / scale;
+    p.y += lm_h(q) * amplitude / scale * (uRelief / 100.0);
   }
   return abs(p.y) * 2.0;
 }
@@ -35,9 +49,9 @@ vec3 lm_env(vec3 r){
   vec3 sky = vec3(0.95, 0.97, 1.05);
   vec3 sil = mix(grd, sky, smoothstep(-0.1, 1.0, v));            // なめらかシルバー
   float band = smoothstep(0.5, 0.68, fract(r.y*3.0 + r.x*0.6));  // 鏡面の筋
-  sil += band * 0.22;
+  sil += band * 0.22 * (uGlow / 100.0);
   vec3 sun = normalize(vec3(0.5, 0.8, 0.3));                     // 太陽のホットスポット
-  sil += pow(max(dot(r, sun), 0.0), 45.0) * vec3(1.1);
+  sil += pow(max(dot(r, sun), 0.0), 45.0) * vec3(1.1) * (uGlow / 100.0);
   return sil;
 }
 
@@ -82,8 +96,8 @@ vec3 lm_shade(vec3 p, vec3 rd){
   float lum = dot(base, vec3(0.299,0.587,0.114));
   vec3 rr = reflect(rd, normal);
   float fres = pow(1.0 - max(dot(normal, -rd), 0.0), 3.0);
-  vec3 chrome = lm_env(rr) * (1.0 + 0.7*fres) + fres*0.45;
-  float chromeMix = smoothstep(0.30, 0.06, lum);   // 暗部のみクローム → 緑/桃/灰の色面は復活
+  vec3 chrome = lm_env(rr) * (1.0 + 0.7*fres) + fres*0.45*(uGlow / 100.0);
+  float chromeMix = smoothstep(0.30 * (uChrome / 100.0), 0.06 * (uChrome / 100.0), lum);   // 暗部のみクローム → 緑/桃/灰の色面は復活
   vec3 col = mix(base, chrome, chromeMix);
 
   return lm_cosgrad(col, lum);
@@ -98,7 +112,8 @@ vec3 bg_liqmount(vec2 fc){
   vec3 ro = normalize(vec3(0, 2.0+sin(tt)*0.5, -3.5)) * 10.0;
   vec3 rd = normalize(vec3(uv - vec2(0, 0.5), 1));
 
-  mat3 rotY = mat3(cos(tt/2.0),0.0,sin(tt/2.0), 0.0,1.0,0.0, -sin(tt/2.0),0.0,cos(tt/2.0));
+  float tr = tt/2.0 + radians(uAngle);
+  mat3 rotY = mat3(cos(tr),0.0,sin(tr), 0.0,1.0,0.0, -sin(tr),0.0,cos(tr));
   ro = rotY * ro;
   rd = rotY * rd;
 

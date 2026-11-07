@@ -1,6 +1,19 @@
 // Source : https://www.shadertoy.com/view/sdjGWR
 // License: Shadertoy default (CC BY-NC-SA 3.0) unless noted by the author
 // 3) sdjGWR
+// @param uDetail  1..6    = 6.0
+// @param uFoldScale 70..115 = 100.0
+// @param uSize    40..400 = 100.0
+// @param uReveal  0..200  = 100.0
+// @param uAngle   -180..180 = 0.0
+// @param uContrast 0..800 = 100.0
+uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、模様が単純になる)
+uniform float uFoldScale;    // 折り畳みの基準スケール (%)
+uniform float uSize;      // 円形セルひとつの大きさ (%)
+uniform float uAngle;     // 円形セル格子の向き (度)
+uniform float uReveal;    // 拍ごとに広がる円の大きさ (%)
+uniform float uContrast;  // 円の内外の明暗差 (%)
+
 vec3 bg_sdjGWR(vec2 fc){
   float bt = getBeat();
   float tx = randomMoveTime(bt, TAU * 0.07, 301.0);
@@ -11,10 +24,11 @@ vec3 bg_sdjGWR(vec2 fc){
   uv = uv + panUV;
   uv += vec2(tx * 0.5, ty * 0.33) / 4.0;
   for(int c=0;c<3;c++){
-    float scale = 5.6;
+    float scale = 5.6 * (uFoldScale / 100.0);
     float scale1 = 1.5;
     float s1 = scale1 * scale;
     for(int i=0;i<6;i++){
+      if(i >= int(uDetail + 0.5)) break;
       uv = fract(uv / s1) * s1;
       uv = -fract(uv / (2.0 - abs((uv.x - uv.y) / 16.0)) - (uv / (2.5 + fract(uv.x + uv.y))) / scale) * scale / scale1 + s1;
       uv /= scale1 + col.yx;
@@ -23,11 +37,13 @@ vec3 bg_sdjGWR(vec2 fc){
       col[c] = fract((0.25 * col[c] + col.x + uv.y - uv.x) / 2.0);
     }
   }
-  vec2 cell = floor(uv * 6.0);
-  vec2 lc = fract(uv * 6.0) - 0.5;
+  float cellA = radians(uAngle);
+  vec2 cuv = mat2(cos(cellA), -sin(cellA), sin(cellA), cos(cellA)) * uv * 6.0 / (uSize / 100.0);
+  vec2 cell = floor(cuv);
+  vec2 lc = fract(cuv) - 0.5;
   float ph = fract(sin(dot(cell, vec2(27.13, 61.97))) * 9123.7);
   float grow = easeOutQuint(fract(fract(bt) + ph));
-  float radius = grow * 0.72;
+  float radius = grow * 0.72 * (uReveal / 100.0);
   float dl = length(lc);
   float reveal = smoothstep(radius + 0.06, radius - 0.12, dl);
   vec3 grey = clamp(col, 0.0, 1.0);
@@ -44,7 +60,8 @@ vec3 bg_sdjGWR(vec2 fc){
     vec3 cosCol = cosGradColor(t + cgInv);
     outCol = mix(grey, cosCol, abs(uCosGrad));
   }
-  outCol *= mix(0.92, 1.06, reveal);
+  float ctK = uContrast / 100.0;
+  outCol *= mix(mix(1.0, 0.92, ctK), mix(1.0, 1.06, ctK), reveal);
   return outCol;
 }
 

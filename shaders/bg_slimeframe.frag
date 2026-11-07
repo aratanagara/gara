@@ -12,23 +12,40 @@ float sf_smin(float d1, float d2, float k){
   float h = clamp(0.5 + 0.5*(d2-d1)/k, 0.0, 1.0);
   return mix(d2, d1, h) - k*h*(1.0-h);
 }
+// @param uDetail  2..5 = 5.0
+// @param uThick   25..500 = 100.0
+// @param uWarp    0..300 = 100.0
+// @param uSoft    10..300 = 100.0
+// @param uDensity 25..200 = 100.0
+// @param uSize 50..115 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail; // カレイドスコープの反復回数 (下げると軽く、円が少なくなる)
+uniform float uThick; // 線の太さ (%)
+uniform float uWarp; // 円のゆがみ (%)
+uniform float uSoft; // 円同士のつながりの柔らかさ (%)
+uniform float uDensity; // 円の密度 (%)
+uniform float uSize; // 円ひとつの大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 float sf_map(vec2 p){
   vec2 q = p;
   float d = 100.0, a = 1.0;
   float t = 196.0 + time/20.0;
+  p = sf_rot(radians(uAngle)) * p;
   // break symmetry
   p += vec2(resolution.x/resolution.y, 1.0);
-  p *= 0.6;
+  p *= 0.6 * (uDensity / 100.0);
   // kaleidoscopic circles
   for(float i = 0.0; i < 5.0; ++i){
+    if(i >= floor(uDetail + 0.5)) break;
     p = abs(p) - a;
     float b = length(p);
-    p *= sf_rot(t/a + sin(b*5.0/a)*0.05/a);
-    p *= 1.0 + 0.2*sin(b*4.0/a + time*a + i*3.0)*a;
-    d = sf_smin(d, abs(b - 1.0*a), 0.07);
+    p *= sf_rot(t/a + sin(b*5.0/a)*0.05*(uWarp / 100.0)/a);
+    p *= 1.0 + 0.2*(uWarp / 100.0)*sin(b*4.0/a + time*a + i*3.0)*a;
+    d = sf_smin(d, abs(b - 1.0*(uSize / 100.0)*a), 0.07 * (uSoft / 100.0));
     a /= 1.4;
   }
-  d -= 0.004;                                             // thickness
+  d -= 0.004 * (uThick / 100.0);                                             // thickness
   // frame
   q = abs(q) - vec2(resolution.x/resolution.y, 1.0);
   float box = abs(max(q.x, q.y));

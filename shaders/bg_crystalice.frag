@@ -18,8 +18,21 @@ float ci_smax(float a, float b, float k){
   return max(a, b) + k*.25*f*f;
 }
 
+// @param uCell     50..200 = 100.0
+// @param uTunnel   50..130 = 100.0
+// @param uTint     0..200  = 100.0
+// @param uDesat    0..250  = 100.0
+// @param uContrast 50..200 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uCell;      // 結晶格子の大きさ (%)
+uniform float uTunnel;    // トンネルの太さ (%)
+uniform float uTint;      // 浅葱色への寄せ具合 (%)
+uniform float uDesat;     // 彩度を落とす量 (%)
+uniform float uContrast;  // ガンマ (%。上げると暗部が沈む)
+uniform float uAngle; // カメラのロール (度。固定角でずらす)
+
 float ci_tunnel(vec3 p){
-  return (sin(p.z*.1)*3. + 7.) - length((p - CI_P(p.z)).xy);
+  return (sin(p.z*.1)*3. + 7.*(uTunnel/100.)) - length((p - CI_P(p.z)).xy);
 }
 
 float ci_surface(vec3 p){
@@ -32,11 +45,11 @@ float ci_surface(vec3 p){
   CI_TRI(.064);
   CI_TRI(.128);
   CI_TRI(.256);
-  s = 24.;
+  s = 24.*(uCell/100.);
   p = abs(fract(p/s)*s - s*.5);
   d = min(min(max(abs(p.x), abs(p.y)),
               max(abs(p.y), abs(p.z))),
-              max(abs(p.x), abs(p.y))) - 1e1;
+              max(abs(p.x), abs(p.y))) - 1e1*(uCell/100.);
   return d;
 }
 
@@ -51,7 +64,7 @@ vec3 bg_crystalice(vec2 u){
   vec3 p = CI_P(time*1e1), ro = p,
        Z = normalize(CI_P(time*1e1 + 5.) - p),
        X = normalize(vec3(Z.z, 0, -Z.x)),
-       D = normalize(vec3(CI_R(sin(p.z*.03)*.4) * uu, 1) * mat3(-X, cross(X, Z), Z));
+       D = normalize(vec3(CI_R(sin(p.z*.03)*.4 + radians(uAngle)) * uu, 1) * mat3(-X, cross(X, Z), Z));
 
   vec4 o = vec4(0);
   for(; i++ < 110.;){
@@ -68,12 +81,12 @@ vec3 bg_crystalice(vec2 u){
   float L = dot(col, vec3(0.3333));
   // 浅葱色(緑寄りの水色)へ。彩度は控えめに。
   vec3 asagi = vec3(0.45, 0.68, 0.70);
-  col = mix(col, L * asagi * 1.3, 0.45);
+  col = mix(col, L * asagi * 1.3, 0.45 * (uTint / 100.0));
   // 彩度を下げる
   float L2 = dot(col, vec3(0.3333));
-  col = mix(col, vec3(L2), 0.35);
+  col = mix(col, vec3(L2), 0.35 * (uDesat / 100.0));
   // 透明感: 明部を白く抜いてガラスっぽく + 全体を軽く持ち上げ
   col = mix(col, vec3(1.0), 0.20 * smoothstep(0.25, 1.0, L2));
-  col = pow(max(col, 0.0), vec3(0.82));
+  col = pow(max(col, 0.0), vec3(0.82 * (uContrast / 100.0)));
   return clamp(col, 0.0, 1.0);
 }

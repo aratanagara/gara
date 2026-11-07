@@ -50,22 +50,39 @@ vec3 st_GetSunColorSmall(vec3 rayDir, vec3 sunDir){
   return st_sunCol * si * 0.025;
 }
 
+// @param uDetail 1..5 = 5.0
+// @param uWarp 0..130 = 100.0
+// @param uTwist 0..200 = 100.0
+// @param uDensity 50..200 = 100.0
+// @param uGlow 30..250 = 100.0
+// @param uScale 50..120 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail;   // 変形の細かさ (折り重ね回数)
+uniform float uWarp;   // 変形の激しさ (歪み) (%)
+uniform float uTwist;   // 渦のねじれの強さ (%)
+uniform float uDensity;   // 変形のうねりの細かさ (%)
+uniform float uGlow;   // 全体の明るさ (%)
+uniform float uScale;   // 物体全体の大きさ (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 float st_SinRep(float a){
   float h = 0.0, mult = 1.0;
-  for(int i=0; i<ST_SIN_REPS; i++){ h += cos(a*mult)/mult; mult *= 2.0; }
+  for(int i=0; i<ST_SIN_REPS; i++){ if(i >= int(uDetail + 0.5)) break; h += cos(a*mult*(uDensity / 100.0))/mult; mult *= 2.0; }
   return h;
 }
 
 // 歪んだ球の距離場。変形を激しめに(振幅アップ + 強めの渦)。
 vec2 st_DistanceToObject(vec3 p){
-  p = st_RotateY(p, p.y*0.7 - cos(st_localTime)*0.7);          // 強めの渦
+  float sc = uScale / 100.0;
+  p /= sc;
+  p = st_RotateY(p, p.y*0.7*(uTwist / 100.0) - cos(st_localTime)*0.7 + radians(uAngle));          // 強めの渦
   float h = 0.0;
   h += st_SinRep(st_RotateY(p, p.z*3.14*0.25).x);
   h += st_SinRep(st_RotateZ(p, p.x*3.14*0.25).y);
   h += st_SinRep(st_RotateX(p, p.y*3.14*0.25).z);
   float material = h;
-  float final = length(p) - 4.0 - h*(0.5 + sin(st_localTime)*0.6);  // 変形を激しめ
-  return vec2(final, material);
+  float final = length(p) - 4.0 - h*(0.5 + sin(st_localTime)*0.6) * (uWarp / 100.0);  // 変形を激しめ
+  return vec2(final * sc, material);
 }
 
 float st_IntersectSphereAndRay(vec3 pos, float radius, vec3 posA, vec3 posB, out vec3 iA, out vec3 iB){
@@ -97,7 +114,7 @@ vec3 bg_stractium(vec2 fc){
   vec3 relVec = normalize(worldPix - camPos);
 
   vec3 iA, iB;
-  float hit = st_IntersectSphereAndRay(vec3(0.0), 7.6, camPos, camPos+relVec, iA, iB);
+  float hit = st_IntersectSphereAndRay(vec3(0.0), 7.6 * (uScale / 100.0), camPos, camPos+relVec, iA, iB);
 
   vec2 distAndMat = vec2(0.05, 0.0);
   float t = 0.0;
@@ -170,7 +187,7 @@ vec3 bg_stractium(vec2 fc){
   }
 
   finalColor *= st_saturate(1.0 - length(uv/2.5));   // ビネット
-  finalColor *= 1.95;
+  finalColor *= 1.95 * (uGlow / 100.0);
   vec3 col = sqrt(clamp(finalColor, 0.0, 1.0));
 
   if(abs(uCosGrad) > 0.0001){

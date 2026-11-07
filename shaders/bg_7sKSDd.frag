@@ -1,22 +1,36 @@
 // Source : https://www.shadertoy.com/view/7sKSDd
 // License: Shadertoy default (CC BY-NC-SA 3.0) unless noted by the author
+// @param uDetail   1..6     = 6.0
+// @param uDensity  50..400  = 100.0
+// @param uWarp     0..300   = 100.0
+// @param uFeedback 0..300   = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、模様が粗くなる)
+uniform float uDensity;   // 模様の密度 (%)
+uniform float uWarp;      // 歪み (うねり) の強さ (%)
+uniform float uFeedback;  // 色の回り込み (チャンネル間フィードバック) の強さ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 vec3 bg_7sKSDd(vec2 fc){
   float bt = getBeat();
   float tx = randomMoveTime(bt, TAU * 0.08, 201.0);
   float ty = randomMoveTime(bt, TAU * 0.06, 202.0);
   vec3 col = vec3(0.0);
-  vec2 uv1 = (fc * 10.0 - resolution.xy) / resolution.y / 10.0 / bgZoom;
+  vec2 uv1 = (fc * 10.0 - resolution.xy) / resolution.y / 10.0 / bgZoom * (uDensity / 100.0);
+  float a7 = radians(uAngle);
+  uv1 = mat2(cos(a7), -sin(a7), sin(a7), cos(a7)) * uv1;
   vec2 panUV = bgCamPx / resolution.y * 5.0;
   uv1 = uv1 + panUV;
   uv1 += vec2(tx, ty) / 10.0;
   for(int c=0;c<3;c++){
     vec2 uv = uv1;
     for(int i=0;i<6;i++){
+      if(i >= int(uDetail + 0.5)) break;
       uv = fract((uv.y + uv.x + uv) / 1.5) * 1.5;
       uv *= (uv.x - uv.y);
-      uv += 0.06 * vec2(sin(bt * 0.9 + uv.y * 3.0),
+      uv += 0.06 * (uWarp / 100.0) * vec2(sin(bt * 0.9 + uv.y * 3.0),
                         cos(bt * 0.8 + uv.x * 3.0));
-      col += col.yzx * (uv.x + uv.y) / 8.0;
+      col += col.yzx * (uv.x + uv.y) / 8.0 * (uFeedback / 100.0);
       col[c] += (uv.y - uv.x);
     }
   }

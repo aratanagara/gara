@@ -51,6 +51,21 @@ float wr_tesseract_slice(vec3 p, vec3 b, float t, float wSlice){
 vec3  wr_rdg = vec3(0);
 float wr_nsdf = 0.;
 
+// @param uDetail 2..5 = 5.0
+// @param uMotion 0..300 = 100.0
+// @param uWarp   0..300 = 100.0
+// @param uGlow   0..300 = 100.0
+// @param uSize 60..150 = 100.0
+// @param uScale 50..150 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail; // ボックス分割の回数 (下げると軽く、形が大きくなる)
+uniform float uMotion; // ボックスの膨らみの振幅 (%)
+uniform float uWarp; // 4 次元のうねり (%)
+uniform float uGlow; // ハイライト・縁の光 (%)
+uniform float uSize; // ボックスひとつの大きさ (%)
+uniform float uScale; // 物体全体の大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   float t = time;
   bvec3 isEdge = bvec3(true);
@@ -59,9 +74,10 @@ vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   vec3 dMini = dMin;
   vec3 dMaxi = dMax;
   float id = 0.;
-  float ITERS = 5.;
+  float ITERS = floor(uDetail + 0.5);
   vec3 dim = dMax - dMin;
-  for(float i = 0.; i < ITERS; i++){
+  for(float i = 0.; i < 5.; i++){
+    if(i >= ITERS) break;
     vec3 divHash = vec3(0.49, 0.501, 0.511);
     vec3 divide = divHash * dim + dMin;
     dMax = mix(dMax, divide, step(p, divide));
@@ -77,7 +93,7 @@ vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   vec3 center = (dMin + dMax)/2.0;
   float b = 0.;
   if(any(isEdge)){
-    float expand = 1.05 + 0.45*(sin(length(center+100.0)*0.35 + t*3.0*WR_PI/3.)*0.5 + 0.5);
+    float expand = 1.05 + 0.45*(uMotion / 100.0)*(sin(length(center+100.0)*0.35 + t*3.0*WR_PI/3.)*0.5 + 0.5);
     if(isEdge.x){ dim.x += abs(center.x*expand-center.x)*2.0; center.x *= expand; }
     if(isEdge.y){ dim.y += abs(center.y*expand-center.y)*2.0; center.y *= expand; }
     if(isEdge.z){ dim.z += abs(center.z*expand-center.z)*2.0; center.z *= expand; }
@@ -86,7 +102,7 @@ vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   vec3 dAxis = abs(p - edgeAxis) / (abs(rd) + 1E-4);
   float dEdge = min(dAxis.x, min(dAxis.y, dAxis.z));
   b = dEdge;
-  dim -= 0.4;
+  dim -= 0.4 * ((200.0 - uSize) / 100.0);
   // 4D 回転体: 各セルを w=0 スライスのテッセラクトとして描画。
   // 4D 回転で時間とともにスライスが変化し、立方体が断面で「うねりながら姿を変える」。
   float a = wr_tesseract_slice(p - center, dim*0.5, t, 0.0) - 0.18;
@@ -101,6 +117,10 @@ vec3 wr_map(vec3 p){
   vec2 a = vec2(1);
   vec3 scl = vec3(15, 15, 15);
   vec3 rd2 = wr_rdg;
+  float sc = uScale / 100.0;
+  p /= sc;
+  float ang0 = radians(uAngle);
+  p.xz *= wr_rot(ang0); rd2.xz *= wr_rot(ang0);
   // 4次元: 3D 主回転(XY/YZ/XZ) + W 軸を仮想4次元として導入し、
   // XW/YW/ZW 回転で (x,w)/(y,w)/(z,w) を組み替え、最終的に w を z に投影。
   float ph1 = t*0.18;
@@ -120,7 +140,7 @@ vec3 wr_map(vec3 p){
   c = cos(ph3); s = sin(ph3);
   vec2 zw = vec2(p.z*c - w*s, p.z*s + w*c); p.z = zw.x; w = zw.y;
   // W を Z 方向に射影(残り w が空間を歪ませる)
-  p.z += w * 0.55;
+  p.z += w * 0.55 * (uWarp / 100.0);
   // 主 3D 回転(従来の自転)
   float rXY = t*0.5*WR_PI/3. + sin(ph4)*0.45;
   float rYZ = t*0.4*WR_PI/3. + cos(ph4)*0.45;
@@ -132,7 +152,7 @@ vec3 wr_map(vec3 p){
   scl *= vec3(1.0 + sin(ph2)*0.15, 1.0 + cos(ph3)*0.15, 1.0 + sin(ph4)*0.15);
   a = wr_blocks(p, scl, rd2) + 0.01;
   a.x = max(wr_box(p, vec3(scl*1.4)), a.x);
-  return vec3(a, wr_nsdf);
+  return vec3(a.x * sc, a.y, wr_nsdf * sc);
 }
 vec3 wr_norm(vec3 p){
   vec2 e = vec2(0.01, 0.);
@@ -173,7 +193,7 @@ vec3 bg_ravecube(vec2 fc){
     chrome += pow(env, 8.0) * vec3(0.22);
     float spec = pow(length(sin(rr*5.)*.5 + .5)/sqrt(3.), 6.0);   // 鋭い反射ハイライト
     float fres = pow(1.0 - abs(dot(rd, n)), 4.0);
-    chrome += spec * vec3(1.0) * 1.2 + fres * vec3(0.7, 0.75, 0.9) * 0.5;
+    chrome += (spec * vec3(1.0) * 1.2 + fres * vec3(0.7, 0.75, 0.9) * 0.5) * (uGlow / 100.0);
     float ao = WR_AO(0.3, n, p) * WR_AO(0.5, n, p) * WR_AO(0.9, n, p);
     col = chrome * pow(clamp(ao, 0.0, 1.0), 0.4);
   }

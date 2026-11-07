@@ -8,6 +8,17 @@ vec3 vg_cosineGradient(float tt, vec3 a, vec3 b, vec3 c, vec3 d){
 }
 
 // 0) VanGogh
+// @param uDetail 1..4 = 4.0
+// @param uWarp 0..200 = 100.0
+// @param uDensity 25..400 = 100.0
+// @param uSat 0..250 = 100.0
+// @param uBandW 25..400 = 100.0
+uniform float uDetail;   // 歪ませる反復回数 (下げると模様が単純になる)
+uniform float uWarp;   // 渦の歪みの強さ (%)
+uniform float uDensity;   // 同心の帯の密度 (%)
+uniform float uSat;   // 色の彩度 (%)
+uniform float uBandW;   // 色の段の幅 (%)
+
 vec3 bg_vangogh(vec2 fc){
   float bt   = getBeat();
   float blk  = floor(bt);
@@ -32,11 +43,12 @@ vec3 bg_vangogh(vec2 fc){
   }
   p += off * 0.35;
   for(int i=0;i<TIMES;i++){
-    float d = ceil(-sin(t) + length(p) * 6.0) / 3.0;
+    if(i >= int(uDetail + 0.5)) break;
+    float d = ceil(-sin(t) + length(p) * 6.0 * (uDensity / 100.0)) / 3.0;
     p += vec2(
       sin(p.y + sin(d)) - sin(t / 4.0),
      -sin(p.x - sin(d)) - cos(t / 4.0)
-    );
+    ) * (uWarp / 100.0);
   }
   // Meguru と同じカラーシステム: 異周期 sin で a/b/c/d を連続ドリフト + 量子化
   float pt = bt * 0.05;
@@ -58,14 +70,14 @@ vec3 bg_vangogh(vec2 fc){
   float spatialGrad = dot(p, vec2(0.020, 0.016));
   float colorParam = spatialGrad + length(p) * 0.006 + bt * 0.08 + phase;
   // ソフト量子化: band プラトー + 境界 smoothstep で中間色を温存
-  float vStep = 0.16;
+  float vStep = 0.16 * (uBandW / 100.0);
   float fv = colorParam / vStep;
   float bv = floor(fv);
   float frv = fract(fv);
   float rampv = smoothstep(0.30, 1.00, frv);
   colorParam = (bv + rampv) * vStep;
   vec3 c = vg_cosineGradient(colorParam, a, b0, cP, d4);
-  c = saturateColor(c, 1.15);
+  c = saturateColor(c, 1.15 * (uSat / 100.0));
   return clamp(c, 0.0, 1.0);
 }
 

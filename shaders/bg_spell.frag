@@ -38,25 +38,40 @@ float sp_smin(float a, float b, float r){
   return mix(b,a,h)-r*h*(1.-h);
 }
 
+// @param uThick   25..400 = 100.0
+// @param uDisk    25..400 = 100.0
+// @param uSpacing 50..200 = 100.0
+// @param uSpokes  3..16   = 8.0
+// @param uHole    0..150  = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uScale 50..150 = 100.0
+uniform float uThick;     // チューブの太さ (%)
+uniform float uDisk;      // 円盤の厚み (%)
+uniform float uSpacing;   // 円盤の縦の間隔 (%)
+uniform float uSpokes;    // チューブの本数 (内側。外側はその 2 倍)
+uniform float uHole;      // 円盤の中央の穴の大きさ (%)
+uniform float uAngle; // 全体の向き (度。固定角でずらす)
+uniform float uScale; // 魔法陣 (チューブと円盤) 全体の大きさ (%。床・天井は動かない)
+
 float sp_tubes(vec3 pos){
-  float cylinderRadius = .02;
+  float cylinderRadius = .02 * (uThick / 100.0);
   vec3 p = pos;
   p.xz *= sp_rot(p.y*.5);
-  sp_amod(p.xz, 8.);
+  sp_amod(p.xz, floor(uSpokes + 0.5));
   p.x -= 2.;
   float tube = sp_cyl(p.xz, cylinderRadius);
   p = pos;
   p.xz *= sp_rot(-p.y*.5);
-  sp_amod(p.xz, 16.);
+  sp_amod(p.xz, floor(uSpokes + 0.5) * 2.0);
   p.x -= 2.;
   tube = sp_smin(tube, sp_cyl(p.xz, cylinderRadius), .15);
   return tube;
 }
 float sp_disks(vec3 pos){
   float radius = 1.5;
-  float radiusInner = .57;
-  float thin = .01;
-  float repeatY = 2.;
+  float radiusInner = .57 * (uHole / 100.0);
+  float thin = .01 * (uDisk / 100.0);
+  float repeatY = 2. * (uSpacing / 100.0);
   float cellY = floor(pos.y/repeatY);
   float a = atan(pos.z,pos.x)-time*.3+cellY*.1;
   vec3 p = pos;
@@ -71,26 +86,27 @@ vec3 sp_anim2(vec3 p){ float t=-time*.4; p.xz*=sp_rot(t*.9); p.xy*=sp_rot(t*.6);
 
 float sp_map(vec3 pos){
   float scene = 1000.;
+  float sSc = uScale / 100.0;
   float bump = sp_noise(pos.xz*0.6);          // テクスチャ→手続きノイズ
   float ground = 2. - bump*.1;
   scene = min(scene, pos.y+ground);
   scene = min(scene, -(pos.y-ground));
 
-  vec3 p = pos;
+  vec3 p = pos / sSc;
   p.y += sin(atan(p.z,p.x)*10.)*3.;
   p.xz *= sp_rot(p.y*.2-time);
   p = sp_anim1(p);
   p.x = length(p.xyz)-3.;
-  scene = sp_smin(scene, sp_tubes(p), .5);
-  scene = sp_smin(scene, sp_disks(p), .5);
+  scene = sp_smin(scene, sp_tubes(p) * sSc, .5);
+  scene = sp_smin(scene, sp_disks(p) * sSc, .5);
 
-  p = pos;
+  p = pos / sSc;
   p.y += sin(atan(p.z,p.x)*3.)*2.;
   p = sp_anim2(p);
   p.xz *= sp_rot(p.y+time);
   p.x = length(p.xyz)-3.;
-  scene = sp_smin(scene, sp_tubes(p), .3);
-  scene = sp_smin(scene, sp_disks(p), .3);
+  scene = sp_smin(scene, sp_tubes(p) * sSc, .3);
+  scene = sp_smin(scene, sp_disks(p) * sSc, .3);
 
   return scene;
 }
@@ -102,7 +118,7 @@ vec3 bg_spell(vec2 fc){
   vec3 eye = vec3(0., 0., -7.0);
   vec3 ray = normalize(vec3(uv, .7));
   // マウスの代わりに自動回転
-  float a = time*0.12;
+  float a = time*0.12 + radians(uAngle);
   eye.xz *= sp_rot(a);
   ray.xz *= sp_rot(a);
 

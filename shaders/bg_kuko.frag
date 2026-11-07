@@ -25,10 +25,25 @@ vec3 kk_tex3D(vec3 p, vec3 n){
   return kk_tex2(p.yz)*n.x + kk_tex2(p.zx)*n.y + kk_tex2(p.xy)*n.z;
 }
 
+// @param uBeads  1..8 = 3.16
+// @param uThick  25..200 = 100.0
+// @param uMotion 0..400 = 100.0
+// @param uBump   0..400 = 100.0
+// @param uGlow   0..300 = 100.0
+// @param uSize 40..250 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uBeads; // 球のらせん 1 周あたりの球の数
+uniform float uThick; // らせんの管の太さ (%)
+uniform float uMotion; // らせんのうねりの振幅 (%)
+uniform float uBump; // 表面の凹凸の強さ (%)
+uniform float uGlow; // ハイライト・縁の光 (%)
+uniform float uSize; // 球ひとつの大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 float kk_sdHelix(vec3 p){
   float len = length(p.xy);
-  float a = sin(atan(p.y, p.x) - p.z*0.5);
-  return length(vec2(len - 2.5, a)) - 0.4;
+  float a = sin(atan(p.y, p.x) - p.z*0.5 + radians(uAngle));
+  return length(vec2(len - 2.5, a)) - 0.4 * (uThick / 100.0);
 }
 
 float kk_smin(float d1, float d2, float k){
@@ -42,31 +57,31 @@ float kk_sdSphere(vec3 p, float r){ return length(p) - r; }
 float kk_sdHelixOfSpheres(vec3 p){
   p += vec3(-2.5, -2.5, 1.6);
   float len   = length(p.xy);
-  float angle = atan(p.y, p.x);
-  float n = 3.16;            // spheres per rotation
+  float angle = atan(p.y, p.x) + radians(uAngle);
+  float n = uBeads;            // spheres per rotation
   float helixRadius = 2.5;
   vec3 spherePos = vec3(
     len - helixRadius,        // radial offset to helix
     0.154,                    // perpendicular to helix path
     fract(n * angle) - 0.5    // periodic spacing along helix
   );
-  return kk_sdSphere(spherePos, 0.15);
+  return kk_sdSphere(spherePos, 0.15 * (uSize / 100.0));
 }
 
 float kk_map(vec3 p){
   vec3 p0 = vec3(mod(p.x, 7.) - 7.*0.5,
                  mod(p.y, 7.) - 7.*0.5,
                  p.z);
-  p0.y += sin(p.x*2. + time*2.0) * 0.1;
-  p0.z += sin(p.x*2. + time*2.5) * 0.1;
+  p0.y += sin(p.x*2. + time*2.0) * 0.1 * (uMotion / 100.0);
+  p0.z += sin(p.x*2. + time*2.5) * 0.1 * (uMotion / 100.0);
   float d = kk_sdHelix(p0);
 
   vec3 p1 = p + vec3(1, 1, 0);
   p1 = vec3(mod(p1.x, 7.) - 7.*0.5,
             mod(p1.y, 7.) - 7.*0.5,
             p.z);
-  p1.z += sin(p1.y*3. + time*1.5) * 0.1;
-  p1.z += sin(p1.x*1. + time*2.5) * 0.2;
+  p1.z += sin(p1.y*3. + time*1.5) * 0.1 * (uMotion / 100.0);
+  p1.z += sin(p1.x*1. + time*2.5) * 0.2 * (uMotion / 100.0);
   float d1 = kk_sdHelix(p1);
 
   float d3 = kk_sdHelixOfSpheres(p);
@@ -116,7 +131,7 @@ vec3 bg_kuko(vec2 fc){
     vec3 texY = kk_tex3D((p + vec3(0, texOffset, 0))*scale, norm);
     vec2 texGrad = vec2(texX.r - tex.r, texY.r - tex.r) / texOffset;
 
-    vec3 bump = normalize(norm + vec3(texGrad*0.3, 0));
+    vec3 bump = normalize(norm + vec3(texGrad*0.3*(uBump / 100.0), 0));
 
     vec3 lightPos = vec3(sin(time)*1.0, 5.0, -time*0.5 + 2.0);
     vec3 L = normalize(lightPos - p);
@@ -129,8 +144,8 @@ vec3 bg_kuko(vec2 fc){
     vec3 baseCol = (3. + cos(4. + vec3(0,4,4))) / dt * vec3(0, 0.5, 0.2);
 
     col  = baseCol * (diff*0.7 + 0.3);          // diffuse + ambient
-    col += vec3(0.4, 0.6, 1.0) * spec * 1.5;    // specular
-    col += vec3(0.2, 0.4, 0.6) * fre  * 1.4;    // fresnel rim
+    col += vec3(0.4, 0.6, 1.0) * spec * 1.5 * (uGlow / 100.0);    // specular
+    col += vec3(0.2, 0.4, 0.6) * fre  * 1.4 * (uGlow / 100.0);    // fresnel rim
   }
 
   col = mix(col, vec3(0), 1.0 - exp(-0.0019 * dt*dt*dt));                 // fog

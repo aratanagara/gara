@@ -22,21 +22,38 @@ float tw_cube(vec4 c, vec3 pos){
   return max(max(abs(c.x)-c.w, abs(c.y)-c.w), abs(c.z)-c.w);
 }
 
+// @param uWarp 0..180 = 100.0
+// @param uSize 40..300 = 100.0
+// @param uWave 0..200 = 100.0
+// @param uGlow 0..300 = 100.0
+// @param uFog 0..300 = 100.0
+// @param uScale 70..160 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uWarp;   // トンネルのうねり (歪み) の大きさ (%)
+uniform float uSize;   // 立方体の太さ (%)
+uniform float uWave;   // 立方体の上下のうねり (%)
+uniform float uGlow;   // 鏡面ハイライトの強さ (%)
+uniform float uFog;   // 遠方の暗くなり方 (%)
+uniform float uScale;   // 立方体の列全体の大きさ (%。間隔も一緒に変わる)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 float tw_df(vec3 p){
+  float sc = uScale / 100.0;
+  p /= sc;
   p += vec3(
     sin(p.z*1.55 + time) + sin(p.z*1.34 + time),
     0.0,
     sin(p.x*1.34 + time) + sin(p.x*1.55 + time)
-  ) * 0.5;
+  ) * 0.5 * (uWarp / 100.0);
   vec3 mp = mod(p, 1.0);
   mp.y = p.y;
 
-  float s1 = tw_cube(vec4(0.5, 0.5, 0.5, 0.15),
-                     vec3(mp.x, mp.y + (sin(p.z*TW_PI)*sin(p.x*TW_PI))*0.25, 0.5));
-  float s2 = tw_cube(vec4(0.5, 0.5, 0.5, 0.15),
-                     vec3(0.5, mp.y + (sin(p.x*TW_PI)*-sin(p.z*TW_PI))*0.25, mp.z));
+  float s1 = tw_cube(vec4(0.5, 0.5, 0.5, 0.15 * (uSize / 100.0)),
+                     vec3(mp.x, mp.y + (sin(p.z*TW_PI)*sin(p.x*TW_PI))*0.25*(uWave / 100.0), 0.5));
+  float s2 = tw_cube(vec4(0.5, 0.5, 0.5, 0.15 * (uSize / 100.0)),
+                     vec3(0.5, mp.y + (sin(p.x*TW_PI)*-sin(p.z*TW_PI))*0.25*(uWave / 100.0), mp.z));
   tw_m = s1 < s2 ? 0 : 1;
-  return min(s1, s2);
+  return min(s1, s2) * sc;
 }
 
 vec2 tw_rm(vec3 pos, vec3 dir, float threshold, float td){
@@ -88,7 +105,7 @@ vec3 bg_twistors(vec2 fc){
   vec3 uv = vec3(I / resolution.xy, 1.0);
   vec3 rayDir = normalize(uv);
   TW_R(rayDir.yz, sin(time*0.25)*0.25 + 1.25);
-  TW_R(rayDir.xz, sin(time*0.2));
+  TW_R(rayDir.xz, sin(time*0.2) + radians(uAngle));
 
   float gd = TW_MAXD;
   vec2 march = tw_rm(camPos, rayDir, TW_THRESH, gd);
@@ -107,8 +124,8 @@ vec3 bg_twistors(vec2 fc){
     vec3 lig = normalize(TW_LIGHTPOS - point);
     float spe = pow(max(dot(n, normalize(lig - rayDir)), 0.0), 60.0);
     float ao = clamp(tw_softShadow(point, point + n, 2.0, 8.0, gd), 0.0, 1.0);
-    col = (mix(env*0.55, env, fres) + spe*vec3(1.6)) * (0.35 + 0.65*ao);
-    col *= exp2(-march.y*0.06);
+    col = (mix(env*0.55, env, fres) + spe*vec3(1.6)*(uGlow / 100.0)) * (0.35 + 0.65*ao);
+    col *= exp2(-march.y*0.06*(uFog / 100.0));
   }
 
   col = col*2.0/(1.0 + col);                // gain

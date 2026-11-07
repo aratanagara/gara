@@ -8,8 +8,18 @@
 // ─── 負荷調整パラメータ (既定値は従来と同一の描画) ─────────────────────────
 // @param uSteps 12..40 = 32
 // @param uRibs  bool   = true
+// @param uSize   40..300 = 100.0
+// @param uSpacing 60..200 = 100.0
+// @param uWarp    0..150  = 100.0
+// @param uCount 0..130 = 100.0
+// @param uAngle -90..90 = 0.0
 uniform float uSteps;       // レイマーチのステップ上限。下げると軽いが遠景の細部が溶ける
 uniform float uRibs;        // 肋骨(尖った湾曲骨)。OFF で SDF 評価が減る (約 -17%)
+uniform float uSize;       // 骨の太さ (%)
+uniform float uSpacing;     // 骨格セルの間隔 (%。大きいほど疎)
+uniform float uWarp;        // アーチ天井の持ち上げ (歪み) (%)
+uniform float uCount;   // 骨幹の本数 (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
 
 #define bt_rot(spin) mat2(cos(spin),sin(spin),-sin(spin),cos(spin))
 
@@ -42,7 +52,7 @@ float bt_boneShaft(vec3 p, vec3 a, vec3 b, float ts){
   vec3 pa = p - a, ba = b - a;
   float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
   vec3 c = a + ba * h;
-  float rad = (0.07 + 0.08 * pow(abs(h - 0.5) * 2.0, 2.2)) * ts;
+  float rad = (0.07 + 0.08 * pow(abs(h - 0.5) * 2.0, 2.2)) * ts * (uSize / 100.0);
   return length(p - c) - rad;
 }
 
@@ -74,18 +84,18 @@ float bt_boneScaffold(vec3 p){
   // アーチ天井: x 周期で大きく弓なりに持ち上げる(複数ヴォールト)
   float archL = 10.0;
   float arch  = abs(sin(p.x / archL * 3.14159265));
-  w.y -= arch * 6.5;                                   // 大きなアーチ
+  w.y -= arch * 6.5 * (uWarp / 100.0);                                   // 大きなアーチ
   // z 方向に流れる大きなうねり
   w.y -= sin(p.z*0.10 + 0.5) * 2.2;
   w.x += cos(p.z*0.08) * 2.0 + sin(p.y*0.06)*1.2;
   // 進むほど大きくねじれる(パラメトリックスイープ)
-  float tw = p.z*0.05 + sin(p.z*0.022)*0.6;
+  float tw = p.z*0.05 + sin(p.z*0.022)*0.6 + radians(uAngle);
   float c = cos(tw), s = sin(tw);
   w.xy = mat2(c, -s, s, c) * w.xy;
   // 有機ゆらぎ
   w.z += cos(p.y*0.30) * 0.4;
 
-  float cs = 3.4;                                    // 骨格セルサイズ(疎に = 骨の数を減らす)
+  float cs = 3.4 * (uSpacing / 100.0);                                    // 骨格セルサイズ(疎に = 骨の数を減らす)
   vec3 baseCell = floor(w / cs);
   float d = 1e9;
   // {-1,0} の 8 セルを評価(各セルの関節 + 前方 3 方向の骨幹)
@@ -108,7 +118,7 @@ float bt_boneScaffold(vec3 p){
       vec3 dir  = vec3(dirs2[k].x, 0.0, dirs2[k].y);
       vec3 seed = cellA + dir*0.5 + float(k)*7.0;
       float sh = bt_hash3(seed).x;
-      if(sh > 0.68){                                  // ~32% だけ描画
+      if(sh > 0.68 + (1.0 - uCount / 100.0) * 0.32){                                  // ~32% だけ描画
         vec3 b  = bt_anchor(cellA + dir, cs);
         float ts = mix(0.5, 2.2, bt_hash3(seed + 3.0).y);  // 太さの個体差
         d = bt_smin(d, bt_boneShaft(w, a, b, ts), 0.10);

@@ -17,6 +17,19 @@ float rp_lights;
 
 mat2 rp_r2(float a){ float s=sin(a), c=cos(a); return mat2(c,s,-s,c); }
 
+// @param uTwist  0..200  = 100.0
+// @param uWarp   0..150  = 100.0
+// @param uGlow   25..300 = 100.0
+// @param uGlitch 0..300  = 100.0
+// @param uFog    0..200  = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uTwist;     // コースのねじれ (%)
+uniform float uWarp;      // 横縦の潰れ・伸びの強さ (%)
+uniform float uGlow;      // 光源 (orb) の光の強さ (%)
+uniform float uGlitch;    // 画素ごとの時間ジッタ (モーションブラー風グリッチ) の量 (%)
+uniform float uFog;       // 奥の群青のかかり具合 (%)
+uniform float uAngle; // トンネルの向き = ロール (度。固定角でずらす)
+
 float rp_map(vec3 p){
   vec3 q = RP_P(p.z);
   // entity (flying light orb): z を時間で前進する球
@@ -27,9 +40,9 @@ float rp_map(vec3 p){
 
   p.xy -= q.xy;                  // パスに沿って空間を移動
   // コースをねじる + 潰す + うねらせる(カオス。穴あきOK)
-  p.xy *= rp_r2(sin(p.z*0.02)*1.8 + p.z*0.013);     // ねじり(コルク栓状)
-  p.x  *= 1.0 + 0.55*sin(p.z*0.03 + 1.0);           // 横方向に潰れる/伸びる
-  p.y  *= 1.0 + 0.55*sin(p.z*0.04);                 // 縦方向に潰れる/伸びる
+  p.xy *= rp_r2((sin(p.z*0.02)*1.8 + p.z*0.013) * (uTwist / 100.0) + radians(uAngle));     // ねじり(コルク栓状)
+  p.x  *= 1.0 + 0.55*(uWarp / 100.0)*sin(p.z*0.03 + 1.0);           // 横方向に潰れる/伸びる
+  p.y  *= 1.0 + 0.55*(uWarp / 100.0)*sin(p.z*0.04);                 // 縦方向に潰れる/伸びる
   p.x  += sin(p.z*0.06)*6.0;                         // 横うねり
 
   float r = 4e1 - p.y;           // 路面
@@ -47,7 +60,7 @@ vec3 bg_ribpillar(vec2 fc){
   vec2 u = (I - resolution*0.5)/resolution.y;
 
   // グリッチ: 画素ごとの時間ジッタ(モーションブラー風のレトロノイズ)
-  rp_T = time*1e2 + fract(1e4*sin(dot(fc, vec2(137.0, -13.0))))*1.6;
+  rp_T = time*1e2 + fract(1e4*sin(dot(fc, vec2(137.0, -13.0))))*1.6*(uGlitch / 100.0);
 
   float i = 0.0, s, d = .4 + .5*dot(fract(sin(u)), sin(u));
   vec4 o = vec4(0.0);
@@ -61,7 +74,7 @@ vec3 bg_ribpillar(vec2 fc){
   for(; i++ < 36.0 && d < 2e3;){
     p = ro + D * d;
     d += s = max(rp_map(p) * .65, .001);
-    o += 6.0*vec4(1,2,5,0)*rp_lights + 1.6/s;   // 白いエッジ光を増やす
+    o += 6.0*(uGlow / 100.0)*vec4(1,2,5,0)*rp_lights + 1.6/s;   // 白いエッジ光を増やす
   }
 
   // ライン光源を赤→群青(ウルトラマリン)に
@@ -82,7 +95,7 @@ vec3 bg_ribpillar(vec2 fc){
 
   // 奥に行くほど濃い群青(ウルトラマリン)
   float far = clamp(d / 1.1e3, 0.0, 1.0);
-  col = mix(col, vec3(0.05, 0.08, 0.34), far*0.5);
+  col = mix(col, vec3(0.05, 0.08, 0.34), far*0.5*(uFog / 100.0));
   // 任意: uCosGrad で色付け
   if(abs(uCosGrad) > 0.0001){
     float tt = d*0.01;

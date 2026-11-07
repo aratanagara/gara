@@ -48,6 +48,17 @@ float mj_line(float a, float wid){
   return L;
 }
 
+// @param uTrails  1..7    = 7.0
+// @param uThick   25..300 = 100.0
+// @param uFade    10..128 = 100.0
+// @param uSpacing 0..300  = 100.0
+// @param uGlow    25..300 = 100.0
+uniform float uTrails;    // 残像の数 (下げると軽く、尾が短くなる)
+uniform float uThick;     // 線の太さ (%)
+uniform float uFade;      // 残像の残り方 (%) (大きいほど古い線まで明るい)
+uniform float uSpacing;   // 残像どうしの間隔 (%) (0 = 全て重なる)
+uniform float uGlow;      // 全体の明るさ・トーンマップの露出 (%)
+
 vec3 bg_matrixjulia(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 st = 4.0 * I / resolution - 2.0;
@@ -65,7 +76,8 @@ vec3 bg_matrixjulia(vec2 fc){
   vec3 col = vec3(0.0);
   float web = 0.0;   // 立体化(エンボス)用の高さ場 = ラインの累積強度
   for(int k=0; k<TRAILS; k++){
-    float tt = time - float(k) * DT;
+    if(k >= int(uTrails + 0.5)) break;
+    float tt = time - float(k) * DT * (uSpacing / 100.0);
     vec4 CST = vec4(st.x, st.y, 0.0, 0.0);
     float T1 = cos(0.5*tt);
     float T2 = cos(tt*(0.5*23.0/29.0));
@@ -82,12 +94,12 @@ vec3 bg_matrixjulia(vec2 fc){
     mat2 RAW = mj_RAWTRAP(Zreal, Zimag, Creal, Cimag);
     float a=RAW[0][0], b=RAW[1][0], c=RAW[0][1], d=RAW[1][1];
     // 古い軌跡ほど線を細く(輪郭感を保ったまま薄く残す)
-    float wid = mix(0.012, 0.004, float(k)/float(TRAILS-1));
+    float wid = mix(0.012, 0.004, float(k)/float(TRAILS-1)) * (uThick / 100.0);
     float La = mj_line(a, wid);
     float Lb = mj_line(b, wid);
     float Lc = mj_line(c, wid);
     float Ld = mj_line(d, wid);
-    float w = pow(FADE, float(k));
+    float w = pow(FADE * (uFade / 100.0), float(k));
     // 線そのもの(面ではない)を 4 色で配色
     col += (RED*La + BLUE*Lc + SIL*(Lb+Ld)*0.55) * w;
     web += (La + Lb + Lc + Ld) * w;
@@ -107,7 +119,7 @@ vec3 bg_matrixjulia(vec2 fc){
   float spec = pow(max(dot(reflect(-Ldir, N), vec3(0.0, 0.0, 1.0)), 0.0), 70.0);
   col += vec3(0.85, 0.90, 1.0) * spec * smoothstep(0.12, 0.5, h) * 0.55;
   // 白飛び防止: ハードな純白クリップではなく指数トーンマップで滑らかに圧縮(糸の重なりが白く潰れない)
-  col = 1.0 - exp(-max(col, 0.0) * 1.25);
+  col = 1.0 - exp(-max(col, 0.0) * 1.25 * (uGlow / 100.0));
   col = clamp(col, 0.0, 1.0);
   bgAlpha = clamp(web * 2.0, 0.0, 1.0);   // Slot B: 糸のある所だけ不透明(黒背景透過)
   return col;

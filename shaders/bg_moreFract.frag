@@ -31,25 +31,44 @@ vec3 mfEnv(vec3 d){
   return sky;
 }
 
+// @param uDetail   3..8 = 8.0
+// @param uWarp     0..300 = 100.0
+// @param uDensity  25..300 = 100.0
+// @param uThick    20..200 = 100.0
+// @param uContrast 50..200 = 100.0
+// @param uScale 50..150 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail; // IFS の反復回数 (下げると軽く、形が粗くなる)
+uniform float uWarp; // 縮小率のゆらぎ (%)
+uniform float uDensity; // ゆらぎの細かさ (%)
+uniform float uThick; // 線の太さ (%)
+uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
+uniform float uScale; // 物体全体の大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 float mfGetDist(vec3 p, float tm){
+  float sc = uScale / 100.0;
+  p /= sc;
+  p.xz = mfRot(radians(uAngle)) * p.xz;
   vec2 uv = p.xz;
   uv.x = abs(uv.x);
   float th = 0.4*p.y - 0.6*tm;
-  float n = 8.0;
+  float n = floor(uDetail + 0.5);
   float m = 1.8;
   vec2 q = vec2(1.0,0.0);
-  for(float i=0.0;i<n;i++){
+  for(float i=0.0;i<8.0;i++){
+    if(i >= n) break;
     uv -= m*q;
     th += 0.5*p.y + 0.05*tm;
     uv = mfRot(th)*uv;
     uv.x = abs(uv.x);
-    m *= 0.05*cos(8.0*length(uv)) + 0.55;
+    m *= 0.05*(uWarp / 100.0)*cos(8.0*(uDensity / 100.0)*length(uv)) + 0.55;
   }
   float nz = mfNoise(p*0.6);
   nz = nz*nz;          // 細線は残しつつ、幅のある線を増やす (nz³→nz²)
-  float w = 0.12*exp(4.0*nz);
+  float w = 0.12*(uThick / 100.0)*exp(4.0*nz);
   float d = length(uv) - 2.0*m*w;
-  return 0.5*d;
+  return 0.5*d*sc;
 }
 
 float mfRayMarch(vec3 ro, vec3 rd, float tm){
@@ -109,6 +128,6 @@ vec3 bg_moreFract(vec2 fc){
     vec3 e = vec3(1.0);
     col *= mfPal(rfl.y, e, e, e, 0.35*vec3(0.0,0.33,0.66));
   }
-  col = pow(col, vec3(0.4545));
+  col = pow(col, vec3(0.4545 * (uContrast / 100.0)));
   return col;
 }

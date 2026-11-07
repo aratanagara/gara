@@ -1,4 +1,13 @@
 // 7) cos 20 loop
+// @param uDetail  2..20 = 20.0
+// @param uWarp    75..150 = 100.0
+// @param uDensity 80..190 = 100.0
+// @param uChroma  0..500 = 100.0
+uniform float uDetail; // 反復回数 (下げると軽く、模様が粗くなる)
+uniform float uWarp; // 歪みの強さ (%)
+uniform float uDensity; // 模様の密度 (%)
+uniform float uChroma; // RGB チャンネル間のずれ (%)
+
 vec3 bg_cos20(vec2 fc){
   float bt = getBeat();
   float tBase = randomMoveTime(bt, TAU * 0.10, 701.0);
@@ -10,10 +19,11 @@ vec3 bg_cos20(vec2 fc){
     vec2 panUV = bgCamPx / resolution.y * 5.0;
     uv = uv + panUV;
     uv += vec2(tUVx, tUVy) / 10.0;
-    float t = tBase + float(c) / 10.0;
-    float scale  = 5.0;
-    float scale1 = 1.4;
+    float t = tBase + float(c) / 10.0 * (uChroma / 100.0);
+    float scale  = 5.0 * (uWarp / 100.0);
+    float scale1 = 1.4 * (uDensity / 100.0);
     for(int i=0;i<20;i++){
+      if(i >= int(uDetail + 0.5)) break;
       float tt = t * 0.5;
       uv = cos(uv / (2.0 + sin((uv.x + uv.y) / 10.0)) - (uv.yx / (2.0 + sin(fract(tt + uv.x + uv.y)))) / scale) * scale / 1.5 + scale1 * scale;
       uv /= scale1;

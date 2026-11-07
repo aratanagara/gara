@@ -15,25 +15,41 @@ float ng_smin(float a, float b, float k){
 float ng_sphere(vec3 p, float s){ return length(p) - s; }
 float ng_box(vec3 p, float s){ return length(max(abs(p) - vec3(s), 0.0)); }
 
+// @param uDetail   1..10   = 10.0
+// @param uSoft     25..200 = 100.0
+// @param uSpread   0..200  = 100.0
+// @param uContrast 25..300 = 100.0
+// @param uAngle    -180..180 = 0.0
+// @param uScale    50..200 = 100.0
+uniform float uDetail;     // 合体させる box の数 (下げると軽く、塊が単純になる)
+uniform float uSoft;       // 合体の滑らかさ = smin の半径 (%)
+uniform float uSpread;     // box の散らばる範囲 (%) (0 = 中心に固まる)
+uniform float uContrast;   // ガンマの強さ (%)
+uniform float uAngle;      // box それぞれの向きのオフセット (度)
+uniform float uScale;      // 物体全体の大きさ (%)
+
 // 球 + 10 個の box を回転/スキューしながら smin 合体(刻々と変形)
 vec2 ng_map(vec3 pos){
+  float objS = uScale / 100.0;
+  pos /= objS;
   float res = ng_sphere(pos, 0.5);
   float t   = time;
   float amp = sin(t*0.5)*0.5 + 1.0;
   for(float i = 0.0; i < 10.0; i++){
-    float a = i + t;
+    if(i >= floor(uDetail + 0.5)) break;
+    float a = i + t + radians(uAngle);
     vec3 off = vec3(sin(t*1.2 + i*0.3)*amp*5.0,
                     sin(t + cos(i*0.5 + t))*amp,
-                    cos(t*0.45 - i*2.0)*amp*2.0);
+                    cos(t*0.45 - i*2.0)*amp*2.0) * (uSpread / 100.0);
     vec3 ppos = pos + off;
     float d = length(ppos)*0.3;
     ppos.xy *= mat2(cos(a), sin(a), -sin(a), cos(a));
     ppos.zy *= mat2(cos(-a), sin(a), -sin(a), cos(a));
     ppos *= mat3(1.0, d, d,  d, 1.0, d,  d, d, 1.0);
     ppos *= mat3(sin(d+t), d, d*d,  d, d, d,  -d, i*sin(d+i), -1.0);
-    res = ng_smin(res, ng_box(ppos, 0.2), 4.0);
+    res = ng_smin(res, ng_box(ppos, 0.2), 4.0 * (uSoft / 100.0));
   }
-  return vec2(res, 5.0);
+  return vec2(res * objS, 5.0);
 }
 
 vec2 ng_castRay(vec3 ro, vec3 rd){
@@ -119,7 +135,7 @@ vec3 bg_ngray(vec2 fc){
 
   float hit;
   vec3 col = ng_render(ro, rd, hit);
-  col = pow(col, vec3(0.4545));                    // ガンマ
+  col = pow(col, vec3(0.4545) * (uContrast / 100.0));                    // ガンマ
   col *= 1.0 - length(q*2.0 - 1.0)*0.3;            // ビネット
 
   if(abs(uCosGrad) > 0.0001){

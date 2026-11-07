@@ -23,17 +23,30 @@ float gc_smin(float a, float b, float k){
   return mix(b, a, h) - k*h*(1.0 - h);
 }
 
+// @param uRelief 0..300   = 100.0
+// @param uWidth  60..200  = 100.0
+// @param uRough  0..1000  = 100.0
+// @param uRim    0..200   = 100.0
+// @param uFog    0..400   = 100.0
+// @param uAngle  -180..180 = 0.0
+uniform float uRelief;   // 筋繊維の起伏の強さ (%) (0 = 滑らかなトンネル)
+uniform float uWidth;    // トンネルの広さ (%)
+uniform float uRough;    // 鏡面のぼけ (%) (大きいと映り込みが滲む)
+uniform float uRim;      // フレネルの白縁の強さ (%)
+uniform float uAngle;    // カメラのロール角のオフセット (度)
+uniform float uFog;      // 奥へ向かう減衰の強さ (%)
+
 // 壁=クロム/シルバーの筋肉質トンネル: 壁/床/天井の角を smin で大きく丸めて連続化し、
 // 低～中周波の筋繊維束を形状の起伏として持たせる(法線が滑らか=鏡面でも粉らない)。
 float gc_wall(vec3 p){
   vec2 ap = abs(p.xy);
-  float base = gc_smin(28.0 - ap.x, 18.0 - ap.y, 9.0);   // 角を半径9で丸める
+  float base = gc_smin(28.0*(uWidth / 100.0) - ap.x, 18.0*(uWidth / 100.0) - ap.y, 9.0*(uWidth / 100.0));   // 角を半径9で丸める
   float ang = atan(p.y, p.x);
   // 太い筋束(周方向8本、z方向にうねり・強弱)
   float bundle = sin(ang*8.0 + sin(p.z*0.06)*2.0) * (0.6 + 0.4*sin(p.z*0.09 + ang*2.0));
   // 中位の繊維(周方向16本、z方向へ流れる)
   float fiber  = sin(ang*16.0 - p.z*0.04) * 0.5;
-  return base - (bundle*1.4 + fiber*0.7);                // 起伏を強めに(繊維を見せる)
+  return base - (bundle*1.4 + fiber*0.7) * (uRelief / 100.0);                // 起伏を強めに(繊維を見せる)
 }
 
 // 脊椎(スピード感): 流線の背骨 + 前後に尖る紡錘椎骨 + 後方スウェプトの鋭いフィン。
@@ -141,7 +154,7 @@ vec3 bg_ghost(vec2 fc){
   vec3 ro = GC_P(GC_T),
        Z = GC_N(GC_P(GC_T + 2.) - ro),
        X = GC_N(vec3(Z.z, 0, -Z.x)),
-       D = GC_N(vec3(GC_R(time*0.3) * u, 1)            // カメラを連続ロール回転
+       D = GC_N(vec3(GC_R(time*0.3 + radians(uAngle)) * u, 1)            // カメラを連続ロール回転
             * mat3(-X, cross(X, Z), Z));
 
   // 発光蓄積スタイルの連続マーチ(表面に漸近収束 → 画面が切れない)。
@@ -160,10 +173,10 @@ vec3 bg_ghost(vec2 fc){
   vec3 Rr = reflect(D, n);
   float fres = pow(1.0 - max(dot(n, -D), 0.0), 5.0);
 
-  vec3 col = gc_roughEnv(Rr, 0.02);                  // ほぼ鏡面のクローム/シルバー反射
-  col = mix(col, vec3(0.97, 0.98, 1.0), fres*0.5);   // フレネルの白縁
+  vec3 col = gc_roughEnv(Rr, 0.02 * (uRough / 100.0));                  // ほぼ鏡面のクローム/シルバー反射
+  col = mix(col, vec3(0.97, 0.98, 1.0), fres*0.5 * (uRim / 100.0));   // フレネルの白縁
   float dens = tanh(acc * 0.012);                    // 表面にしっかり当たった所ほど明るく
   col *= mix(0.25, 1.0, dens);                       // すり抜け/奥は暗く(自然な減衰)
-  col *= exp(-d*0.003);
+  col *= exp(-d*0.003 * (uFog / 100.0));
   return clamp(col, 0.0, 1.0);
 }

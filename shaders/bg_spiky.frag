@@ -8,8 +8,6 @@
 //   ヘルパは sp_ で名前空間化。
 // =====================================================
 
-const float SP_NBSPIKES = 16.0;
-
 float sp_Psphere(vec3 p, vec3 c, float r){
   return length(p - c) - r;
 }
@@ -25,9 +23,24 @@ float sp_Pcapsule(vec3 p, vec3 a, vec3 b, float rmin, float rmax){
   return length(pa - ba*h) - r;
 }
 
+// @param uSpikes 6..32   = 16.0
+// @param uSoft   10..300 = 100.0
+// @param uSize   25..300 = 100.0
+// @param uLength 70..150 = 100.0
+// @param uAngle  -180..180 = 0.0
+// @param uTilt   -60..60 = 0.0
+// @param uScale  60..150 = 100.0
+uniform float uSpikes;   // トゲの密度 (角度の分割数)
+uniform float uSoft;     // トゲの根元の滑らかさ (%)
+uniform float uSize;     // トゲひとつの太さ (%)
+uniform float uLength;   // トゲの長さ (%)
+uniform float uAngle;    // 球全体の向き (度)
+uniform float uTilt;     // カメラの仰角のオフセット (度)
+uniform float uScale;    // 物体全体の大きさ (%)
+
 // polynomial smooth min
 float sp_blendPrim(float a, float b){
-  float k = 0.32;
+  float k = 0.32 * (uSoft / 100.0);
   float h = clamp(0.5 + 0.5*(b - a)/k, 0.0, 1.0);
   return mix(b, a, h) - k*h*(1.0 - h);
 }
@@ -46,7 +59,7 @@ vec3 sp_FromEuler(vec2 e){
 
 vec3 sp_ClassifyDir(vec3 p, out float id){
   vec2 angle = sp_ToEuler(p);
-  float div = 2.0*PI / SP_NBSPIKES;
+  float div = 2.0*PI / uSpikes;
   angle /= div;
   angle = floor(angle);
   id = angle.x + angle.y;
@@ -72,15 +85,17 @@ vec3 sp_TransformVecQuat(vec3 v, vec4 q){
 
 // Spiky ball の SDF
 float sp_Spiky(vec3 p){
-  vec4 q = sp_QuatFromAxisAngle(normalize(vec3(cos(time*0.7), 1.0, 0.0)), time*1.5 - 0.35*length(p));
+  float objS = uScale / 100.0;
+  p /= objS;
+  vec4 q = sp_QuatFromAxisAngle(normalize(vec3(cos(time*0.7), 1.0, 0.0)), time*1.5 - 0.35*length(p) + radians(uAngle));
   p = sp_TransformVecQuat(p, q);
 
   float id;
   vec3 d = sp_ClassifyDir(p, id);
-  vec3 infos = vec3(10.0, 0.3, 0.02);
+  vec3 infos = vec3(10.0 * (uLength / 100.0), 0.3 * (uSize / 100.0), 0.02);
   float p0 = sp_Pcapsule1(p, d, infos.x, infos.y, infos.z);
   float p1 = sp_Psphere(p, vec3(0.0), 2.5);
-  return sp_blendPrim(p0, p1);
+  return sp_blendPrim(p0, p1) * objS;
 }
 
 vec3 sp_calcNormal(vec3 p){
@@ -130,7 +145,7 @@ vec3 sp_env(vec3 d){
 vec3 bg_spiky(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
 
-  vec2 camRot = vec2(0.6, time*0.3);                    // 元の iMouse を自動回転に
+  vec2 camRot = vec2(0.6 + radians(uTilt), time*0.3);                    // 元の iMouse を自動回転に
   vec3 vpos, vdir;
   sp_CamPolar(vpos, vdir, vec3(0.0), camRot, 25.0 + 5.0*cos(time*0.1), 1.5, I);
 

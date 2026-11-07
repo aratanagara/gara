@@ -29,6 +29,21 @@ mat2  ec_phyllotaxis;
 
 struct ec_Model { float d; vec3 p; vec2 uv; vec2 cell; float wedges; float slice; float len; };
 
+// @param uSize  50..110  = 100.0
+// @param uThick  30..250  = 100.0
+// @param uFrost  0..200   = 100.0
+// @param uTrail  0..96    = 85.0
+// @param uAngle -180..180 = 0.0
+// @param uTilt -45..90 = 0.0
+// @param uScale 50..120 = 100.0
+uniform float uSize;     // 花びらの大きさ (%。上げすぎると球の外で欠ける)
+uniform float uThick;     // 花びらの厚み (%)
+uniform float uFrost;     // 磨りガラスの乳白色の濃さ (%)
+uniform float uTrail;     // 残像の残り具合 (%。前フレームを残す割合)
+uniform float uAngle; // 花の向き = ロール (度。固定角でずらす)
+uniform float uTilt; // 花の傾き (度。固定角)
+uniform float uScale; // 花全体の大きさ (%。カメラは動かない)
+
 ec_Model ec_leaf(vec3 p, vec3 cellData){
   vec2 cell = cellData.xy;
   float cellTime = cellData.z;
@@ -46,7 +61,7 @@ ec_Model ec_leaf(vec3 p, vec3 cellData){
 
   // 花びらを外側(=低緯度 cell.y 小)ほど大きく(全体が球内に収まるよう抑える)
   float lat = clamp(cell.y / 1.5708, 0.0, 1.0);   // 0=外側 .. 1=中心
-  len *= mix(1.30, 0.75, lat);
+  len *= mix(1.30, 0.75, lat) * (uSize / 100.0);
   float llen = len;
 
   if(cellTime > 0.){
@@ -72,7 +87,7 @@ ec_Model ec_leaf(vec3 p, vec3 cellData){
     len *= mix(1.5, .65, curve);
     // 先端ほど薄くして尖らせる(穴あき防止のため厚めに)
     float tipf = clamp(p.z / max(len, 0.001), 0.0, 1.0);
-    float th = mix(0.055, 0.035, smoothstep(0.2, 0.95, tipf));
+    float th = mix(0.055, 0.035, smoothstep(0.2, 0.95, tipf)) * (uThick / 100.0);
     float rz = -mix(.2, .7, curve);
     ec_pR(p.zy, rz);
     slice = length(p - vec3(0,len,0)) - len;
@@ -144,7 +159,7 @@ ec_Model ec_bloom(vec3 p, float t){
   return res;
 }
 
-ec_Model ec_map(vec3 p){
+ec_Model ec_map0(vec3 p){
   p *= ec_modelMat;
   float t;
   // バウンディング球は花本体ぴったりに絞る (旧エコー march 用の余白 2.8 は backbuffer 残像化で不要に)。
@@ -177,6 +192,14 @@ ec_Model ec_map(vec3 p){
     model = ec_opU(model, model2);
   }
   return model;
+}
+
+// 花全体のスケール (距離も補正)
+ec_Model ec_map(vec3 p){
+  float sc = uScale / 100.0;
+  ec_Model m = ec_map0(p / sc);
+  m.d *= sc;
+  return m;
 }
 
 vec3 ec_calcNormal(vec3 pos){
@@ -235,6 +258,9 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
     rayLength += dist * stepK;
   }
   ec_lightingPass = true;
+  float scl = uScale / 100.0;
+  // 反復を使い切って終わった (バウンディング球の縁をかすめた) レイは背景扱い
+  if(!bg && length(ro + rd*rayLength) > 2.0*scl) bg = true;
   if(full < 0.5){
     // 残像 = シルエット輪郭線(near-miss)。古いほど owidth 小=細い→だんだん消える
     float outline = bg ? smoothstep(owidth, 0.0, minD) : 0.0;
@@ -257,7 +283,7 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
   vec3 envB = ec_env(refrB) * 0.28;
   vec3 refrCol = vec3(envR.r, envG.g, envB.b);
   // 磨りガラスに固定: milky 強め(乳白色を上げてフロスト感を強化)
-  vec3 frostBase = vec3(0.40, 0.44, 0.52) * 0.95;
+  vec3 frostBase = vec3(0.40, 0.44, 0.52) * 0.95 * (uFrost / 100.0);
   // 反射光: ガラス光沢を強めるため env を持ち上げて明るく
   vec3 reflCol = pow(ec_env(rr), vec3(0.50)) * 0.55;
   float fres = 0.04 + 0.42 * pow(1.0 - abs(dot(rd, n)), 5.0);
@@ -282,8 +308,8 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
   float is2 = pow(max(dot(refrG, l3), 0.0), 200.0);
   glass += (is1 + is2) * vec3(0.85, 0.95, 1.05) * 1.4;
   // 境界線シャドウ(幅広め): より遠くまで距離をサンプルして、影帯を太くする。
-  float dNearby = ec_map(pos + n*0.10).d;
-  float boundary = clamp((0.07 - dNearby) * 16.0, 0.0, 1.0);
+  float dNearby = ec_map(pos + n*(0.10*scl)).d;
+  float boundary = clamp((0.07*scl - dNearby) * (16.0/scl), 0.0, 1.0);
   glass *= 1.0 - boundary * 0.55;
   // 不透明度を大幅に下げて背景が透けるように。スパークル位置は局所的に不透明。
   float spInt = pow(max(dot(rr,vec3( 0.4, 0.75,-0.35)),0.0), 240.0);
@@ -296,7 +322,7 @@ vec3 bg_echeveria(vec2 fc){
   vec2 p = (-resolution + 2.0*I) / resolution.y;
 
   ec_calcPhyllotaxis();
-  ec_modelMat = ec_rotZ(-.9) * ec_rotX(.05) * ec_rotY(-1.1);
+  ec_modelMat = ec_rotZ(-.9 + radians(uAngle)) * ec_rotX(.05 + radians(uTilt)) * ec_rotY(-1.1);
 
   vec3 camPos = vec3(0,0,-2.6);
   mat3 camMat = ec_lookAt(camPos, vec3(0,-.05,0), 0.);
@@ -320,7 +346,7 @@ vec3 bg_echeveria(vec2 fc){
                + texture2D(backbuffer, uv + vec2(-px.x,  0.0)) * 0.125
                + texture2D(backbuffer, uv + vec2( 0.0,   px.y)) * 0.125
                + texture2D(backbuffer, uv + vec2( 0.0,  -px.y)) * 0.125;
-  prevBlur *= 0.85;                                             // 15% フェード(中庸の残像長)
+  prevBlur *= uTrail / 100.0;                                             // 15% フェード(中庸の残像長)
   float curA = clamp(r.a * 2.0, 0.0, 0.85);                     // 花弁=不透明度~80%(本体を増幅) / 背景(r.a=0)=透明
   bgAlpha = max(prevBlur.a, curA);                              // 残像もアルファに乗せて尾を引く
   return mix(prevBlur.rgb, cur, r.a);

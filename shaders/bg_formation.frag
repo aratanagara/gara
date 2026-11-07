@@ -32,9 +32,23 @@ float fm_planeDistance(vec3 position){
   return min(wingDistance, bodyDistance);
 }
 
+// @param uSpacing 80..200 = 100.0
+// @param uWarp    0..400 = 100.0
+// @param uMotion  0..300 = 100.0
+// @param uGlow    0..200 = 100.0
+// @param uSize 40..130 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uSpacing; // 飛行機の配置間隔 (%)
+uniform float uWarp; // 空間のうねり (%)
+uniform float uMotion; // 機体の傾きの振幅 (%)
+uniform float uGlow; // 機体の照り・明るさ (%)
+uniform float uSize; // 要素ひとつの大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 float fm_d(vec3 position){
-  vec3 warped = position + sin(position.x*2.0 + time*2.3) * 0.1;
-  return fm_planeDistance(fm_rZ(fm_opRepeat(warped, vec3(2.0)), cos(time*1.2)*0.15));
+  vec3 warped = position + sin(position.x*2.0 + time*2.3) * 0.1 * (uWarp / 100.0);
+  float fk = uSize / 100.0;
+  return fm_planeDistance(fm_rZ(fm_opRepeat(warped, vec3(2.0 * (uSpacing / 100.0))), cos(time*1.2)*0.15*(uMotion / 100.0) + radians(uAngle)) / fk) * fk;
 }
 
 vec3 fm_gradient(vec3 p, float v){
@@ -58,10 +72,10 @@ vec3 fm_lightSurface(vec3 position, vec3 normal, vec3 toEye){
   vec3 toLight = normalize(vec3(0.3, 0.9, 0.9));
   float ndotL = max(0.0, dot(normal, toLight));
   float ndotH = max(0.0, dot(normal, normalize(toEye + toLight)));
-  const float diffuse = 0.8;
+  float diffuse = 0.8 * (uGlow / 100.0);
   vec3 ambience = mix(vec3(0.2,0.25,0.3), vec3(0.2,0.4,0.6),
                       dot(normal, vec3(0.,1.,0.)) * -0.5 + 0.5);
-  const float specular = 0.6;
+  float specular = 0.6 * (uGlow / 100.0);
   return vec3((ndotL*diffuse + pow(ndotH, 2.0)*specular) + ambience);
 }
 

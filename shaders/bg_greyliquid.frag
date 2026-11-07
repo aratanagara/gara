@@ -41,18 +41,29 @@ float lq_fbm(vec2 p, int oct){
   }
   return mix((h/d), -0.5*(h/d), pow(lq_vnoise(0.9*op), 0.25));
 }
+// @param uDetail  2..7 = 7.0
+// @param uWarp    0..300 = 100.0
+// @param uRelief  20..300 = 100.0
+// @param uDensity 25..300 = 100.0
+// @param uGlow    0..300 = 100.0
+uniform float uDetail; // ワープ層のオクターブ数 (下げると軽く、模様が粗くなる)
+uniform float uWarp; // 歪みの強さ (%)
+uniform float uRelief; // 表面の起伏の深さ (%)
+uniform float uDensity; // 模様の細かさ (%)
+uniform float uGlow; // 縁のハイライトの強さ (%)
+
 float lq_warp(vec2 p){
   vec2 v = vec2(lq_fbm(p, 5), lq_fbm(p + 0.7*vec2(1.0,1.0), 5));
   lq_rot(v, 1.0 + time*1.8);
-  vec2 vv = vec2(lq_fbm(p + 3.7*v, 7), lq_fbm(p - 2.7*v.yx + 0.7*vec2(1.0,1.0), 7));
+  vec2 vv = vec2(lq_fbm(p + 3.7*(uWarp / 100.0)*v, int(uDetail + 0.5)), lq_fbm(p - 2.7*(uWarp / 100.0)*v.yx + 0.7*vec2(1.0,1.0), int(uDetail + 0.5)));
   lq_rot(vv, -1.0 + time*0.8);
-  return lq_fbm(p + 9.0*vv, 3);
+  return lq_fbm(p + 9.0*(uWarp / 100.0)*vv, 3);
 }
 float lq_height(vec2 p){
   float a = 0.045*time;
   p += 9.0*vec2(cos(a), sin(a));
-  p *= 2.0; p += 13.0;
-  return 0.35*lq_tanh(3.0*lq_warp(p))/3.0;
+  p *= 2.0 * (uDensity / 100.0); p += 13.0;
+  return 0.35*(uRelief / 100.0)*lq_tanh(3.0*lq_warp(p))/3.0;
 }
 vec3 lq_normal(vec2 p){
   vec2 eps = -vec2(2.0/resolution.y, 0.0);
@@ -88,7 +99,7 @@ vec3 bg_greyliquid(vec2 fc){
   vec3 col = vec3(0.0);
   col += 1.1*baseCol1.zyx*diff1;     // 元は 0.55 を2回加算(同値をまとめ)
   col += 1.1*baseCol2.zyx*diff2;
-  col += scol1*0.5;
-  col += scol2*0.5;
+  col += scol1*0.5*(uGlow / 100.0);
+  col += scol2*0.5*(uGlow / 100.0);
   return col;
 }

@@ -34,6 +34,17 @@ float ms_sdPoly(in vec2[MS_MAXN] v, int N, in vec2 p){
   return s*sqrt(d);
 }
 
+// @param uDetail 1..5 = 5.0
+// @param uThick 25..300 = 100.0
+// @param uReflect 0..200 = 100.0
+// @param uContrast 0..200 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail;   // 再分割の回数 (下げると大きな面が増え、軽い)
+uniform float uThick;   // 破片の縁の線・光彩の太さ (%)
+uniform float uReflect;   // 環境反射の強さ (%)
+uniform float uContrast;   // 面内の明暗グラデの強さ (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 vec3 bg_metalSlab(vec2 fc){
   vec2 R = resolution;
   vec2 u = (fc + fc - R) / R.y;
@@ -57,10 +68,11 @@ vec3 bg_metalSlab(vec2 fc){
   float id = 0.0;
 
   for(float i = 1.0; i < 6.0; i++){   // 再分割回数を抑えて軽量化(8→5)
+    if(i > uDetail + 0.5) break;
     vec2 c = ms_center(P, N);
     vec2 p0 = c;
 
-    float a = 1.5*t*(hash11(id) > 0.5 ? 1.0 : -1.0);
+    float a = 1.5*t*(hash11(id) > 0.5 ? 1.0 : -1.0) + radians(uAngle);
     vec2 dir = vec2(cos(a), sin(a));
 
     int i0 = 0; vec2 q0 = vec2(0.0);
@@ -132,7 +144,7 @@ vec3 bg_metalSlab(vec2 fc){
   vec2  pc   = ms_center(P, N);
   float gT   = clamp(0.5 + 0.5*dot(u - pc, gDir), 0.0, 1.0);
   // 暗→明のランプ (金属は暗部が締まり明部が伸びる)
-  plate *= mix(0.55, 1.15, smoothstep(0.0, 1.0, gT));
+  plate *= mix(mix(1.0, 0.55, uContrast / 100.0), mix(1.0, 1.15, uContrast / 100.0), smoothstep(0.0, 1.0, gT));
   // 明部側に鋭い鏡面ハイライト (辺に平行な帯)
   plate += pow(gT, 6.0) * silver * 0.55;
   // 一定以上の大きな面にだけ強い光を加える。
@@ -164,7 +176,7 @@ vec3 bg_metalSlab(vec2 fc){
                + 0.45*smoothstep(0.5, 1.0, sin(s*0.33 + 1.7));
   envCol += win * vec3(1.05, 1.08, 1.16);
   // 反射率: 大面積ほど鏡面的、明部ほど反射が見える
-  float refl   = (0.30 + 0.45*big) * (0.5 + 0.5*pow(gT, 1.5));
+  float refl   = (0.30 + 0.45*big) * (0.5 + 0.5*pow(gT, 1.5)) * (uReflect / 100.0);
   plate = mix(plate, envCol, clamp(refl, 0.0, 0.85));
   // 鋭い鏡面グリント (面内に数点)
   float glint  = smoothstep(0.93, 1.0, sin(s*1.3 + 0.5)) * smoothstep(0.55, 1.0, gT);
@@ -192,10 +204,11 @@ vec3 bg_metalSlab(vec2 fc){
   o *= mix(1.0, 0.18, shadeBand * downFace);
 
   // (1) 境界まわりに白いぼかし (広めソフトな光彩)
-  float whiteBlur = exp(-ad * 320.0);
+  float lw = 100.0 / max(uThick, 1.0);
+  float whiteBlur = exp(-ad * 320.0 * lw);
   o = mix(o, vec3(1.0), whiteBlur * 0.85);
   // (1b) その中心に細い黒線を乗せる (白ぼかし + 黒ライン)
-  float blackLine = exp(-ad * 420.0);
+  float blackLine = exp(-ad * 420.0 * lw);
   o *= 1.0 - blackLine * 0.92;
 
   // (2) ガラスの白い輪郭: 溝の内側 (破片側) からにじむ光彩。
