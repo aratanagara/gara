@@ -8490,7 +8490,7 @@ void main(){
     if(slot.kind === 'chrometype'){
       if(typeof ChromeType === 'undefined') return;
       if(!ChromeType.initialized) ChromeType.init(this.gl);
-      ChromeType.update();
+      ChromeType.update({ beat: slotScaledBeat, clock: slot._clock });
       const target = slot.fbos[slot.fbIdx];
       ChromeType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
       const gl = this.gl;
@@ -19754,6 +19754,15 @@ void mainImage(out vec4 o, in vec2 f){
       h.style.cssText='font-size:10px;margin-top:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.75';
       root.appendChild(h);
     };
+    const stepped = (spec)=>{                         // 決まった値だけを取るスライダー
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=spec.label;
+      const near = v=>spec.vals.reduce((b,x,i)=> Math.abs(x-v) < Math.abs(spec.vals[b]-v) ? i : b, 0);
+      const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=spec.vals.length-1; inp.step=1; inp.value=near(P[spec.key]||0);
+      const val=document.createElement('div'); val.className='val'; val.textContent=spec.names[inp.value];
+      inp.addEventListener('input', ()=>{ P[spec.key]=spec.vals[inp.value]; val.textContent=spec.names[inp.value]; });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    };
     const slider = ([label, key, mi, ma, step, fmt])=>{
       const row = mkRow();
       const lab=document.createElement('label'); lab.textContent=label;
@@ -19779,6 +19788,27 @@ void mainImage(out vec4 o, in vec2 f){
     const fonts = (typeof MT_FONTS !== 'undefined') ? MT_FONTS : [{name:'Sans', ff:'sans-serif'}];
     mkSel('Font', fonts.map(f=>[f.ff, f.name]), P.font || fonts[Math.min(1, fonts.length - 1)].ff, v=>{ P.font = v; }, true);
     mkSel('Weight', [[400, 'Regular'], [700, 'Bold'], [900, 'Black']], Math.round(P.weight || 900), v=>{ P.weight = parseInt(v, 10); });
+    // タイピング: presets/chrometype.md の文字列を 1 字ずつ打つ。beat モードは拍で、drone モードは時間で (On の間は上の欄の文字を使わない)
+    head('Typing');
+    if(P.typing > 0 && !CT._words) (CT._wordsP || CT.loadWords()).then(()=>this.refreshChromeTypeParams());   // 保存値で On のまま開いたとき
+    mkSel('Typing', [[0, 'Off'], [1, 'On (拍で打つ)']], P.typing > 0 ? 1 : 0, v=>{
+      P.typing = parseInt(v, 10);
+      if(P.typing > 0 && !CT._words) CT.loadWords().then(()=>this.refreshChromeTypeParams());
+    }, true);
+    stepped({label:'Rate', key:'tyRate', vals:[0.25, 0.5, 1, 2], names:['1字/4拍', '1字/2拍', '1字/拍', '2字/拍']});
+    stepped({label:'Hold', key:'tyHold', vals:[0, 1, 2, 4, 8, 16], names:['0拍', '1拍', '2拍', '4拍', '8拍', '16拍']});
+    mkSel('Order', [[0, '順番'], [1, 'ランダム']], P.tyOrder > 0 ? 1 : 0, v=>{ P.tyOrder = parseInt(v, 10); }, true);
+    mkSel('End', [[0, '一度に消す'], [1, '1字ずつ消す']], P.tyErase > 0 ? 1 : 0, v=>{ P.tyErase = parseInt(v, 10); });
+    {
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent='List';
+      const info=document.createElement('div'); info.className='help'; info.style.cssText='flex:1;font-size:10px';
+      const W = CT._words;
+      info.textContent = W ? CT.WORDS_URL + ': ' + W.length + ' 件' + (W.length ? '' : ' (空 → 上の欄の文字を打つ)') : CT.WORDS_URL + ' (On で読む)';
+      const btn=document.createElement('button'); btn.textContent='Reload'; btn.title='md を書き換えたあとに押すと読み直す';
+      btn.addEventListener('click', ()=>{ CT.loadWords().then(()=>this.refreshChromeTypeParams()); });
+      row.appendChild(lab); row.appendChild(info); row.appendChild(btn);
+    }
     const groups = [
       ['Shape', [
         ['Stretch',   'stretch',  30, 400, 1, pct],
@@ -19815,6 +19845,8 @@ void mainImage(out vec4 o, in vec2 f){
       ]],
       ['Motion', [
         ['Spin',      'spin',     -400, 400, 1, pct],
+        {sel:true, label:'Reverse', key:'spinRev', opts:[[0, 'Off'], [1, 'On (逆回転)']]},
+        {sel:true, label:'Random Rev', key:'revAuto', opts:[[0, 'Off'], [1, 'On (ランダムな拍で反転)']]},
         {steps:true, label:'Spin Step', key:'spinStep', vals:[0, 45, 90, 180, 360], names:['連続', '45°', '90°', '180°', '360°']},
         ['Tumble',    'tumble',   -300, 300, 1, pct],
         ['Tilt',      'tilt',     -90, 90, 1, deg],
@@ -19829,16 +19861,8 @@ void mainImage(out vec4 o, in vec2 f){
     for(const [title, specs] of groups){
       head(title);
       for(const spec of specs){
-        if(spec.steps){                               // 決まった値だけを取るスライダー
-          const row = mkRow();
-          const lab=document.createElement('label'); lab.textContent=spec.label;
-          const near = v=>spec.vals.reduce((b,x,i)=> Math.abs(x-v) < Math.abs(spec.vals[b]-v) ? i : b, 0);
-          const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=spec.vals.length-1; inp.step=1; inp.value=near(P[spec.key]||0);
-          const val=document.createElement('div'); val.className='val'; val.textContent=spec.names[inp.value];
-          inp.addEventListener('input', ()=>{ P[spec.key]=spec.vals[inp.value]; val.textContent=spec.names[inp.value]; });
-          row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
-          continue;
-        }
+        if(spec.steps){ stepped(spec); continue; }
+        if(spec.sel){ mkSel(spec.label, spec.opts, P[spec.key] > 0 ? 1 : 0, v=>{ P[spec.key] = parseInt(v, 10); }); continue; }
         slider(spec);
       }
     }
