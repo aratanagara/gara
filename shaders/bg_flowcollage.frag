@@ -38,6 +38,7 @@
 // @param uBeatFlow 0..300    = 100.0
 // @param uDrift    0..300    = 100.0
 // @param uReroll   0..100    = 40.0
+// @param uMixCol   0..100    = 0.0
 // @param uPaperCol color     = #c9ad8e
 uniform float uSpeed;    // 流れの速さ (%)
 uniform float uScale;    // 柄の大きさ (%)
@@ -58,6 +59,7 @@ uniform float uSeed;     // 柄と配色の乱数シード
 uniform float uBeatFlow; // beat: 1 拍で元の帯が流れる量 (%。渦 (uJump) とは別に、帯そのものが拍ごとに押し流される)
 uniform float uJump;     // beat: 拍頭でかき混ぜる渦の強さ (%。0 = 従来どおりその場で揺れる)
 uniform float uDrift;    // drone: 場が漂って新しい構図が入ってくる量 (%)
+uniform float uMixCol;   // 混色: 隣り合う帯の色が境目で溶け合う (%。0 = くっきり塗り分け)
 uniform float uReroll;   // beat: 拍ごとに柄と色を振り直す帯の割合 (%)
 float FC_ROLL = 0.0;     // 振り直しの拍番号 (beat のみ。drone は 0 = 振り直さない)
 float FC_FADE = 1.0;     // 振り直しの溶け具合 (拍の最初の 1/4 で前の拍の柄から溶ける。1 = 溶け終わり)
@@ -107,10 +109,21 @@ vec3 fc_pal(float x){
 
 // 帯 1 本ぶんの柄。band = 帯座標 (整数部 = 帯 ID)、al = 帯に沿う座標、
 // r = ワープ後の座標、px = 画素座標 (網点のピッチ用)。返り値 = (色, 不透明度)
-vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, float paper){
-  float id  = floor(band) + layer*97.0;
+// 帯の ID (拍ごとの振り直し込み)。隣の帯の色を引くときにも使う
+float fc_id(float b, float layer){
+  float id = b + layer*97.0;
   // 拍ごとに一部の帯だけ別の柄・色へ (どの帯が変わるかも拍ごとに違う)
   id += step(fc_h1(id + 211.0 + FC_ROLL*3.1), clamp(uReroll*0.01, 0.0, 1.0)) * FC_ROLL * 31.7 * step(0.5, FC_ROLL);
+  return id;
+}
+// 下のレイヤーの帯の地の色 (紙地の帯は紙の色)
+vec3 fc_baseCol(float id, float paper){
+  return fc_h1(id + 29.3) < 0.30*paper ? uPaperCol : fc_pal(fc_h1(id + 13.7));
+}
+
+vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, float paper){
+  float id  = fc_id(floor(band), layer);
+  float mixc = clamp(uMixCol*0.01, 0.0, 1.0);
   float tb  = fract(band);
   float hA  = fc_h1(id);
   float hB  = fc_h1(id + 13.7);
@@ -128,9 +141,15 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
     if(hC < 0.30*paper) alpha = 0.0;
   }
 
-  // 帯ごとの太さムラ: 帯の端を少し削って隙間 (紙地) を作る
-  float gap = layer > 0.5 ? 0.22 + 0.30*fc_h1(id + 7.7) : 0.06 + 0.10*hC;
-  alpha *= smoothstep(0.0, aa*1.5, tb - gap*0.5) * smoothstep(0.0, aa*1.5, 1.0 - gap*0.5 - tb);
+  // 混色: 下のレイヤーの紙地の帯も紙色で塗り、隣の帯と溶け合えるようにする
+  bool paperBand = layer < 0.5 && alpha < 0.5;
+  if(paperBand && mixc > 0.0) alpha = 1.0;
+
+  // 帯ごとの太さムラ: 帯の端を少し削って隙間 (紙地) を作る。混色では隙間を閉じ、上のレイヤーの縁をぼかす
+  float gap = (layer > 0.5 ? 0.22 + 0.30*fc_h1(id + 7.7) : 0.06 + 0.10*hC) * (layer > 0.5 ? 1.0 : 1.0 - mixc);
+  float soft = aa*1.5 + (layer > 0.5 ? mixc*0.3 : 0.0);
+  alpha *= smoothstep(0.0, soft, tb - gap*0.5) * smoothstep(0.0, soft, 1.0 - gap*0.5 - tb);
+  if(layer > 0.5) alpha *= 1.0 - 0.45*mixc;   // 上のレイヤーは半透明にして、重なりの色も混ぜる
 
   vec3 col;
   float kind = hA;
@@ -174,8 +193,18 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
     col = mix(c1, c2, m);
   }
 
-  // 縁の黒線 (一部の帯)
-  float edgeOn = step(fc_h1(id + 41.0), 0.55*clamp(uEdge*0.01, 0.0, 2.0));
+  if(paperBand && mixc > 0.0) col = uPaperCol;
+  // 混色: 帯の端へ向かって隣の帯の地の色へ寄せる。境目ではちょうど両側の色の半々になってつながる
+  if(layer < 0.5 && mixc > 0.0){
+    float b0 = floor(band);
+    float wP = 0.5*(1.0 - smoothstep(0.0, 0.5, tb));
+    float wN = 0.5*smoothstep(0.5, 1.0, tb);
+    col = mix(col, fc_baseCol(fc_id(b0 - 1.0, 0.0), paper), wP*mixc);
+    col = mix(col, fc_baseCol(fc_id(b0 + 1.0, 0.0), paper), wN*mixc);
+  }
+
+  // 縁の黒線 (一部の帯。混色では消えていく)
+  float edgeOn = step(fc_h1(id + 41.0), 0.55*clamp(uEdge*0.01, 0.0, 2.0)) * (1.0 - mixc);
   float e = min(tb - gap*0.5, 1.0 - gap*0.5 - tb);
   float ew = aa*(0.9 + 0.8*hA);
   col = mix(col, vec3(0.08, 0.08, 0.10), edgeOn*(1.0 - smoothstep(ew*0.6, ew*1.6, e)));
