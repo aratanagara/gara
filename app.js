@@ -12707,6 +12707,7 @@ const App = {
     await this.applyServerDefaults();
     // 保存デフォルト (vj.def.*) をサーバーから同期 (別端末でも同じデフォルトになる)
     await this._loadServerDefs();
+    await this._loadShaderSids();   // S 番号の登録簿 (最初の採番 = UI.init より先に)
     this.applyInkBleedDefault();
     // プリセットで欠落している項目を戻す基準を、保存状態の復元前に確定する。
     this._capturePresetDefaults();
@@ -15492,7 +15493,7 @@ ${outBlock}
   },
   // 保存済みの並び順(名前配列)に合わせて PRESETS 内のシェーダ項目を並べ替える(非シェーダの位置は不変)。
   //   並び順は保存デフォルト vj.def.shaderOrder = サーバー store (?name=defs) が正で、全端末・全オリジンで共通。
-  //   sid (S001〜) はこの表示順の連番なので、本番とローカルで同じシェーダが同じ番号になる。
+  //   sid (S001〜) は表示順と無関係に shaders/sids.json で固定 (並べ替えても番号は変わらない)。
   //   並びに無いシェーダ (新規追加分) は読込順のまま末尾に続く。
   _applyShaderOrder(){
     let order = null;
@@ -15675,6 +15676,20 @@ ${outBlock}
         fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)}).catch(()=>{});
       }
     }catch(e){}
+  },
+  // S 番号の登録簿 shaders/sids.json ("S001" → プリセット名) を 名前 → 番号 にして持つ。
+  //   追記のみ: シェーダを外しても番号は欠番として残し、再利用しない。
+  _shaderSids: {},
+  async _loadShaderSids(){
+    try{
+      const reg = JSON.parse(await this.fetchTextCached('shaders/sids.json'));
+      const m = {};
+      for(const k in reg){
+        const n = /^S(\d+)$/.test(k) ? parseInt(k.slice(1), 10) : 0;
+        if(n > 0) m[reg[k]] = n;
+      }
+      this._shaderSids = m;
+    }catch(e){ console.warn('shaders/sids.json not found or unreadable:', e); }
   },
   // defs の 1 キーだけをサーバーへ反映する (GET → そのキーだけ差し替え → POST)。
   //   uploadDefs はこの端末の vj.def.* 一式で全体を置き換えるため、読込後に別端末が保存した値を戻してしまう。
@@ -18418,15 +18433,29 @@ void mainImage(out vec4 o, in vec2 f){
 
     App._applyShaderOrder();   // 保存済みのシェーダ並び順を適用(ドラッグ並べ替え)
 
-    // 連番 (sid): 表示順のまま シェーダ=S001〜 / Code(旧mode)=C001〜。「なし」「MOVIE」は無番(Movie タイルは M001〜 で別採番)。
-    //   → 並び替え(shaderReorder)すると順番通りに振り直される。表示専用で p.name は変えない(サムネ slug 維持=番号を含めない)。
+    // 連番 (sid): シェーダ=S001〜 は shaders/sids.json の登録番号で固定 (並び替えても変わらない)。
+    //   未登録のシェーダは登録済みの最大番号の後ろに名前順で仮の番号を振る (sids.json への登録漏れ)。
+    //   Code(旧mode)=C001〜 は表示順。「なし」「MOVIE」は無番(Movie タイルは M001〜 で別採番)。
+    //   表示専用で p.name は変えない(サムネ slug 維持=番号を含めない)。
     {
-      let sn = 0, mn = 0;
+      const reg = App._shaderSids;
+      const unreg = [];
+      let mn = 0;
       for(const p of PRESETS){
         if(p.kind === 'none' || p.kind === 'video'){ p.sid = ''; continue; }
         if(p.kind && isModeKind(p.kind)){ mn++; p.sid = 'C' + String(mn).padStart(3, '0'); continue; }   // Code(旧 mode)= C001〜
-        sn++;
-        p.sid = 'S' + String(sn).padStart(3, '0');
+        if(reg[p.name]) p.sid = 'S' + String(reg[p.name]).padStart(3, '0');
+        else unreg.push(p);
+      }
+      if(unreg.length){
+        let next = Math.max(0, ...Object.values(reg));
+        unreg.sort((a, b)=> a.name < b.name ? -1 : a.name > b.name ? 1 : 0);
+        for(const p of unreg) p.sid = 'S' + String(++next).padStart(3, '0');
+        const key = unreg.map(p => p.name).join('\n');
+        if(key !== this._sidUnregWarned){
+          this._sidUnregWarned = key;
+          console.warn('shaders/sids.json に未登録のシェーダ (仮の S 番号):', unreg.map(p => p.sid + ' ' + p.name).join(', '));
+        }
       }
     }
 
