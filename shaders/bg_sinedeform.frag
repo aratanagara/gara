@@ -15,6 +15,7 @@
 // @param uGlow     25..250 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uScale 50..110 = 100.0
+// @param uSteps 120..256 = 256.0
 uniform float uWarp;      // うねり (ドメイン変形) の強さ (%)
 uniform float uThick;     // チューブの太さ (%)
 uniform float uDensity;   // 虹色の帯の密度 (%。0 で一色)
@@ -22,6 +23,7 @@ uniform float uContrast;  // トーンマップのガンマ (%)
 uniform float uGlow;      // 拡散光の強さ (%)
 uniform float uAngle; // チューブの向き (度。固定角でずらす)
 uniform float uScale; // チューブ全体の大きさ (%。カメラは動かない)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は外れ扱いで面が欠ける)
 
 vec3 sd_warp(vec3 p){
   float t = time;
@@ -54,6 +56,7 @@ vec3 sd_nor(vec3 p){
 float sd_trace(vec3 ro, vec3 rd){
   float t = 2.0;
   for(int i = 0; i < 256; i++){
+    if(i >= int(uSteps + 0.5)) break;
     float d = sd_map(ro + rd*t);
     if(d < 0.0006) return t;
     t += d * 0.5;

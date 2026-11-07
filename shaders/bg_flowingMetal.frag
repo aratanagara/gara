@@ -18,11 +18,13 @@ float fm_sdf1(vec3 p){ return (length(abs(sin(p.yzx)) - abs(cos(p)))) - 1.0; }
 // @param uBump   0..300 = 100.0
 // @param uGlow   0..300 = 100.0
 // @param uMotion 0..300 = 100.0
+// @param uSteps 20..56 = 56.0
 uniform float uDetail; // フラクタル層の数 (下げると軽く、形が大きく滑らかになる)
 uniform float uMoss; // 苔・土のパッチの広さ (%)
 uniform float uBump; // ボコボコの凹凸の強さ (%)
 uniform float uGlow; // ハイライト・縁の光 (%)
 uniform float uMotion; // 苔のうごめきの振幅 (%)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 float fm_sdf(vec3 p){
   float result = 0.0;
@@ -48,6 +50,7 @@ vec3 fm_surfaceColor(vec3 p3){
 float fm_march(vec3 eye, vec3 rd, float start, float end){
   float depth = start;
   for(int i = 0; i < FM_STEPS; i++){
+    if(i >= int(uSteps + 0.5)) break;
     float dist = fm_sdf(eye + depth*rd);
     if(dist < FM_EPS) return depth;
     depth += dist;

@@ -29,12 +29,14 @@ vec3 og_tetOffset = vec3(-0.1);
 // @param uContrast 50..200 = 100.0
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 40..60 = 60.0
 uniform float uDetail; // 折りの反復回数 (下げると軽く、形が粗くなる)
 uniform float uFolds; // 折りの縮み方 (%)
 uniform float uThick; // 紙の厚み (%)
 uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 vec3 og_Transform(vec3 p){
   const float phi = 1.61803398875;
@@ -118,9 +120,10 @@ vec3 og_Shade(vec3 pos, vec3 ray, vec3 normal, vec3 lightDir, vec3 lightCol, flo
 
 float og_traceStart = 0.1;
 float og_traceEnd = 20.0;
-float og_Trace(vec3 pos, vec3 ray){
+float og_Trace(vec3 pos, vec3 ray, int nSteps){
   float t = og_traceStart, h;
   for(int i=0; i<60; i++){
+    if(i >= nSteps) break;
     h = og_DistanceField(pos + t*ray);
     if(h < 0.001 || t > og_traceEnd) break;
     t = t + h;
@@ -209,10 +212,10 @@ vec3 bg_origami(vec2 fc){
   vec3 col;
   vec3 lightDir = normalize(vec3(3,2,-1));
 
-  float t = og_Trace(pos, ray);
+  float t = og_Trace(pos, ray, int(uSteps + 0.5));
   if(t > 0.0){
     vec3 p = pos + ray*t;
-    float s = og_Trace(p, lightDir);          // shadow
+    float s = og_Trace(p, lightDir, 60);          // shadow
     vec3 n = og_Normal(p, ray, t);
     col = og_Shade(p, ray, n, lightDir, (s>0.0)?vec3(0):vec3(1.1,1.0,0.9), t);
     float f = 1000.0;

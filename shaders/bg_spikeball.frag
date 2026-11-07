@@ -26,6 +26,7 @@ vec3 sb_hash3(vec3 p){
 // @param uContrast 30..250 = 100.0
 // @param uScale 40..130 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 100..240 = 240.0
 uniform float uDensity;   // 棘 (結晶) の数の密度 (%)
 uniform float uSharp;   // 棘の鋭さ (%。大きいほど細く尖る)
 uniform float uSpike;   // 棘の伸びる量 (%)
@@ -33,6 +34,7 @@ uniform float uCore;   // 中心の核の大きさ (%)
 uniform float uContrast;   // コントラスト (ガンマ) (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
 
 // 方向 n に対する突起(棘)高さ。各セルに円錐状の鋭い棘を立て、位置/高さ/有無をランダム化(非一様)。
 float sb_disp(vec3 n){
@@ -73,6 +75,7 @@ vec3 sb_normal(vec3 p){
 float sb_trace(vec3 ro, vec3 rd, float t, float tmax){
   float limit = (1.7*sb_amp + 0.12) * (uScale / 100.0);
   for(int i=0;i<240;i++){
+    if(i >= int(uSteps + 0.5)) break;
     float d = sb_map(ro + rd*t);
     if(d < 0.0012) return t;
     d = (d > limit) ? (d - limit + 0.10) : (0.2*d);

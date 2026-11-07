@@ -29,6 +29,7 @@ float tw_cube(vec4 c, vec3 pos){
 // @param uFog 0..300 = 100.0
 // @param uScale 70..160 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 36..50 = 50.0
 uniform float uWarp;   // トンネルのうねり (歪み) の大きさ (%)
 uniform float uSize;   // 立方体の太さ (%)
 uniform float uWave;   // 立方体の上下のうねり (%)
@@ -36,6 +37,7 @@ uniform float uGlow;   // 鏡面ハイライトの強さ (%)
 uniform float uFog;   // 遠方の暗くなり方 (%)
 uniform float uScale;   // 立方体の列全体の大きさ (%。間隔も一緒に変わる)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uSteps;   // レイマーチの反復回数 (回数が尽きた光線は当たり扱いなので、下げ過ぎると面が崩れる)
 
 float tw_df(vec3 p){
   float sc = uScale / 100.0;
@@ -60,6 +62,7 @@ vec2 tw_rm(vec3 pos, vec3 dir, float threshold, float td){
   vec3 startPos = pos;
   float l = 0.0;
   for(float i=0.0; i<=1.0; i += 1.0/TW_MAXITERS){
+    if(i > uSteps / TW_MAXITERS) break;
     l = tw_df(pos);
     if(abs(l) < threshold) break;
     pos += (l * dir * 0.7);

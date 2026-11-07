@@ -17,12 +17,14 @@
 // @param uFog      20..400 = 100.0
 // @param uContrast 40..250 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 30..90 = 90.0
 uniform float uDetail; // フラクタルの反復回数 (下げると軽く、形が粗くなる)
 uniform float uMotion; // 路面のうねりの振幅 (%)
 uniform float uPuff; // もこもこの形の強さ (%)
 uniform float uFog; // 奥の霞の届く距離 (%)
 uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 vec3 bg_cpuffs(vec2 fc){
   vec2 u = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -37,7 +39,7 @@ vec3 bg_cpuffs(vec2 fc){
        D = vec3(CP_rot(f + radians(uAngle))*(u - r/2.)/r.y, 1)
            * mat3(-X, cross(X, Z), Z);
   vec3 o = vec3(0);
-  for(int i = 0; i++ < 90 && s > .001;) {
+  for(int i = 0; i++ < 90 && i <= int(uSteps + 0.5) && s > .001;) {
     p = q + D*d;
     o += sin(p*.3)*.01 + .01;
     p.xy -= CP_P(p.z).xy;

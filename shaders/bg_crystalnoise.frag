@@ -19,6 +19,7 @@ float cn_fbox(vec3 p, vec3 b){ return cn_vmax(abs(p) - b); }
 // @param uGlow    25..300  = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uScale 50..150 = 100.0
+// @param uSteps 20..52 = 52.0
 uniform float uDetail;    // 内側の sin 重ね回数 (下げると軽く、形が単純になる)
 uniform float uTwist;     // ねじれ量 (%)
 uniform float uFold;      // 破片フォールドの距離 (%)
@@ -26,6 +27,7 @@ uniform float uStretch;   // 縦方向の伸び (%)
 uniform float uGlow;      // 発光の強さ (%)
 uniform float uAngle; // 形全体の向き (度。固定角でずらす)
 uniform float uScale; // 結晶全体の大きさ (%。カメラは動かない)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、光の積算が減って暗くなる)
 
 vec3 bg_crystalnoise(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -51,6 +53,7 @@ vec3 bg_crystalnoise(vec2 fc){
   float foldR = (1.2 + 0.5*sin(time*0.17)) * burst * (uFold / 100.0);          // 破片フォールド距離(炸裂で膨張)
 
   for(float i=0.0; i<52.0; i++){               // 軽量化: 100→52 ステップ
+    if(i >= floor(uSteps + 0.5)) break;
     vec3 p = (ro + rd * z) / (uScale / 100.0);
     p.xz *= cn_rotate(m.x);
     p.yz *= cn_rotate(m.y);

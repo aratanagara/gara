@@ -37,6 +37,7 @@ vec3 bp_sdBilinearPatch(vec3 p, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
 // @param uScale 50..120 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uTilt -90..90 = 0.0
+// @param uSteps 128..256 = 256.0
 uniform float uWarp;      // 立方体の歪み量 (%)
 uniform float uRound;     // 角の丸み・厚み (%)
 uniform float uGlow;      // 明るさ (ゲイン %)
@@ -44,6 +45,7 @@ uniform float uContrast;  // ガンマ (%。上げると暗部が沈む)
 uniform float uScale; // 立方体全体の大きさ (%)
 uniform float uAngle; // 立方体の向き (度。固定角でずらす)
 uniform float uTilt; // 立方体の傾き (度。固定角)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は当たり扱いで縁が荒れる)
 
 vec3 bp_verts[8];
 const float BP_ROUND = 0.03;
@@ -80,6 +82,7 @@ int bp_raycast(vec3 ro, vec3 rd, out vec3 oUVT){
     tmax = min(tmax, bs.y);
     float t = tmin;
     for(int i=0; i<256; i++){
+      if(i >= int(uSteps + 0.5)) break;
       vec3 pos = ro + t*rd;
       vec3 duv = bp_map(pos);
       uv = duv.yz;

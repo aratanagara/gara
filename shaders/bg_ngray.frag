@@ -21,12 +21,14 @@ float ng_box(vec3 p, float s){ return length(max(abs(p) - vec3(s), 0.0)); }
 // @param uContrast 25..300 = 100.0
 // @param uAngle    -180..180 = 0.0
 // @param uScale    50..200 = 100.0
+// @param uSteps  18..30 = 30.0
 uniform float uDetail;     // 合体させる box の数 (下げると軽く、塊が単純になる)
 uniform float uSoft;       // 合体の滑らかさ = smin の半径 (%)
 uniform float uSpread;     // box の散らばる範囲 (%) (0 = 中心に固まる)
 uniform float uContrast;   // ガンマの強さ (%)
 uniform float uAngle;      // box それぞれの向きのオフセット (度)
 uniform float uScale;      // 物体全体の大きさ (%)
+uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
 
 // 球 + 10 個の box を回転/スキューしながら smin 合体(刻々と変形)
 vec2 ng_map(vec3 pos){
@@ -55,6 +57,7 @@ vec2 ng_map(vec3 pos){
 vec2 ng_castRay(vec3 ro, vec3 rd){
   float tmax = 20.0, precis = 0.01, t = 0.0, m = 0.0;
   for(int i = 0; i < 30; i++){
+    if(i >= int(uSteps + 0.5)) break;
     vec2 r = ng_map(ro + rd*t);
     if(r.x < precis || t > tmax) break;
     t += r.x; m = r.y;

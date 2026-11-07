@@ -46,10 +46,12 @@ mat2 aa_rot(float a){
 // @param uDensity 40..300 = 100.0
 // @param uWarp    0..500 = 100.0
 // @param uOrb     0..300 = 100.0
+// @param uSteps 50..150 = 150.0
 uniform float uGlow; // 全体の明るさ (%)
 uniform float uDensity; // 場の模様の細かさ (%)
 uniform float uWarp; // 奥行きに沿ったねじれ (%)
 uniform float uOrb; // 移動オーブの明るさ (%)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 vec3 bg_abstract(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -68,6 +70,7 @@ vec3 bg_abstract(vec2 fc){
 
   // Raymarch loop
   for(float i = 0.0; i < 150.0; i++){
+    if(i >= floor(uSteps + 0.5)) break;
     vec3 rp = p;
     p.xy *= aa_rot(p.z * 0.0001 * (uWarp / 100.0));
     // Step distance (positive safe stepping)

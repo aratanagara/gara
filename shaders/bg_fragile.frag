@@ -23,6 +23,7 @@ mat3 fr_rotmat(vec3 v, float angle){
 // @param uShine 0..300 = 100.0
 // @param uScale 50..160 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 24..56 = 56.0
 uniform float uThick;   // チューブの太さ (%)
 uniform float uTwist;   // ねじれの強さ (%)
 uniform float uWarp;   // ループのうねり (歪み) の大きさ (%)
@@ -30,6 +31,7 @@ uniform float uGlow;   // 内側の発光の強さ (%)
 uniform float uShine;   // 鏡面ハイライトの強さ (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
 
 // 距離場: 1本の波打つループ(最低限のパス)。半径・高さが大きく動き、局所的に大きく伸縮する。
 //   入り組みを避けつつダイナミックに。単一トーラスなので軽い。
@@ -78,7 +80,7 @@ vec3 bg_fragile(vec2 fc){
   float jit = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);  // バンディング対策のディザ
   float totdist = jit*0.12, glassfade = 1.0, ref = 0.0, vol = 0.0, maxdist = 11.0;
   vec3 spec = vec3(0.0);
-  for(int r = 0; r < 56; r++){                                    // 軽量化: 60→46 ステップ
+  for(int r = 0; r < 56; r++){ if(r >= int(uSteps + 0.5)) break;                                    // 軽量化: 60→46 ステップ
     vec3 p = from + totdist*raydir;
     float d = fr_de(p);
     float distfade = exp(-1.0*pow(totdist/maxdist, 2.0));

@@ -30,6 +30,7 @@ float sp_Pcapsule(vec3 p, vec3 a, vec3 b, float rmin, float rmax){
 // @param uAngle  -180..180 = 0.0
 // @param uTilt   -60..60 = 0.0
 // @param uScale  60..150 = 100.0
+// @param uSteps  24..40 = 40.0
 uniform float uSpikes;   // トゲの密度 (角度の分割数)
 uniform float uSoft;     // トゲの根元の滑らかさ (%)
 uniform float uSize;     // トゲひとつの太さ (%)
@@ -37,6 +38,7 @@ uniform float uLength;   // トゲの長さ (%)
 uniform float uAngle;    // 球全体の向き (度)
 uniform float uTilt;     // カメラの仰角のオフセット (度)
 uniform float uScale;    // 物体全体の大きさ (%)
+uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
 
 // polynomial smooth min
 float sp_blendPrim(float a, float b){
@@ -111,6 +113,7 @@ float sp_TraceSpiky(vec3 vpos, vec3 vdir){
   float dist = 1.0;
   float t = 0.0;
   for(int i=0; i<40; i++){
+    if(i >= int(uSteps + 0.5)) break;
     if(dist < 0.01 || dist > tmax) break;
     vec3 p = vpos + t*vdir;
     dist = sp_Spiky(p);

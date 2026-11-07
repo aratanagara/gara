@@ -50,12 +50,14 @@ float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * R
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uTilt -90..90 = 0.0
+// @param uSteps 30..64 = 64.0
 uniform float uStep; // 段の高さ (CD 1 枚の厚み) (%)
 uniform float uMotion; // 各段の伸び縮みの振幅 (%)
 uniform float uThick; // 段の縁の黒線の太さ (%)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uTilt; // 縦の傾き・仰角 (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 // CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。
 float rh_outer(int k){
@@ -141,6 +143,7 @@ vec3 bg_romhack(vec2 fc){
   // レイマーチ
   float t = 0.0; bool hit = false; vec3 p = cro;
   for(int s = 0; s < 64; s++){
+    if(s >= int(uSteps + 0.5)) break;
     p = cro + crd*t;
     float d = rh_zig(p);
     if(d < 0.0009){ hit = true; break; }

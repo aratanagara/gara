@@ -57,6 +57,7 @@ vec3 st_GetSunColorSmall(vec3 rayDir, vec3 sunDir){
 // @param uGlow 30..250 = 100.0
 // @param uScale 50..120 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 50..124 = 124.0
 uniform float uDetail;   // 変形の細かさ (折り重ね回数)
 uniform float uWarp;   // 変形の激しさ (歪み) (%)
 uniform float uTwist;   // 渦のねじれの強さ (%)
@@ -64,6 +65,7 @@ uniform float uDensity;   // 変形のうねりの細かさ (%)
 uniform float uGlow;   // 全体の明るさ (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
 
 float st_SinRep(float a){
   float h = 0.0, mult = 1.0;
@@ -124,6 +126,7 @@ vec3 bg_stractium(vec2 fc){
   maxDepth = distance(iA, iB);
   if(hit > 0.5){
     for(int i=0; i<ST_MARCH_REPS; i++){
+      if(i >= int(uSteps + 0.5)) break;
       if((t > maxDepth) || (abs(distAndMat.x) < 0.0075)) break;
       pos = camPos + relVec*t;
       distAndMat = st_DistanceToObject(pos);
