@@ -9,8 +9,10 @@
 //   3. 帯の縁の黒線と、流れに沿う細い等高線
 //   4. 太陽モチーフ: 放射状の短い線を持つ半円 (流れに乗って漂う)
 //   5. 刷りのマチエール: インクのかすれ粒・スクラッチ・版ズレ
-//   動き: drone は常にゆっくり流れる。beat は拍頭で流れが押し出され、
-//         うねりが一瞬強まる。iAudio も同じ (uKick)。bgZoom・bgCamPx でズーム/パン
+//   動き: drone は常にゆっくり流れ、場そのものも漂って新しい構図が入ってくる (uDrift)。
+//         beat は拍頭ごとに水をかき混ぜるような渦が入り、帯が一気にねじれて 2〜4 拍かけて収まる (uJump)。
+//         一部の帯の柄と色も拍ごとに振り直される (uReroll)。
+//         拍頭ではうねりも一瞬強まる。iAudio も同じ (uKick)。bgZoom・bgCamPx でズーム/パン
 //   性能: 値ノイズ 4 オクターブの fbm を 7 回 + 定数回の柄計算のみ (ループの
 //         レイマーチなし)。重いときは uDetail を下げる (fbm のオクターブ数)
 // =====================================================
@@ -31,6 +33,9 @@
 // @param uKick     0..200    = 100.0
 // @param uDetail   2..5      = 4.0
 // @param uSeed     0..100    = 0.0
+// @param uJump     0..300    = 100.0
+// @param uDrift    0..300    = 100.0
+// @param uReroll   0..100    = 40.0
 // @param uPaperCol color     = #c9ad8e
 uniform float uSpeed;    // 流れの速さ (%)
 uniform float uScale;    // 柄の大きさ (%)
@@ -48,6 +53,10 @@ uniform float uWorn;     // インクのかすれ・スクラッチ (%)
 uniform float uKick;     // 拍 / 音の効き (%)
 uniform float uDetail;   // fbm のオクターブ数 (下げると軽く、輪郭が丸くなる)
 uniform float uSeed;     // 柄と配色の乱数シード
+uniform float uJump;     // beat: 拍頭でかき混ぜる渦の強さ (%。0 = 従来どおりその場で揺れる)
+uniform float uDrift;    // drone: 場が漂って新しい構図が入ってくる量 (%)
+uniform float uReroll;   // beat: 拍ごとに柄と色を振り直す帯の割合 (%)
+float FC_ROLL = 0.0;     // 振り直しの拍番号 (beat のみ。drone は 0 = 振り直さない)
 uniform vec3  uPaperCol; // 紙の色
 
 // ─── 乱数 / ノイズ ────────────────────────────────────────
@@ -96,6 +105,8 @@ vec3 fc_pal(float x){
 // r = ワープ後の座標、px = 画素座標 (網点のピッチ用)。返り値 = (色, 不透明度)
 vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, float paper){
   float id  = floor(band) + layer*97.0;
+  // 拍ごとに一部の帯だけ別の柄・色へ (どの帯が変わるかも拍ごとに違う)
+  id += step(fc_h1(id + 211.0 + FC_ROLL*3.1), clamp(uReroll*0.01, 0.0, 1.0)) * FC_ROLL * 31.7 * step(0.5, FC_ROLL);
   float tb  = fract(band);
   float hA  = fc_h1(id);
   float hB  = fc_h1(id + 13.7);
@@ -186,6 +197,29 @@ vec3 bg_flowcollage(vec2 fc){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   float sc = 100.0 / max(uScale, 5.0);
   vec2 p  = (I - 0.5*resolution) / resolution.y * 3.0 * sc;
+  // drone: 場がゆっくり漂う
+  // beat : 水をかき混ぜる。拍頭ごとに場所・大きさ・向きが違う渦を入れ、一気にねじる。
+  //        渦はそのあとも少し回り続け、2〜4 拍かけて収まる (直近 4 拍分を重ねる)
+  if(isFree()){
+    p += vec2(0.06, 0.025) * T * uDrift * 0.01;
+  } else {
+    float n  = floor(bt);
+    float st = uJump * 0.01;
+    float asp = resolution.x / resolution.y;
+    for(int k = 0; k < 4; k++){
+      float m   = n - float(k);
+      float age = bt - m;
+      vec2  c   = (vec2(fc_h1(m*1.31 + 4.0), fc_h1(m*2.17 + 9.0)) - 0.5) * vec2(3.0*asp, 3.0) * sc;
+      float R   = (0.9 + 1.4*fc_h1(m*3.7 + 2.0)) * sc;
+      float dirS = fc_h1(m*5.3 + 1.0) < 0.5 ? -1.0 : 1.0;
+      float ang = dirS * 3.2 * st * (smoothstep(0.0, 0.1, age) + 0.25*age) * (1.0 - smoothstep(1.5, 4.0, age));
+      vec2  d   = p - c;
+      float a   = ang * exp(-dot(d, d)/(R*R));
+      float ca  = cos(a), sa = sin(a);
+      p = c + mat2(ca, sa, -sa, ca) * d;
+    }
+    FC_ROLL = n + 1.0;
+  }
   vec2 px = I;                                                   // 網点・粒は画素基準 (ズームで粗くなる)
 
   // ─── 2 段ドメインワーピング (液体のような流れ) ───
