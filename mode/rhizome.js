@@ -17,7 +17,7 @@
      Rise 0 で平らのまま (以前と同じ見た目)。
    - Style: 網 (図 1) は平らなときに縦の面・矢印・赤線・帯が出ず、立ち上がるときだけ現れる。
      面と流れ (図 2) / 両方 は菱形が主になり、それらが常に出る (平らなときの面は地面に寝ている)。
-   - 別の mode: 扇 (rzfan) / 群れの輪 (rzpacks) / 樹と根 (rztree) は網を使わない別の図 (_fan / _packs / _tree)。
+   - 別の mode: 扇 (rzfan) / 群れの輪 (rzpacks) は網を使わない別の図 (_fan / _packs)。積層 (rzstack) は楕円だけの網に柱を立てる (_stack)。
      同じエンジンの別の実体 (Rhizome._variant) で、パラメータと GL の資源を実体ごとに持つ。地面の倒れ (Rise / Cycle) と手描きの描き方は共通。
    - 手描き: 線は全体でわずかにたわみ (伸びる途中でも形が変わらないよう、線の全体の両端で測る)、ペン先を置いた両端にインクがたまる。
      楕円は透けるマーカーの塗り (下の線が透ける) で、筆の帯の重なりと片側の影があり、縁のペン線は描き始めと終わりが食い違う。
@@ -31,14 +31,15 @@
    - Slot A は紙 (paper) を敷く。Slot B は背景を透過する (前乗算アルファ)。
    参照したのは Marc Ngui による『千のプラトー』のためのドローイングの雰囲気。配置は乱数から生成していて、トレースではない。
    IF: init(gl) / update() / render({fbo,w,h,slot,beat,clock,opaque}) / P / PDefaults / SPECS
-       RhizomeKinds = { kind: エンジン } (rhizome / rzfan / rzpacks / rztree)
+       RhizomeKinds = { kind: エンジン } (rhizome / rzfan / rzpacks / rzstack)
 */
 
 const Rhizome = {
   gl:null, initialized:false, ok:false,
   prog:null, vao:null, cornerVBO:null, instVBO:null, instCap:0, U:null,
   _memo:null, _sig:'', _cfg:null, _salt:0,
-  draw:null,      // 網を使わない別の図の描き方 (_fan / _packs / _tree)。null は網 (Style で図 1 / 図 2 / 両方)
+  draw:null,      // 別の図の描き方 (_fan / _packs / _stack)。null は網 (Style で図 1 / 図 2 / 両方)
+  useNet:true,    // 網 (ノードと線) を描く
 
   // ── パラメータ (UI から操作)。数値は使う直前に App.deadParam を通す ──
   P:{
@@ -710,83 +711,132 @@ void main(){
     }
   },
 
-  // 樹と根: 赤い二重線の枝が上から二股に分かれながら下へ伸び、白い楕円の節を結ぶ。根の先は赤い矢印。
-  // やがて節のいくつかが黄緑に変わり、枝をまたいで緑の線でつながる (樹からリゾームへ)。脇を緑と青の流れが下る。
-  // 最後は深い枝から縮んで消える (intro-10 / 04-5 の雰囲気)
-  _tree(K){
+  // 積層: 網 (黄緑の楕円と緑の線。楕円から矢印の付いた線が伸び、いくつかの楕円を青い縦の両矢印が貫く) の上に、楕円が縦に積み重なる柱が立つ。
+  // 柱は 1 つの楕円 (矢印が放射) → 青い軸が伸びる → 上・中・下に楕円が現れて赤い筒に囲まれる → 楕円が詰まって積み重なる
+  // → 筒が消え、柱が傾いてうねりながらほどけ、線を伸ばして散る (intro-23 の雰囲気)。
+  // 柱と青い縦の軸は、平らなときは地面に寝ていて画面の上へ向かい (つぶれた楕円が縦に重なる、絵と同じ見え方)、
+  // 地面が倒れるにつれて根元を蝶番に 90° 立ち上がる (楕円は地面と平行な円になる)。Rise 0 で寝たまま
+  _stack(K){
     const {t, H, C} = K;
     const c01 = this._clamp01, al = 0.88;
-    const nT = K.num('trees', 1, 5), dBase = K.num('depth', 2, 6), limeK = K.pct('lime'), strK = K.pct('streams');
-    for(let g = 0; g < nT; g++){
-      const id = 800000 + g, cy2 = this._pool(id, t, 4.0), n = cy2.n, s = cy2.s, x = cy2.x;
-      if(H(id, n, 3) > 0.9 || x > 0.97) continue;
+    const sm = (v)=>{ v = c01(v); return v * v * (3 - 2 * v); };
+    const lerp3 = (a, b, k)=>[a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    // 画面で見える長さがあるときだけ矢印を付ける (真上から見た縦の線は点になる)
+    const arrow = (arr, tip, from, hw, col, a, sd)=>{
+      const p0 = K.P3(tip[0], tip[1], tip[2]), p1 = K.P3(from[0], from[1], from[2]);
+      if(p0 && p1 && Math.hypot(p0[0] - p1[0], p0[1] - p1[1]) > 0.004) K.pushArrow(arr, tip, from, hw, col, a, sd);
+    };
+    const nCol = K.num('columns', 0, 8), nLay = K.num('layers', 3, 40), hK = K.pct('height'), axK = K.pct('axes'), arK = K.pct('arrows');
+    // 立ち上がりの角度 (要素ごとに少しずれ、少し弾んで立つ) と、そのときの「上」の向き (寝ていると地面の +y = 画面の上)
+    const thOf = (lag)=> (Math.PI / 2) * K.riseK * this._ease(c01((K.rn - 0.3 * lag) / 0.7), 0.5 * K.pop);
+    const upOf = (th)=> [0, Math.cos(th), Math.sin(th)];
+    // ── 網の楕円: 矢印の付いた線と、青い縦の両矢印 ──
+    for(const nd of K.netNodes){
+      const r = nd.r, hh = (c)=>H(r.i, r.n, c);
+      const g = Math.min(c01((t - r.tPop - 0.3 * r.pin) / 0.6), c01((r.tDie - t) / Math.max(0.5 * r.pin, 1e-3)));
+      if(g <= 0) continue;
+      const nA = Math.min(3, Math.floor(arK * (0.2 + 1.4 * hh(60))));
+      for(let k = 0; k < nA; k++){
+        const a = hh(61 + k) * Math.PI * 2, L = (0.07 + 0.12 * hh(64 + k)) * K.spread;
+        const p0 = [r.x, r.y, 0], p1 = [r.x + Math.cos(a) * L, r.y + Math.sin(a) * L, 0];
+        K.line3(K.lines, p0, p1, K.hwG, al, C.green, hh(67 + k), g);
+        if(g >= 1) arrow(K.lines, p1, lerp3(p0, p1, 0.9), K.hwG, C.green, al, hh(70 + k));
+      }
+      if(hh(73) < axK){
+        const hA = (0.05 + 0.05 * hh(74)) * hK * Math.min(1, nd.sc), u = upOf(thOf(hh(78)));
+        const along = (h)=>[r.x + u[0] * h, r.y + u[1] * h, u[2] * h];
+        const top = along(hA), bot = along(-hA);
+        K.line3(K.arcs, bot, top, K.hwL, al, C.blue, hh(75));
+        arrow(K.arcs, top, along(hA * 0.8), K.hwL, C.blue, al, hh(76));
+        arrow(K.arcs, bot, along(-hA * 0.8), K.hwL, C.blue, al, hh(77));
+      }
+    }
+    // ── 柱 ──
+    const sx = K.sx;   // 画面の横に見える地面の向き (筒の左右の縁の位置)
+    for(let g = 0; g < nCol; g++){
+      const id = 900000 + g, cy2 = this._pool(id, t, 3.0), n = cy2.n, s = cy2.s, x = cy2.x;
+      if(H(id, n, 3) > 0.9 || x > 0.96) continue;
       const tx = this._camX(s), ty = this._camY(s);
-      const depth = dBase + (H(id, n, 4) < 0.3 ? 1 : 0);
-      const Wt = (0.40 + 0.25 * H(id, n, 5)) * K.spread * 0.9, Ht = (0.55 + 0.2 * H(id, n, 6)) * K.spread * 0.9;
-      const rx0 = tx + ((g + 0.5) / nT - 0.5) * 0.9 * K.aspect + (H(id, n, 7) - 0.5) * 0.2, ry0 = ty + Ht * 0.5;
-      const hn = (l, i, c)=>H(id * 1024 + (1 << l) + i, n, c);
-      // 節の位置: 段 l (0..depth)、段の中の番号 i
-      const node = (l, i)=>{
-        const fx = (i + 0.5) / (1 << l) - 0.5;
-        return [rx0 + fx * Wt * Math.pow(l / depth, 0.7) + (hn(l, i, 1) - 0.5) * 0.4 * Wt / (1 << l), ry0 - Ht * l / depth + (hn(l, i, 2) - 0.5) * 0.15 * Ht / depth, 0];
+      const R = (0.035 + 0.02 * H(id, n, 6)) * K.sizeK, Hc = (0.30 + 0.20 * H(id, n, 7)) * hK, M = nLay;
+      // 根元は、寝ているとき柱の中ほどが画面の高さの中ほどに来る所 (上が画面からはみ出さない)
+      const ox = tx + ((g + 0.5) / nCol - 0.5) * 0.85 * K.aspect + (H(id, n, 4) - 0.5) * 0.2, oy = ty - Hc * 0.5 + (H(id, n, 5) - 0.5) * 0.2;
+      // 段階 (周期の中の位置 x): 0.02 一つの楕円 / 0.10 青い軸 / 0.22 上・中・下の楕円と赤い筒 / 0.30〜0.55 楕円が詰まる / 0.60〜 ほどけて散る / 0.86〜 消える
+      const fade = 1 - sm((x - 0.86) / 0.08);
+      const un = sm((x - 0.60) / 0.24);
+      const lean = (H(id, n, 8) - 0.5) * 2.0 * R * 4;           // ほどけると傾く (上ほど横へずれる)
+      const ph = H(id, n, 9) * 6.28;
+      const th = thOf(H(id, n, 11)), u = upOf(th);
+      // 柱の根元から、横 (画面の横に見える地面の向き) に w、上 (柱の向き) に h の点
+      const pt = (w, h)=>[ox + sx[0] * w + u[0] * h, oy + sx[1] * w + u[1] * h, u[2] * h];
+      // 段 k の楕円の位置 (ほどけると傾き、うねり、いくつかは外へ離れて降りる)
+      const at = (k)=>{
+        const zk = Hc * k / (M - 1), hk2 = H(id * 64 + k, n, 1);
+        const wav = un * (lean * zk / Hc + R * 1.3 * Math.sin(k * 0.9 + ph) + R * 0.9 * (hk2 - 0.5));
+        const away = hk2 < 0.22 ? un * un * (0.10 + 0.10 * H(id * 64 + k, n, 2)) * K.spread : 0;
+        const aa = H(id * 64 + k, n, 3) * 6.28;
+        const q = pt(wav, zk * (1 - 0.5 * (away > 0 ? un : 0)));
+        return [q[0] + Math.cos(aa) * away, q[1] + Math.sin(aa) * away, q[2]];
       };
-      const xl = (l)=> 0.03 + 0.075 * (l - 1);        // l 段への枝が伸び始める
-      const xr = (l)=> 0.78 + 0.035 * (depth - l);    // l 段への枝が縮み始める
-      // 枝 (赤い二重線。親の真下へ出てから子へ曲がる)
-      for(let l = 1; l <= depth; l++){
-        const gg = Math.min(c01((x - xl(l)) / 0.075), 1 - c01((x - xr(l)) / 0.04));
-        if(gg <= 0) continue;
-        const tb = 0.006 * (1 - 0.15 * l) * K.sizeK;
-        for(let i = 0; i < (1 << l); i++){
-          const a = node(l - 1, i >> 1), b = node(l, i);
-          const dx = b[0] - a[0], dy = b[1] - a[1], Lb = Math.hypot(dx, dy) || 1, nx = -dy / Lb, ny = dx / Lb;
-          for(const sg of [-1, 1]){
-            const f = (v)=>{
-              const w0 = (1 - v) * (1 - v), w1 = 2 * (1 - v) * v, w2 = v * v;
-              return [w0 * a[0] + w1 * a[0] + w2 * b[0] + nx * tb * sg, w0 * a[1] + w1 * (a[1] + dy * 0.55) + w2 * b[1] + ny * tb * sg, 0];
-            };
-            K.pushPoly(K.arcs, f, 14, 0, gg, K.hwG, C.red, al, false, hn(l, i, sg > 0 ? 3 : 4));
+      // 現れる順: 下 → 上と中 → 残りを下から
+      const mid = Math.floor((M - 1) / 2);
+      const popAt = (k)=> k === 0 ? 0.02 : ((k === M - 1 || k === mid) ? 0.22 : 0.30 + 0.25 * k / (M - 1));
+      const pos = [];
+      for(let k = 0; k < M; k++){
+        const p = at(k);
+        pos.push(p);
+        const sc = this._popAt(x, popAt(k), 0.86, 0.04, K.pop) * (1 + 0.15 * K.kick);
+        // 寝ているときは柱の向きにつぶれた楕円 (横から見た円)、立つと地面と平行な円
+        const flat = 0.42 + 0.58 * Math.sin(th);
+        if(sc > 0.001) K.pushEllipse(p[0], p[1], R * sc, R * sc * flat * (0.92 + 0.16 * H(id * 64 + k, n, 4)), (H(id * 64 + k, n, 5) - 0.5) * 0.25 * (1 - Math.sin(th)), C.lime, C.limeRim, H(id * 64 + k, n, 6), p[2]);
+      }
+      const p0 = [ox, oy, 0];
+      // 1 つ目の楕円から地面に放射する矢印 (軸が伸びると縮む)
+      const gr = Math.min(sm((x - 0.03) / 0.05), 1 - sm((x - 0.14) / 0.05));
+      for(let k = 0; k < 4 && gr > 0; k++){
+        const a = (k + 0.3 * H(id, n, 10 + k)) * Math.PI / 2 + H(id, n, 14) * 6.28, L = (0.07 + 0.05 * H(id, n, 15 + k)) * K.spread;
+        const q1 = [ox + Math.cos(a) * L, oy + Math.sin(a) * L, 0];
+        K.line3(K.lines, p0, q1, K.hwG, al, C.green, H(id, n, 20 + k), gr);
+        if(gr >= 1) arrow(K.lines, q1, lerp3(p0, q1, 0.9), K.hwG, C.green, al, H(id, n, 24 + k));
+      }
+      // 青い軸 (下から上へ伸び、両端に矢印。ほどけると傾いた柱に沿い、やがて消える)
+      const ax = sm((x - 0.10) / 0.10), axA = al * (1 - sm((x - 0.66) / 0.10)) * fade;
+      if(ax > 0 && axA > 0.002){
+        const lt = lean * un * 1.12;
+        const b0 = pt(0, -0.08 * Hc), b1 = pt(lt, Hc * 1.14);
+        K.line3(K.arcs, b0, b1, K.hwL, axA, C.blue, H(id, n, 30), ax);
+        if(ax >= 1){
+          arrow(K.arcs, b1, lerp3(b0, b1, 0.94), K.hwL, C.blue, axA, H(id, n, 31));
+          arrow(K.arcs, b0, lerp3(b0, b1, 0.05), K.hwL, C.blue, axA, H(id, n, 32));
+        }
+      }
+      // 赤い筒 (柱の左右の縁。下から上へ伸び、端は外へ小さく折れる。ほどけ始めると消える)
+      const tg = sm((x - 0.22) / 0.08), tA = al * (1 - sm((x - 0.58) / 0.06)) * fade;
+      if(tg > 0 && tA > 0.002){
+        for(const sg of [-1, 1]){
+          const o = R * 1.18 * sg;
+          const e0 = pt(o, -0.05 * Hc), e1 = pt(o, Hc * 1.06);
+          K.line3(K.arcs, e0, e1, K.hwL, tA, C.red, H(id, n, 40 + sg), tg);
+          if(tg >= 1){
+            const hk3 = R * 0.30 * sg;
+            K.line3(K.arcs, e0, [e0[0] + sx[0] * hk3, e0[1] + sx[1] * hk3, e0[2]], K.hwL, tA, C.red, H(id, n, 43 + sg));
+            K.line3(K.arcs, e1, [e1[0] + sx[0] * hk3, e1[1] + sx[1] * hk3, e1[2]], K.hwL, tA, C.red, H(id, n, 46 + sg));
           }
-          // 根の先: 短い赤い線と矢印
-          if(l === depth && gg >= 1){
-            const q1 = [b[0] + (hn(l, i, 5) - 0.5) * 0.02, b[1] - 0.05 * K.spread, 0];
-            K.line3(K.arcs, b, q1, K.hwG, al, C.red, hn(l, i, 6));
-            K.pushArrow(K.arcs, q1, [b[0] + (q1[0] - b[0]) * 0.8, b[1] + (q1[1] - b[1]) * 0.8, 0], K.hwG, C.red, al, hn(l, i, 7));
-          }
         }
       }
-      // 節 (白い楕円。いくつかは黄緑に変わる)
-      const lime = [];
-      for(let l = 0; l <= depth; l++){
-        for(let i = 0; i < (1 << l); i++){
-          const p = node(l, i);
-          const xp = l === 0 ? 0.02 : xl(l) + 0.075;
-          const sc = this._popAt(x, xp, (l < depth ? xr(l + 1) : xr(l)) + 0.03, 0.04, K.pop) * (1 + 0.15 * K.kick);
-          if(sc <= 0.001) continue;
-          const x0 = 0.42 + 0.15 * hn(l, i, 9);
-          const lk = (l > 0 && hn(l, i, 8) < limeK) ? (()=>{ const y = c01((x - x0) / 0.06); return y * y * (3 - 2 * y); })() : 0;
-          const r = 0.022 * (1.2 - 0.17 * l) * K.sizeK * sc;
-          K.pushEllipse(p[0], p[1], r, r * 0.62, (hn(l, i, 10) - 0.5) * 0.3, K.mixC(K.paper, C.lime, lk), K.mixC(C.ink, C.limeRim, lk), hn(l, i, 11));
-          if(lk > 0.5) lime.push({p, x0, h:hn(l, i, 12)});
+      // ほどけると: 隣の段を細い緑の線でつなぎ、傾いた筒の縁を細い緑の線で、上と下の楕円から矢印の付いた線が外へ
+      if(un > 0.02){
+        const ga = al * Math.min(1, un * 2) * fade;
+        for(let k = 0; k + 1 < M; k++) if(H(id * 64 + k, n, 7) < 0.5) K.line3(K.lines, pos[k], pos[k + 1], K.hwG * 0.8, ga, C.green, H(id * 64 + k, n, 8), Math.min(1, un * 1.5));
+        for(const sg of [-1, 1]){
+          const o = R * 1.4 * sg, lt = lean * un;
+          K.line3(K.lines, pt(o, 0), pt(o + lt, Hc), K.hwG * 0.8, ga * 0.8, C.green, H(id, n, 50 + sg), Math.min(1, un * 1.5));
         }
-      }
-      // 黄緑の節どうしを、枝をまたいで緑の線で
-      for(let k = 0; k < lime.length; k++){
-        for(let e = 0; e < 2; e++){
-          if(H(id * 97 + k, n, 20 + e) > 0.7 * K.links) continue;
-          const j = Math.floor(H(id * 97 + k, n, 22 + e) * lime.length);
-          if(j === k) continue;
-          const A = lime[k], B = lime[j];
-          const gx = Math.min(c01((x - Math.max(A.x0, B.x0) - 0.06) / 0.08), 1 - c01((x - 0.76) / 0.05));
-          if(gx > 0) K.line3(K.lines, A.p, B.p, K.hwG, al, C.green, H(id * 97 + k, n, 24 + e), gx);
+        for(const [k, c] of [[0, 60], [M - 1, 61], [1, 62], [M - 2, 63]]){
+          const a = H(id, n, c) * 6.28, L = (0.10 + 0.10 * H(id, n, c + 10)) * K.spread * un;
+          const q0 = pos[k], q1 = [q0[0] + Math.cos(a) * L, q0[1] + Math.sin(a) * L, q0[2] * (k < 2 ? 0.5 : 1.15)];   // 立っていれば下の線は下へ、上の線は上へ
+          K.line3(K.lines, q0, q1, K.hwG, ga, C.green, H(id, n, c + 20));
+          if(un > 0.6) arrow(K.lines, q1, lerp3(q0, q1, 0.9), K.hwG, C.green, ga, H(id, n, c + 30));
         }
-      }
-      // 脇を下る緑と青の流れ
-      const sgx = H(id, n, 32) < 0.5 ? -1 : 1, fx0 = rx0 + sgx * Wt * 0.62, ph = H(id, n, 30) * 6.28;
-      const gs = Math.min(c01(x / 0.3), 1 - c01((x - 0.85) / 0.08)), alS = Math.min(1, al * 0.9 * strK);
-      for(const [o, col] of [[0, C.green], [0.014, C.blue], [0.028, C.green]]){
-        const f = (v)=>[fx0 + o + 0.025 * Math.sin(v * 5 + ph) + 0.01 * Math.sin(v * 13 + ph), ry0 + 0.12 - (Ht + 0.3) * v, 0];
-        K.pushPoly(K.arcs, f, 40, 0, gs, K.hwG, col, alS, false, H(id, n, 31) + o);
       }
     }
   },
@@ -804,9 +854,9 @@ void main(){
 
     // 設定と記憶 (設定が変わったら引き直す)
     const seed = Math.round(dz(P.seed) || 0);
-    const net = !this.draw;                              // 網 (ノードと線) を使う図
-    const style = net ? Math.max(0, Math.min(2, Math.round(P.style) || 0)) : -1;   // 0 = 図 1 / 1 = 図 2 / 2 = 両方 / -1 = 別の図
-    const pk = (k)=> net ? Math.max(0, dz(P[k]) * 0.01) : 0;   // 網だけが持つパラメータ (%)
+    const net = this.useNet;                             // 網 (ノードと線) を描く
+    const style = this.draw ? -1 : Math.max(0, Math.min(2, Math.round(P.style) || 0));   // 0 = 図 1 / 1 = 図 2 / 2 = 両方 / -1 = 別の図
+    const pk = (k)=> P[k] != null ? Math.max(0, dz(P[k]) * 0.01) : 0;   // その図が持たないパラメータは 0 (%)
     const sqK = pk('squares'), diaK = pk('diamonds'), tenK = pk('tendrils');
     const riseK = Math.max(0, Math.min(1, dz(P.rise) * 0.01));
     const deg = Math.PI / 180;
@@ -820,7 +870,7 @@ void main(){
       links: Math.max(0, dz(P.links) * 0.01),
       // 種類の割合: 図 1 は楕円が主、図 2 は菱形が主 (四角なし)、両方はその間
       pSquare: Math.min(0.4, sqK * (style === 0 ? 0.12 : (style === 2 ? 0.06 : 0))),
-      pDiamond: Math.min(0.8, style === 0 ? diaK : (style === 1 ? 0.5 + 0.5 * diaK : 0.25 + 0.5 * diaK)),
+      pDiamond: Math.min(0.8, style === 1 ? 0.5 + 0.5 * diaK : (style === 2 ? 0.25 + 0.5 * diaK : diaK)),
       pTendril: Math.min(0.6, tenK * (style === 1 ? 0.20 : 0.30)),
       drift: Math.max(0, dz(P.drift) * 0.01) * 0.4,
       pop: Math.max(0, dz(P.pop) * 0.01),
@@ -838,7 +888,7 @@ void main(){
     let ph = (t / cyc) % 1;
     if(ph < 0) ph += 1;
     const rn = riseK <= 0 ? 0 : (ph < 0.3 ? 0 : ph < 0.5 ? sm((ph - 0.3) / 0.2) : ph < 0.8 ? 1 : 1 - sm((ph - 0.8) / 0.2));
-    const v2 = style === 0 ? rn : (net ? 1 : 0);         // 図 2 の要素 (面・流れ・赤線・帯) の出方
+    const v2 = style === 0 ? rn : (style > 0 ? 1 : 0);   // 図 2 の要素 (面・流れ・赤線・帯) の出方
     const v1 = (style === 0 || style === 2) ? 1 : 0;     // 図 1 の要素 (青い弧)
     const phi = rn * tiltM, psi = rn * yawM;
     const cph = Math.cos(phi), sph = Math.sin(phi), cps = Math.cos(psi), sps = Math.sin(psi), D = cfg.D;
@@ -967,7 +1017,7 @@ void main(){
     // 立ち上がると楕円の半分が菱形に変わる (図 1 → 図 2。ノードごとに少しずつずれる)。0 = 楕円 / 1 = 菱形
     const morphOf = (r)=>{
       if(r.kind === 'm') return 1;
-      if(r.kind !== 'e' || style === 1 || this._hash(r.i, r.n, 40) >= 0.5) return 0;
+      if(r.kind !== 'e' || (style !== 0 && style !== 2) || this._hash(r.i, r.n, 40) >= 0.5) return 0;
       return sm(Math.max(0, Math.min(1, (rn - 0.4 * this._hash(r.i, r.n, 41)) / 0.6)));
     };
     const mixC = (a, b, k)=>[a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
@@ -976,6 +1026,7 @@ void main(){
 
     // ── ノードと線 (すべて地面) ──
     const reach = 1.9;   // 立ち上がると見える地面が広がるので、中心からこの範囲までは描く
+    const netNodes = [];
     for(let i = 0; net && i < cfg.N; i++){
       const r = this._cycAt(i, t);
       if(!r.present) continue;
@@ -1002,6 +1053,7 @@ void main(){
       // ノード
       const sc = this._scale(r, t) * (1 + 0.15 * kick);
       if(sc <= 0.001) continue;
+      if(this.draw && r.kind === 'e') netNodes.push({r, sc});   // 別の図が網の楕円に描き足す
       const hh = r.h;
       if(r.kind === 'd'){
         pushDot(r.x, r.y, rDot, C.dot, sc, sd2(r.x, r.y));
@@ -1034,10 +1086,11 @@ void main(){
     const H = (id, n, c)=>this._hash(id, n, c);
     const arcsK = pk('arcs');
 
-    // ── 扇 / 群れの輪 / 樹と根 (網を使わない図。描く道具と、その図のパラメータを渡す) ──
-    if(!net){
+    // ── 扇 / 群れの輪 / 積層 (描く道具と、その図のパラメータを渡す) ──
+    if(this.draw){
       const K = {
-        t, aspect, sizeK, kick, C, H, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs,
+        t, aspect, sizeK, kick, C, H, P3, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs, netNodes, rn, riseK,
+        sx:[cps, -sps],
         hwG, hwB, hwL, pop:cfg.pop, spread:cfg.spread, links:cfg.links,
         pct:(k)=>Math.max(0, dz(P[k]) * 0.01), num:(k, lo, hi)=>Math.max(lo, Math.min(hi, Math.round(dz(P[k])))),
         paper:Array.isArray(P.paper) ? P.paper : this.PDefaults.paper,
@@ -1249,12 +1302,12 @@ void main(){
 };
 Rhizome.PDefaults = JSON.parse(JSON.stringify(Rhizome.P));
 
-// 別の図 (扇 / 群れの輪 / 樹と根) は同じエンジンの別の実体にして、それぞれ独立した mode (kind) にする。
+// 別の図 (扇 / 群れの輪 / 積層) は同じエンジンの別の実体にして、それぞれ独立した mode (kind) にする。
 // 描き方は Rhizome と共通で、パラメータ・GL の資源・記憶は実体ごとに持つ (Slot A と B で別の図を同時に出せる)。
 // own = その図だけのパラメータ (既定値)、ownSpecs = その UI。共通のパラメータは Rhizome の既定値から写す
-Rhizome._variant = function(draw, own, ownSpecs){
+Rhizome._variant = function(draw, own, ownSpecs, useNet){
   const base = this;
-  const head = ['speed', 'life'], tail = ['size', 'spread', 'links', 'line', 'pencil', 'hand', 'boil', 'pop', 'kick', 'drift', 'rise', 'cycle', 'tilt', 'yaw', 'seed'];
+  const head = ['speed', 'life'].concat(useNet ? ['nodes'] : []), tail = ['size', 'spread', 'links', 'line', 'pencil', 'hand', 'boil', 'pop', 'kick', 'drift', 'rise', 'cycle', 'tilt', 'yaw', 'seed'];
   const P = {};
   for(const k of head.concat(tail, ['paper'])) P[k] = JSON.parse(JSON.stringify(base.PDefaults[k]));
   Object.assign(P, own);
@@ -1263,7 +1316,7 @@ Rhizome._variant = function(draw, own, ownSpecs){
   Object.assign(v, {
     gl:null, initialized:false, ok:false, prog:null, vao:null, cornerVBO:null, instVBO:null, instCap:0, U:null,
     _memo:null, _sig:'', _cfg:null, _salt:0, FIG:null,
-    draw, P, SPECS:head.map(spec).concat(ownSpecs, tail.map(spec)),
+    draw, useNet:!!useNet, P, SPECS:head.map(spec).concat(ownSpecs, tail.map(spec)),
   });
   v.PDefaults = JSON.parse(JSON.stringify(P));
   return v;
@@ -1281,10 +1334,11 @@ const RhizomePacks = Rhizome._variant('_packs', {rings:6, members:100, hub:100, 
   ['Hub',     'hub',     0,  300, 1, 'pct'],   // 宙の一点の高さ (%)
   ['Float',   'float',   0,  100, 1, 'pct'],   // 宙に浮く輪の割合 (%)
 ]);
-const RhizomeTree = Rhizome._variant('_tree', {trees:3, depth:4, lime:42, streams:100}, [
-  ['Trees',   'trees',   1, 5,   1, 'int'],    // 同時に出る樹の枠の数
-  ['Depth',   'depth',   2, 6,   1, 'int'],    // 枝分かれの段の数 (3 割の樹は 1 段深い)
-  ['Lime',    'lime',    0, 100, 1, 'pct'],    // 黄緑に変わる節の割合 (%)
-  ['Streams', 'streams', 0, 200, 1, 'pct'],    // 脇を下る流れの濃さ (%)
-]);
-const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rztree:RhizomeTree };
+const RhizomeStack = Rhizome._variant('_stack', {nodes:90, columns:3, layers:18, height:100, axes:15, arrows:100}, [
+  ['Columns', 'columns', 0,  8,   1, 'int'],   // 同時に立つ柱の枠の数
+  ['Layers',  'layers',  3,  40,  1, 'int'],   // 柱 1 本に積み重なる楕円の数
+  ['Height',  'height',  20, 300, 1, 'pct'],   // 柱と青い軸の高さ (%)
+  ['Axes',    'axes',    0,  100, 1, 'pct'],   // 網の楕円を青い縦の両矢印が貫く割合 (%)
+  ['Arrows',  'arrows',  0,  300, 1, 'pct'],   // 網の楕円から伸びる矢印の付いた線の量 (%)
+], true);
+const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rzstack:RhizomeStack };
