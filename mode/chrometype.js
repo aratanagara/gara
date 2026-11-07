@@ -15,9 +15,17 @@ const ChromeType = {
   gl:null, initialized:false, ok:false,
   prog:null, U:null, vao:null, ibo:null, nIdx:0,
   sdfTex:null, bake:null,           // bake = 最後に入った焼き結果 (w,h,cols,rows,grid,F)
+  _sdfBack:null, _iboBack:null,     // 焼きは裏へ書き、描くセルが決まったら表と入れ替える (文字が替わっても画面が欠けない)
   depthRBO:null, depthW:0, depthH:0,
   msaa:null,                        // {fbo,color,depth,w,h,samples}
-  _bakeKey:'', _pendKey:'', _bakeDirtyAt:0, _baking:false,
+  _bakeKey:'', _pendKey:'', _bakeDirtyAt:0, _baking:false, _bakeTy:'', _fontKey:'',
+  _occTok:0, _occSync:false,        // 描くセルの読み戻しの番号 (古い結果を捨てる) / 次は同期で読む
+  _cv:null,                         // 焼き用キャンバスの使い回し
+  _words:null, _wordsReq:false,     // presets/chrometype.md の文字列
+  _ty:null,                         // タイピングの状態 {list, idx, phrase, glines, len, b0, n}
+  _tyT:null, _tyLastB:null,         // タイピングの進み (拍)。進んだ量の絶対値を積む
+  _yaw:0, _lastT:null, _lastP:null, // 縦軸まわりの角度 (積む) と前のフレームの時間 / Spin Step の進み
+  _dir:1, _dirBeat:null, _revFlip:false, _revLeft:0,   // 回転の向き・切り替えた拍・Random Rev の反転中か・次の反転までの拍数
   BK:null,                          // GPU 焼きの資源 {W,H,mask[4],tA,tB,tC,jA,jB,occ,fbos,progs,vao}
   texImg:null, texTex:null, _texUrl:'', _texAspect:1,
   _matT:null,
@@ -25,6 +33,11 @@ const ChromeType = {
   // ── パラメータ (UI から操作)。% は 100 = 既定の効き ──
   P:{
     text:'GARA',
+    typing:0,            // 1 = presets/chrometype.md の文字列を 1 字ずつ打つ (beat モードは拍で、drone モードは時間で)。上の text は使わない
+    tyRate:1,            // 打つ速さ (字/拍)
+    tyHold:4,            // 打ち終えてから次の文字列へ移るまでの拍数
+    tyOrder:1,           // 0 = 順番 / 1 = ランダム
+    tyErase:0,           // 0 = 一度に消す / 1 = 1 字ずつ消す
     style:1,             // 形のプリセットの番号 (STYLES)。選ぶと形のパラメータがまとめて入れ替わる
     font:'',             // 空 = MT_FONTS[1] (ゴシック)。値は font-family 文字列
     weight:900,          // 400 / 700 / 900
@@ -54,6 +67,8 @@ const ChromeType = {
     liquid:0,            // 液状の揺れ (%)
     liqFreq:100,         // 揺れの細かさ (%)
     spin:100,            // 縦軸まわりの回転の速さ (%、符号で向き)
+    spinRev:0,           // 1 = 逆回転 (Spin と Spin Step の向きを反転。拍の頭で切り替わる)
+    revAuto:0,           // 1 = ランダムな拍数 (2〜16 拍) ごとに回転の向きを反転
     tumble:0,            // 横軸まわりの回転の速さ (%)
     tilt:18,             // 前後の傾き (°)。75 前後で寝かせた見え方 (参考画像)
     roll:0,              // 画面内の傾き (°)
@@ -120,6 +135,74 @@ const ChromeType = {
     const P = this.P;
     if(P.font) return P.font;
     return (typeof MT_FONTS !== 'undefined' && MT_FONTS[1]) ? MT_FONTS[1].ff : 'sans-serif';
+  },
+
+  // ===== タイピング (presets/chrometype.md の文字列を 1 字ずつ打つ) =====
+  WORDS_URL:'presets/chrometype.md',
+  loadWords(){
+    this._wordsReq = true;
+    return this._wordsP = fetch(this.WORDS_URL + '?t=' + Date.now(), { cache:'no-store' })
+      .then(r=> r.ok ? r.text() : '').catch(()=> '')
+      .then(src=>{ this._words = this.parseWords(src); this._ty = null; return this._words; });
+  },
+  // 1 行 = 1 つの文字列。先頭の - * + 1. を外し、# の見出し・> の行・空行は読まない。\n で改行
+  parseWords(src){
+    const out = [];
+    for(let ln of String(src || '').split(/\r?\n/)){
+      ln = ln.trim();
+      if(!ln || ln[0] === '#' || ln[0] === '>' || ln.startsWith('<!--')) continue;
+      ln = ln.replace(/^([-*+]|\d+[.)])\s+/, '').replace(/\\n/g, '\n').trim();
+      if(ln) out.push(ln);
+    }
+    return out;
+  },
+  _graphemes(s){   // 濁点の結合文字や絵文字を 1 字として数える
+    if(!this._seg && typeof Intl !== 'undefined' && Intl.Segmenter) this._seg = new Intl.Segmenter('ja', { granularity:'grapheme' });
+    return this._seg ? Array.from(this._seg.segment(s), g=>g.segment) : Array.from(s);
+  },
+  // どの文字列の何字目まで見せるかを決める。打つ → Hold 拍そのまま → 消す → 次の文字列。
+  // beat モードは拍に合わせ、drone モードは時間で進む (1 拍 = 0.5 秒)。逆再生 (←) でも先へ進むよう、進んだ量の絶対値を積む
+  _typeStep(beat, clock){
+    const P = this.P;
+    if(!(P.typing > 0)){ this._ty = null; this._tyT = null; this._tyLastB = null; return; }
+    if(!this._words){ if(!this._wordsReq) this.loadWords(); this._ty = null; return; }
+    const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat') && beat != null && isFinite(beat);
+    const b = beatMode ? beat : (clock != null && isFinite(clock) ? clock*2 : performance.now()/500);
+    const d = this._tyLastB == null ? Infinity : b - this._tyLastB;
+    this._tyLastB = b;
+    const jump = this._tyT == null || Math.abs(d) > 4;   // 位相リセット (R)・モード切替で拍が飛んだ
+    if(jump) this._tyT = beatMode ? b : Math.floor(this._tyT || 0);
+    else this._tyT += Math.abs(d);
+    const T = this._tyT;
+    const list = this._words.length ? this._words : [String(P.text || ' ')];
+    const rate = Math.max(0.05, +P.tyRate || 1), hold = Math.max(0, +P.tyHold || 0);
+    const pick = (prev)=>{
+      if(list.length < 2) return 0;
+      if(P.tyOrder > 0){ let i; do{ i = Math.floor(Math.random()*list.length); }while(i === prev); return i; }
+      return (prev + 1) % list.length;
+    };
+    const start = (i, b0)=>{
+      const glines = list[i].split('\n').map(l=>this._graphemes(l));
+      return { list, idx:i, phrase:list[i], glines, len:glines.reduce((a, g)=>a + g.length, 0), b0, n:0 };
+    };
+    const dur = (t)=>{ const tt = t.len/rate; return tt + hold + (P.tyErase > 0 ? tt : 0); };
+    let ty = this._ty;
+    if(!ty || ty.list !== list) ty = start(P.tyOrder > 0 ? pick(-1) : 0, Math.floor(T));
+    else if(jump) ty = start(ty.idx, Math.floor(T));
+    for(let g=0; g<64 && T - ty.b0 >= dur(ty); g++) ty = start(pick(ty.idx), ty.b0 + dur(ty));
+    if(T - ty.b0 >= dur(ty)) ty = start(pick(ty.idx), Math.floor(T));
+    const t = T - ty.b0, tt = ty.len/rate;
+    ty.n = t < tt ? Math.min(ty.len, Math.floor(t*rate) + 1)
+         : t < tt + hold ? ty.len
+         : Math.max(0, ty.len - Math.floor((t - tt - hold)*rate) - 1);
+    this._ty = ty;
+  },
+  // いま見せる文字 (先頭の n 字)。末尾の空白は形が変わらないので外す (焼き直さない)
+  _tyShown(){
+    const ty = this._ty;
+    let left = ty.n;
+    return ty.glines.map(g=>{ const k = Math.max(0, Math.min(g.length, left)); left -= k; return g.slice(0, k).join(''); })
+      .join('\n').replace(/\s+$/, '');
   },
 
   init(gl){
@@ -340,6 +423,7 @@ void main(){
     for(let i=0;i<nU;i++){ const a = gl.getActiveUniform(this.prog, i); this.U[a.name] = gl.getUniformLocation(this.prog, a.name); }
     this.vao = gl.createVertexArray();
     this.ibo = gl.createBuffer();
+    this._iboBack = gl.createBuffer();
     gl.bindVertexArray(this.vao);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
     gl.bindVertexArray(null);
@@ -359,7 +443,7 @@ void main(){
     this._bakeKey = '';
     this._initBake();
     // Web フォント (Adobe Fonts など) が後から届いたら焼き直す (先に焼くと代わりの書体のまま残る)
-    if(document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', ()=>{ this._bakeKey = ''; });
+    if(document.fonts && document.fonts.addEventListener) document.fonts.addEventListener('loadingdone', ()=>{ this._bakeKey = ''; this._fontKey = ''; });
   },
 
   // 距離 → 高さ (F 単位、厚み前)。縁は円弧で立ち上がり (上下の法線が縁で水平に揃う)、広い面は Puff で膨らむ。
@@ -405,21 +489,29 @@ float ct_prof(float d, int L, vec2 uv, float lin){
 
   // ===== 焼き =====
   _key(){ const P = this.P; return JSON.stringify(this.BAKE_KEYS.map(k=>P[k])); },
-  update(){
+  update(opts){
     if(!this.initialized || !this.ok) return;
-    const k = this._key();
+    this._typeStep(opts ? opts.beat : null, opts ? opts.clock : null);
+    const k = this._key(), tk = this._ty ? '\u0001' + this._tyShown() : '';
     const now = performance.now();
-    if(k !== this._bakeKey){
-      // 初回は即座に、以後はスライダーや MIDI で続けて動いている間は待つ (止まって 120ms 後に焼く)
-      if(!this.bake){ this._bakeKey = k; this._startBake(); }
-      else if(this._pendKey !== k){ this._pendKey = k; this._bakeDirtyAt = now; }
-      else if(now - this._bakeDirtyAt > 120 && !this._baking){ this._bakeKey = k; this._startBake(); }
+    if(k !== this._bakeKey || tk !== this._bakeTy){
+      // 初回とタイピングの 1 字は即座に焼く。スライダーや MIDI で続けて動いている間は待つ (止まって 120ms 後に焼く)
+      if(!this._baking && (!this.bake || k === this._bakeKey)){ this._bakeKey = k; this._bakeTy = tk; this._startBake(); }
+      else if(k !== this._bakeKey){
+        if(this._pendKey !== k){ this._pendKey = k; this._bakeDirtyAt = now; }
+        else if(now - this._bakeDirtyAt > 120 && !this._baking){ this._bakeKey = k; this._bakeTy = tk; this._startBake(); }
+      }
     }
     this._syncTexture();
   },
-  _ctx2d(w, h){
-    const c = document.createElement('canvas'); c.width = w; c.height = h;
-    const ctx = c.getContext('2d', { willReadFrequently:true });
+  // slot ごとにキャンバスを使い回す。縁の点を読み出す 'full' だけ CPU 側に置き、ほかは GPU のキャンバスにする
+  // (テクスチャへの転送が GPU 内のコピーで済む。CPU 側のキャンバスからだと 1 回の焼きで 20ms 以上かかる)
+  _ctx2d(w, h, slot){
+    const pool = this._cv || (this._cv = {});
+    const c = pool[slot] || (pool[slot] = document.createElement('canvas'));
+    if(c.width !== w || c.height !== h){ c.width = w; c.height = h; }
+    const ctx = c.getContext('2d', { willReadFrequently: slot === 'full' });
+    ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.fillStyle = '#000'; ctx.fillRect(0, 0, w, h);   // 黒地に白で描く (R = 覆い)
     ctx.fillStyle = '#fff'; ctx.strokeStyle = '#fff';
     return ctx;
@@ -427,25 +519,34 @@ float ct_prof(float d, int L, vec2 uv, float lin){
   async _startBake(){
     const P = this.P;
     this._baking = true;
+    const ty = this._ty;
+    const text = ty ? this._tyShown() : String(P.text == null ? '' : P.text);
+    const fontText = ty ? ty.phrase : text;   // タイピング中は文字列ごとに 1 回だけ読み込みを待つ (1 字ごとはその場で焼く)
     const ff = this._fontFamily();
     const wt = Math.round(+P.weight || 900);
     const F0 = 160;
     const fontStr = (s)=> wt + ' ' + s + 'px ' + ff;
-    try{ if(document.fonts && document.fonts.load) await document.fonts.load(fontStr(F0), String(P.text || ' ')); }catch(e){}
+    const fk = fontStr(F0) + '\u0000' + fontText;
+    if(fk !== this._fontKey){
+      try{ if(document.fonts && document.fonts.load) await document.fonts.load(fontStr(F0), fontText || ' '); }catch(e){}
+      this._fontKey = fk;
+    }
     try{
-      this._gpuBake(this._prepJob(F0, fontStr));
+      // タイピング中は描くセルを数フレーム後に読み戻す (その場で待つと 1 字ごとに 30ms 止まる)
+      this._gpuBake(this._prepJob(F0, fontStr, text), ty && !this._occSync ? 'async' : 'sync');
+      this._occSync = false;
     }catch(e){ console.error('ChromeType bake:', e); }
     this._baking = false;
   },
 
   // キャンバスに 文字 / ヒレと根 / 奥と手前のヒレ層 を描く (溶かす・穴・距離は GPU)
-  _prepJob(F0, fontStr){
+  _prepJob(F0, fontStr, text){
     const P = this.P;
     const dz = (v)=>this._dz(v);
     const pc = (v, lo, hi)=> Math.max(lo, Math.min(hi, dz(v)*0.01));
     const seed = Math.round(+P.seed || 0);
     const R = (()=>{ let s = (seed*2246822519 + 12345) >>> 0 || 7; return ()=>{ s = (s + 0x6D2B79F5) | 0; let t = Math.imul(s ^ (s >>> 15), 1 | s); t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t; return ((t ^ (t >>> 14)) >>> 0) / 4294967296; }; })();
-    const lines = String(P.text == null ? '' : P.text).split('\n').map(s=>s.replace(/\s+$/,'')).filter((s, i, a)=> s.length || a.length === 1);
+    const lines = String(text).split('\n').map(s=>s.replace(/\s+$/,'')).filter((s, i, a)=> s.length || a.length === 1);
     if(!lines.length) lines.push(' ');
     const stretch = pc(P.stretch, 0.3, 4);
     const finK = pc(P.fins, 0, 4), finL = pc(P.finLen, 0.1, 4);
@@ -453,7 +554,7 @@ float ct_prof(float d, int L, vec2 uv, float lin){
     const tenK = pc(P.tendrils, 0, 4), tenL = pc(P.tenLen, 0.1, 4);
     const sm = pc(P.smooth, 0, 4), mg = pc(P.merge, 0, 1), mX = pc(P.meltX, 0.3, 6);
     // 寸法 (F0 基準 px)
-    const m = this._ctx2d(4, 4);
+    const m = this._ctx2d(4, 4, 'm');
     m.font = fontStr(F0);
     let asc = F0*0.8, desc = F0*0.2;
     const lw = lines.map(s=>{ const mm = m.measureText(s); asc = Math.max(asc, mm.actualBoundingBoxAscent || 0); desc = Math.max(desc, mm.actualBoundingBoxDescent || 0); return mm.width*stretch; });
@@ -469,28 +570,35 @@ float ct_prof(float d, int L, vec2 uv, float lin){
     const W = Math.max(16, Math.ceil(W0*s)), H = Math.max(16, Math.ceil(H0*s));
     const F = F0*s;
     const cx = W/2;
-    // 本体: 文字
-    const c0 = this._ctx2d(W, H);
-    c0.textBaseline = 'alphabetic'; c0.textAlign = 'center';
-    c0.font = fontStr(F0);
-    lines.forEach((ln, i)=>{
-      c0.setTransform(s*stretch, 0, 0, s, cx, (mTop + asc + i*lh)*s);
-      c0.fillText(ln, 0, 0);
-    });
-    c0.setTransform(1, 0, 0, 1, 0, 0);
-    // 縁の点と外向きの向き (覆いの勾配)。半分の密度で拾う
-    const a0 = c0.getImageData(0, 0, W, H).data;
-    const cov = (x, y)=> a0[(y*W + x)*4]/255;
+    // 本体: 文字 (GPU のキャンバス)
+    const drawText = (ctx, k)=>{
+      ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'center';
+      ctx.font = fontStr(F0);
+      lines.forEach((ln, i)=>{
+        ctx.setTransform(s*stretch*k, 0, 0, s*k, cx*k, (mTop + asc + i*lh)*s*k);
+        ctx.fillText(ln, 0, 0);
+      });
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    };
+    const c0 = this._ctx2d(W, H, 'body');
+    drawText(c0, 1);
+    // 縁の点と外向きの向き (覆いの勾配)。半分の解像度で描いた CPU のキャンバスから拾う (座標は元の解像度)
+    const hw = Math.ceil(W/2), hh = Math.ceil(H/2);
+    const cE = this._ctx2d(hw, hh, 'full');
+    drawText(cE, 0.5);
+    const a0 = cE.getImageData(0, 0, hw, hh).data;
+    const cov = (x, y)=> a0[(y*hw + x)*4]/255;
     const edge = [];
     let minX = W, maxX = 0, minY = H, maxY = 0;
-    for(let y=4;y<H-4;y+=2) for(let x=4;x<W-4;x+=2){
+    for(let y=2;y<hh-2;y++) for(let x=2;x<hw-2;x++){
       if(cov(x, y) < 0.5) continue;
-      if(x < minX) minX = x; if(x > maxX) maxX = x; if(y < minY) minY = y; if(y > maxY) maxY = y;
-      if(cov(x-2, y) < 0.5 || cov(x+2, y) < 0.5 || cov(x, y-2) < 0.5 || cov(x, y+2) < 0.5){
+      const X = x*2, Y = y*2;
+      if(X < minX) minX = X; if(X > maxX) maxX = X; if(Y < minY) minY = Y; if(Y > maxY) maxY = Y;
+      if(cov(x-1, y) < 0.5 || cov(x+1, y) < 0.5 || cov(x, y-1) < 0.5 || cov(x, y+1) < 0.5){
         let gx = 0, gy = 0;
-        for(let dy=-2;dy<=2;dy+=2) for(let dx=-2;dx<=2;dx+=2){ const v = cov(x + dx, y + dy); gx -= v*dx; gy -= v*dy; }
+        for(let dy=-1;dy<=1;dy++) for(let dx=-1;dx<=1;dx++){ const v = cov(x + dx, y + dy); gx -= v*dx; gy -= v*dy; }
         const gn = Math.hypot(gx, gy) || 1;
-        edge.push([x, y, gx/gn, gy/gn]);
+        edge.push([X, Y, gx/gn, gy/gn]);
       }
     }
     if(maxX < minX){ minX = W*0.4; maxX = W*0.6; minY = H*0.4; maxY = H*0.6; }
@@ -524,7 +632,7 @@ float ct_prof(float d, int L, vec2 uv, float lin){
       ctx.beginPath(); ctx.arc(x, y, wb, 0, Math.PI*2); ctx.fill();
     };
     const nChars = lines.reduce((a, l)=>a + [...l].length, 0);
-    const ca = this._ctx2d(W, H);              // ヒレと根 (本体を溶かしたあとで足す)
+    const ca = this._ctx2d(W, H, 'blades');              // ヒレと根 (本体を溶かしたあとで足す)
     // ヒレ (本体につながる): 横向きの縁から、ほぼ水平に外へ。両端ほど長い
     const nFin = Math.min(90, Math.round(finK*(3 + nChars*1.0)));
     for(let k=0;k<nFin;k++){
@@ -585,7 +693,7 @@ float ct_prof(float d, int L, vec2 uv, float lin){
     const lay = [null, null];
     const nLay = Math.min(30, Math.round(layK*(1.5 + nChars*0.35)));
     for(let L=0; L<2 && nLay > 0; L++){
-      const c = this._ctx2d(W, H);
+      const c = this._ctx2d(W, H, 'lay' + L);
       for(let k=0;k<nLay;k++){
         const sg = R() < 0.5 ? -1 : 1;
         const ex = 0.45 + 0.55*R();
@@ -749,21 +857,29 @@ void main(){
       B.hA = this._bkTex('f16', W2, H2, true); B.hB = this._bkTex('f16', W2, H2, true); B.hC = this._bkTex('f16', W2, H2, true);
       B.hjA = this._bkTex('f16', W2, H2, false); B.hjB = this._bkTex('f16', W2, H2, false);
       B.mask = [0, 1, 2, 3].map(()=>this._bkTex('r8', W, H, true));
-      gl.deleteTexture(this.sdfTex); B.size.delete(this.sdfTex);
-      this.sdfTex = this._bkTex('f16', W, H, true);
       B.W = W; B.H = H;
+    }
+    const bs = this._sdfBack && B.size.get(this._sdfBack);   // 裏の sdf だけ大きさを合わせる (表は入れ替えまで描くのに使う)
+    if(!bs || bs[0] !== W || bs[1] !== H){
+      if(this._sdfBack){
+        const f = B.fbos.get(this._sdfBack); if(f){ gl.deleteFramebuffer(f); B.fbos.delete(this._sdfBack); }
+        gl.deleteTexture(this._sdfBack); B.size.delete(this._sdfBack);
+      }
+      this._sdfBack = this._bkTex('f16', W, H, true);
     }
     if(!B.occ || B.occW !== cols || B.occH !== rows){
       if(B.occ){ const f = B.fbos.get(B.occ); if(f){ gl.deleteFramebuffer(f); B.fbos.delete(B.occ); } gl.deleteTexture(B.occ); B.size.delete(B.occ); }
       B.occ = this._bkTex('rgba8', cols, rows, false); B.occW = cols; B.occH = rows;
     }
   },
-  _gpuBake(job){
+  // mode: 'sync' = 描くセルをその場で読み戻して入れ替える / 'async' = 数フレーム後に届いたら入れ替える
+  _gpuBake(job, mode){
     const gl = this.gl, B = this.BK;
     if(!B) return;
     const W = job.w, H = job.h, cs = job.grid;
     const nx = Math.ceil((W - 1)/cs), ny = Math.ceil((H - 1)/cs), cols = nx + 1, rows = ny + 1;
     this._bkResize(W, H, cols, rows);
+    const dst = this._sdfBack;
     // 覆いを上げる (キャンバスの R)
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
@@ -816,11 +932,11 @@ void main(){
     const invF = 1/job.F;
     const writeChannel = (ch, src, pxScale)=>{   // src (px の距離) を縦にぼかしながら F 単位で sdfTex の 1 チャンネルへ
       gl.colorMask(ch === 0, ch === 1, ch === 2, false);
-      blur(src, this.sdfTex, [0, 1], job.soft, invF*(pxScale || 1), 4);
+      blur(src, dst, [0, 1], job.soft, invF*(pxScale || 1), 4);
       gl.colorMask(true, true, true, true);
     };
     const clearChannel = (ch)=>{
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this._bkFbo(this.sdfTex));
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this._bkFbo(dst));
       gl.colorMask(ch === 0, ch === 1, ch === 2, ch === 3);
       gl.clearColor(-4, -4, -4, 0); gl.clear(gl.COLOR_BUFFER_BIT);
       gl.colorMask(true, true, true, true);
@@ -856,14 +972,28 @@ void main(){
       writeChannel(L, B.hC, 2);
     }
     // 描くセルを選ぶ: 格子の頂点ごとに形の近くかを出して読み戻す (焼きのときだけの小さな同期読み出し)
-    run('occ', B.occ, { uGrid:cs, uMargin:-2.5*cs*invF, uTexSize:size }, { uSDF:this.sdfTex });
-    const occ = new Uint8Array(cols*rows*4);
-    gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, occ);
-    const keep = (i)=> occ[i*4] > 127;
-    const idx = [];
-    for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
-      const a = j*cols + i, b = a + 1, c = a + cols, d = c + 1;
-      if(keep(a) || keep(b) || keep(c) || keep(d)) idx.push(a, c, b, b, c, d);
+    run('occ', B.occ, { uGrid:cs, uMargin:-2.5*cs*invF, uTexSize:size }, { uSDF:dst });
+    const build = (occ)=>{
+      const keep = (i)=> occ[i*4] > 127;
+      const idx = [];
+      for(let j=0;j<ny;j++) for(let i=0;i<nx;i++){
+        const a = j*cols + i, b = a + 1, c = a + cols, d = c + 1;
+        if(keep(a) || keep(b) || keep(c) || keep(d)) idx.push(a, c, b, b, c, d);
+      }
+      return idx;
+    };
+    const meta = { w:W, h:H, cols, rows, grid:cs, F:job.F, bbox:job.bbox };
+    const tok = ++this._occTok;
+    let occNow = null;
+    if(mode === 'async' && typeof GL !== 'undefined' && GL.asyncReadPixels){
+      GL.asyncReadPixels(cols, rows, (px)=>{
+        if(tok !== this._occTok) return;            // あとの焼きが来ている
+        if(!px){ this._bakeTy = ''; this._occSync = true; return; }   // 読めなかった: 次のフレームで同期して焼き直す
+        this._present(build(px), meta);
+      });
+    } else {
+      occNow = new Uint8Array(cols*rows*4);
+      gl.readPixels(0, 0, cols, rows, gl.RGBA, gl.UNSIGNED_BYTE, occNow);
     }
     // 後片付け (vj の他の描画に状態を残さない)
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -873,12 +1003,21 @@ void main(){
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 4);
     for(let u=0;u<3;u++){ gl.activeTexture(gl.TEXTURE0 + u); gl.bindTexture(gl.TEXTURE_2D, null); }
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindVertexArray(this.vao);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
-    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.STATIC_DRAW);
     gl.bindVertexArray(null);
+    if(occNow) this._present(build(occNow), meta);
+  },
+  // 裏に焼いた sdf と描くセルを表と入れ替える
+  _present(idx, meta){
+    const gl = this.gl;
+    const prev = gl.getParameter(gl.VERTEX_ARRAY_BINDING);
+    gl.bindVertexArray(this.vao);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this._iboBack);
+    gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idx), gl.STATIC_DRAW);
+    gl.bindVertexArray(prev);
+    [this.sdfTex, this._sdfBack] = [this._sdfBack, this.sdfTex];
+    [this.ibo, this._iboBack] = [this._iboBack, this.ibo];
     this.nIdx = idx.length;
-    this.bake = { w:W, h:H, cols, rows, grid:cs, F:job.F, bbox:job.bbox };
+    this.bake = meta;
   },
 
   // ===== 画像テクスチャ (images/ のフォルダ。ImageMode のフォルダ一覧を使う) =====
@@ -957,15 +1096,32 @@ void main(){
     const deg = Math.PI/180;
 
     // 回転
-    let yaw;
+    // 向き (Reverse / Random Rev) は拍の頭で切り替える (drone モードは 0.5 秒 = 1 拍)。角度は毎フレーム積むので向きが変わっても飛ばない
     const step = Math.round(+P.spinStep || 0);
+    const bt = beatMode ? opts.beat*spd : T*2, bti = Math.floor(bt);
+    if(this._dirBeat == null || Math.abs(bti - this._dirBeat) > 64){ this._dirBeat = bti; this._dir = P.spinRev > 0 ? -1 : 1; this._revFlip = false; this._revLeft = 0; }
+    if(bti !== this._dirBeat){
+      this._dirBeat = bti;
+      if(P.revAuto > 0){
+        if(--this._revLeft <= 0){
+          if(this._revLeft === 0) this._revFlip = !this._revFlip;   // 初回は周期を決めるだけ
+          this._revLeft = [2, 4, 4, 8, 8, 16][Math.floor(Math.random()*6)];
+        }
+      } else { this._revFlip = false; this._revLeft = 0; }
+      this._dir = (P.spinRev > 0 ? -1 : 1)*(this._revFlip ? -1 : 1);
+    }
     if(beatMode && step > 0){
       const b = opts.beat*spd, bi = Math.floor(b), bf = b - bi;
-      const ease = 1 - Math.pow(1 - Math.min(1, bf*2.2), 3);
-      yaw = (bi + ease)*step*deg*Math.sign(dz(P.spin) || 1);
+      const p = bi + 1 - Math.pow(1 - Math.min(1, bf*2.2), 3);
+      const dp = (this._lastP == null || Math.abs(p - this._lastP) > 8) ? 0 : p - this._lastP;
+      this._yaw += dp*step*deg*Math.sign(dz(P.spin) || 1)*this._dir;
+      this._lastP = p; this._lastT = null;
     } else {
-      yaw = T*0.5*dz(P.spin)*0.01;
+      const dT = (this._lastT == null || Math.abs(T - this._lastT) > 2) ? 0 : T - this._lastT;
+      this._yaw += dT*0.5*dz(P.spin)*0.01*this._dir;
+      this._lastT = T; this._lastP = null;
     }
+    let yaw = this._yaw;
     const sway = dz(P.sway)*0.01;
     if(sway) yaw += Math.sin(T*0.7)*sway*1.2;
     const pitch = dz(P.tilt)*deg + T*0.4*dz(P.tumble)*0.01;
@@ -1056,6 +1212,7 @@ void main(){
       i1('uTexMode', Math.round(+P.texMode || 0));
       i1('uHasTex', this._texReady ? 1 : 0);
       gl.bindVertexArray(this.vao);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
       const nInst = dz(P.layers) > 0 ? 3 : 1;
       if(useMS) gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       // 上面と下面は閉じた面なので、外から見えるのは表向きの三角形だけ (裏の面を塗らずに済む)
