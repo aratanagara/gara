@@ -19799,6 +19799,7 @@ void mainImage(out vec4 o, in vec2 f){
     stepped({label:'Hold', key:'tyHold', vals:[0, 1, 2, 4, 8, 16], names:['0拍', '1拍', '2拍', '4拍', '8拍', '16拍']});
     mkSel('Order', [[0, '順番'], [1, 'ランダム']], P.tyOrder > 0 ? 1 : 0, v=>{ P.tyOrder = parseInt(v, 10); }, true);
     mkSel('End', [[0, '一度に消す'], [1, '1字ずつ消す']], P.tyErase > 0 ? 1 : 0, v=>{ P.tyErase = parseInt(v, 10); });
+    slider(['Morph', 'tyMorph', 0, 100, 1, pct]);
     {
       const row = mkRow();
       const lab=document.createElement('label'); lab.textContent='List';
