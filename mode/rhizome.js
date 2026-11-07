@@ -17,7 +17,7 @@
      Rise 0 で平らのまま (以前と同じ見た目)。
    - Style: 網 (図 1) は平らなときに縦の面・矢印・赤線・帯が出ず、立ち上がるときだけ現れる。
      面と流れ (図 2) / 両方 は菱形が主になり、それらが常に出る (平らなときの面は地面に寝ている)。
-   - 別の mode: 扇 (rzfan) / 群れの輪 (rzpacks) は網を使わない別の図 (_fan / _packs)。積層 (rzstack) は楕円だけの網に柱を立てる (_stack)。
+   - 別の mode: 扇 (rzfan) / 群れの輪 (rzpacks) / 筒と網 (rztube) は網を使わない別の図 (_fan / _packs / _tube)。積層 (rzstack) は楕円だけの網に柱を立てる (_stack)。
      同じエンジンの別の実体 (Rhizome._variant) で、パラメータと GL の資源を実体ごとに持つ。地面の倒れ (Rise / Cycle) と手描きの描き方は共通。
    - 手描き: 線は全体でわずかにたわみ (伸びる途中でも形が変わらないよう、線の全体の両端で測る)、ペン先を置いた両端にインクがたまる。
      楕円は透けるマーカーの塗り (下の線が透ける) で、筆の帯の重なりと片側の影があり、縁のペン線は描き始めと終わりが食い違う。
@@ -31,14 +31,14 @@
    - Slot A は紙 (paper) を敷く。Slot B は背景を透過する (前乗算アルファ)。
    参照したのは Marc Ngui による『千のプラトー』のためのドローイングの雰囲気。配置は乱数から生成していて、トレースではない。
    IF: init(gl) / update() / render({fbo,w,h,slot,beat,clock,opaque}) / P / PDefaults / SPECS
-       RhizomeKinds = { kind: エンジン } (rhizome / rzfan / rzpacks / rzstack)
+       RhizomeKinds = { kind: エンジン } (rhizome / rzfan / rzpacks / rzstack / rztube)
 */
 
 const Rhizome = {
   gl:null, initialized:false, ok:false,
   prog:null, vao:null, cornerVBO:null, instVBO:null, instCap:0, U:null,
   _memo:null, _sig:'', _cfg:null, _salt:0,
-  draw:null,      // 別の図の描き方 (_fan / _packs / _stack)。null は網 (Style で図 1 / 図 2 / 両方)
+  draw:null,      // 別の図の描き方 (_fan / _packs / _stack / _tube)。null は網 (Style で図 1 / 図 2 / 両方)
   useNet:true,    // 網 (ノードと線) を描く
 
   // ── パラメータ (UI から操作)。数値は使う直前に App.deadParam を通す ──
@@ -109,6 +109,7 @@ const Rhizome = {
     taupe:[0.55, 0.47, 0.44], brown:[0.50, 0.28, 0.23], sqLine:[0.58, 0.38, 0.34], sqFill:[0.93, 0.85, 0.80],
     blue:[0.24, 0.54, 0.88], ink:[0.20, 0.19, 0.19], red:[0.85, 0.22, 0.18], band:[0.30, 0.62, 0.27],
     hub:[0.18, 0.50, 0.16],
+    mint:[0.40, 0.85, 0.20], relay:[0.74, 0.95, 0.12],   // 筒と網の円盤 (緑のマーカー) と中ほどの黄色い楕円 (どちらも透ける色)
   },
 
   // 立っている人の外側の輪郭 (足元の中央が原点、背の高さ 1)。右の足元 → 頭 → 左の足元。
@@ -849,6 +850,190 @@ void main(){
     }
   },
 
+  // 筒と網: 左に黄緑の楕円の網 (黒い線でつながり、外へ黒い矢印、緑の線の先が Y に開く)。網の前の端の楕円が筒の口になり、
+  // 後ろに輪の重なる筒が伸びる (曲がって上へ抜ける筒と、まっすぐ後ろの薄い筒)。口の中のバネから青い線の束が出て、
+  // 中ほどの黄色い楕円 (まわりに震えの短い線) を通り、扇形に広がって遠くの円盤へ届く。円盤は遠いほど大きく、流れに向き合い、
+  // いくつかは緑の尾を引いて飛ぶ。最後は線の尾が先へ追いつき、網がしぼんで消える (intro-08c と intro-09 を合わせた図)
+  _tube(K){
+    const {t, H, C} = K;
+    const c01 = this._clamp01, al = 0.88;
+    const sm = (v)=>{ v = c01(v); return v * v * (3 - 2 * v); };
+    const lerp3 = (a, b, k)=>[a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+    const rot = (d, a)=>[d[0] * Math.cos(a) - d[1] * Math.sin(a), d[0] * Math.sin(a) + d[1] * Math.cos(a)];
+    const nL = K.num('launches', 1, 4), nN = K.num('cluster', 4, 20), cK = K.pct('curves'), dK = K.pct('discs'), nRing = K.num('rings', 0, 20), trK = K.pct('trails');
+    const sp = K.spread, sz = K.sizeK, hwI = K.hwB * 0.9;
+    // 地面の楕円の輪郭だけ (筒の輪)。c = 中心、u = 長い軸の向き (単位)、R / r = 長い・短い半径
+    const ring = (c, u, R, r, col, a, sd)=> K.pushPoly(K.lines, (v)=>{
+      const q = v * Math.PI * 2;
+      return [c[0] + u[0] * R * Math.cos(q) - u[1] * r * Math.sin(q), c[1] + u[1] * R * Math.cos(q) + u[0] * r * Math.sin(q), 0];
+    }, 28, 0, 1, K.hwG, col, a, false, sd);
+    for(let g = 0; g < nL; g++){
+      const id = 1000000 + g, cy2 = this._pool(id, t, 3.5), n = cy2.n, s = cy2.s, x = cy2.x;
+      if(H(id, n, 3) > 0.9 || x > 0.95) continue;
+      const tx = this._camX(s), ty = this._camY(s);
+      const fade = 1 - sm((x - 0.86) / 0.08);
+      // 扇の向き (おおむね右。少し上下に振れる) と、網の中心 (画面の左寄り)
+      const dir = (H(id, n, 4) - 0.5) * 0.5, cd = [Math.cos(dir), Math.sin(dir)], cn = [-cd[1], cd[0]];
+      const gofs = g - (nL - 1) / 2;
+      const ccx = tx - K.aspect * (0.30 + 0.06 * H(id, n, 5)) + gofs * 0.06, ccy = ty + (H(id, n, 6) - 0.5) * 0.3 + gofs * 0.32;
+      // ── 網の楕円 (ひまわりの並びで散らす) ──
+      const nodes = [];
+      for(let k = 0; k < nN; k++){
+        const r = Math.sqrt((k + 0.5) / nN), th = k * 2.39996 + H(id, n, 7) * 6.28;
+        nodes.push({
+          x:ccx + Math.cos(th) * r * 0.15 * sp + (H(id * 64 + k, n, 1) - 0.5) * 0.03,
+          y:ccy + Math.sin(th) * r * 0.27 * sp + (H(id * 64 + k, n, 2) - 0.5) * 0.03,
+          pop:0.02 + 0.16 * k / nN, rx:(0.028 + 0.022 * H(id * 64 + k, n, 3)) * sz,
+        });
+      }
+      let si = 0;   // 口 = 扇の向きにいちばん前の楕円
+      for(let k = 1; k < nN; k++) if((nodes[k].x - ccx) * cd[0] + (nodes[k].y - ccy) * cd[1] > (nodes[si].x - ccx) * cd[0] + (nodes[si].y - ccy) * cd[1]) si = k;
+      const S = nodes[si], Sp = [S.x, S.y, 0];
+      const nodeSc = (nd)=> this._popAt(x, nd.pop, 0.80, 0.04, K.pop) * (1 + 0.15 * K.kick);
+      // 黒い線: それぞれ近い 2 つへ (同じ組は 1 本)
+      const done = new Set();
+      for(let i = 0; i < nN; i++){
+        const ds = nodes.map((b, j)=>[j === i ? 1e9 : Math.hypot(b.x - nodes[i].x, b.y - nodes[i].y), j]).sort((a, b)=>a[0] - b[0]);
+        for(let e = 0; e < Math.min(2 + (H(id * 64 + i, n, 4) < 0.4 * K.links ? 1 : 0), nN - 1); e++){
+          const j = ds[e][1], key = Math.min(i, j) * 64 + Math.max(i, j);
+          if(done.has(key)) continue;
+          done.add(key);
+          const gl = Math.min(c01((x - Math.max(nodes[i].pop, nodes[j].pop) - 0.03) / 0.06), 1 - c01((x - 0.78) / 0.05));
+          if(gl > 0) K.line3(K.lines, [nodes[i].x, nodes[i].y, 0], [nodes[j].x, nodes[j].y, 0], hwI, al, C.ink, H(id * 64 + i, n, 5 + e), gl);
+        }
+      }
+      for(let k = 0; k < nN; k++){
+        const nd = nodes[k], hk = (c)=>H(id * 64 + k, n, c);
+        const ox = nd.x - ccx, oy = nd.y - ccy, od = Math.hypot(ox, oy) || 1;
+        const ga = Math.min(c01((x - nd.pop - 0.05) / 0.08), 1 - c01((x - 0.76) / 0.06));
+        // 外側の楕円から外へ黒い矢印
+        if(k !== si && od > 0.08 * sp && hk(10) < 0.75 && ga > 0){
+          const a = Math.atan2(oy, ox) + (hk(11) - 0.5) * 0.6, L = (0.07 + 0.06 * hk(12)) * sp;
+          const p0 = [nd.x, nd.y, 0], p1 = [nd.x + Math.cos(a) * L, nd.y + Math.sin(a) * L, 0];
+          K.line3(K.lines, p0, p1, hwI, al, C.ink, hk(13), ga);
+          if(ga >= 1) K.pushArrow(K.lines, p1, lerp3(p0, p1, 0.9), hwI, C.ink, al, hk(14));
+        }
+        // 緑の線 (後ろ上へうねって伸び、先が Y に開く)
+        if(hk(15) < 0.8 && ga > 0){
+          const a = Math.PI + dir + 0.5 + (hk(16) - 0.5) * 0.9, L = (0.10 + 0.08 * hk(17)) * sp, bend = (hk(18) - 0.5) * 0.5;
+          const e0 = [nd.x + (hk(19) - 0.5) * nd.rx, nd.y + (hk(20) - 0.5) * nd.rx];
+          const e1 = [e0[0] + Math.cos(a) * L, e0[1] + Math.sin(a) * L];
+          const c1 = [(e0[0] + e1[0]) / 2 - Math.sin(a) * L * bend, (e0[1] + e1[1]) / 2 + Math.cos(a) * L * bend];
+          const f = (v)=>[(1 - v) * (1 - v) * e0[0] + 2 * (1 - v) * v * c1[0] + v * v * e1[0], (1 - v) * (1 - v) * e0[1] + 2 * (1 - v) * v * c1[1] + v * v * e1[1], 0];
+          K.pushPoly(K.lines, f, 16, 0, ga, K.hwG, C.green, al, false, hk(21));
+          if(ga >= 1){
+            const tip = f(1), pv = f(0.95), td = Math.atan2(tip[1] - pv[1], tip[0] - pv[0]), Ly = 0.014 * sz;
+            for(const sg of [-1, 1]) K.line3(K.lines, tip, [tip[0] + Math.cos(td + sg * 0.5) * Ly, tip[1] + Math.sin(td + sg * 0.5) * Ly, 0], K.hwG, al, C.green, hk(22 + sg));
+          }
+        }
+        if(k === si) continue;
+        const sc = nodeSc(nd);
+        if(sc > 0.001) K.pushEllipse(nd.x, nd.y, nd.rx * sc, nd.rx * sc * (0.62 + 0.16 * hk(25)), 1.1 + (hk(26) - 0.5) * 0.5, C.mint, C.ink, hk(27));
+      }
+      // ── 筒 (口から後ろへ。曲がって上へ抜ける筒と、まっすぐ後ろの薄い筒) ──
+      const Rr = 0.052 * sz * (0.9 + 0.2 * H(id, n, 8)), bk = [-cd[0], -cd[1]];
+      const up = H(id, n, 9) < 0.5 ? 1 : -1;
+      const P0 = [S.x, S.y], P1 = [S.x + bk[0] * 0.12 * sp, S.y + bk[1] * 0.12 * sp];
+      const P2 = [S.x + bk[0] * 0.06 * sp + cn[0] * up * 0.26 * sp, S.y + bk[1] * 0.06 * sp + cn[1] * up * 0.26 * sp];
+      const axis = (v)=>[(1 - v) * (1 - v) * P0[0] + 2 * (1 - v) * v * P1[0] + v * v * P2[0], (1 - v) * (1 - v) * P0[1] + 2 * (1 - v) * v * P1[1] + v * v * P2[1]];
+      const nrm = (v)=>{ const a = axis(Math.max(0, v - 0.01)), b = axis(Math.min(1, v + 0.01)), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [-(b[1] - a[1]) / l, (b[0] - a[0]) / l]; };
+      const tubeA = al * fade;
+      for(let k = 1; k <= nRing; k++){   // 輪は遠い端から口へ順に現れる
+        const v = k / (nRing + 0.5), sc = this._popAt(x, 0.12 + 0.14 * (1 - v), 0.80, 0.04, K.pop);
+        if(sc > 0.001) ring([...axis(v), 0], nrm(v), Rr * sc, Rr * 0.34 * sc, C.ink, tubeA, H(id * 64 + 40 + k, n, 1));
+      }
+      const gs = Math.min(sm((x - 0.12) / 0.14), 1 - sm((x - 0.80) / 0.06));
+      if(gs > 0){
+        for(const sg of [-1, 1]){   // 曲がる筒の両側の緑の線。先に緑の矢印
+          const f = (v)=>{ const a = axis(v), nv = nrm(v); return [a[0] + nv[0] * Rr * sg, a[1] + nv[1] * Rr * sg, 0]; };
+          K.pushPoly(K.lines, f, 20, 0, gs * 1.06 > 1 ? 1 : gs * 1.06, K.hwG, C.green, tubeA, false, H(id, n, 10 + sg));
+          if(gs >= 1){
+            const tip = [...axis(1.06), 0].map((c, i)=> i < 2 ? c + nrm(1)[i] * Rr * sg : 0);
+            K.line3(K.lines, f(1), tip, K.hwG, tubeA, C.green, H(id, n, 13 + sg));
+            K.pushArrow(K.lines, tip, f(1), K.hwG, C.green, tubeA, H(id, n, 16 + sg));
+          }
+        }
+        // まっすぐ後ろの薄い筒 (灰色の輪と縁)
+        const gh = [0.62, 0.62, 0.62], ghA = tubeA * 0.55;
+        for(let k = 1; k <= 4; k++){
+          const c = [S.x + bk[0] * 0.045 * k * sp, S.y + bk[1] * 0.045 * k * sp, 0];
+          if(gs * 4 >= k) ring(c, cn, Rr, Rr * 0.34, gh, ghA, H(id * 64 + 50 + k, n, 1));
+        }
+        for(const sg of [-1, 1]){
+          const a0 = [S.x + cn[0] * Rr * sg, S.y + cn[1] * Rr * sg, 0], a1 = [a0[0] + bk[0] * 0.20 * sp, a0[1] + bk[1] * 0.20 * sp, 0];
+          K.line3(K.lines, a0, a1, K.hwG, ghA, gh, H(id, n, 19 + sg), gs);
+        }
+      }
+      // 口 (網の前の端の楕円。流れに向き合い、扇が出るときに脈打つ) と中のバネ
+      const pulse = 1 + 0.25 * Math.sin(Math.PI * c01((x - 0.27) / 0.08));
+      const sS = nodeSc(S) * pulse;
+      if(sS > 0.001) K.pushEllipse(S.x, S.y, Rr * 1.15 * sS, Rr * 0.48 * sS, dir + Math.PI / 2, C.mint, C.ink, H(id, n, 21));
+      const gc = Math.min(sm((x - 0.24) / 0.05), 1 - sm((x - 0.80) / 0.05));
+      if(gc > 0){
+        const cL = Rr * 0.9, cr = Rr * 0.22;
+        K.pushPoly(K.arcs, (v)=>{ const q = v * 9 * Math.PI, along = -cL * (1 - v) + cr * 0.6 * Math.cos(q), side = cr * Math.sin(q);
+          return [S.x + cd[0] * along + cn[0] * side, S.y + cd[1] * along + cn[1] * side, 0]; }, 60, 0, gc, K.hwG, C.blue, al, false, H(id, n, 22));
+      }
+      // ── 中ほどの黄色い楕円 (まわりに震えの短い線) ──
+      const Rp = [S.x + cd[0] * 0.30 * sp + cn[0] * (H(id, n, 23) - 0.5) * 0.06, S.y + cd[1] * 0.30 * sp + cn[1] * (H(id, n, 23) - 0.5) * 0.06, 0];
+      const rA = 0.075 * sz, rB = 0.045 * sz;
+      const sR = this._popAt(x, 0.38, 0.80, 0.04, K.pop) * (1 + 0.15 * K.kick);
+      if(sR > 0.001){
+        K.pushEllipse(Rp[0], Rp[1], rA * sR, rB * sR, dir + Math.PI / 2, C.relay, C.ink, H(id, n, 24));
+        for(let k = 0; k < 9; k++){   // 震え: ときどき消える短い放射の線
+          if(H(id * 64 + 60 + k, n + Math.floor(t * 3), 1) < 0.35) continue;
+          const a = k / 9 * Math.PI * 2 + H(id, n, 25), ux = Math.cos(a), uy = Math.sin(a);
+          const e = (m)=>{ const qa = rA * m * sR, qb = rB * m * sR, w2 = rot([ux * qa, uy * qb], dir + Math.PI / 2); return [Rp[0] + w2[0], Rp[1] + w2[1], 0]; };
+          K.line3(K.lines, e(1.18), e(1.42 + 0.15 * H(id * 64 + 60 + k, n, 2)), K.hwG * 0.9, al, C.ink, H(id * 64 + 60 + k, n, 3));
+        }
+      }
+      // 口から黄色い楕円への青い線の束
+      for(let k = 0; k < 6; k++){
+        const u = (k + 0.5) / 6 - 0.5, b = [Rp[0] + cn[0] * u * rA * 1.4, Rp[1] + cn[1] * u * rA * 1.4];
+        const c1 = [(S.x + b[0]) / 2 + cn[0] * u * 0.04, (S.y + b[1]) / 2 + cn[1] * u * 0.04];
+        const f = (v)=>[(1 - v) * (1 - v) * S.x + 2 * (1 - v) * v * c1[0] + v * v * b[0], (1 - v) * (1 - v) * S.y + 2 * (1 - v) * v * c1[1] + v * v * b[1], 0];
+        const lf = K.life2(x - 0.29 - 0.01 * k, 0.09, 0.66 - 0.29, 0.86 - 0.29);
+        if(lf) K.pushPoly(K.arcs, f, 16, lf[0], lf[1], K.hwL, C.blue, al, false, H(id * 64 + 70 + k, n, 1));
+      }
+      // ── 扇 (黄色い楕円から遠くの円盤へ) ──
+      const nF = Math.round(32 * cK);
+      for(let j = 0; j < nF; j++){
+        const hj = (c)=>H(id * 256 + j, n, c);
+        const ph = ((nF > 1 ? j / (nF - 1) : 0.5) - 0.5) * 1.5 + (hj(1) - 0.5) * 0.08;
+        const dj = rot(cd, ph), Lj = (0.45 + 0.35 * hj(2)) * sp, dm = rot(cd, ph * 0.55);
+        const e0 = [Rp[0], Rp[1]], e1 = [Rp[0] + dj[0] * Lj, Rp[1] + dj[1] * Lj], c1 = [Rp[0] + dm[0] * Lj * 0.5, Rp[1] + dm[1] * Lj * 0.5];
+        const f = (v)=>[(1 - v) * (1 - v) * e0[0] + 2 * (1 - v) * v * c1[0] + v * v * e1[0], (1 - v) * (1 - v) * e0[1] + 2 * (1 - v) * v * c1[1] + v * v * e1[1], 0];
+        const st = 0.42 + 0.12 * hj(3);
+        const lf = K.life2(x - st, 0.14, 0.80 - st, 0.93 - st);
+        if(!lf) continue;
+        K.pushPoly(K.arcs, f, 22, lf[0], lf[1], K.hwL, C.blue, al, false, hj(4));
+        if(lf[1] >= 1 && lf[0] <= 0) K.pushArrow(K.arcs, f(1), f(0.97), K.hwL, C.blue, al, hj(5));
+        if(hj(6) >= dK) continue;
+        // 円盤: 線が vj まで届いたらふくらみ、流れに沿って少しずつ先へ飛ぶ。遠いほど大きい
+        const vj = 0.55 + 0.40 * hj(7), xp = st + 0.14 * vj;
+        const sc = this._popAt(x, xp, 0.84, 0.04, K.pop) * (1 + 0.15 * K.kick);
+        if(sc <= 0.001) continue;
+        const fly = 0.06 * sp * sm((x - xp) / 0.35);
+        const q0 = f(vj), q1 = f(Math.min(1, vj + 0.02)), tl = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) || 1, tg = [(q1[0] - q0[0]) / tl, (q1[1] - q0[1]) / tl];
+        const pc = [q0[0] + tg[0] * fly, q0[1] + tg[1] * fly, 0];
+        const rD = (0.012 + 0.06 * Math.pow(vj, 1.6)) * sz * (0.6 + 0.8 * hj(8)), ta = Math.atan2(tg[1], tg[0]);
+        K.pushEllipse(pc[0], pc[1], rD * sc, rD * 0.42 * sc, ta + Math.PI / 2, C.mint, C.ink, hj(9));
+        // 緑の尾 (円盤の上下の縁から先へ伸び、下へ曲がって矢印)
+        if(hj(10) < trK){
+          const gt = Math.min(c01((x - xp - 0.04) / 0.12), 1 - c01((x - 0.84) / 0.05));
+          for(const sg of [-1, 1]){
+            const nv = [-tg[1] * sg, tg[0] * sg], b0 = [pc[0] + nv[0] * rD * 0.9 * sc, pc[1] + nv[1] * rD * 0.9 * sc];
+            const L = 0.10 * sp, bend = rot(tg, -0.7);
+            const b1 = [b0[0] + tg[0] * L * 0.6, b0[1] + tg[1] * L * 0.6], b2 = [b1[0] + bend[0] * L * 0.6, b1[1] + bend[1] * L * 0.6];
+            const ft = (v)=>[(1 - v) * (1 - v) * b0[0] + 2 * (1 - v) * v * b1[0] + v * v * b2[0], (1 - v) * (1 - v) * b0[1] + 2 * (1 - v) * v * b1[1] + v * v * b2[1], 0];
+            if(gt > 0) K.pushPoly(K.lines, ft, 14, 0, gt, K.hwG, C.green, al, false, hj(11 + sg));
+            if(gt >= 1) K.pushArrow(K.lines, ft(1), ft(0.94), K.hwG, C.green, al, hj(14 + sg));
+          }
+        }
+      }
+    }
+  },
+
   render(opts){
     const gl = this.gl;
     if(!this.initialized || !this.ok || !opts.fbo) return;
@@ -1094,7 +1279,7 @@ void main(){
     const H = (id, n, c)=>this._hash(id, n, c);
     const arcsK = pk('arcs');
 
-    // ── 扇 / 群れの輪 / 積層 (描く道具と、その図のパラメータを渡す) ──
+    // ── 扇 / 群れの輪 / 積層 / 筒と網 (描く道具と、その図のパラメータを渡す) ──
     if(this.draw){
       const K = {
         t, aspect, sizeK, kick, C, H, P3, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs, netNodes, rn, riseK,
@@ -1310,7 +1495,7 @@ void main(){
 };
 Rhizome.PDefaults = JSON.parse(JSON.stringify(Rhizome.P));
 
-// 別の図 (扇 / 群れの輪 / 積層) は同じエンジンの別の実体にして、それぞれ独立した mode (kind) にする。
+// 別の図 (扇 / 群れの輪 / 積層 / 筒と網) は同じエンジンの別の実体にして、それぞれ独立した mode (kind) にする。
 // 描き方は Rhizome と共通で、パラメータ・GL の資源・記憶は実体ごとに持つ (Slot A と B で別の図を同時に出せる)。
 // own = その図だけのパラメータ (既定値)、ownSpecs = その UI。共通のパラメータは Rhizome の既定値から写す
 Rhizome._variant = function(draw, own, ownSpecs, useNet){
@@ -1349,4 +1534,12 @@ const RhizomeStack = Rhizome._variant('_stack', {nodes:90, columns:3, layers:18,
   ['Axes',    'axes',    0,  100, 1, 'pct'],   // 網の楕円を青い縦の両矢印が貫く割合 (%)
   ['Arrows',  'arrows',  0,  300, 1, 'pct'],   // 網の楕円から伸びる矢印の付いた線の量 (%)
 ], true);
-const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rzstack:RhizomeStack };
+const RhizomeTube = Rhizome._variant('_tube', {launches:2, cluster:10, curves:100, discs:70, rings:9, trails:35}, [
+  ['Launches', 'launches', 1, 4,   1, 'int'],   // 同時に出る「網 → 筒 → 扇」の枠の数
+  ['Cluster',  'cluster',  4, 20,  1, 'int'],   // 網の楕円の数
+  ['Curves',   'curves',   0, 300, 1, 'pct'],   // 扇の青い線の数 (%)
+  ['Discs',    'discs',    0, 100, 1, 'pct'],   // 扇の線に円盤が付く割合 (%)
+  ['Rings',    'rings',    0, 20,  1, 'int'],   // 曲がる筒の輪の数
+  ['Trails',   'trails',   0, 100, 1, 'pct'],   // 円盤が緑の尾を引く割合 (%)
+]);
+const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rzstack:RhizomeStack, rztube:RhizomeTube };

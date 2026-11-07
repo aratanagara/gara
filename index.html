@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794048369">
+<link rel="stylesheet" href="style.css?v=1794048637">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -804,6 +804,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div id="rzstackParams" style="margin-top:6px"></div>
         </div>
 
+        <div class="section rztube-mode" style="display:none">
+          <h3>Rhizome 筒と網 <span class="pill section-tag">tube / instanced</span> <span class="default-actions"><button class="resetDefBtn" data-kind="rztube" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="rztube" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">左に黄緑の楕円の網 (黒い線と矢印、先が Y に開く緑の線)。網の前の端の楕円が輪の重なる筒の口になり、中のバネから青い線の束が出て、黄色い楕円を通って扇形に広がり、遠くの円盤へ届く。円盤は遠いほど大きく、いくつかは緑の尾を引いて飛ぶ。</div>
+          <div id="rztubeParams" style="margin-top:6px"></div>
+        </div>
+
         <div class="section surrealfloat-mode" style="display:none">
           <h3>Surreal Float <span class="pill section-tag">浮遊する構造物 / instanced</span> <span class="default-actions"><button class="saveDefBtn" data-kind="surrealfloat" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="surrealfloat" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="surrealfloat" title="パラメータをランダムに変える (色は変えない)">Random 🎲</button></span></h3>
           <div class="help" style="font-size:10px;margin-top:4px">白い砂漠の上空を、マグリット風の構造物 (板・管・石膏球・輪・小窓・白い布) とイヴ・タンギー風の不定形が、それぞれの速さと向きで近づいたり遠ざかったりする。Depth=行き交う速さ、Pan=カメラの横回転、Morph=部品の組み替え。シェーダ版 (Surreal Float) をジオメトリで描き直した軽量版。</div>
@@ -1455,42 +1461,42 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794048369"></script>
-<script src="mode/layer.js?v=1794048369"></script>
-<script src="vendor/iro.min.js?v=1794048369"></script>
-<script src="vendor/mediabunny.min.js?v=1794048369"></script>
-<script src="mode/textdeform.js?v=1794048369"></script>
-<script src="mode/textdeform-comp.js?v=1794048369"></script>
-<script src="mode/ugomeki.js?v=1794048369"></script>
-<script src="mode/slicer.js?v=1794048369"></script>
-<script src="mode/video.js?v=1794048369"></script>
-<script src="mode/aratanagara.js?v=1794048369"></script>
-<script src="vendor/p5.min.js?v=1794048369"></script>
-<script src="mode/cyberui.js?v=1794048369"></script>
-<script src="mode/novel.js?v=1794048369"></script>
-<script src="shaders/inkelly.js?v=1794048369"></script>
-<script src="sketchfx.js?v=1794048369"></script>
-<script src="pixelsortfx.js?v=1794048369"></script>
-<script src="shaders/boltzmann.js?v=1794048369"></script>
-<script src="mode/pen.js?v=1794048369"></script>
-<script src="shaders/caverns.js?v=1794048369"></script>
-<script src="mode/shelf.js?v=1794048369"></script>
-<script src="shaders/ribbon.js?v=1794048369"></script>
-<script src="mode/photoplane.js?v=1794048369"></script>
-<script src="mode/shredder.js?v=1794048369"></script>
-<script src="mode/transflock.js?v=1794048369"></script>
-<script src="mode/liquidpeel.js?v=1794048369"></script>
-<script src="mode/windflock.js?v=1794048369"></script>
-<script src="mode/rhizome.js?v=1794048369"></script>
-<script src="mode/surrealfloat.js?v=1794048369"></script>
-<script src="mode/tower4149.js?v=1794048369"></script>
-<script src="mode/fude.js?v=1794048369"></script>
-<script src="mode/image.js?v=1794048369"></script>
-<script src="mode/spacetype.js?v=1794048369"></script>
-<script src="pollockfx.js?v=1794048369"></script>
-<script src="overlay.js?v=1794048369"></script>
-<script src="gif.js?v=1794048369"></script>
-  <script src="app.js?v=1794048369"></script>
-<script src="camroll.js?v=1794048369" defer></script>
+<script src="presets.js?v=1794048637"></script>
+<script src="mode/layer.js?v=1794048637"></script>
+<script src="vendor/iro.min.js?v=1794048637"></script>
+<script src="vendor/mediabunny.min.js?v=1794048637"></script>
+<script src="mode/textdeform.js?v=1794048637"></script>
+<script src="mode/textdeform-comp.js?v=1794048637"></script>
+<script src="mode/ugomeki.js?v=1794048637"></script>
+<script src="mode/slicer.js?v=1794048637"></script>
+<script src="mode/video.js?v=1794048637"></script>
+<script src="mode/aratanagara.js?v=1794048637"></script>
+<script src="vendor/p5.min.js?v=1794048637"></script>
+<script src="mode/cyberui.js?v=1794048637"></script>
+<script src="mode/novel.js?v=1794048637"></script>
+<script src="shaders/inkelly.js?v=1794048637"></script>
+<script src="sketchfx.js?v=1794048637"></script>
+<script src="pixelsortfx.js?v=1794048637"></script>
+<script src="shaders/boltzmann.js?v=1794048637"></script>
+<script src="mode/pen.js?v=1794048637"></script>
+<script src="shaders/caverns.js?v=1794048637"></script>
+<script src="mode/shelf.js?v=1794048637"></script>
+<script src="shaders/ribbon.js?v=1794048637"></script>
+<script src="mode/photoplane.js?v=1794048637"></script>
+<script src="mode/shredder.js?v=1794048637"></script>
+<script src="mode/transflock.js?v=1794048637"></script>
+<script src="mode/liquidpeel.js?v=1794048637"></script>
+<script src="mode/windflock.js?v=1794048637"></script>
+<script src="mode/rhizome.js?v=1794048637"></script>
+<script src="mode/surrealfloat.js?v=1794048637"></script>
+<script src="mode/tower4149.js?v=1794048637"></script>
+<script src="mode/fude.js?v=1794048637"></script>
+<script src="mode/image.js?v=1794048637"></script>
+<script src="mode/spacetype.js?v=1794048637"></script>
+<script src="pollockfx.js?v=1794048637"></script>
+<script src="overlay.js?v=1794048637"></script>
+<script src="gif.js?v=1794048637"></script>
+  <script src="app.js?v=1794048637"></script>
+<script src="camroll.js?v=1794048637" defer></script>
 </body>
 </html>

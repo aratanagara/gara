@@ -8475,7 +8475,7 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
-    if(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]){   // RHIZOME 系 (rhizome / rzfan / rzpacks / rzstack)
+    if(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]){   // RHIZOME 系 (rhizome / rzfan / rzpacks / rzstack / rztube)
       const RZ = RhizomeKinds[slot.kind];
       if(!RZ.initialized) RZ.init(this.gl);
       RZ.update();
@@ -11530,8 +11530,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','surrealfloat','tower4149','fude'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','surrealfloat','tower4149','fude'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -12706,6 +12706,7 @@ const App = {
     PRESETS.push({ name:'★ RHIZOME 扇 (逃走線)', kind:'rzfan', ch:[], src:'' });
     PRESETS.push({ name:'★ RHIZOME 群れの輪', kind:'rzpacks', ch:[], src:'' });
     PRESETS.push({ name:'★ RHIZOME 積層', kind:'rzstack', ch:[], src:'' });
+    PRESETS.push({ name:'★ RHIZOME 筒と網', kind:'rztube', ch:[], src:'' });
     LOAD('Loading settings…', 28);
     // サーバー共通の既定値 (defaults.json) を localStorage より先に適用
     await this.applyServerDefaults();
@@ -14183,7 +14184,7 @@ ${outBlock}
       case 'transflock': return (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null;
       case 'liquidpeel': return (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null;
       case 'windflock': return (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null;
-      case 'rhizome': case 'rzfan': case 'rzpacks': case 'rzstack':
+      case 'rhizome': case 'rzfan': case 'rzpacks': case 'rzstack': case 'rztube':
         return (typeof RhizomeKinds !== 'undefined' && RhizomeKinds[kind]) ? RhizomeKinds[kind].P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
       case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
@@ -14727,6 +14728,7 @@ ${outBlock}
 	      rzfan: (typeof RhizomeFan !== 'undefined' && RhizomeFan.P) ? RhizomeFan.P : null,
 	      rzpacks: (typeof RhizomePacks !== 'undefined' && RhizomePacks.P) ? RhizomePacks.P : null,
 	      rzstack: (typeof RhizomeStack !== 'undefined' && RhizomeStack.P) ? RhizomeStack.P : null,
+	      rztube: (typeof RhizomeTube !== 'undefined' && RhizomeTube.P) ? RhizomeTube.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
@@ -15495,7 +15497,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','surrealfloat','tower4149','fude'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -15966,7 +15968,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','surrealfloat','tower4149','fude'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -18475,7 +18477,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','surrealfloat','tower4149','fude'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -18573,6 +18575,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'rzfan') ? 'RHIZOME\n扇'
                      : (p.kind === 'rzpacks') ? 'RHIZOME\n群れの輪'
                      : (p.kind === 'rzstack') ? 'RHIZOME\n積層'
+                     : (p.kind === 'rztube') ? 'RHIZOME\n筒と網'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
                      : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
@@ -18943,7 +18946,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isWF = slot.kind === 'windflock';
     $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
     if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
-    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rzstack']){   // RHIZOME 系は kind ごとに別の見出しとパラメータ
+    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rzstack', 'rztube']){   // RHIZOME 系は kind ごとに別の見出しとパラメータ
       const on = slot.kind === k;
       $$('.' + k + '-mode').forEach(el => el.style.display = on ? '' : 'none');
       if(on && this.refreshRhizomeParams) this.refreshRhizomeParams(k);
