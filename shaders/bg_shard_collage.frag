@@ -19,7 +19,8 @@
 //   地色 (uGround = 4): 世代ごとに選んだ色へ、再生成の間隔いっぱいをかけてなめらかに移り、
 //   ちょうど切り替えの瞬間に次の色へ着く。再生成が無ければ 16 秒ごとに巡る。急には変わらない。
 //   世代ごとの揺らぎ (uVary): 大きさ・密度・隙間の幅・動きの量が世代ごとに変わり、
-//   大きさはその間も呼吸し、約 16 秒周期で 0.5 倍〜1.9 倍ほど大きく寄ったり引いたりする。uGround = 4 で地色も世代ごとに選び直す。
+//   大きさはその間も呼吸し、約 16 秒周期で寄ったり引いたりする。寄る量は uZoomIn、引く量は uZoomOut で、
+//   世代ごとの大きさの揺らぎにも同じく効く (既定の呼吸は約 0.8 倍〜1.9 倍)。uGround = 4 で地色も世代ごとに選び直す。
 //   参照したのは Juan Rodríguez García (@_juanrg92) の 2026-10-21 の
 //   p5.js 作品の雰囲気。配置と柄はシードから手続き生成していて、トレースではない。
 //   bgZoom / bgCamPx でズームとパン。
@@ -31,6 +32,8 @@
 // @param uMorph   0..200  = 100.0
 // @param uRegen   0..32   = 8.0
 // @param uVary    0..200  = 100.0
+// @param uZoomIn  0..200  = 100.0
+// @param uZoomOut 0..200  = 35.0
 // @param uAlign   0..100  = 85.0
 // @param uCluster 0..100  = 70.0
 // @param uDensity 20..100 = 78.0
@@ -46,6 +49,8 @@ uniform float uTurn;    // 回転の量 (%)。0 で向きが止まる
 uniform float uMorph;   // 伸び縮み・角のずれ・剪断の揺れの量 (%)。0 で形が止まる
 uniform float uRegen;   // 配置を作り直す間隔 (拍。拍が無ければ秒)。0 で固定
 uniform float uVary;    // 世代ごとに大きさ・密度・隙間・動きが変わる量 (%)。0 でスライダーの値のまま
+uniform float uZoomIn;  // 寄る量 (%)。大きさの呼吸 (100 で約 1.9 倍まで) と、世代ごとに大きくなる量
+uniform float uZoomOut; // 引く量 (%)。大きさの呼吸 (100 で約 0.5 倍まで、35 で約 0.8 倍まで) と、世代ごとに小さくなる量
 uniform float uAlign;   // 傾きを世代ごとの主方向 (と副方向) にそろえる強さ (%)。0 でばらばら
 uniform float uCluster; // 密集の偏り (%)。焦点の近くほど密に大きく、離れるほど抜ける。0 で一様
 uniform float uDensity; // 升ごとに破片が置かれる割合 (%)
@@ -523,10 +528,14 @@ void sc_gen(float seedG, float T, float vary, float scl0, float dens0,
   float g6 = sc_h1(seedG * 7.7 + 7.0);
   float g7 = sc_h1(seedG * 7.7 + 8.0);
   float g8 = sc_h1(seedG * 7.7 + 9.0);
-  scl = scl0 * mix(1.0, mix(0.65, 1.55, g0), vary);
-  // 呼吸: 大きく寄って引く。uSpeed 60 で約 16 秒周期の波に約 7 秒周期の波を重ね、
-  // 指数で掛けて寄りと引きを対称にする (約 0.5 倍〜1.9 倍)
-  scl *= exp(vary * (0.50 * sin(T * 0.65 + g0 * TAU) + 0.15 * sin(T * 1.57 + g1 * TAU)));
+  // 世代ごとの大きさ。小さくなる側は uZoomOut、大きくなる側は uZoomIn で縮める (100 でそのまま。uVary 200 だと 0.3〜2.1 倍)
+  float gs = max(mix(1.0, mix(0.65, 1.55, g0), vary), 0.05);
+  scl = scl0 * pow(gs, (gs < 1.0 ? max(uZoomOut, 0.0) : max(uZoomIn, 0.0)) * 0.01);
+  // 呼吸: 寄って引く。uSpeed 60 で約 16 秒周期の波に約 7 秒周期の波を重ね、指数で掛ける。
+  // 寄る側 (波が正) は uZoomIn、引く側 (波が負) は uZoomOut で量を変える (0 付近はなめらかにつなぐ)
+  float bw = 0.50 * sin(T * 0.65 + g0 * TAU) + 0.15 * sin(T * 1.57 + g1 * TAU);
+  float bk = mix(max(uZoomOut, 0.0), max(uZoomIn, 0.0), smoothstep(-0.15, 0.15, bw)) * 0.01;
+  scl *= exp(vary * bw * bk);
   dens = mix(dens0, mix(0.55, 1.0, g1), vary);
   gapK = mix(1.0, mix(0.4, 2.2, g2), vary);
   moveK = mix(1.0, mix(0.5, 1.6, g3), vary);
