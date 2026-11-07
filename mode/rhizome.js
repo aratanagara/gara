@@ -354,15 +354,23 @@ void main(){
     float inside = 1.0 - smoothstep(1.0 - pw, 1.0 + pw, ax);
     if(inside <= 0.0){ o = vec4(0.0); return; }
     // 濃さ: 下側の縁寄りがいちばん濃く、上側の縁沿いも濃い。中ほどは淡い。帯に沿ってゆっくりむらになる
-    float dens = 0.20 + 0.55 * smoothstep(0.15, 1.0, -x) + 0.32 * smoothstep(0.55, 1.0, x) + 0.16 * (vn(vec2(p.x / 170.0, sd * 5.0 + x * 1.5)) - 0.5);
-    dens = max(dens, 0.95 * smoothstep(1.0 - 3.5 * pw, 1.0 - 1.0 * pw, ax));
-    // 色鉛筆の粒: 帯に沿ったごく短い筆致と細かい粒と紙の目。濃いほど粒が埋まる
-    float st1 = vn(vec2(dot(p, vec2(0.97, 0.24)) / 4.0, dot(p, vec2(-0.24, 0.97)) / 1.3 + sd * 30.0));
-    float st2 = vn(p * 0.8 + 17.0);
-    float gr = clamp((0.35 * st1 + 0.45 * st2 + 0.20 * tooth - 0.5) * 2.2 + 0.5, 0.0, 1.0);
-    float cov = smoothstep(0.80 - dens, 1.20 - dens, gr);
-    a = cov * (0.55 + 0.40 * dens) * inside;
-    col = mix(min(vC.rgb * 1.55, vec3(1.0)), vC.rgb * 0.70, smoothstep(0.15, 0.95, dens));
+    float dens = 0.30 + 0.50 * smoothstep(0.15, 1.0, -x) + 0.30 * smoothstep(0.55, 1.0, x) + 0.16 * (vn(vec2(p.x / 170.0, sd * 5.0 + x * 1.5)) - 0.5);
+    // 縁のなぞり線 (ところどころかすれて途切れる)
+    float rim = smoothstep(1.0 - 3.5 * pw, 1.0 - 1.0 * pw, ax) * smoothstep(0.25, 0.6, vn(vec2(p.x / 9.0, sign(x) * 7.0 + sd * 3.0)));
+    dens = max(dens, 0.95 * rim);
+    // 筆致: 帯に対して 25° と -10° の 2 方向に伸びた粒の流れを重ねる (線の並びは不揃い)
+    float s1 = vn(vec2(dot(p, vec2(0.906, 0.423)) / 8.0, dot(p, vec2(-0.423, 0.906)) / 1.3 + sd * 21.0));
+    float s2 = vn(vec2(dot(p, vec2(0.985, -0.174)) / 11.0, dot(p, vec2(0.174, 0.985)) / 1.5 + 9.0));
+    float strokes = smoothstep(0.35, 0.85, max(s1, 0.9 * s2));
+    float D = clamp(dens * (0.70 + 0.55 * strokes), 0.0, 1.0);
+    // 粉っぽさ: 顔料の粒が紙の目の山に引っかかる。粒は柔らかく、濃い所でも白く抜ける
+    float nP = vn(p * 0.75 + sd * 13.0) * 0.55 + vn(p * 1.6 + 41.0) * 0.30 + tooth * 0.15;
+    float c = smoothstep(1.0 - 1.1 * D - 0.12, 1.0 - 1.1 * D + 0.12, nP);
+    c *= 1.0 - 0.45 * smoothstep(0.62, 0.86, vn(p * 1.9 + 77.0));   // 濃い所にも残る紙の白い点
+    // 粒ごとに色が違う (明るい黄緑〜濃い緑)。重なって濃い所ほど暗い粒が増える
+    float tone = clamp(0.15 + 0.70 * D + 0.80 * (vn(p * 0.8 + 57.0) - 0.5), 0.0, 1.0);
+    col = mix(min(vC.rgb * vec3(1.75, 1.45, 1.6) + vec3(0.05, 0.03, 0.0), vec3(1.0)), vC.rgb * 0.72, tone);
+    a = c * (0.68 + 0.24 * D) * inside;
   }
   a *= vB.w;
   o = vec4(col * a, a);
