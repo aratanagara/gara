@@ -24,12 +24,14 @@ float pf_plane(vec3 p, vec3 n){ return dot(p, normalize(n)); }
 // @param uAngle  -180..180 = 0.0
 // @param uGlow   0..300  = 100.0
 // @param uSphere 0..200  = 100.0
+// @param uSteps  32..64 = 64.0
 uniform float uDetail;   // 入れ子にする折り紙の数 (下げると軽く、構造が単純になる)
 uniform float uScale;    // 物体全体の大きさ (%)
 uniform float uAngle;    // フラクタル全体の向き (度)
 uniform float uFolds;    // 折り目の深さ (%) (0 = 折りなしの平面)
 uniform float uGlow;     // 発光スフィアの光り方 (%)
 uniform float uSphere;   // 発光スフィアの大きさ (%)
+uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
 
 float pf_cut_ps(vec3 p, float s){
   p *= s;
@@ -92,6 +94,7 @@ vec3 bg_paperfractal(vec2 fc){
   float shad = 0.0;
   bool hit = false;
   for(float i=0.0; i<64.0; i++){
+    if(i >= floor(uSteps + 0.5)) break;
     float d = pf_SDF(p);
     if(d < 0.001){ hit = true; shad = i/64.0; break; }
     d *= 0.8 + dither*0.1;

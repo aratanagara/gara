@@ -40,11 +40,13 @@ float hc_fbm(vec3 p, float lac){
 // @param uThick 25..400  = 100.0
 // @param uGlow  0..250   = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 10..22 = 22.0
 uniform float uCover;     // 雲の量 (%)
 uniform float uGrid;      // 床グリッドの細かさ (%)
 uniform float uThick;     // 床グリッド線の太さ (%)
 uniform float uGlow;      // 床グリッド線の明るさ (%)
 uniform float uAngle; // 床グリッドの向き (度。固定角でずらす)
+uniform float uSteps; // 雲の積算ステップ数 (下げると軽く、雲が薄く粗くなる)
 
 float hc_density(vec3 pos, vec3 offset){
   vec3 p = pos*0.0212242 + offset;
@@ -69,11 +71,13 @@ vec4 hc_clouds(vec3 ro, vec3 rd){
   vec3 pos = ro + rd*t0;
 
   vec3 wind = vec3(0.0, 0.0, -time*0.2);
-  float march = HC_THICKNESS / float(HC_STEPS);
+  int hcN = int(uSteps + 0.5);
+  float march = HC_THICKNESS / float(hcN);
   vec3 dir_step = rd / rd.y * march;
   float T = 1.0; vec3 C = vec3(0.0); float alpha = 0.0;
   for(int i=0;i<HC_STEPS;i++){
-    float h = float(i) / float(HC_STEPS);
+    if(i >= hcN) break;
+    float h = float(i) / float(hcN);
     float dens = hc_density(pos, wind);
     float Ti = exp(-HC_ABSORPTION * dens * march);
     T *= Ti; if(T < 0.01) break;

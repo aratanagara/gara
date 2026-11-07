@@ -17,12 +17,14 @@ float lm_h(vec3 p){
 // @param uChrome 10..300 = 100.0
 // @param uGlow 0..400 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 40..100 = 100.0
 uniform float uDetail;   // 波の重ね回数 (下げると面がなめらかで軽い)
 uniform float uRelief;   // 山の起伏の高さ (%)
 uniform float uDensity;   // 波の細かさ (%)
 uniform float uChrome;   // クローム化する暗部の範囲 (%)
 uniform float uGlow;   // 鏡面の筋・太陽のハイライトの強さ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
 
 float lm_SDF(vec3 p){
   p /= 1.5;
@@ -121,6 +123,7 @@ vec3 bg_liqmount(vec2 fc){
   vec3 p;
   bool hit = false;
   for(int i=0; i<100; i++){
+    if(i >= int(uSteps + 0.5)) break;
     p = ro + rd*t;
     float d = lm_SDF(p)/4.0;
     if(d < 0.0001){ hit = true; break; }

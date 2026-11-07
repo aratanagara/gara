@@ -36,6 +36,7 @@ struct ec_Model { float d; vec3 p; vec2 uv; vec2 cell; float wedges; float slice
 // @param uAngle -180..180 = 0.0
 // @param uTilt -45..90 = 0.0
 // @param uScale 50..120 = 100.0
+// @param uSteps 40..60 = 60.0
 uniform float uSize;     // 花びらの大きさ (%。上げすぎると球の外で欠ける)
 uniform float uThick;     // 花びらの厚み (%)
 uniform float uFrost;     // 磨りガラスの乳白色の濃さ (%)
@@ -43,6 +44,7 @@ uniform float uTrail;     // 残像の残り具合 (%。前フレームを残す
 uniform float uAngle; // 花の向き = ロール (度。固定角でずらす)
 uniform float uTilt; // 花の傾き (度。固定角)
 uniform float uScale; // 花全体の大きさ (%。カメラは動かない)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は背景扱いで縁が欠ける)
 
 ec_Model ec_leaf(vec3 p, vec3 cellData){
   vec2 cell = cellData.xy;
@@ -245,7 +247,7 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
   bool bg = false;
   ec_lightingPass = false;
   // メイン 60 段 / 輪郭 20 段。輪郭は粗ステップで打ち切り。
-  int maxIter = (full > 0.5) ? 60 : 20;
+  int maxIter = (full > 0.5) ? int(uSteps + 0.5) : 20;
   float stepK = (full > 0.5) ? 0.85 : 1.20;
   for(int i=0; i<60; i++){
     if(i >= maxIter) break;

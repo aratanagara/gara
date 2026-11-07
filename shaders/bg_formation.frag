@@ -38,12 +38,14 @@ float fm_planeDistance(vec3 position){
 // @param uGlow    0..200 = 100.0
 // @param uSize 40..130 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 35..90 = 90.0
 uniform float uSpacing; // 飛行機の配置間隔 (%)
 uniform float uWarp; // 空間のうねり (%)
 uniform float uMotion; // 機体の傾きの振幅 (%)
 uniform float uGlow; // 機体の照り・明るさ (%)
 uniform float uSize; // 要素ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 float fm_d(vec3 position){
   vec3 warped = position + sin(position.x*2.0 + time*2.3) * 0.1 * (uWarp / 100.0);
@@ -60,6 +62,7 @@ vec4 fm_march(vec3 from, vec3 towards, float prec){
   vec3 lastPos = from;
   float lastDist = 0.0;
   for(int i=0; i<90; i++){
+    if(i >= int(uSteps + 0.5)) break;
     vec3 sp = lastPos + max(lastDist*0.4, prec)*towards;
     float cDist = fm_d(sp);
     lastPos = sp; lastDist = cDist;

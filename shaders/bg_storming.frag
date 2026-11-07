@@ -31,6 +31,7 @@ vec3  st_look(vec3 eye, vec3 target, vec2 anchor, float fov){
 // @param uWarp   0..250   = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uScale 50..200 = 100.0
+// @param uSteps 16..30 = 30.0
 uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、構造が単純になる)
 uniform float uSpread;    // 折り畳みの広がり (%)
 uniform float uSize;     // 球塊の大きさ (%)
@@ -38,6 +39,7 @@ uniform float uSoft;      // 球塊どうしの融合の柔らかさ (%)
 uniform float uWarp;      // 構造のうねり (ドメインワープ) の強さ (%)
 uniform float uAngle; // 折り畳みごとの向き (度。固定角でずらす)
 uniform float uScale; // 物体全体の大きさ (%。画面・カメラは動かない)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠方が欠ける)
 
 float st_geometry0(vec3 pos, float tm){
   // 流れるドメインワープ: 折り畳み前に pos を正弦場でうねらせる(有機的な歪み)
@@ -67,11 +69,14 @@ float st_raymarch(vec3 eye, vec3 ray, float tm, out float total){
   float dither = st_random(ray.xy + fract(time));
   total = 0.0;
   const int count = 30;
-  for(int index=count; index>0; --index){
+  int cnt = int(uSteps + 0.5);
+  for(int k=0; k<count; k++){
+    if(k >= cnt) break;
+    int index = cnt - k;
     float dist = st_geometry(eye + ray*total, tm);
     dist *= 0.9 + 0.1*dither;                 // 原典どおり(微細な粒揺らぎ)
     total += dist;
-    if(dist < 0.001*total) return float(index)/float(count);
+    if(dist < 0.001*total) return float(index)/float(cnt);
   }
   return 0.0;
 }

@@ -38,12 +38,14 @@ float bn_k3d(vec3 sp, vec3 d, vec3 dm, float s, vec3 r){
 // @param uGlow   60..300 = 100.0
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 28..45 = 45.0
 uniform float uSpread; // 構造の広がり (%)
 uniform float uThick; // 棒の太さ (%)
 uniform float uTwist; // ねじれの強さ (%)
 uniform float uGlow; // 明るさ (%)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 vec2 bn_map(vec3 sp){
   float sc = uScale / 100.0;
@@ -59,6 +61,7 @@ vec3 bn_mrch(vec3 ro, vec3 rd){
   float id = 0.0;
   float it = 0.0;
   for(int i=0;i<BN_ITR;i++){
+    if(i >= int(uSteps + 0.5)) break;
     it = float(i);
     vec3 sp = ro + rd * d0;
     vec2 ds = bn_map(sp);

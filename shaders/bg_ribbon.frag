@@ -6,13 +6,13 @@
 //   iTime,iResolution → time,resolution / bgZoom・bgCamPx でズーム/パン。
 // =====================================================
 
-// @param uDetail 50..100 = 100.0
+// @param uSteps 50..100 = 100.0
 // @param uDensity 25..400 = 100.0
 // @param uGlow 20..250 = 100.0
 // @param uSat 0..300 = 100.0
 // @param uSoft 10..300 = 100.0
 // @param uAngle -180..180 = 0.0
-uniform float uDetail;   // レイマーチの反復回数 (下げると軽く、リボンが薄くなる)
+uniform float uSteps;   // レイマーチの反復回数 (下げると軽く、リボンが薄くなる)
 uniform float uDensity;   // リボンの模様の密度 (%)
 uniform float uGlow;   // 発光の強さ (%)
 uniform float uSat;   // 色の彩度 (%)
@@ -30,7 +30,7 @@ vec3 bg_ribbon(vec2 fc){
 
   vec4 o = vec4(0.0);
   for(o *= i; i++ < 100.0; p = 1.5*vec3(uv*d*(uDensity / 100.0), d + t)){
-    if(i > uDetail) break;
+    if(i > uSteps) break;
     s = 5e-3 + abs(s)*0.07;
     d += s;
     o += (1.0 + sin(i*0.5 + 1.5*vec4(3, 1.5, 1, 0)))/s

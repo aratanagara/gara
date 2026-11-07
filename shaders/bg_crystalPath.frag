@@ -18,6 +18,7 @@ mat2 cpRot(float a){ return mat2(cos(a),-sin(a),sin(a),cos(a)); }
 // @param uDepth 50..300 = 100.0
 // @param uSize 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 30..40 = 40.0
 uniform float uThick;   // 壁厚 (メッシュの線の太さ) (%)
 uniform float uSpacing;   // オブジェクトのセル間隔 (%)
 uniform float uTwist;   // ねじれの強さ (%)
@@ -25,6 +26,7 @@ uniform float uGlow;   // 鏡面ハイライトの強さ (%)
 uniform float uDepth;   // 遠方フォグの距離 (%)
 uniform float uSize;   // 要素ひとつの大きさ (%。配置は変えない)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
 
 // メッシュ風: 中空のチューブ/リング構造にして粉状の点ではなく線/網に
 //   abs(p)+offset で 8 octant に放射配置、abs(faceDist - r) で壁厚のあるシェルに
@@ -100,6 +102,7 @@ void cp_march(vec3 ro, vec3 rd){
   // tint はほぼニュートラル (シルバー基調を維持)。反射のたびに僅かに青寄り
   vec3 tint = vec3(0.95, 0.96, 1.02);
   for(float i=0.0;i<40.0;i++){
+    if(i >= floor(uSteps + 0.5)) break;
     vec3 p = ro + rd*t;
     float d = cp_de(p, 1.0);
     cpIfsColor = cos(cpIfsColor/3.0);

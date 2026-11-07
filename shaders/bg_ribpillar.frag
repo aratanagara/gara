@@ -23,12 +23,14 @@ mat2 rp_r2(float a){ float s=sin(a), c=cos(a); return mat2(c,s,-s,c); }
 // @param uGlitch 0..300  = 100.0
 // @param uFog    0..200  = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 16..36 = 36.0
 uniform float uTwist;     // コースのねじれ (%)
 uniform float uWarp;      // 横縦の潰れ・伸びの強さ (%)
 uniform float uGlow;      // 光源 (orb) の光の強さ (%)
 uniform float uGlitch;    // 画素ごとの時間ジッタ (モーションブラー風グリッチ) の量 (%)
 uniform float uFog;       // 奥の群青のかかり具合 (%)
 uniform float uAngle; // トンネルの向き = ロール (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、奥が粗くなる)
 
 float rp_map(vec3 p){
   vec3 q = RP_P(p.z);
@@ -71,7 +73,7 @@ vec3 bg_ribpillar(vec2 fc){
 
   rp_lights = 0.0;
   // 64 → 36 段に削減(軽量化)
-  for(; i++ < 36.0 && d < 2e3;){
+  for(; i++ < floor(uSteps + 0.5) && d < 2e3;){
     p = ro + D * d;
     d += s = max(rp_map(p) * .65, .001);
     o += 6.0*(uGlow / 100.0)*vec4(1,2,5,0)*rp_lights + 1.6/s;   // 白いエッジ光を増やす

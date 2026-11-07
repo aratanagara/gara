@@ -45,6 +45,7 @@ float sp_smin(float a, float b, float r){
 // @param uHole    0..150  = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uScale 50..150 = 100.0
+// @param uSteps 30..50 = 50.0
 uniform float uThick;     // チューブの太さ (%)
 uniform float uDisk;      // 円盤の厚み (%)
 uniform float uSpacing;   // 円盤の縦の間隔 (%)
@@ -52,6 +53,7 @@ uniform float uSpokes;    // チューブの本数 (内側。外側はその 2 �
 uniform float uHole;      // 円盤の中央の穴の大きさ (%)
 uniform float uAngle; // 全体の向き (度。固定角でずらす)
 uniform float uScale; // 魔法陣 (チューブと円盤) 全体の大きさ (%。床・天井は動かない)
+uniform float uSteps; // ボリュームレイマーチのステップ数 (下げると軽く、全体が暗くなる)
 
 float sp_tubes(vec3 pos){
   float cylinderRadius = .02 * (uThick / 100.0);
@@ -125,6 +127,7 @@ vec3 bg_spell(vec2 fc){
   vec3 pos = eye;
   float shade = 0.;
   for(float i=0.; i<=1.; i += SP_STEPS){
+    if(i > uSteps / 50.) break;
     float dist = sp_map(pos);
     if(dist < SP_VOLUME_BIAS) shade += SP_STEPS;
     if(shade >= 1.) break;

@@ -9,12 +9,12 @@
 // =====================================================
 
 // @param uDetail 4..10 = 10.0
-// @param uLayers 6..14 = 14.0
+// @param uSteps 6..14 = 14.0
 // @param uTile 60..200 = 100.0
 // @param uShield 25..400 = 100.0
 // @param uGlow 20..250 = 100.0
 uniform float uDetail;   // 模様を折り畳む反復回数 (下げると軽く、単純になる)
-uniform float uLayers;   // ネビュラの層の数 (下げると軽く、薄くなる)
+uniform float uSteps;   // ネビュラの層の数 (下げると軽く、薄くなる)
 uniform float uTile;   // ネビュラのタイルの大きさ (%)
 uniform float uShield;   // シールド模様の細かさ (%)
 uniform float uGlow;   // ネビュラの明るさ (%)
@@ -70,7 +70,7 @@ vec3 bg_juice(vec2 fc){
   float s = 0.1, fade = 1.0;
   vec3 v = vec3(0.0);
   for(int r=0; r<14; r++){
-    if(r >= int(uLayers + 0.5)) break;
+    if(r >= int(uSteps + 0.5)) break;
     vec3 p = from + s*dir*0.5;
     p = abs(vec3(0.85 * (uTile / 100.0)) - mod(p, vec3(1.7 * (uTile / 100.0))));     // tiling fold
     float pa, a = pa = 0.0;

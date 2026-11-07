@@ -38,6 +38,7 @@ vec3 mfEnv(vec3 d){
 // @param uContrast 50..200 = 100.0
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 55..96 = 96.0
 uniform float uDetail; // IFS の反復回数 (下げると軽く、形が粗くなる)
 uniform float uWarp; // 縮小率のゆらぎ (%)
 uniform float uDensity; // ゆらぎの細かさ (%)
@@ -45,6 +46,7 @@ uniform float uThick; // 線の太さ (%)
 uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 float mfGetDist(vec3 p, float tm){
   float sc = uScale / 100.0;
@@ -74,6 +76,7 @@ float mfGetDist(vec3 p, float tm){
 float mfRayMarch(vec3 ro, vec3 rd, float tm){
   float dO = 0.0;
   for(int i=0;i<MF_MAX_STEPS;i++){
+    if(i >= int(uSteps + 0.5)) break;
     vec3 p = ro + rd*dO;
     float dS = mfGetDist(p, tm);
     dO += dS;

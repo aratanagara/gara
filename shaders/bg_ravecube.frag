@@ -58,6 +58,7 @@ float wr_nsdf = 0.;
 // @param uSize 60..150 = 100.0
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 70..110 = 110.0
 uniform float uDetail; // ボックス分割の回数 (下げると軽く、形が大きくなる)
 uniform float uMotion; // ボックスの膨らみの振幅 (%)
 uniform float uWarp; // 4 次元のうねり (%)
@@ -65,6 +66,7 @@ uniform float uGlow; // ハイライト・縁の光 (%)
 uniform float uSize; // ボックスひとつの大きさ (%)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   float t = time;
@@ -177,11 +179,13 @@ vec3 bg_ravecube(vec2 fc){
   float dO = 0.;
   vec3 d = vec3(0);
   bool hit = false;
+  float nS = floor(uSteps + 0.5);
   for(float i = 0.; i < WR_STEPS; i++){
+    if(i >= nS) break;
     p = ro + rd*dO;
     d = wr_map(p);
     dO += d.x*0.99;
-    if(abs(d.x) < 0.0001 || i == WR_STEPS-1.){ hit = true; break; }
+    if(abs(d.x) < 0.0001 || i == nS - 1.){ hit = true; break; }
     if(d.x > WR_MDIST){ dO = WR_MDIST; break; }
   }
   if(hit){

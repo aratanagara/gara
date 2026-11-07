@@ -32,6 +32,7 @@ vec3 kk_tex3D(vec3 p, vec3 n){
 // @param uGlow   0..300 = 100.0
 // @param uSize 40..250 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 50..80 = 80.0
 uniform float uBeads; // 球のらせん 1 周あたりの球の数
 uniform float uThick; // らせんの管の太さ (%)
 uniform float uMotion; // らせんのうねりの振幅 (%)
@@ -39,6 +40,7 @@ uniform float uBump; // 表面の凹凸の強さ (%)
 uniform float uGlow; // ハイライト・縁の光 (%)
 uniform float uSize; // 球ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 
 float kk_sdHelix(vec3 p){
   float len = length(p.xy);
@@ -102,6 +104,7 @@ vec3 kk_calcNorm(vec3 p){
 float kk_rayMarch(vec3 ro, vec3 rd){
   float dt = 0.0;
   for(int i=0; i<80; i++){
+    if(i >= int(uSteps + 0.5)) break;
     vec3 p = ro + rd*dt;
     float d = kk_map(p);
     dt += d;

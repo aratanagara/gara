@@ -42,11 +42,13 @@ vec2 nit_minx(vec2 a, vec2 b){ return mix(b, a, step(a.x, b.x)); }
 // @param uDensity 25..400 = 100.0
 // @param uGlow    25..300 = 100.0
 // @param uFog     0..300  = 100.0
+// @param uSteps  28..52 = 52.0
 uniform float uThick;     // 雲の厚み (%) (大きいほど雲が太る)
 uniform float uWarp;      // 雲の縦方向のうねり (%)
 uniform float uDensity;   // 縞(段)の細かさ (%)
 uniform float uGlow;      // 全体の明るさ (%)
 uniform float uFog;       // 距離フォグの濃さ (%)
+uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
 
 // 距離場: 多オクターブ雲ノイズ - 厚み。距離の太陽(マテリアル 6)。
 vec2 nit_dist(vec3 p, vec3 camLookat){
@@ -93,6 +95,7 @@ vec3 bg_nitro(vec2 fc){
   float marchCount = 0.0;
   float minSurfaceDist = 1e6;
   for(int i = 0; i < 52; i++){
+    if(i >= int(uSteps + 0.5)) break;
     pos = camPos + rayVec*t;
     distAndMat = nit_dist(pos, camLookat);
     minSurfaceDist = min(minSurfaceDist, abs(distAndMat.x));

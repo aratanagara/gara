@@ -29,12 +29,14 @@ float gc_smin(float a, float b, float k){
 // @param uRim    0..200   = 100.0
 // @param uFog    0..400   = 100.0
 // @param uAngle  -180..180 = 0.0
+// @param uSteps  60..140 = 140.0
 uniform float uRelief;   // 筋繊維の起伏の強さ (%) (0 = 滑らかなトンネル)
 uniform float uWidth;    // トンネルの広さ (%)
 uniform float uRough;    // 鏡面のぼけ (%) (大きいと映り込みが滲む)
 uniform float uRim;      // フレネルの白縁の強さ (%)
 uniform float uAngle;    // カメラのロール角のオフセット (度)
 uniform float uFog;      // 奥へ向かう減衰の強さ (%)
+uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
 
 // 壁=クロム/シルバーの筋肉質トンネル: 壁/床/天井の角を smin で大きく丸めて連続化し、
 // 低～中周波の筋繊維束を形状の起伏として持たせる(法線が滑らか=鏡面でも粉らない)。
@@ -161,6 +163,7 @@ vec3 bg_ghost(vec2 fc){
   float d = 0.0, s = 1.0, i = 0.0, acc = 0.0;
   vec3 p = ro;
   for(; i++ < 140.0;){
+    if(i > floor(uSteps + 0.5)) break;
     p = ro + D*d;
     s = gc_map(p);
     acc += 1.0/max(s, 0.05);

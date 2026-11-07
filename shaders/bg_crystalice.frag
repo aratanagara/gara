@@ -24,12 +24,14 @@ float ci_smax(float a, float b, float k){
 // @param uDesat    0..250  = 100.0
 // @param uContrast 50..200 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uSteps 40..110 = 110.0
 uniform float uCell;      // 結晶格子の大きさ (%)
 uniform float uTunnel;    // トンネルの太さ (%)
 uniform float uTint;      // 浅葱色への寄せ具合 (%)
 uniform float uDesat;     // 彩度を落とす量 (%)
 uniform float uContrast;  // ガンマ (%。上げると暗部が沈む)
 uniform float uAngle; // カメラのロール (度。固定角でずらす)
+uniform float uSteps; // レイマーチのステップ数 (下げると軽く、奥の結晶が粗くなる)
 
 float ci_tunnel(vec3 p){
   return (sin(p.z*.1)*3. + 7.*(uTunnel/100.)) - length((p - CI_P(p.z)).xy);
@@ -67,7 +69,7 @@ vec3 bg_crystalice(vec2 u){
        D = normalize(vec3(CI_R(sin(p.z*.03)*.4 + radians(uAngle)) * uu, 1) * mat3(-X, cross(X, Z), Z));
 
   vec4 o = vec4(0);
-  for(; i++ < 110.;){
+  for(; i++ < floor(uSteps + 0.5);){
     p = ro + D*d;
     X = CI_P(p.z);
     l = max(min(CI_O(1., .1), min(CI_O(2., .2), CI_O(3., .3))), .01);
