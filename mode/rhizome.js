@@ -17,7 +17,8 @@
      Rise 0 で平らのまま (以前と同じ見た目)。
    - Style: 網 (図 1) は平らなときに縦の面・矢印・赤線・帯が出ず、立ち上がるときだけ現れる。
      面と流れ (図 2) / 両方 は菱形が主になり、それらが常に出る (平らなときの面は地面に寝ている)。
-     扇 / 群れの輪 / 樹と根 は網を使わない別の図 (_fan / _packs / _tree)。地面の倒れ (Rise / Cycle) と手描きの描き方は共通。
+   - 別の mode: 扇 (rzfan) / 群れの輪 (rzpacks) / 樹と根 (rztree) は網を使わない別の図 (_fan / _packs / _tree)。
+     同じエンジンの別の実体 (Rhizome._variant) で、パラメータと GL の資源を実体ごとに持つ。地面の倒れ (Rise / Cycle) と手描きの描き方は共通。
    - 手描き: 線は全体でわずかにたわみ (伸びる途中でも形が変わらないよう、線の全体の両端で測る)、ペン先を置いた両端にインクがたまる。
      楕円は透けるマーカーの塗り (下の線が透ける) で、筆の帯の重なりと片側の影があり、縁のペン線は描き始めと終わりが食い違う。
      四角と菱形は水彩 (縁にたまって濃く、中はむら) で、ペンの縁は角で少し突き抜け、角にインクがたまる。破線は線と隙間の長さがばらつく。
@@ -30,16 +31,18 @@
    - Slot A は紙 (paper) を敷く。Slot B は背景を透過する (前乗算アルファ)。
    参照したのは Marc Ngui による『千のプラトー』のためのドローイングの雰囲気。配置は乱数から生成していて、トレースではない。
    IF: init(gl) / update() / render({fbo,w,h,slot,beat,clock,opaque}) / P / PDefaults / SPECS
+       RhizomeKinds = { kind: エンジン } (rhizome / rzfan / rzpacks / rztree)
 */
 
 const Rhizome = {
   gl:null, initialized:false, ok:false,
   prog:null, vao:null, cornerVBO:null, instVBO:null, instCap:0, U:null,
   _memo:null, _sig:'', _cfg:null, _salt:0,
+  draw:null,      // 網を使わない別の図の描き方 (_fan / _packs / _tree)。null は網 (Style で図 1 / 図 2 / 両方)
 
   // ── パラメータ (UI から操作)。数値は使う直前に App.deadParam を通す ──
   P:{
-    style:0,        // 0 = 網 (図 1) / 1 = 面と流れ (図 2) / 2 = 両方 / 3 = 扇 / 4 = 群れの輪 / 5 = 樹と根
+    style:0,        // 0 = 網 (図 1) / 1 = 面と流れ (図 2) / 2 = 両方
     speed:100,      // 時間の速さ (%)
     life:6,         // ノードの寿命の目安 (秒。beat では拍)
     nodes:180,      // ノードの枠の数 (同時に見えるのはおよそ 6〜7 割)
@@ -70,7 +73,7 @@ const Rhizome = {
   },
 
   SPECS:[
-    {sel:true, label:'Style', key:'style', opts:['網 (図 1)', '面と流れ (図 2)', '両方', '扇', '群れの輪', '樹と根']},
+    {sel:true, label:'Style', key:'style', opts:['網 (図 1)', '面と流れ (図 2)', '両方']},
     ['Speed',    'speed',    0,   300, 1,   'pct'],
     ['Life',     'life',     1,   32,  0.5, 'f2'],
     ['Nodes',    'nodes',    10,  400, 1,   'int'],
@@ -341,17 +344,24 @@ void main(){
     vec2 tt = normalize(pb - pa + 1e-9), nn = vec2(-tt.y, tt.x);
     if(dot(w - pa, vD.xy) < 0.0 || dot(w - pb, vD.zw) >= 0.0){ o = vec4(0.0); return; }
     float hw = vB.z;
-    float x = dot(w - pa, nn) / hw;                 // 帯の幅の向き (-1..1)
+    float x = dot(w - pa, nn) / hw;                 // 帯の幅の向き (-1..1。正が上側)
     float s = vB.y + vC.w * dot(w - pa, tt) / max(length(pb - pa), 1e-7);   // 帯に沿った位置 (地面で測った px。倒れても筆致が滑らない)
-    float edge = 1.0 - smoothstep(0.70, 1.0, abs(x) + 0.24 * (vn(vec2(s / 22.0, sign(x) * 3.0 + sd * 9.0)) - 0.5));
-    // 斜めの短い線を密に重ねて塗る (帯に対して 35° と 50° の 2 方向)。濃さは帯の中でゆっくりむらになり、紙の目で白く抜ける
-    vec2 p = vec2(s, x * 92.0);
-    float h1 = vn(vec2(dot(p, vec2(0.819, 0.574)) / 9.0, dot(p, vec2(-0.574, 0.819)) / 1.3 + sd * 40.0));
-    float hh2 = vn(vec2(dot(p, vec2(0.643, 0.766)) / 12.0 + 5.0, dot(p, vec2(-0.766, 0.643)) / 1.5));
-    float tex = 0.55 * h1 + 0.45 * hh2;
-    float dens = edge * (0.68 + 0.28 * (vn(vec2(s / 140.0, sd * 5.0)) - 0.5));
-    a = dens * (0.30 + 0.70 * smoothstep(0.30, 0.78, tex)) * (1.0 - 0.6 * smoothstep(0.45, 0.85, tooth));
-    col = vC.rgb * (0.86 + 0.26 * tex);
+    vec2 p = vec2(s, x * 92.0) / (1080.0 * px);     // 帯に付いた座標 (いまの解像度の px)
+    // 縁はくっきり (少しぎざぎざ)。縁そのものを色鉛筆でなぞってあり、ぼかしで薄れない
+    float ax = abs(x) + 0.030 * (vn(vec2(p.x / 16.0, sign(x) * 5.0 + sd * 9.0)) - 0.5) + 0.018 * (vn(vec2(p.x / 3.5, sign(x) * 2.0)) - 0.5);
+    float pw = px / max(hw, 1e-7);                  // 1px を帯の幅の単位で
+    float inside = 1.0 - smoothstep(1.0 - pw, 1.0 + pw, ax);
+    if(inside <= 0.0){ o = vec4(0.0); return; }
+    // 濃さ: 下側の縁寄りがいちばん濃く、上側の縁沿いも濃い。中ほどは淡い。帯に沿ってゆっくりむらになる
+    float dens = 0.20 + 0.55 * smoothstep(0.15, 1.0, -x) + 0.32 * smoothstep(0.55, 1.0, x) + 0.16 * (vn(vec2(p.x / 170.0, sd * 5.0 + x * 1.5)) - 0.5);
+    dens = max(dens, 0.95 * smoothstep(1.0 - 3.5 * pw, 1.0 - 1.0 * pw, ax));
+    // 色鉛筆の粒: 帯に沿ったごく短い筆致と細かい粒と紙の目。濃いほど粒が埋まる
+    float st1 = vn(vec2(dot(p, vec2(0.97, 0.24)) / 4.0, dot(p, vec2(-0.24, 0.97)) / 1.3 + sd * 30.0));
+    float st2 = vn(p * 0.8 + 17.0);
+    float gr = clamp((0.35 * st1 + 0.45 * st2 + 0.20 * tooth - 0.5) * 2.2 + 0.5, 0.0, 1.0);
+    float cov = smoothstep(0.80 - dens, 1.20 - dens, gr);
+    a = cov * (0.55 + 0.40 * dens) * inside;
+    col = mix(min(vC.rgb * 1.55, vec3(1.0)), vC.rgb * 0.70, smoothstep(0.15, 0.95, dens));
   }
   a *= vB.w;
   o = vec4(col * a, a);
@@ -575,18 +585,18 @@ void main(){
   // 最後は尾が先へ追いついて消える (intro-08 / 08b / 08c の雰囲気)
   _fan(K){
     const {t, H, C} = K;
-    const nC = Math.round(14 * K.arcsK);
+    const nC = Math.round(14 * K.pct('curves')), nF = K.num('fans', 1, 10), openK = K.pct('open'), swK = K.pct('swirl'), seedK = K.pct('seeds');
     if(nC <= 0) return;
     const c01 = this._clamp01;
-    for(let g = 0; g < 5; g++){
+    for(let g = 0; g < nF; g++){
       const id = 600000 + g, cy2 = this._pool(id, t, 2.6), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.85 || x > 0.95) continue;
       const tx = this._camX(s), ty = this._camY(s);
       const sx = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, sy = ty + (H(id, n, 5) - 0.5) * 0.7;
       const dir = Math.atan2(ty - sy, tx - sx + 1e-6) + (H(id, n, 6) - 0.5) * 1.2;   // おおむね画面の中ほどへ向く
-      const open = 0.8 + 0.9 * H(id, n, 7);
+      const open = (0.8 + 0.9 * H(id, n, 7)) * openK;
       const len = (0.55 + 0.4 * H(id, n, 8)) * K.spread;
-      const sw = (H(id, n, 9) < 0.5 ? -1 : 1) * (0.5 + 0.6 * H(id, n, 10));
+      const sw = (H(id, n, 9) < 0.5 ? -1 : 1) * (0.5 + 0.6 * H(id, n, 10)) * swK;
       const al = 0.9 * c01(x / 0.03) * (1 - c01((x - 0.88) / 0.07));
       // 源のバネ: 線の根元の後ろに小さく巻く
       const ca = Math.cos(dir), sa = Math.sin(dir), cL = 0.07 * K.sizeK, cr = 0.012 * K.sizeK;
@@ -619,7 +629,7 @@ void main(){
         const sc = this._popAt(x, xp, xe - 0.06, 0.05, K.pop) * (1 + 0.15 * K.kick);
         if(sc <= 0.001) continue;
         const pc = f(0.86), pn = f(0.88), tang = Math.atan2(pn[1] - pc[1], pn[0] - pc[0]);
-        if(hj(8) < 0.25){
+        if(hj(8) < seedK){
           K.pushEllipse(pc[0], pc[1], 0.008 * K.sizeK * sc, 0.005 * K.sizeK * sc, tang + Math.PI / 2, C.ink, C.ink, hj(9));
         } else {
           const r = 0.115 * (0.10 + 0.18 * hj(10)) * K.sizeK * (0.6 + 0.6 * Lj / len) * sc;
@@ -641,15 +651,16 @@ void main(){
   _packs(K){
     const {t, H, C} = K;
     const c01 = this._clamp01, al = 0.88, rings = [];
-    for(let g = 0; g < 6; g++){
+    const nR = K.num('rings', 1, 12), memK = Math.max(0.05, K.pct('members')), hubK = K.pct('hub'), floatK = K.pct('float');
+    for(let g = 0; g < nR; g++){
       const id = 700000 + g, cy2 = this._pool(id, t, 3.2), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.85 || x > 0.97) continue;
       const tx = this._camX(s), ty = this._camY(s);
       const ox = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, oy = ty + (H(id, n, 5) - 0.5) * 0.7;
       const R = (0.09 + 0.12 * H(id, n, 6)) * K.spread;
-      const m = Math.max(5, Math.min(40, Math.round((9 + 12 * H(id, n, 7)) * K.nodesK)));
-      const z = H(id, n, 8) < 0.35 ? 0.10 + 0.20 * H(id, n, 9) : 0;          // 宙に浮く輪
-      const hub = [ox + (H(id, n, 10) - 0.5) * R * 0.4, oy + (H(id, n, 11) - 0.5) * R * 0.4, z + 0.22 + 0.25 * H(id, n, 12)];
+      const m = Math.max(5, Math.min(40, Math.round((9 + 12 * H(id, n, 7)) * memK)));
+      const z = H(id, n, 8) < floatK ? 0.10 + 0.20 * H(id, n, 9) : 0;          // 宙に浮く輪
+      const hub = [ox + (H(id, n, 10) - 0.5) * R * 0.4, oy + (H(id, n, 11) - 0.5) * R * 0.4, z + (0.22 + 0.25 * H(id, n, 12)) * hubK];
       const a0 = H(id, n, 13) * Math.PI * 2 + (H(id, n, 14) - 0.5) * 0.5 * (t - s);
       const sh = this._popAt(x, 0.02, 0.86, 0.04, K.pop);
       if(sh > 0.001) K.pushEllipse(hub[0], hub[1], 0.016 * K.sizeK * sh, 0.010 * K.sizeK * sh, H(id, n, 15) * 3, C.hub, C.limeRim, H(id, n, 16), hub[2]);
@@ -705,13 +716,14 @@ void main(){
   _tree(K){
     const {t, H, C} = K;
     const c01 = this._clamp01, al = 0.88;
-    for(let g = 0; g < 3; g++){
+    const nT = K.num('trees', 1, 5), dBase = K.num('depth', 2, 6), limeK = K.pct('lime'), strK = K.pct('streams');
+    for(let g = 0; g < nT; g++){
       const id = 800000 + g, cy2 = this._pool(id, t, 4.0), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.9 || x > 0.97) continue;
       const tx = this._camX(s), ty = this._camY(s);
-      const depth = H(id, n, 4) < 0.3 ? 5 : 4;
+      const depth = dBase + (H(id, n, 4) < 0.3 ? 1 : 0);
       const Wt = (0.40 + 0.25 * H(id, n, 5)) * K.spread * 0.9, Ht = (0.55 + 0.2 * H(id, n, 6)) * K.spread * 0.9;
-      const rx0 = tx + (g - 1) * 0.30 * K.aspect + (H(id, n, 7) - 0.5) * 0.2, ry0 = ty + Ht * 0.5;
+      const rx0 = tx + ((g + 0.5) / nT - 0.5) * 0.9 * K.aspect + (H(id, n, 7) - 0.5) * 0.2, ry0 = ty + Ht * 0.5;
       const hn = (l, i, c)=>H(id * 1024 + (1 << l) + i, n, c);
       // 節の位置: 段 l (0..depth)、段の中の番号 i
       const node = (l, i)=>{
@@ -752,7 +764,7 @@ void main(){
           const sc = this._popAt(x, xp, (l < depth ? xr(l + 1) : xr(l)) + 0.03, 0.04, K.pop) * (1 + 0.15 * K.kick);
           if(sc <= 0.001) continue;
           const x0 = 0.42 + 0.15 * hn(l, i, 9);
-          const lk = (l > 0 && hn(l, i, 8) < 0.42) ? (()=>{ const y = c01((x - x0) / 0.06); return y * y * (3 - 2 * y); })() : 0;
+          const lk = (l > 0 && hn(l, i, 8) < limeK) ? (()=>{ const y = c01((x - x0) / 0.06); return y * y * (3 - 2 * y); })() : 0;
           const r = 0.022 * (1.2 - 0.17 * l) * K.sizeK * sc;
           K.pushEllipse(p[0], p[1], r, r * 0.62, (hn(l, i, 10) - 0.5) * 0.3, K.mixC(K.paper, C.lime, lk), K.mixC(C.ink, C.limeRim, lk), hn(l, i, 11));
           if(lk > 0.5) lime.push({p, x0, h:hn(l, i, 12)});
@@ -771,10 +783,10 @@ void main(){
       }
       // 脇を下る緑と青の流れ
       const sgx = H(id, n, 32) < 0.5 ? -1 : 1, fx0 = rx0 + sgx * Wt * 0.62, ph = H(id, n, 30) * 6.28;
-      const gs = Math.min(c01(x / 0.3), 1 - c01((x - 0.85) / 0.08));
+      const gs = Math.min(c01(x / 0.3), 1 - c01((x - 0.85) / 0.08)), alS = Math.min(1, al * 0.9 * strK);
       for(const [o, col] of [[0, C.green], [0.014, C.blue], [0.028, C.green]]){
         const f = (v)=>[fx0 + o + 0.025 * Math.sin(v * 5 + ph) + 0.01 * Math.sin(v * 13 + ph), ry0 + 0.12 - (Ht + 0.3) * v, 0];
-        K.pushPoly(K.arcs, f, 40, 0, gs, K.hwG, col, al * 0.9, false, H(id, n, 31) + o);
+        K.pushPoly(K.arcs, f, 40, 0, gs, K.hwG, col, alS, false, H(id, n, 31) + o);
       }
     }
   },
@@ -792,14 +804,16 @@ void main(){
 
     // 設定と記憶 (設定が変わったら引き直す)
     const seed = Math.round(dz(P.seed) || 0);
-    const style = Math.max(0, Math.min(5, Math.round(P.style) || 0));   // 0 = 図 1 / 1 = 図 2 / 2 = 両方 / 3 = 扇 / 4 = 群れの輪 / 5 = 樹と根
-    const sqK = Math.max(0, dz(P.squares) * 0.01), diaK = Math.max(0, dz(P.diamonds) * 0.01), tenK = Math.max(0, dz(P.tendrils) * 0.01);
+    const net = !this.draw;                              // 網 (ノードと線) を使う図
+    const style = net ? Math.max(0, Math.min(2, Math.round(P.style) || 0)) : -1;   // 0 = 図 1 / 1 = 図 2 / 2 = 両方 / -1 = 別の図
+    const pk = (k)=> net ? Math.max(0, dz(P[k]) * 0.01) : 0;   // 網だけが持つパラメータ (%)
+    const sqK = pk('squares'), diaK = pk('diamonds'), tenK = pk('tendrils');
     const riseK = Math.max(0, Math.min(1, dz(P.rise) * 0.01));
     const deg = Math.PI / 180;
     const tiltM = riseK * Math.max(0, Math.min(70, dz(P.tilt))) * deg, yawM = riseK * Math.max(-90, Math.min(90, dz(P.yaw))) * deg;
     const cfg = {
       // 立ち上がりがあると見える地面が広がるので、枠を増やして平らなときの密度をそろえる
-      N: Math.max(1, Math.min(900, Math.round(dz(P.nodes) * (riseK > 0 ? 2.2 : 1)))),
+      N: net ? Math.max(1, Math.min(900, Math.round(dz(P.nodes) * (riseK > 0 ? 2.2 : 1)))) : 0,
       life: Math.max(0.5, dz(P.life)),
       beat: beatMode,
       spread: Math.max(0.05, dz(P.spread) * 0.01),
@@ -824,7 +838,6 @@ void main(){
     let ph = (t / cyc) % 1;
     if(ph < 0) ph += 1;
     const rn = riseK <= 0 ? 0 : (ph < 0.3 ? 0 : ph < 0.5 ? sm((ph - 0.3) / 0.2) : ph < 0.8 ? 1 : 1 - sm((ph - 0.8) / 0.2));
-    const net = style <= 2;                              // 網 (ノードと線) を使う図
     const v2 = style === 0 ? rn : (net ? 1 : 0);         // 図 2 の要素 (面・流れ・赤線・帯) の出方
     const v1 = (style === 0 || style === 2) ? 1 : 0;     // 図 1 の要素 (青い弧)
     const phi = rn * tiltM, psi = rn * yawM;
@@ -1019,18 +1032,17 @@ void main(){
       return g > k ? [k, g] : null;
     };
     const H = (id, n, c)=>this._hash(id, n, c);
-    const arcsK = Math.max(0, dz(P.arcs) * 0.01);
+    const arcsK = pk('arcs');
 
-    // ── 扇 / 群れの輪 / 樹と根 (網を使わない図。描く道具を渡す) ──
+    // ── 扇 / 群れの輪 / 樹と根 (網を使わない図。描く道具と、その図のパラメータを渡す) ──
     if(!net){
       const K = {
-        t, aspect, sizeK, kick, arcsK, C, H, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs,
-        hwG, hwB, hwL, pop:cfg.pop, spread:cfg.spread, links:cfg.links, nodesK:Math.max(0.05, dz(P.nodes) / 180),
+        t, aspect, sizeK, kick, C, H, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs,
+        hwG, hwB, hwL, pop:cfg.pop, spread:cfg.spread, links:cfg.links,
+        pct:(k)=>Math.max(0, dz(P[k]) * 0.01), num:(k, lo, hi)=>Math.max(lo, Math.min(hi, Math.round(dz(P[k])))),
         paper:Array.isArray(P.paper) ? P.paper : this.PDefaults.paper,
       };
-      if(style === 3) this._fan(K);
-      else if(style === 4) this._packs(K);
-      else this._tree(K);
+      this[this.draw](K);
     }
 
     // ── 図 1: 青い弧と矢印 (地面の円弧) ──
@@ -1236,3 +1248,43 @@ void main(){
   },
 };
 Rhizome.PDefaults = JSON.parse(JSON.stringify(Rhizome.P));
+
+// 別の図 (扇 / 群れの輪 / 樹と根) は同じエンジンの別の実体にして、それぞれ独立した mode (kind) にする。
+// 描き方は Rhizome と共通で、パラメータ・GL の資源・記憶は実体ごとに持つ (Slot A と B で別の図を同時に出せる)。
+// own = その図だけのパラメータ (既定値)、ownSpecs = その UI。共通のパラメータは Rhizome の既定値から写す
+Rhizome._variant = function(draw, own, ownSpecs){
+  const base = this;
+  const head = ['speed', 'life'], tail = ['size', 'spread', 'links', 'line', 'pencil', 'hand', 'boil', 'pop', 'kick', 'drift', 'rise', 'cycle', 'tilt', 'yaw', 'seed'];
+  const P = {};
+  for(const k of head.concat(tail, ['paper'])) P[k] = JSON.parse(JSON.stringify(base.PDefaults[k]));
+  Object.assign(P, own);
+  const spec = (k)=> base.SPECS.find(sp => Array.isArray(sp) && sp[1] === k);
+  const v = Object.create(base);
+  Object.assign(v, {
+    gl:null, initialized:false, ok:false, prog:null, vao:null, cornerVBO:null, instVBO:null, instCap:0, U:null,
+    _memo:null, _sig:'', _cfg:null, _salt:0, FIG:null,
+    draw, P, SPECS:head.map(spec).concat(ownSpecs, tail.map(spec)),
+  });
+  v.PDefaults = JSON.parse(JSON.stringify(P));
+  return v;
+};
+const RhizomeFan = Rhizome._variant('_fan', {curves:100, fans:5, open:100, swirl:100, seeds:25}, [
+  ['Curves', 'curves', 0,  300, 1, 'pct'],   // 扇 1 つの線の数 (%)
+  ['Fans',   'fans',   1,  10,  1, 'int'],   // 同時に出る扇の枠の数
+  ['Open',   'open',   10, 300, 1, 'pct'],   // 扇の開き (%)
+  ['Swirl',  'swirl',  0,  300, 1, 'pct'],   // 線の巻き (%)
+  ['Seeds',  'seeds',  0,  100, 1, 'pct'],   // 先が黒い種になる割合 (%)
+]);
+const RhizomePacks = Rhizome._variant('_packs', {rings:6, members:100, hub:100, float:35}, [
+  ['Rings',   'rings',   1,  12,  1, 'int'],   // 同時に出る輪の枠の数
+  ['Members', 'members', 10, 300, 1, 'pct'],   // 輪 1 つの楕円の数 (%)
+  ['Hub',     'hub',     0,  300, 1, 'pct'],   // 宙の一点の高さ (%)
+  ['Float',   'float',   0,  100, 1, 'pct'],   // 宙に浮く輪の割合 (%)
+]);
+const RhizomeTree = Rhizome._variant('_tree', {trees:3, depth:4, lime:42, streams:100}, [
+  ['Trees',   'trees',   1, 5,   1, 'int'],    // 同時に出る樹の枠の数
+  ['Depth',   'depth',   2, 6,   1, 'int'],    // 枝分かれの段の数 (3 割の樹は 1 段深い)
+  ['Lime',    'lime',    0, 100, 1, 'pct'],    // 黄緑に変わる節の割合 (%)
+  ['Streams', 'streams', 0, 200, 1, 'pct'],    // 脇を下る流れの濃さ (%)
+]);
+const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rztree:RhizomeTree };

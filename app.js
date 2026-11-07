@@ -8475,12 +8475,12 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
-    if(slot.kind === 'rhizome'){
-      if(typeof Rhizome === 'undefined') return;
-      if(!Rhizome.initialized) Rhizome.init(this.gl);
-      Rhizome.update();
+    if(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]){   // RHIZOME 系 (rhizome / rzfan / rzpacks / rztree)
+      const RZ = RhizomeKinds[slot.kind];
+      if(!RZ.initialized) RZ.init(this.gl);
+      RZ.update();
       const target = slot.fbos[slot.fbIdx];
-      Rhizome.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      RZ.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -11530,8 +11530,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rztree','surrealfloat','tower4149','fude'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rztree','surrealfloat','tower4149','fude'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -12702,6 +12702,10 @@ const App = {
     PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
     PRESETS.unshift({ name:'★ VIDEO (Loop Player)', kind:'video', ch:[], src:'' });
     PRESETS.unshift({ name:'(なし / 透明)', kind:'none', ch:[], src:'' });   // 一番左上: 無選択=透過
+    // RHIZOME の別の図は末尾に足す (Code の C 番号は表示順なので、既存の番号を動かさない)
+    PRESETS.push({ name:'★ RHIZOME 扇 (逃走線)', kind:'rzfan', ch:[], src:'' });
+    PRESETS.push({ name:'★ RHIZOME 群れの輪', kind:'rzpacks', ch:[], src:'' });
+    PRESETS.push({ name:'★ RHIZOME 樹と根', kind:'rztree', ch:[], src:'' });
     LOAD('Loading settings…', 28);
     // サーバー共通の既定値 (defaults.json) を localStorage より先に適用
     await this.applyServerDefaults();
@@ -14052,11 +14056,11 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
-    if(p.kind === 'rhizome'){
-      s.kind = 'rhizome';
-      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'rhizome';
-      if(typeof Rhizome !== 'undefined' && !Rhizome.initialized) Rhizome.init(GL.gl);
-      if(!opts.skipEngineDefault) this.applyEngineDefault('rhizome');
+    if(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[p.kind]){   // RHIZOME 系
+      s.kind = p.kind;
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = p.kind;
+      if(!RhizomeKinds[p.kind].initialized) RhizomeKinds[p.kind].init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault(p.kind);
       UI.activePresetIdx[slotKey] = idx;
       UI.refreshAll();
       toast(`Slot ${slotKey} ← ${p.name}`);
@@ -14179,7 +14183,8 @@ ${outBlock}
       case 'transflock': return (typeof TransFlock !== 'undefined' && TransFlock.P) ? TransFlock.P : null;
       case 'liquidpeel': return (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null;
       case 'windflock': return (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null;
-      case 'rhizome': return (typeof Rhizome !== 'undefined' && Rhizome.P) ? Rhizome.P : null;
+      case 'rhizome': case 'rzfan': case 'rzpacks': case 'rztree':
+        return (typeof RhizomeKinds !== 'undefined' && RhizomeKinds[kind]) ? RhizomeKinds[kind].P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
       case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
@@ -14719,6 +14724,9 @@ ${outBlock}
 	      liquidpeel: (typeof LiquidPeel !== 'undefined' && LiquidPeel.P) ? LiquidPeel.P : null,
 	      windflock: (typeof WindFlock !== 'undefined' && WindFlock.P) ? WindFlock.P : null,
 	      rhizome: (typeof Rhizome !== 'undefined' && Rhizome.P) ? Rhizome.P : null,
+	      rzfan: (typeof RhizomeFan !== 'undefined' && RhizomeFan.P) ? RhizomeFan.P : null,
+	      rzpacks: (typeof RhizomePacks !== 'undefined' && RhizomePacks.P) ? RhizomePacks.P : null,
+	      rztree: (typeof RhizomeTree !== 'undefined' && RhizomeTree.P) ? RhizomeTree.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
@@ -15487,7 +15495,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rztree','surrealfloat','tower4149','fude'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -15940,7 +15948,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rztree','surrealfloat','tower4149','fude'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -18426,7 +18434,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','surrealfloat','tower4149','fude'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rztree','surrealfloat','tower4149','fude'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -18521,6 +18529,9 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'liquidpeel') ? 'LIQUID\nPEEL'
                      : (p.kind === 'windflock') ? 'WIND\nFLOCK'
                      : (p.kind === 'rhizome') ? 'RHIZOME'
+                     : (p.kind === 'rzfan') ? 'RHIZOME\n扇'
+                     : (p.kind === 'rzpacks') ? 'RHIZOME\n群れの輪'
+                     : (p.kind === 'rztree') ? 'RHIZOME\n樹と根'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
                      : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
@@ -18878,7 +18889,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && slot.kind !== 'rhizome' && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -18902,9 +18913,11 @@ void mainImage(out vec4 o, in vec2 f){
     const isWF = slot.kind === 'windflock';
     $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
     if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
-    const isRZ = slot.kind === 'rhizome';
-    $$('.rhizome-mode').forEach(el => el.style.display = isRZ ? '' : 'none');
-    if(isRZ && this.refreshRhizomeParams) this.refreshRhizomeParams();
+    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rztree']){   // RHIZOME 系は kind ごとに別の見出しとパラメータ
+      const on = slot.kind === k;
+      $$('.' + k + '-mode').forEach(el => el.style.display = on ? '' : 'none');
+      if(on && this.refreshRhizomeParams) this.refreshRhizomeParams(k);
+    }
     const isSF = slot.kind === 'surrealfloat';
     $$('.surrealfloat-mode').forEach(el => el.style.display = isSF ? '' : 'none');
     if(isSF && this.refreshSurrealParams) this.refreshSurrealParams();
@@ -19459,16 +19472,18 @@ void mainImage(out vec4 o, in vec2 f){
       });
       row.appendChild(b); }
   },
-  refreshRhizomeParams(){
-    const root = document.getElementById('rhizomeParams'); if(!root) return;
-    if(typeof Rhizome === 'undefined' || !Rhizome.initialized){
+  refreshRhizomeParams(kind){
+    kind = kind || 'rhizome';
+    const root = document.getElementById(kind + 'Params'); if(!root) return;
+    const RZ = (typeof RhizomeKinds !== 'undefined') ? RhizomeKinds[kind] : null;
+    if(!RZ || !RZ.initialized){
       root.innerHTML = '<div class="help">RHIZOME preset を選ぶと初期化されます</div>'; return;
     }
-    const P = Rhizome.P;
+    const P = RZ.P;
     const formats = { pct:v=>String(Math.round(v))+'%', f2:v=>v.toFixed(2), int:v=>String(Math.round(v)), deg:v=>String(Math.round(v))+'°' };
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
-    for(const spec of Rhizome.SPECS){
+    for(const spec of RZ.SPECS){
       const row=document.createElement('div'); row.className='row'; root.appendChild(row);
       const lab=document.createElement('label'); lab.textContent=spec.label || spec[0];
       if(spec.sel){
