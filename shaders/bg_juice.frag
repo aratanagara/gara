@@ -8,7 +8,18 @@
 //   cosineGradient(uCosGrad)対応 / Slot B は暗部透過。ヘルパは ss_ で名前空間化。
 // =====================================================
 
-float ss_fn1(float v){ return v*16.0; }
+// @param uDetail 4..10 = 10.0
+// @param uLayers 6..14 = 14.0
+// @param uTile 60..200 = 100.0
+// @param uShield 25..400 = 100.0
+// @param uGlow 20..250 = 100.0
+uniform float uDetail;   // 模様を折り畳む反復回数 (下げると軽く、単純になる)
+uniform float uLayers;   // ネビュラの層の数 (下げると軽く、薄くなる)
+uniform float uTile;   // ネビュラのタイルの大きさ (%)
+uniform float uShield;   // シールド模様の細かさ (%)
+uniform float uGlow;   // ネビュラの明るさ (%)
+
+float ss_fn1(float v){ return v*16.0*(uShield / 100.0); }
 vec2  ss_hash21(float p){
   vec3 p3 = fract(vec3(p) * vec3(0.1031, 0.1030, 0.0973));
   p3 += dot(p3, p3.yzx + 19.19);
@@ -59,10 +70,12 @@ vec3 bg_juice(vec2 fc){
   float s = 0.1, fade = 1.0;
   vec3 v = vec3(0.0);
   for(int r=0; r<14; r++){
+    if(r >= int(uLayers + 0.5)) break;
     vec3 p = from + s*dir*0.5;
-    p = abs(vec3(0.85) - mod(p, vec3(1.7)));     // tiling fold
+    p = abs(vec3(0.85 * (uTile / 100.0)) - mod(p, vec3(1.7 * (uTile / 100.0))));     // tiling fold
     float pa, a = pa = 0.0;
     for(int i=0; i<10; i++){
+      if(i >= int(uDetail + 0.5)) break;
       p = abs(p)/dot(p,p) - 0.53;
       p.xy *= ss_rotate2d(time*0.02);
       a += abs(length(p) - pa);
@@ -77,7 +90,7 @@ vec3 bg_juice(vec2 fc){
     s += 0.1;
   }
   v = mix(vec3(length(v)), v, 0.85);
-  vec3 col = v * 0.03;
+  vec3 col = v * 0.03 * (uGlow / 100.0);
 
   // 浅葱色(asagi)に寄せる: 輝度→濃紺→浅葱→淡水色のグラデ
   float lum = dot(col, vec3(0.299, 0.587, 0.114));

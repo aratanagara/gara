@@ -6,17 +6,31 @@
 //   iTime,iResolution → time,resolution / bgZoom・bgCamPx でズーム/パン。
 // =====================================================
 
+// @param uDetail 50..100 = 100.0
+// @param uDensity 25..400 = 100.0
+// @param uGlow 20..250 = 100.0
+// @param uSat 0..300 = 100.0
+// @param uSoft 10..300 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail;   // レイマーチの反復回数 (下げると軽く、リボンが薄くなる)
+uniform float uDensity;   // リボンの模様の密度 (%)
+uniform float uGlow;   // 発光の強さ (%)
+uniform float uSat;   // 色の彩度 (%)
+uniform float uSoft;   // リボン縁のぼかし幅 (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 vec3 bg_ribbon(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec3 r = vec3(resolution, 1.0), p = vec3(0.0);
   float t = time, i = 0.0, s = 0.0, d = 0.0;
   vec2 uv = (I - 0.5*r.xy) / r.y;
-  float rot = time*0.25;                                       // 画面中心(uv=0)を起点に回転
+  float rot = time*0.25 + radians(uAngle);                                       // 画面中心(uv=0)を起点に回転
   uv = mat2(cos(rot), -sin(rot), sin(rot), cos(rot)) * uv;
   uv = uv*2.8 + vec2(-0.7, -0.45);  // 引き(×2.8, 全体が見える) + 右上へ
 
   vec4 o = vec4(0.0);
-  for(o *= i; i++ < 100.0; p = 1.5*vec3(uv*d, d + t)){
+  for(o *= i; i++ < 100.0; p = 1.5*vec3(uv*d*(uDensity / 100.0), d + t)){
+    if(i > uDetail) break;
     s = 5e-3 + abs(s)*0.07;
     d += s;
     o += (1.0 + sin(i*0.5 + 1.5*vec4(3, 1.5, 1, 0)))/s
@@ -24,14 +38,14 @@ vec3 bg_ribbon(vec2 fc){
     p.xy *= mat2(cos(d*0.1 - 4.0 - vec4(0, 11, 33, 0)));
     s += cos(p.x + p.y)*2.0 + 1.5 + abs(dot(0.2*sin(vec3(p.xy*1.5, p.z + t*5.0)), vec3(0, 9, 2)));
   }
-  o = tanh(o*o/3e7);
+  o = tanh(o*o*(uGlow / 100.0)/3e7);
 
   // 彩度を下げ、寒色を足して銀調に → 地は黒 (entrypoint が uBgColor で塗る)
   vec3 col = o.rgb;
   float lum = dot(col, vec3(0.3333));
-  col = mix(vec3(lum), col, 0.35);                         // 彩度を落としてシルバー寄りに
+  col = mix(vec3(lum), col, 0.35 * (uSat / 100.0));                         // 彩度を落としてシルバー寄りに
   col *= vec3(0.98, 0.99, 1.03);                           // 銀のわずかな寒色
-  col *= smoothstep(0.0, 0.22, lum);        // 地を黒に落とす
-  bgAlpha = smoothstep(0.0, 0.22, lum);     // 地は透過(リボンのみ残す)
+  col *= smoothstep(0.0, 0.22 * (uSoft / 100.0), lum);        // 地を黒に落とす
+  bgAlpha = smoothstep(0.0, 0.22 * (uSoft / 100.0), lum);     // 地は透過(リボンのみ残す)
   return clamp(col, 0.0, 1.0);
 }

@@ -18,11 +18,24 @@ void pf_mo(inout vec2 p, vec2 d){
 
 float pf_plane(vec3 p, vec3 n){ return dot(p, normalize(n)); }
 
+// @param uDetail 3..5    = 5.0
+// @param uFolds  50..200 = 100.0
+// @param uScale  50..150 = 100.0
+// @param uAngle  -180..180 = 0.0
+// @param uGlow   0..300  = 100.0
+// @param uSphere 0..200  = 100.0
+uniform float uDetail;   // 入れ子にする折り紙の数 (下げると軽く、構造が単純になる)
+uniform float uScale;    // 物体全体の大きさ (%)
+uniform float uAngle;    // フラクタル全体の向き (度)
+uniform float uFolds;    // 折り目の深さ (%) (0 = 折りなしの平面)
+uniform float uGlow;     // 発光スフィアの光り方 (%)
+uniform float uSphere;   // 発光スフィアの大きさ (%)
+
 float pf_cut_ps(vec3 p, float s){
   p *= s;
-  pf_mo(p.xy, vec2(1.0));
-  pf_mo(p.yz, vec2(0.6));
-  pf_mo(p.xz, vec2(0.1));
+  pf_mo(p.xy, vec2(1.0) * (uFolds / 100.0));
+  pf_mo(p.yz, vec2(0.6) * (uFolds / 100.0));
+  pf_mo(p.xz, vec2(0.1) * (uFolds / 100.0));
   return pf_plane(p, vec3(1.0, 1.0, 4.0))/s;
 }
 
@@ -35,6 +48,7 @@ float pf_fractal(vec3 p){
   float size = 1.0;
   float d = pf_prim1(p, size);
   for(int i=1; i<5; i++){
+    if(i >= int(uDetail + 0.5)) break;
     float ratio = float(i)/5.0;
     p.yz *= pf_rot(time*ratio);
     size -= 0.2;
@@ -54,11 +68,13 @@ float pf_noise(vec2 p){
 
 float pf_g1;
 float pf_SDF(vec3 p){
-  p.xy *= pf_rot(time*0.25);   // フラクタル全体を回転
+  float objS = uScale / 100.0;
+  p /= objS;
+  p.xy *= pf_rot(time*0.25 + radians(uAngle));   // フラクタル全体を回転
   float noise = pf_noise((p.xy*0.1) + time);
-  float sphe  = length(p) - (0.8 + noise);
+  float sphe  = length(p) - (0.8 + noise) * (uSphere / 100.0);
   pf_g1 += 0.1/(0.1 + sphe*sphe);
-  return max(-length(p + vec3(0.0, 0.0, 4.5)) + 0.8, min(sphe, pf_fractal(p)));
+  return objS * max(-length(p + vec3(0.0, 0.0, 4.5)) + 0.8, min(sphe, pf_fractal(p)));
 }
 
 vec3 bg_paperfractal(vec2 fc){
@@ -86,7 +102,7 @@ vec3 bg_paperfractal(vec2 fc){
     // 単純なグレースケール陰影(グレインなし)
     float v = mix(0.10, 0.95, 1.0 - shad);
     col = vec3(v);
-    col += pf_g1*vec3(0.05);
+    col += pf_g1*vec3(0.05) * (uGlow / 100.0);
   }
 
   bgAlpha = hit ? 1.0 : 0.0;              // 本体=不透明 / 背景=透明

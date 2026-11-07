@@ -2,6 +2,15 @@
 // 4用) bg_sinFBM  ★流体版★
 //    curl noise 近似でUVを歪め、流体のような渦巻き動作
 // =====================================================
+// @param uWarp  0..300 = 100.0
+// @param uTurb  0..150 = 100.0
+// @param uSheen 0..300 = 100.0
+// @param uGlow  0..300 = 100.0
+uniform float uWarp;    // 流体の大きな渦の歪み (%)
+uniform float uTurb;    // 細かい乱流のうねり (%)
+uniform float uSheen;   // 水銀の反射が傾きで曲がる量 (%)
+uniform float uGlow;    // 水平線のグリントの強さ (%)
+
 vec3 bg_sinFBM(vec2 fc){
   float bt = getBeat();
 
@@ -30,26 +39,26 @@ vec3 bg_sinFBM(vec2 fc){
     sin(I.x * 1.3 + q.y * 1.2 + t * 0.7) + sin(I.y * 0.9 + q.x * 0.8 - t * 0.5),
     sin(I.y * 1.3 - q.x * 1.2 + t * 0.7) + sin(I.x * 0.9 - q.y * 0.8 + t * 0.5)
   );
-  I += r * 1.8;
+  I += r * 1.8 * (uWarp / 100.0);
 
   // 元の3パス sin fBm
   vec4 O = vec4(0.0);
 
   for(int ni = 1; ni <= 2; ni++){
     float n = float(ni);
-    I += 1.6 * sin(I.yx * n + t * n) / n;
+    I += 1.6 * (uTurb / 100.0) * sin(I.yx * n + t * n) / n;
   }
   O += 1.0 + sin(I.x * 0.8 + 2.0 * vec4(0.0, 1.0, 2.0, 0.0));
 
   for(int ni = 1; ni <= 2; ni++){
     float n = float(ni);
-    I += 1.6 * sin(I.yx * n + t * n) / n;
+    I += 1.6 * (uTurb / 100.0) * sin(I.yx * n + t * n) / n;
   }
   O += 1.0 + sin(I.x * 0.8 + 1.0 * vec4(0.0, 1.0, 2.0, 0.0));
 
   for(int ni = 1; ni <= 2; ni++){
     float n = float(ni);
-    I += 1.6 * sin(I.yx * n + t * n) / n;
+    I += 1.6 * (uTurb / 100.0) * sin(I.yx * n + t * n) / n;
   }
   O += 1.0 + sin(I.x * 0.8 + 1.0 * vec4(0.0, 1.0, 2.0, 0.0));
 
@@ -61,7 +70,7 @@ vec3 bg_sinFBM(vec2 fc){
   float h = clamp(dot(O.rgb, vec3(0.4, 0.4, 0.2)), 0.0, 1.0);
   vec2 grad = vec2(dFdx(h), dFdy(h));          // 流体表面の傾き
   // 反射座標: 縦方向 + 傾きで強く曲げる
-  float refl = clamp(fc.y / resolution.y + grad.y * 12.0 - grad.x * 6.0 + (h - 0.5) * 0.4, 0.0, 1.0);
+  float refl = clamp(fc.y / resolution.y + grad.y * 12.0 * (uSheen / 100.0) - grad.x * 6.0 * (uSheen / 100.0) + (h - 0.5) * 0.4, 0.0, 1.0);
   // 環境: 下=暗 / 中=水平線(白く強光) / 上=中明 のクロム反射
   vec3 ground  = vec3(0.02, 0.03, 0.06);
   vec3 horizon = vec3(1.00, 1.00, 1.00);
@@ -69,7 +78,7 @@ vec3 bg_sinFBM(vec2 fc){
   vec3 grey = (refl < 0.5) ? mix(ground, horizon, smoothstep(0.18, 0.50, refl))
                            : mix(horizon, sky,     smoothstep(0.50, 0.72, refl));
   // 鋭い鏡面グリント (水平線付近を一段白く)
-  grey += vec3(1.0) * pow(1.0 - abs(refl - 0.5) * 2.0, 8.0) * 0.6;
+  grey += vec3(1.0) * pow(1.0 - abs(refl - 0.5) * 2.0, 8.0) * 0.6 * (uGlow / 100.0);
   grey = clamp(grey, 0.0, 1.0);
   if(abs(uCosGrad) < 0.0001) return grey;
   float cgInv = uCosGrad < 0.0 ? 0.5 : 0.0;

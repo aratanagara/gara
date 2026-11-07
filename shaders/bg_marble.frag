@@ -64,11 +64,25 @@ float vm_noise3(vec3 p){
                      : 1.0 - abs(2.0*v - 1.0);
 }
 #define vm_noise33(p) vec3(vm_noise3(p), vm_noise3(p + vec3(17.7)), vm_noise3(p + vec3(34.1)))
+// @param uDetail  1..6    = 6.0
+// @param uLayers  1..4    = 3.0
+// @param uAngle   -180..180 = 0.0
+// @param uWarp    0..300  = 100.0
+// @param uThick   25..400 = 100.0
+// @param uSize    40..400 = 100.0
+uniform float uDetail;    // 歪みノイズのオクターブ数 (下げると軽く、うねりが単純になる)
+uniform float uAngle;    // セル模様の向き (度)
+uniform float uLayers;    // 重ねる層の数 (増やすと重くなる)
+uniform float uWarp;      // 模様の歪みの強さ (%)
+uniform float uThick;     // 線の太さ (%)
+uniform float uSize;      // セルひとつの大きさ (%)
+
 vec3 vm_fbm33(vec3 p){
   vec3 v = vec3(0.0);
   float a = 0.5;
   mat3 R = vm_rot3(0.37);
   for(int i = 0; i < 6; i++, p *= 2.0, a /= 2.0){
+    if(i >= int(uDetail + 0.5)) break;
     p = R * p;
     v += a * vm_noise33(p);
   }
@@ -83,14 +97,15 @@ vec3 vm_uv3d(vec2 uv){
 vec3 bg_marble(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = I / resolution.xy;
-  vec3 pos = vm_uv3d(uv);
+  vec3 pos = vm_rot3(radians(uAngle)) * vm_uv3d(uv);
 
   vec4 col = vec4(0., 0., 0., 1.);
-  for(float i = 0.; i < vm_Layers; i++){
-    vec3 V = pos / vm_Shape;
-    vec3 D = vm_Curve * vm_fbm33(pos / vm_Smooth) * vm_Smooth;
+  for(float i = 0.; i < 4.; i++){
+    if(i >= floor(uLayers + 0.5)) break;
+    vec3 V = pos / vm_Shape / (uSize / 100.0);
+    vec3 D = vm_Curve * (uWarp / 100.0) * vm_fbm33(pos / vm_Smooth) * vm_Smooth;
     float d = vm_voronoi(vec4(V + D, time));
-    d = min(1.0, vm_LineW * pow(max(0.0, d - vm_LineS), vm_Sat));
+    d = min(1.0, vm_LineW / (uThick / 100.0) * pow(max(0.0, d - vm_LineS), vm_Sat));
     col += vec4(1.0 - d) / exp2(i);
     pos *= 1.5 * vm_rot3(.37);
   }

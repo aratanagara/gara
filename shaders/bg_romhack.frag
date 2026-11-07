@@ -39,10 +39,23 @@ vec3 rh_diffract(float d){
 const int   RH_RINGS = 8;          // CD の枚数(積む枚数)
 const float RH_HUB   = 2.0/3.0;    // 白域スケール
 const float RH_HOLE  = 0.087;      // スピンドル穴
-const float RH_T     = 0.015;      // 1枚の厚み(段の高さ=CD くらい薄く)
+#define RH_T (0.015 * (uStep / 100.0))      // 1枚の厚み(段の高さ=CD くらい薄く)
 const float RH_RDISC = 0.95;       // 円盤半径(ワールド)
 float rh_R[RH_RINGS];              // 各 CD の外周(ワールド半径, フレーム毎に算出)
 float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * RH_T)
+
+// @param uStep    30..300 = 100.0
+// @param uMotion  0..300 = 100.0
+// @param uThick   20..300 = 100.0
+// @param uScale 50..150 = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uTilt -90..90 = 0.0
+uniform float uStep; // 段の高さ (CD 1 枚の厚み) (%)
+uniform float uMotion; // 各段の伸び縮みの振幅 (%)
+uniform float uThick; // 段の縁の黒線の太さ (%)
+uniform float uScale; // 物体全体の大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uTilt; // 縦の傾き・仰角 (度。固定角でずらす)
 
 // CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。
 float rh_outer(int k){
@@ -50,7 +63,7 @@ float rh_outer(int k){
   vec4 h = rh_hash4(fk + 5.0);
   float span    = 1.0 - 0.34*RH_HUB;
   float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(fk + 0.5)/float(RH_RINGS));
-  float amp     = (0.10 + 0.24*h.x) * span;
+  float amp     = (0.10 + 0.24*h.x) * span * (uMotion / 100.0);
   float rate    = 0.15 + 0.75*h.y;
   float phase   = h.z * 6.2831;
   float rOut = baseOut + amp*sin(time*rate + phase) + 0.5*amp*sin(time*rate*0.43 + phase*1.7);
@@ -64,10 +77,12 @@ float rh_cyl(vec3 p, float R, float Hc){
 }
 // ziggurat SDF: 半径違いの円柱(CD)を rank 高さで積む + 中心穴をくり抜く
 float rh_zig(vec3 p){
+  float sc = uScale / 100.0;
+  p /= sc;
   float d = 1e9;
   for(int i = 0; i < RH_RINGS; i++) d = min(d, rh_cyl(p, rh_R[i], rh_H[i]));
   float hole = length(p.xy) - RH_HOLE*RH_HUB*RH_RDISC;   // 無限縦シリンダ
-  return max(d, -hole);                                   // 穴をくり抜く
+  return max(d, -hole) * sc;                                   // 穴をくり抜く
 }
 vec3 rh_zigN(vec3 p){
   vec2 e = vec2(0.0016, 0.0);
@@ -104,8 +119,8 @@ vec3 bg_romhack(vec2 fc){
   // 回転: 2倍速 + イージングで緩急(時間を sin で歪め、角速度を速→遅に変動)
   float baseY = time*0.8;                              // 横回転(2倍速)
   float baseX = time*0.46;                             // 縦回転(2倍速)
-  float aY = baseY + 0.9*sin(baseY*0.5);               // 緩急(イージング)
-  float aX = baseX + 0.6*sin(baseX*0.6 + 1.3);
+  float aY = baseY + 0.9*sin(baseY*0.5) + radians(uAngle);               // 緩急(イージング)
+  float aX = baseX + 0.6*sin(baseX*0.6 + 1.3) + radians(uTilt);
   vec3 cro = vec3(0.0, 0.0, 5.0);
   vec3 crd = normalize(vec3(sc, -5.0));
   float rcx = cos(aX), rsx = sin(aX);
@@ -135,10 +150,11 @@ vec3 bg_romhack(vec2 fc){
   if(!hit){ bgAlpha = 0.0; return vec3(0.0); }
 
   vec3 nor = rh_zigN(p);
-  float r   = length(p.xy);
+  vec2  po  = p.xy / (uScale / 100.0);
+  float r   = length(po);
   float rn  = r / RH_RDISC;
-  float ang = atan(p.y, p.x);
-  vec2  rdir = (r > 1e-4) ? p.xy/r : vec2(1.0, 0.0);
+  float ang = atan(po.y, po.x);
+  vec2  rdir = (r > 1e-4) ? po/r : vec2(1.0, 0.0);
   float rData = 0.34 * RH_HUB;
 
   float topFace  = smoothstep(0.25, 0.75, nor.z);          // 上面(段の天面)
@@ -176,7 +192,7 @@ vec3 bg_romhack(vec2 fc){
   float bond = 0.0;
   for(int i = 0; i < RH_RINGS; i++){
     float edge = rh_R[i] / RH_RDISC;
-    bond = max(bond, smoothstep(0.009, 0.0, abs(rn - (edge - 0.010))));
+    bond = max(bond, smoothstep(0.009 * (uThick / 100.0), 0.0, abs(rn - (edge - 0.010))));
   }
   albedo = mix(albedo, vec3(0.08), bond * topFace * (1.0 - backSide));
 

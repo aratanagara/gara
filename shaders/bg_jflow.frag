@@ -29,20 +29,37 @@ vec4 jf_hash4(float n){
   return fract((p.xxyz + p.yzzw)*p.zywx);
 }
 
+// @param uCount     3..12 = 12.0
+// @param uDetail    8..30 = 30.0
+// @param uWarp      0..300 = 100.0
+// @param uGlow      0..250 = 100.0
+// @param uHueSpread 0..500 = 100.0
+// @param uSize 40..130 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uCount; // 結晶の数 (下げると軽く、まばらになる)
+uniform float uDetail; // Julia 反復数 (下げると軽く、結晶が粗くなる)
+uniform float uWarp; // 結晶の歪み (%)
+uniform float uGlow; // 白いフィラメントの明るさ (%)
+uniform float uHueSpread; // 結晶内の色相のばらつき (%)
+uniform float uSize; // 結晶ひとつの大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 vec3 bg_jflow(vec2 fc){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = (2.0*I - resolution.xy) / resolution.y;        // x:[-asp,asp] y:[-1,1]
   float asp = resolution.x / resolution.y;
   float T = time;
+  int nIt = int(uDetail + 0.5);
 
   vec3 col = vec3(0.015, 0.02, 0.04);                      // 暗い背景
   float cov = 0.0;                                         // 結晶カバレッジ(透過用)
 
   for(int i = 0; i < JF_N; i++){
+    if(i >= int(uCount + 0.5)) break;
     vec4  rnd  = jf_hash4(float(i)*1.7 + 3.0);
     vec4  rnd2 = jf_hash4(float(i)*2.9 + 11.0);
     float yc    = (rnd.x*2.0 - 1.0) * 0.86;                // 縦レーン
-    float scale = 0.04 + 2.3*pow(rnd.y, 3.0);            // 大きさ(極端: 微小多数+まれに画面横切る巨大)
+    float scale = (0.04 + 2.3*pow(rnd.y, 3.0)) * (uSize / 100.0);            // 大きさ(極端: 微小多数+まれに画面横切る巨大)
     float speed = 0.26 + 0.85*rnd.z;                       // 流れる速さ(スピード感)
     float spin  = (rnd.w - 0.5) * 2.4;                     // 自転(速め)
     float span  = 2.0*asp + 1.8;                           // 画面外まで含む幅
@@ -54,25 +71,26 @@ vec3 bg_jflow(vec2 fc){
     vec2 d = uv - vec2(xc, yb);
     if(dot(d, d) > (scale*1.85)*(scale*1.85)) continue;    // 遠い結晶は早期スキップ
 
-    vec2 p = jf_rot(d/scale, T*spin + rnd.y*6.2831);
+    vec2 p = jf_rot(d/scale, T*spin + rnd.y*6.2831 + radians(uAngle));
     p.x *= 0.82;                                           // 流れ方向にややストレッチ(スピード感)
     // ワープ + ねじれ: 中心からの距離でひねり、ドメインワープで不規則化(刻々と変形)
     float tw = (0.8 + 1.4*rnd.z) * sin(T*0.9 + rnd.x*6.0);
     vec2  pw = jf_rot(p, tw * length(p));
-    pw += 0.22*sin(pw.yx*3.4 + T*1.8 + rnd.w*6.2831);
+    pw += 0.22*(uWarp / 100.0)*sin(pw.yx*3.4 + T*1.8 + rnd.w*6.2831);
     // Julia: c を速めにカーディオイド上で morph(結晶が刻々と変形)
     vec2 z = pw * 1.18;
     vec2 c = jf_C(jf_R(T*1.2 + float(i)*0.7)) * (1.0 + 0.10*sin(T*1.3 + float(i)));
     float k = 0.0;
     float trap = 1e9;                                      // オービットトラップ(内部のフラクタル模様)
     for(int it = 0; it < JF_ITER; it++){
+      if(it >= nIt) break;
       if(dot(z, z) > 4.0) break;
       z = jf_cmul(z, z) + c;
       trap = min(trap, min(abs(z.x), abs(z.y)));           // 軌道が軸に最接近=フィラメント
       k += 1.0;
     }
-    float esc    = k / float(JF_ITER);
-    float inside = step(float(JF_ITER) - 0.5, k);          // 脱出しない=結晶本体
+    float esc    = k / float(nIt);
+    float inside = step(float(nIt) - 0.5, k);          // 脱出しない=結晶本体
     // 形マスク: 境界付近のみ残す(外側のすぐ脱出域は消す=シャープな結晶輪郭)
     float shape  = inside + (1.0 - inside) * smoothstep(0.10, 0.55, esc);
     float radial = smoothstep(1.8, 0.5, length(p));        // 結晶の輪郭にクランプ
@@ -97,10 +115,10 @@ vec3 bg_jflow(vec2 fc){
     float dif  = clamp(dot(Nn, Ll), 0.0, 1.0);
     float spec = pow(clamp(dot(reflect(-Ll, Nn), vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 48.0);
 
-    float hue = 0.695 + 0.03*rnd.y - 0.04*esc;            // 青(#3f00ff 寄りの藍青)
+    float hue = 0.695 + 0.03*rnd.y - 0.04*(uHueSpread / 100.0)*esc;            // 青(#3f00ff 寄りの藍青)
     vec3  base= jf_H(hue, 0.85, 1.0);
     vec3  cc  = base * (0.16 + 0.42*dif);                 // 青のボディ(陰影はここだけ)
-    cc += vec3(0.90, 0.95, 1.0) * pat * 0.95;             // 白い結晶フィラメント(ライティング非依存で加算)
+    cc += vec3(0.90, 0.95, 1.0) * pat * 0.95 * (uGlow / 100.0);             // 白い結晶フィラメント(ライティング非依存で加算)
     cc += vec3(0.85, 0.93, 1.0) * ridge * 0.30;           // 境界デンドライト
     cc += spec * vec3(0.90, 0.97, 1.0) * 0.35;            // 鋭く小さいハイライト
     col = max(col, cc * amt);                              // 明るい方を採用

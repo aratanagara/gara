@@ -12,6 +12,21 @@ mat2  cn_rotate(float a){ float s=sin(a), c=cos(a); return mat2(c,-s,s,c); }
 float cn_vmax(vec3 v){ return max(max(v.x, v.y), v.z); }
 float cn_fbox(vec3 p, vec3 b){ return cn_vmax(abs(p) - b); }
 
+// @param uDetail  1..3     = 3.0
+// @param uTwist   0..250   = 100.0
+// @param uFold    0..200   = 100.0
+// @param uStretch 20..200  = 100.0
+// @param uGlow    25..300  = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uScale 50..150 = 100.0
+uniform float uDetail;    // 内側の sin 重ね回数 (下げると軽く、形が単純になる)
+uniform float uTwist;     // ねじれ量 (%)
+uniform float uFold;      // 破片フォールドの距離 (%)
+uniform float uStretch;   // 縦方向の伸び (%)
+uniform float uGlow;      // 発光の強さ (%)
+uniform float uAngle; // 形全体の向き (度。固定角でずらす)
+uniform float uScale; // 結晶全体の大きさ (%。カメラは動かない)
+
 vec3 bg_crystalnoise(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 R = resolution.xy;
@@ -21,7 +36,7 @@ vec3 bg_crystalnoise(vec2 fc){
   vec3 rd = normalize(vec3(uv*1.4, 1.0));                    // じゃっかん引き(やや広角)
   float zMax = 30.0, z = 0.1;
   vec3 col = vec3(0.0);
-  vec2 m = vec2(time * 0.7);                                 // 速め(スピード感)
+  vec2 m = vec2(time * 0.7 + radians(uAngle), time * 0.7);                                 // 速め(スピード感)
 
   // 形状を徐々に変化させるパラメータ(モーフ)
   float phiK  = 2.0 + 1.0*sin(time*0.11);
@@ -31,12 +46,12 @@ vec3 bg_crystalnoise(vec2 fc){
                      3.0 + 0.9*sin(time*0.13 + 2.0));
   float twk   = -0.2 + 0.3*sin(time*0.05);
   float colK  = 0.4 + 0.2*sin(time*0.09);
-  float twAmt = 0.65 + 0.25*sin(time*0.23);                  // ねじれ量(強め・脈動)
+  float twAmt = (0.65 + 0.25*sin(time*0.23)) * (uTwist / 100.0);                  // ねじれ量(強め・脈動)
   float burst = 0.92 + 0.55*pow(0.5 + 0.5*sin(time*0.55), 4.0); // 周期的な炸裂(鋭く膨張)
-  float foldR = (1.2 + 0.5*sin(time*0.17)) * burst;          // 破片フォールド距離(炸裂で膨張)
+  float foldR = (1.2 + 0.5*sin(time*0.17)) * burst * (uFold / 100.0);          // 破片フォールド距離(炸裂で膨張)
 
   for(float i=0.0; i<52.0; i++){               // 軽量化: 100→52 ステップ
-    vec3 p = ro + rd * z;
+    vec3 p = (ro + rd * z) / (uScale / 100.0);
     p.xz *= cn_rotate(m.x);
     p.yz *= cn_rotate(m.y);
 
@@ -47,7 +62,7 @@ vec3 bg_crystalnoise(vec2 fc){
     the = the*theK + 0.4*sin(the*1.9 + phi*0.7);
     float st=sin(the), ct=cos(the), sp=sin(phi), cp=cos(phi);
     p = vec3(st*cp*r, st*sp*r, ct*r);
-    p.y *= 0.45;                                 // 縦に長く(細長い三角形)
+    p.y *= 0.45 * (uStretch / 100.0);                                 // 縦に長く(細長い三角形)
 
     // ねじれ: z + 半径に沿って xy を回転 → 尖りが螺旋状にねじれる
     p.xy *= cn_rotate(p.z*twAmt + length(p.xz)*0.7 + time*0.4);
@@ -55,6 +70,7 @@ vec3 bg_crystalnoise(vec2 fc){
     float vacc = 0.0;
     vec3 q = p;
     for(float s=1.0; s<4.0; s++){              // 軽量化: 内側 6→4 オクターブ
+      if(s > uDetail + 0.5) break;
       q.xz *= cn_rotate(twk);
       vacc += dot(asin(sin(q*s)), vec3(1.0)) / s;
     }
@@ -76,14 +92,15 @@ vec3 bg_crystalnoise(vec2 fc){
     p.yz *= cn_rotate(p.x*0.5 + time*0.15);
     float d = cn_fbox(p, boxB) / scl;
     d = abs(d) + 0.02;
+    float dm = d * (uScale / 100.0);
 
     col += (1.1 + sin(vec3(3.0,2.0,1.0) + cos(p*colK))) / d;
 
-    if(d < 0.001 || z > zMax) break;
-    z += d * 0.35;                              // 軽量化: 刻みを大きく(同じ深さを少ない手数で)
+    if(dm < 0.001 || z > zMax) break;
+    z += dm * 0.35;                              // 軽量化: 刻みを大きく(同じ深さを少ない手数で)
   }
 
-  col = tanh(col / 1300.0);                     // ステップ減ぶんの明るさ補正
+  col = tanh(col * (uGlow / 100.0) / 1300.0);                     // ステップ減ぶんの明るさ補正
   // 彩度を落とす
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 0.35);

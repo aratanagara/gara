@@ -15,10 +15,22 @@ float lq_noise(vec2 p){
   return mix(mix(lq_rand(i + vec2(0, 0)), lq_rand(i + vec2(1, 0)), f.x),
              mix(lq_rand(i + vec2(0, 1)), lq_rand(i + vec2(1, 1)), f.x), f.y);
 }
+// @param uDetail   1..4    = 4.0
+// @param uDensity  25..400 = 100.0
+// @param uWarp     0..300  = 100.0
+// @param uContrast 50..300 = 100.0
+// @param uGlow     25..250 = 100.0
+uniform float uDetail;    // fbm のオクターブ数 (下げると軽く、模様が粗くなる)
+uniform float uDensity;   // 模様の細かさ (%)
+uniform float uWarp;      // 流れの歪み量 (%)
+uniform float uContrast;  // コントラスト (%。上げると明暗がはっきりする)
+uniform float uGlow;      // 明るさ (%)
+
 float lq_fbm(vec2 p){
   float v = 0.0;
   float a = 1.0;
   for(int i = 0; i < 4; ++i){
+    if(i >= int(uDetail + 0.5)) break;
     p = 1.5 * p + 15.0;
     a *= 0.5;
     v += a * lq_noise(p);
@@ -28,12 +40,12 @@ float lq_fbm(vec2 p){
 vec3 bg_liquid(vec2 fc){
   // ズーム/パン: 中心基準でスケールしてからパン
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
-  vec2 p = 2.0 * I / resolution.y;
+  vec2 p = 2.0 * I / resolution.y * (uDensity / 100.0);
   float t = time * 2.0;   // 2倍速
 
   vec2 r1 = vec2(lq_fbm(p + 0.02 * t),  lq_fbm(p + 0.005 * t));
-  vec2 r2 = vec2(lq_fbm(p + 0.15 * t + 10.0 * r1),
-                 lq_fbm(p + 0.12 * t + 12.0 * r1));
-  float v = 1.8 * pow(lq_fbm(p + r2), 2.0) + 0.03;
+  vec2 r2 = vec2(lq_fbm(p + 0.15 * t + 10.0 * (uWarp / 100.0) * r1),
+                 lq_fbm(p + 0.12 * t + 12.0 * (uWarp / 100.0) * r1));
+  float v = 1.8 * (uGlow / 100.0) * pow(lq_fbm(p + r2), 2.0 * (uContrast / 100.0)) + 0.03;
   return vec3(v);
 }

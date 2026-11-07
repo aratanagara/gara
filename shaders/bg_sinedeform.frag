@@ -8,21 +8,37 @@
 // =====================================================
 
 // 多重 sin によるドメイン変形(独自の周波数/位相/swizzle)
+// @param uWarp     0..150  = 100.0
+// @param uThick    40..120 = 100.0
+// @param uDensity  0..300  = 100.0
+// @param uContrast 40..200 = 100.0
+// @param uGlow     25..250 = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uScale 50..110 = 100.0
+uniform float uWarp;      // うねり (ドメイン変形) の強さ (%)
+uniform float uThick;     // チューブの太さ (%)
+uniform float uDensity;   // 虹色の帯の密度 (%。0 で一色)
+uniform float uContrast;  // トーンマップのガンマ (%)
+uniform float uGlow;      // 拡散光の強さ (%)
+uniform float uAngle; // チューブの向き (度。固定角でずらす)
+uniform float uScale; // チューブ全体の大きさ (%。カメラは動かない)
+
 vec3 sd_warp(vec3 p){
   float t = time;
   p.y += 0.45*sin(0.6*p.x - 0.9*t);
   p.x *= 0.62;
-  p += 0.90*sin(1.8*p.yzx + vec3(0.0, 0.0, 1.7*t));
-  p += 0.42*sin(3.3*p.zxy + vec3(0.0, 0.0, 0.9*t));
-  p += 0.21*sin(5.1*p.yzx + vec3(0.0, 0.0, 0.5*t));
-  p += 0.10*sin(6.7*p.zxy + vec3(0.0, 0.0, 0.2*t));
+  p += 0.90*(uWarp / 100.0)*sin(1.8*p.yzx + vec3(0.0, 0.0, 1.7*t));
+  p += 0.42*(uWarp / 100.0)*sin(3.3*p.zxy + vec3(0.0, 0.0, 0.9*t));
+  p += 0.21*(uWarp / 100.0)*sin(5.1*p.yzx + vec3(0.0, 0.0, 0.5*t));
+  p += 0.10*(uWarp / 100.0)*sin(6.7*p.zxy + vec3(0.0, 0.0, 0.2*t));
   return p;
 }
 
 // チューブ SDF(歪み場なので保守係数で overshoot を抑制)
 float sd_map(vec3 p){
-  vec3 q = sd_warp(p);
-  return (length(q.yz) - 2.3) * 0.025;
+  float sc = uScale / 100.0;
+  vec3 q = sd_warp(p / sc);
+  return (length(q.yz) - 2.3 * (uThick / 100.0)) * 0.025 * sc;
 }
 
 // 4-tap tetrahedron normal
@@ -78,6 +94,8 @@ vec3 sd_pal(float x){
 vec3 bg_sinedeform(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 p = (2.0*I - resolution.xy) / resolution.y;
+  float aS = radians(uAngle);
+  p = mat2(cos(aS), -sin(aS), sin(aS), cos(aS)) * p;
 
   vec3 ro = vec3(0.0, 0.0, 4.5);
   vec3 rd = normalize( vec3(p.xy, -2.0) );
@@ -90,9 +108,9 @@ vec3 bg_sinedeform(vec2 fc){
     bgAlpha = 1.0;                        // チューブ本体は不透明
     vec3 pos = ro + t*rd;
     vec3 nor = sd_nor(pos);
-    vec3 uvw = sd_warp(pos);
+    vec3 uvw = sd_warp(pos / (uScale / 100.0));
 
-    vec3 mate = sd_pal(uvw.y*0.12);
+    vec3 mate = sd_pal(uvw.y*0.12*(uDensity / 100.0));
     mate = pow(mate, vec3(2.2));
 
     float occ = sd_ao(pos, nor);
@@ -102,12 +120,12 @@ vec3 bg_sinedeform(vec2 fc){
     col = vec3(0.0);
     float dif = max(0.0, 0.2 + 0.8*nor.y) * occ;
     float spe = pow(max(0.0, ref.y), 14.0) * occ * (0.04 + 0.96*pow(fre, 5.0));
-    col += 3.6*mate*dif;                                 // diffuse(dome)
+    col += 3.6*(uGlow / 100.0)*mate*dif;                                 // diffuse(dome)
     col += spe*1.6;                                      // 鏡面ハイライト
     col += mate*occ*(0.5 + 0.5*nor.y);                  // ambient(常に≥0)
     col += mate*1.1*fre*fre*vec3(1.0, 0.82, 0.66)*occ;  // sss(暖色)
 
-    col = pow(col, vec3(0.30, 0.42, 0.5));              // トーンマップ
+    col = pow(col, vec3(0.30, 0.42, 0.5) * (uContrast / 100.0));              // トーンマップ
   }
 
   vec2 q = I / resolution.xy;

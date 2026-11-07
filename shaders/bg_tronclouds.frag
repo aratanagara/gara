@@ -35,11 +35,22 @@ float hc_fbm(vec3 p, float lac){
 #define HC_FBM_FREQ   2.76434
 #define HC_STEPS      22
 
+// @param uCover 0..200   = 100.0
+// @param uGrid  25..400  = 100.0
+// @param uThick 25..400  = 100.0
+// @param uGlow  0..250   = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uCover;     // 雲の量 (%)
+uniform float uGrid;      // 床グリッドの細かさ (%)
+uniform float uThick;     // 床グリッド線の太さ (%)
+uniform float uGlow;      // 床グリッド線の明るさ (%)
+uniform float uAngle; // 床グリッドの向き (度。固定角でずらす)
+
 float hc_density(vec3 pos, vec3 offset){
   vec3 p = pos*0.0212242 + offset;
   float dens = hc_fbm(p, HC_FBM_FREQ);
   // カバレッジをゆっくり時間変動させ、雲が湧いて流れて消えるタイミングを作る
-  float covAmt = HC_COVERAGE + 0.32 * sin(time*0.07) + 0.12 * sin(time*0.17 + 1.3);
+  float covAmt = HC_COVERAGE * (uCover / 100.0) + 0.32 * sin(time*0.07) + 0.12 * sin(time*0.17 + 1.3);
   covAmt = clamp(covAmt, 0.12, 0.85);
   float cov = 1.0 - covAmt;
   dens *= smoothstep(cov, cov+0.05, dens);
@@ -77,13 +88,14 @@ vec4 hc_clouds(vec3 ro, vec3 rd){
 // ---- TRON ネオングリッド床 ----
 vec3 sc_grid(vec2 xz){
   float speed = time*5.0;
-  vec2 coord = xz + vec2(0.0, speed);
-  vec2 g = abs(fract(coord*0.5)-0.5) / fwidth(coord*0.5);
+  float gA = radians(uAngle);
+  vec2 coord = mat2(cos(gA), -sin(gA), sin(gA), cos(gA)) * xz + vec2(0.0, speed);
+  vec2 g = abs(fract(coord*(0.5 * (uGrid / 100.0)))-0.5) / fwidth(coord*(0.5 * (uGrid / 100.0)));
   float line = min(g.x, g.y);
-  float mask = 1.0 - min(line, 1.0);
+  float mask = 1.0 - min(line / (uThick / 100.0), 1.0);
   float fade = exp(-length(xz)*0.04);
   float center = 1.0 - smoothstep(0.0, 0.1, abs(xz.x));
-  return vec3(1.0, 1.0, 1.0) * (mask + center*0.5) * fade * 1.6;   // 白いグリッド線
+  return vec3(1.0, 1.0, 1.0) * (mask + center*0.5) * fade * 1.6 * (uGlow / 100.0);   // 白いグリッド線
 }
 
 // ---- BSOD: 実テキストのテクスチャ(uBsodText)を参照。タイプライターで1行ずつ表示 ----

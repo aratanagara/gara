@@ -20,12 +20,26 @@ vec4 mb_getMaterial(float id, float tm){
   return mix(c5,c1,f);
 }
 
+// @param uDetail 28..48  = 48.0
+// @param uThick  0..250   = 100.0
+// @param uGlow   25..300  = 100.0
+// @param uGloss  60..300  = 100.0
+// @param uVignette 0..300 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail;    // 反復回数 (下げると軽く、縁の描き込みが減る)
+uniform float uThick;     // 曲線の太さ (%)
+uniform float uGlow;      // ライトの強さ (%)
+uniform float uGloss;     // ハイライトの鋭さ (%。上げるほど小さく鋭い)
+uniform float uVignette;  // 周辺減光 (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
   vec2 c = targetC + p*zoom;
   vec2 z = vec2(0.0);
   float minDist = 1e10, matID = 0.0, shapeHeight = 0.0, smoothIter = 0.0;
   bool escaped = false;
   for(int i=0;i<MB_MAX_ITER;i++){
+    if(i >= int(uDetail + 0.5)) break;
     z = mat2(z, -z.y, z.x) * z + c;
     float r = dot(z,z);
     if(r > 256.0){ smoothIter = float(i) - log2(log2(r)) + 4.0; escaped = true; break; }
@@ -40,13 +54,13 @@ vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
         float c1 = localZ.y - 0.18*sin(localZ.x*3.5 + fi*2.1);
         float c2 = localZ.x - 0.18*sin(localZ.y*3.5 + fi*1.3);
         float curve = min(abs(c1), abs(c2));
-        float taper = 0.030 * smoothstep(0.30, 0.05, length(localZ));
+        float taper = 0.030 * (uThick / 100.0) * smoothstep(0.30, 0.05, length(localZ));
         d = curve - taper; h = 1.0; m = fi*0.3;
       } else if(type < 0.8){
         float c1 = localZ.y*0.9 + localZ.x*0.3 - 0.16*sin(localZ.x*4.2 + fi*1.9);
         float c2 = localZ.x*0.9 - localZ.y*0.3 - 0.16*sin(localZ.y*4.2 - fi*1.1);
         float curve = min(abs(c1), abs(c2));
-        float taper = 0.028 * smoothstep(0.28, 0.05, length(localZ));
+        float taper = 0.028 * (uThick / 100.0) * smoothstep(0.28, 0.05, length(localZ));
         d = curve - taper; h = 0.9; m = fi*0.2;
       } else if(type < 0.92){
         localZ.y = -localZ.y;
@@ -54,7 +68,7 @@ vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
       } else {
         float c1 = localZ.y - 0.18*sin(localZ.x*3.0 + fi*1.7);
         float curve = abs(c1);
-        float taper = 0.030 * smoothstep(0.30, 0.05, length(localZ));
+        float taper = 0.030 * (uThick / 100.0) * smoothstep(0.30, 0.05, length(localZ));
         d = curve - taper; h = 0.8; m = fi*0.4;
       }
       if(d < minDist){ minDist = d; shapeHeight = h; matID = m; }
@@ -112,6 +126,7 @@ vec3 bg_mandelbaum(vec2 fc){
   }
   target += bgCamPx/resolution.y * 0.05;
   zoom /= bgZoom;
+  angle += radians(uAngle);
   mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
   vec2 p = uv * rot;
 
@@ -125,17 +140,17 @@ vec3 bg_mandelbaum(vec2 fc){
   float gloss = mtl.a;
 
   vec3 lightDir1 = normalize(vec3(0.8,0.8,1.0));
-  vec3 lightCol1 = vec3(1.0,0.9,0.7)*1.2;
+  vec3 lightCol1 = vec3(1.0,0.9,0.7)*1.2*(uGlow / 100.0);
   vec3 lightDir2 = normalize(vec3(-0.8,-0.6,0.5));
-  vec3 lightCol2 = vec3(0.2,0.4,0.8)*0.6;
+  vec3 lightCol2 = vec3(0.2,0.4,0.8)*0.6*(uGlow / 100.0);
   vec3 viewDir = vec3(0.0,0.0,1.0);
 
   float dif1 = max(dot(normal,lightDir1),0.0);
   float dif2 = max(dot(normal,lightDir2),0.0);
   vec3 half1 = normalize(lightDir1+viewDir);
-  float spec1 = pow(max(dot(normal,half1),0.0), 64.0*gloss)*gloss*2.0;
+  float spec1 = pow(max(dot(normal,half1),0.0), 64.0*gloss*(uGloss / 100.0))*gloss*2.0;
   vec3 half2 = normalize(lightDir2+viewDir);
-  float spec2 = pow(max(dot(normal,half2),0.0), 32.0*gloss)*gloss*0.5;
+  float spec2 = pow(max(dot(normal,half2),0.0), 32.0*gloss*(uGloss / 100.0))*gloss*0.5;
   float fresnel = pow(1.0-max(dot(normal,viewDir),0.0), 4.0);
   vec3 rimLight = vec3(1.0,0.9,0.8)*fresnel*gloss*0.8;
   float ao = clamp(height*2.5, 0.1, 1.0);
@@ -157,7 +172,7 @@ vec3 bg_mandelbaum(vec2 fc){
   finalCol -= grain*0.03;
 
   vec2 vUv = fc/resolution.xy;
-  finalCol *= pow(16.0*vUv.x*vUv.y*(1.0-vUv.x)*(1.0-vUv.y), 0.15);
+  finalCol *= pow(16.0*vUv.x*vUv.y*(1.0-vUv.x)*(1.0-vUv.y), max(0.15 * (uVignette / 100.0), 1e-4));
 
   return clamp(finalCol, 0.0, 1.0);
 }

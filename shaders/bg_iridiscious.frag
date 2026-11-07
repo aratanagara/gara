@@ -6,22 +6,32 @@
 //   vj ツールの bg 形式に適合 (mainImage → bg 関数 / iTime,iResolution → time,resolution
 //   / bgZoom・bgCamPx でズーム/パン対応)。
 // =====================================================
+// @param uDetail   7..11   = 11.0
+// @param uDensity  60..200  = 100.0
+// @param uWarp     0..300   = 100.0
+// @param uContrast 25..250  = 100.0
+uniform float uDetail;     // 重ねる層の数 (下げると軽く、模様が単純になる)
+uniform float uDensity;    // 模様の細かさ (%)
+uniform float uWarp;       // 層ごとの歪みの強さ (%)
+uniform float uContrast;   // 明暗の強さ (%)
+
 vec3 bg_iridiscious(vec2 fc){
   // ズーム/パン: 中心基準でスケールしてからパン
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
 
-  float i = 0.0, s = 14.0;
+  float i = 0.0, s = 14.0 * (uDensity / 100.0);
   vec4 O = vec4(0.0), q = vec4(0.0), l = vec4(0.0);
 
   for(; i++ < 11.0; ){
-    q.xy = sin(time + s * I/resolution.y + q.yx * 2.0);
+    if(i > floor(uDetail + 0.5)) break;
+    q.xy = sin(time + s * I/resolution.y + q.yx * 2.0 * (uWarp / 100.0));
     l += 0.1 / max(dot(q = sin(q), q*4.0), 0.1);
     s *= 0.8;
     O += sin(l*vec4(3.0,2.0,1.0,1.0) + i*0.7) / s;
     l /= 4.0;
   }
 
-  O = tanh(O*O);
+  O = tanh(O*O * (uContrast / 100.0));
 
   // 色相だけを差し替え、明度(輝度)は元のまま保持する。
   // tinted = 目標色相 × (元の輝度 / 目標色相の輝度)

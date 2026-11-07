@@ -11,6 +11,21 @@ mat2 cpRot(float a){ return mat2(cos(a),-sin(a),sin(a),cos(a)); }
 
 #define CP_PHI 1.61803398874989
 
+// @param uThick 30..250 = 100.0
+// @param uSpacing 70..250 = 100.0
+// @param uTwist 60..150 = 100.0
+// @param uGlow 0..250 = 100.0
+// @param uDepth 50..300 = 100.0
+// @param uSize 50..150 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uThick;   // 壁厚 (メッシュの線の太さ) (%)
+uniform float uSpacing;   // オブジェクトのセル間隔 (%)
+uniform float uTwist;   // ねじれの強さ (%)
+uniform float uGlow;   // 鏡面ハイライトの強さ (%)
+uniform float uDepth;   // 遠方フォグの距離 (%)
+uniform float uSize;   // 要素ひとつの大きさ (%。配置は変えない)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 // メッシュ風: 中空のチューブ/リング構造にして粉状の点ではなく線/網に
 //   abs(p)+offset で 8 octant に放射配置、abs(faceDist - r) で壁厚のあるシェルに
 float cp_d12(vec3 p){
@@ -18,7 +33,7 @@ float cp_d12(vec3 p){
   p = abs(p) - a;
   float y = abs(p.y);
   float rad = 0.13 * (0.45 + 0.55*max(0.0, 1.0 - y*1.1));
-  float thick = 0.150;        // 壁厚 (メッシュの線の太さ)
+  float thick = 0.150 * (uThick / 100.0);        // 壁厚 (メッシュの線の太さ)
   // 断面を正三角形に: セルごとにランダム回転 (cpTriRot)
   vec2 q = p.xz;
   float ang = atan(q.x, q.y) + cpTriRot;
@@ -30,22 +45,22 @@ float cp_d12(vec3 p){
 float cp_de(vec3 pos, float iters){
   float shell = length(pos-cpRo) - 0.01;
   vec3 tpos = pos;
-  float dd = 8.5;     // セル間隔 (大きいほどオブジェクトが疎に)
+  float dd = 8.5 * (uSpacing / 100.0);     // セル間隔 (大きいほどオブジェクトが疎に)
   vec3 id = round(tpos/dd);
   tpos.xz -= dd*id.xz;
   float h1 = fract(sin(dot(id, vec3(12.9898,78.233,37.719)))*43758.5453);
   float h2 = fract(sin(dot(id, vec3(39.346,11.135,83.155)))*24634.6345);
   cpSides = 3.0 + floor(h1*4.0);
   cpTriRot = h2 * 6.28318;   // 三角形断面のランダム回転
-  tpos.xy *= cpRot(h1*6.28318);
+  tpos.xy *= cpRot(h1*6.28318 + radians(uAngle));
   tpos.yz *= cpRot(h2*6.28318);
-  tpos.xz *= cpRot(2.2*tpos.y);   // 強いねじれ
-  vec4 p = vec4(tpos, 1.0);
+  tpos.xz *= cpRot(2.2 * (uTwist / 100.0) * tpos.y);   // 強いねじれ
+  vec4 p = vec4(tpos / (uSize / 100.0), 1.0);
   for(float i=0.0;i<iters;i++){
     p.xz = clamp(p.xz, -0.9, 0.9)*2.0 - p.xz;
     p = p*2.7/clamp(dot(p.xyz,p.xyz), 0.6, 3.0);
   }
-  float fr = cp_d12(p.xzy) / p.w;
+  float fr = cp_d12(p.xzy) / p.w * (uSize / 100.0);
   cpIfsColor = vec3( log(p.w)*2.0 + 2.0*length(p.xz)*vec3(1.0,2.0,2.4) );
   return max(-shell, fr);
 }
@@ -103,15 +118,15 @@ void cp_march(vec3 ro, vec3 rd){
       float ndh = max(dot(nn, hlf), 0.0);
       float spec  = pow(ndh, 120.0);   // 鋭いコア (ハイライトの芯)
       float glare = pow(ndh, 20.0);    // 広いグレア (周囲の滲み)
-      surf += spec  * vec3(1.05, 1.08, 1.15) * 1.6;
-      surf += glare * vec3(0.85, 0.90, 1.02) * 0.7;
+      surf += spec  * vec3(1.05, 1.08, 1.15) * 1.6 * (uGlow / 100.0);
+      surf += glare * vec3(0.85, 0.90, 1.02) * 0.7 * (uGlow / 100.0);
       // Fresnel: エッジを金属的に強く持ち上げ + マゼンタの差し色
       float fres = pow(1.0 - max(dot(nn, -rd), 0.0), 3.0);
       surf = surf * (1.0 + fres * 0.6) + vec3(0.06, 0.07, 0.10) * fres;
       surf = mix(surf, vec3(1.00, 0.20, 0.78), fres * 0.22);
       // 加算ではなく mix で合成 (チャンネル飽和→白線を防ぐ)
       // 距離フォグで遠方のサブピクセル粉をフェード
-      float fog = smoothstep(8.0, 2.0, t);
+      float fog = smoothstep(8.0 * (uDepth / 100.0), 2.0 * (uDepth / 100.0), t);
       vec3 contrib = surf * tint * dif * fog;
       cpColor = mix(cpColor, contrib, 0.75 * fog);
       cpCov = mix(cpCov, 1.0, 0.75 * fog);   // カバレッジも同係数で蓄積(Slot B 透過用)

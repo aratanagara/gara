@@ -24,21 +24,43 @@ vec3  st_look(vec3 eye, vec3 target, vec2 anchor, float fov){
   return normalize(fwd*fov + right*anchor.x + up*anchor.y);
 }
 
-float st_geometry(vec3 pos, float tm){
+// @param uDetail 2..6    = 6.0
+// @param uSpread 50..200  = 100.0
+// @param uSize  25..250  = 100.0
+// @param uSoft   20..300  = 100.0
+// @param uWarp   0..250   = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uScale 50..200 = 100.0
+uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、構造が単純になる)
+uniform float uSpread;    // 折り畳みの広がり (%)
+uniform float uSize;     // 球塊の大きさ (%)
+uniform float uSoft;      // 球塊どうしの融合の柔らかさ (%)
+uniform float uWarp;      // 構造のうねり (ドメインワープ) の強さ (%)
+uniform float uAngle; // 折り畳みごとの向き (度。固定角でずらす)
+uniform float uScale; // 物体全体の大きさ (%。画面・カメラは動かない)
+
+float st_geometry0(vec3 pos, float tm){
   // 流れるドメインワープ: 折り畳み前に pos を正弦場でうねらせる(有機的な歪み)
-  pos += 0.16 * sin(pos.zxy * 1.7 + tm * 0.6);
+  pos += 0.16 * (uWarp / 100.0) * sin(pos.zxy * 1.7 + tm * 0.6);
   float a = 1.0;
   float scene = 1.0;
   float t = tm + pos.x/4.0;
   t = floor(t) + pow(fract(t), 0.5);
   for(int i=6; i>0; --i){
-    pos.xy *= st_rot(cos(t)*ST_BALANCE/a + a*2.0);
-    pos.zy *= st_rot(sin(t)*ST_BALANCE/a + a*2.0);
-    pos.xz = abs(pos.xz) - ST_RANGE*a;
-    scene = st_smin(scene, length(pos)-ST_RADIUS*a, ST_BLEND*a);
+    if(6 - i >= int(uDetail + 0.5)) break;
+    pos.xy *= st_rot(cos(t)*ST_BALANCE/a + a*2.0 + radians(uAngle));
+    pos.zy *= st_rot(sin(t)*ST_BALANCE/a + a*2.0 + radians(uAngle));
+    pos.xz = abs(pos.xz) - ST_RANGE*(uSpread / 100.0)*a;
+    scene = st_smin(scene, length(pos)-ST_RADIUS*(uSize / 100.0)*a, ST_BLEND*(uSoft / 100.0)*a);
     a /= ST_FALLOFF;
   }
   return scene;
+}
+
+// 物体全体のスケール (距離も補正)
+float st_geometry(vec3 pos, float tm){
+  float sc = uScale / 100.0;
+  return st_geometry0(pos / sc, tm) * sc;
 }
 
 float st_raymarch(vec3 eye, vec3 ray, float tm, out float total){

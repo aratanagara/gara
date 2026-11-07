@@ -32,11 +32,26 @@ float bn_k3d(vec3 sp, vec3 d, vec3 dm, float s, vec3 r){
   return sdf;
 }
 
+// @param uSpread 50..150 = 100.0
+// @param uThick  30..200 = 100.0
+// @param uTwist  0..200 = 100.0
+// @param uGlow   60..300 = 100.0
+// @param uScale 50..150 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uSpread; // 構造の広がり (%)
+uniform float uThick; // 棒の太さ (%)
+uniform float uTwist; // ねじれの強さ (%)
+uniform float uGlow; // 明るさ (%)
+uniform float uScale; // 物体全体の大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 vec2 bn_map(vec3 sp){
-  sp.zy *= BN_RT(sp.x * 0.2 + bn_t);
-  sp.xy *= BN_RT(sp.z * 0.05 + bn_t);
-  float dst0 = bn_k3d(sp, vec3(7.0, 5.0, 3.0), vec3(5.0, 0.7, 0.7), 1.7, vec3(2.0, 3.0, 2.0));
-  return vec2(dst0, 0.0);
+  float sc = uScale / 100.0;
+  sp /= sc;
+  sp.zy *= BN_RT(sp.x * 0.2 * (uTwist / 100.0) + bn_t);
+  sp.xy *= BN_RT(sp.z * 0.05 * (uTwist / 100.0) + bn_t);
+  float dst0 = bn_k3d(sp, vec3(7.0, 5.0, 3.0) * (uSpread / 100.0), vec3(5.0, 0.7 * (uThick / 100.0), 0.7 * (uThick / 100.0)), 1.7, vec3(2.0, 3.0, 2.0));
+  return vec2(dst0 * sc, 0.0);
 }
 
 vec3 bn_mrch(vec3 ro, vec3 rd){
@@ -102,8 +117,8 @@ vec3 bg_meguru(vec2 fc){
     tm = bt;
   }
   vec2 uv = (fc - 0.5 * resolution) / (resolution.y * zoom);
-  float cosA = cos(angle);
-  float sinA = sin(angle);
+  float cosA = cos(angle + radians(uAngle));
+  float sinA = sin(angle + radians(uAngle));
   uv = vec2(cosA * uv.x - sinA * uv.y, sinA * uv.x + cosA * uv.y);
   uv += camPx / resolution.y * 5.0;
   uv.x *= 0.5;
@@ -139,6 +154,6 @@ vec3 bg_meguru(vec2 fc){
     palette = mix(palette, cosPalette, abs(uCosGrad));
   }
   vec3 rainbow_fcl = palette / (d0 * 0.005 + 0.05);
-  return amb + clamp(rainbow_fcl, 0.0, 10.0) * 0.15 - 0.35;
+  return amb + clamp(rainbow_fcl, 0.0, 10.0) * 0.15 * (uGlow / 100.0) - 0.35;
 }
 

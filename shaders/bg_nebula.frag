@@ -57,11 +57,27 @@ float neb_snoise(vec3 v){
 
 vec4 neb_blend(vec4 fg, vec4 bg){ return fg * fg.a + bg * (1.0 - fg.a); }
 
+// @param uWarp 0..300 = 100.0
+// @param uDensity 25..400 = 100.0
+// @param uSoft 40..200 = 100.0
+// @param uSize 60..160 = 100.0
+// @param uGlow 20..200 = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uAspect 40..250 = 100.0
+uniform float uWarp;   // ブロブのゆらぎ (歪み) の強さ (%)
+uniform float uDensity;   // ゆらぎの細かさ (%)
+uniform float uSoft;   // ブロブの縁のぼかし幅 (%)
+uniform float uSize;   // ブロブの大きさ (%)
+uniform float uGlow;   // 明るさ (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uAspect;   // 星雲の横長さ (%)
+
 float neb_shape(vec2 uv, float radius, float softness, float noiseIntensity, float noiseOffset){
-  float noise = neb_snoise(vec3(uv * 1.2 + noiseOffset, noiseOffset + time * 0.3));
-  uv += noise * noiseIntensity;
+  float noise = neb_snoise(vec3(uv * (1.2 * (uDensity / 100.0)) + noiseOffset, noiseOffset + time * 0.3));
+  uv += noise * noiseIntensity * (uWarp / 100.0);
   float dist = length(uv);
-  return smoothstep(radius, radius - softness, dist);
+  float rK = radius * (uSize / 100.0);
+  return smoothstep(rK, rK - softness * (uSoft / 100.0), dist);
 }
 
 vec3 bg_nebula(vec2 fc){
@@ -69,7 +85,9 @@ vec3 bg_nebula(vec2 fc){
   vec2 uv = I / resolution.xy;
   uv -= 0.5;
   uv.x *= resolution.x / resolution.y;
-  uv.x *= 0.35;                                   // 横長の星雲
+  float ang = radians(uAngle);
+  uv = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * uv;
+  uv.x *= 0.35 / (uAspect / 100.0);                                   // 横長の星雲
 
   const vec3 col0 = vec3(0.157, 0.235, 0.424);
   const vec3 col1 = vec3(0.588, 0.682, 0.906);
@@ -82,7 +100,7 @@ vec3 bg_nebula(vec2 fc){
   vec4 layers = neb_blend(l0, bg);
   layers = neb_blend(l1, layers);
   layers = neb_blend(l2, layers);
-  vec3 color = layers.rgb * layers.a;
+  vec3 color = layers.rgb * layers.a * (uGlow / 100.0);
 
   if(abs(uCosGrad) > 0.0001){
     float lum = dot(color, vec3(0.299, 0.587, 0.114));

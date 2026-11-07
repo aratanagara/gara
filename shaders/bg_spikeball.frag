@@ -19,19 +19,34 @@ vec3 sb_hash3(vec3 p){
   return fract(sin(p)*43758.5453);
 }
 
+// @param uDensity 40..250 = 100.0
+// @param uSharp 40..250 = 100.0
+// @param uSpike 0..125 = 100.0
+// @param uCore 40..200 = 100.0
+// @param uContrast 30..250 = 100.0
+// @param uScale 40..130 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDensity;   // 棘 (結晶) の数の密度 (%)
+uniform float uSharp;   // 棘の鋭さ (%。大きいほど細く尖る)
+uniform float uSpike;   // 棘の伸びる量 (%)
+uniform float uCore;   // 中心の核の大きさ (%)
+uniform float uContrast;   // コントラスト (ガンマ) (%)
+uniform float uScale;   // 物体全体の大きさ (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 // 方向 n に対する突起(棘)高さ。各セルに円錐状の鋭い棘を立て、位置/高さ/有無をランダム化(非一様)。
 float sb_disp(vec3 n){
   // ゆっくり回転する格子
-  float a = time*0.22;
+  float a = time*0.22 + radians(uAngle);
   float ca = cos(a), sa = sin(a);
   n.xz = mat2(ca, -sa, sa, ca) * n.xz;
-  vec3 q = n * 7.5;                        // 太く大きめの結晶(少なめ)
+  vec3 q = n * 7.5 * (uDensity / 100.0);                        // 太く大きめの結晶(少なめ)
   vec3 cell = floor(q + 0.5);              // 最寄りセル
   vec3 rnd  = sb_hash3(cell);              // セルごとの乱数 0..1
   vec3 center = cell + (rnd - 0.5) * 0.25; // 結晶位置をセル内でジッター
   vec3 d = abs(q - center);
   float l1 = d.x + d.y + d.z;              // L1(八面体)距離 = 角張った結晶ファセット
-  float spike = pow(clamp(1.0 - l1*0.8, 0.0, 1.0), 1.2);   // 太く鋭利な結晶(根本太く先尖り)
+  float spike = pow(clamp(1.0 - l1*0.8*(uSharp / 100.0), 0.0, 1.0), 1.2);   // 太く鋭利な結晶(根本太く先尖り)
   float hgt = mix(0.12, 1.5, pow(rnd.x*rnd.y, 0.5));       // 長さの不揃い(短いチビ〜長い棘まで大きくばらつく)
   // アタックを拾うたびに各結晶ごとの係数が変わる(iAudioSeed が onset で更新)→ バラバラに伸縮
   float pc = mix(0.4, 1.8, fract(rnd.z + iAudioSeed*1.37));
@@ -41,7 +56,8 @@ float sb_disp(vec3 n){
 }
 
 float sb_map(vec3 p){
-  return length(p) - sb_core - sb_disp(normalize(p));   // 小さい核を放射状に変位 → ウニ
+  float sc = uScale / 100.0;
+  return (length(p) / sc - sb_core - sb_disp(normalize(p))) * sc;   // 小さい核を放射状に変位 → ウニ
 }
 
 vec3 sb_normal(vec3 p){
@@ -55,7 +71,7 @@ vec3 sb_normal(vec3 p){
 // 変位 SDF は Lipschitz>1 なので表面近くは慎重にステップ。t0..tmax の帯のみ行進。
 // 棘の細い先端を取りこぼさないよう near ステップを小さめに。
 float sb_trace(vec3 ro, vec3 rd, float t, float tmax){
-  float limit = 1.7*sb_amp + 0.12;
+  float limit = (1.7*sb_amp + 0.12) * (uScale / 100.0);
   for(int i=0;i<240;i++){
     float d = sb_map(ro + rd*t);
     if(d < 0.0012) return t;
@@ -99,8 +115,8 @@ vec3 bg_spikeball(vec2 fc){
   // 音声で棘の高さを駆動。iAudio は音域(Band)+アタック(Attack)で整形済み。
   // デッドゾーン(0.02)以下=完全に棘ゼロ → ほぼ無音時は滑らかなクローム球で休憩。
   float lvl = max(clamp(iAudio, 0.0, 1.0) - 0.02, 0.0);
-  sb_amp = 3.2 * lvl;                          // もっと伸縮(H44超えの長い棘)
-  sb_core = 0.45 - 0.30 * clamp(lvl*1.6, 0.0, 1.0);  // 大音量で核が縮む → 滑らかな球が見えず棘の塊に
+  sb_amp = 3.2 * lvl * (uSpike / 100.0);                          // もっと伸縮(H44超えの長い棘)
+  sb_core = (0.45 - 0.30 * clamp(lvl*1.6, 0.0, 1.0)) * (uCore / 100.0);  // 大音量で核が縮む → 滑らかな球が見えず棘の塊に
 
   // 自動回転カメラ
   float ca = time*0.25, cb = 0.5 + 0.25*sin(time*0.13);
@@ -115,7 +131,7 @@ vec3 bg_spikeball(vec2 fc){
   bgAlpha = 0.0;           // 背景は透過(重ねられる)
 
   // バウンディング球(中心原点, 半径 1+最大棘高+余白)で早期棄却 & 行進帯を限定
-  float R = sb_core + 1.7*sb_amp + 0.15;
+  float R = (sb_core + 1.7*sb_amp + 0.15) * (uScale / 100.0);
   float bdot = dot(ro, rd);
   float cc = dot(ro, ro) - R*R;
   float h = bdot*bdot - cc;
@@ -138,6 +154,6 @@ vec3 bg_spikeball(vec2 fc){
     }
   }
 
-  col = pow(clamp(col, 0.0, 1.0), vec3(0.4545));    // gamma(高輝度はクリップしてクッキリ)
+  col = pow(clamp(col, 0.0, 1.0), vec3(0.4545 * (uContrast / 100.0)));    // gamma(高輝度はクリップしてクッキリ)
   return col;
 }

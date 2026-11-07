@@ -42,6 +42,15 @@ mat2 aa_rot(float a){
               s,  c);
 }
 
+// @param uGlow    10..300 = 100.0
+// @param uDensity 40..300 = 100.0
+// @param uWarp    0..500 = 100.0
+// @param uOrb     0..300 = 100.0
+uniform float uGlow; // 全体の明るさ (%)
+uniform float uDensity; // 場の模様の細かさ (%)
+uniform float uWarp; // 奥行きに沿ったねじれ (%)
+uniform float uOrb; // 移動オーブの明るさ (%)
+
 vec3 bg_abstract(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
 
@@ -60,9 +69,9 @@ vec3 bg_abstract(vec2 fc){
   // Raymarch loop
   for(float i = 0.0; i < 150.0; i++){
     vec3 rp = p;
-    p.xy *= aa_rot(p.z * 0.0001);
+    p.xy *= aa_rot(p.z * 0.0001 * (uWarp / 100.0));
     // Step distance (positive safe stepping)
-    float s = abs(aa_dot_noise(rp) + (p.y)) * 0.1 + 0.015;
+    float s = abs(aa_dot_noise(rp * (uDensity / 100.0)) + (p.y)) * 0.1 + 0.015;
 
     // Step forward
     p += d * s;
@@ -70,7 +79,7 @@ vec3 bg_abstract(vec2 fc){
     // Accumulate radiance: field glow + moving orb
     l += (sin(p.z * 0.5 - vec3(0.5, 0.8, 0.9)) /
          (abs(s * 0.001) + 1e-6))
-         + 0.3 * vec3(7, 4, 1) /
+         + 0.3 * (uOrb / 100.0) * vec3(7, 4, 1) /
          (length(uv + vec2(-1.0 + 2.0 * smoothstep(-1.0, 1.0, sin(t * 0.50)),
                            -0.4 + sin(t * 0.25) * 0.3))
           * (1e-3 * abs(sin(t * 0.4) * 0.5 + 2.0)));
@@ -80,7 +89,7 @@ vec3 bg_abstract(vec2 fc){
   //   オーブ項が length→0 で発散するため hdr をクランプ (Inf→ACES→NaN を防ぐ)。
   //   ACES は僅かに負を返すことがあり pow(負, 0.45)=NaN になるため max(.,0)。
   //   最後に [0,1] へ収め、Slot B 合成時の RGB 破綻(NaN/>1 痕)を防ぐ。
-  vec3 hdr = clamp(l * l / 3e12, 0.0, 64.0);
+  vec3 hdr = clamp(l * l / 3e12 * (uGlow / 100.0), 0.0, 64.0);
   vec3 c = pow(max(aa_aces(hdr), 0.0), vec3(1.0 / 2.2));
   return clamp(c, 0.0, 1.0);
 }

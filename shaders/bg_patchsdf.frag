@@ -30,6 +30,21 @@ vec3 bp_sdBilinearPatch(vec3 p, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
   return vec3(length(bp_barycentric(p0,p1,p2,p3,uv) - p), uv);
 }
 
+// @param uWarp     0..200  = 100.0
+// @param uRound    20..300 = 100.0
+// @param uGlow     25..250 = 100.0
+// @param uContrast 50..200 = 100.0
+// @param uScale 50..120 = 100.0
+// @param uAngle -180..180 = 0.0
+// @param uTilt -90..90 = 0.0
+uniform float uWarp;      // 立方体の歪み量 (%)
+uniform float uRound;     // 角の丸み・厚み (%)
+uniform float uGlow;      // 明るさ (ゲイン %)
+uniform float uContrast;  // ガンマ (%。上げると暗部が沈む)
+uniform float uScale; // 立方体全体の大きさ (%)
+uniform float uAngle; // 立方体の向き (度。固定角でずらす)
+uniform float uTilt; // 立方体の傾き (度。固定角)
+
 vec3 bp_verts[8];
 const float BP_ROUND = 0.03;
 
@@ -42,7 +57,7 @@ vec3 bp_map(vec3 p){
   tmp = bp_sdBilinearPatch(p, bp_verts[2], bp_verts[6], bp_verts[7], bp_verts[3]); if(tmp.x<res.x) res=tmp;
   tmp = bp_sdBilinearPatch(p, bp_verts[0], bp_verts[4], bp_verts[6], bp_verts[2]); if(tmp.x<res.x) res=tmp;
   tmp = bp_sdBilinearPatch(p, bp_verts[1], bp_verts[3], bp_verts[7], bp_verts[5]); if(tmp.x<res.x) res=tmp;
-  res.x -= BP_ROUND;
+  res.x -= BP_ROUND * (uRound / 100.0);
   return res;
 }
 
@@ -59,7 +74,7 @@ vec2 bp_iSphere(vec3 ro, vec3 rd, vec4 sph){
 int bp_raycast(vec3 ro, vec3 rd, out vec3 oUVT){
   float tmin = 2.0, tmax = 5.0;
   vec2 uv = vec2(0.0);
-  vec2 bs = bp_iSphere(ro, rd, vec4(0.0, 0.0, 0.0, sqrt(3.0)+BP_ROUND));
+  vec2 bs = bp_iSphere(ro, rd, vec4(0.0, 0.0, 0.0, sqrt(3.0)*max(uScale / 100.0, 1.0)+BP_ROUND*max(uRound / 100.0, 1.0)));
   if(bs.y > 0.0){
     tmin = max(tmin, bs.x);
     tmax = min(tmax, bs.y);
@@ -108,12 +123,14 @@ vec3 bg_patchsdf(vec2 fc){
   vec3 rd = normalize(vec3(uv, -2.0));
 
   // 頂点変形(立方体を時間で歪ませる)
-  float amp = 1.5 * smoothstep(0.0, 0.2, 0.5 - 0.5*cos(6.2831*time/15.0));
+  float amp = 1.5 * (uWarp / 100.0) * smoothstep(0.0, 0.2, 0.5 - 0.5*cos(6.2831*time/15.0));
   for(int i=0; i<8; i++){
     vec3 p = vec3((ivec3(i) >> ivec3(0,1,2)) & 1) * 2.0 - 1.0;
+    p *= (uScale / 100.0);
     p.xz = bp_rot(p.xz,  amp*cos(time*3.0*6.2831/15.0 + p.y + 0.0)/2.0);
     p.yz = bp_rot(p.yz, -amp*cos(time*1.0*6.2831/15.0 + p.x + 2.0)/1.0);
-    p.xz = bp_rot(p.xz,  4.0 + time*1.0*6.2831/15.0);
+    p.xz = bp_rot(p.xz,  4.0 + radians(uAngle) + time*1.0*6.2831/15.0);
+    p.yz = bp_rot(p.yz, radians(uTilt));
     bp_verts[i] = p;
   }
 
@@ -136,7 +153,7 @@ vec3 bg_patchsdf(vec2 fc){
     col *= exp2(-t*0.1);
   }
 
-  col = col*2.0/(1.0 + col);                // gain
-  col = pow(max(col, 0.0), vec3(0.4545));   // gamma
+  col = col*(2.0 * (uGlow / 100.0))/(1.0 + col);                // gain
+  col = pow(max(col, 0.0), vec3(0.4545 * (uContrast / 100.0)));   // gamma
   return col;
 }

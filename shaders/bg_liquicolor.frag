@@ -25,22 +25,33 @@ vec3 lq_slerp(vec3 a, vec3 b, float t){
   return a*cos(theta) + rel*sin(theta);
 }
 
+// @param uDetail   4..16   = 16.0
+// @param uDensity  25..300 = 100.0
+// @param uWarp     0..300  = 100.0
+// @param uContrast 25..300 = 100.0
+uniform float uDetail;    // 視線を流す反復回数 (下げると軽く、流れが短くなる)
+uniform float uDensity;   // ノイズ場の細かさ (%)
+uniform float uWarp;      // 視線の曲げ具合 (%)
+uniform float uContrast;  // コントラスト (%)
+
 vec3 bg_liquicolor(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec3 v = normalize(vec3((2.0*I - resolution.xy)/resolution.y, 0.5));
   vec3 p = vec3(0.5, 0.5, 0.5 + time*0.25) + v*0.25;
 
   const int N = 16;
+  int lqCnt = int(uDetail + 0.5);
   vec3 color = vec3(0.0);
   for(int i=0;i<N;i++){
-    vec3 c = normalize(lq_field(p*7.0)*2.0 - 1.0);   // 周波数を上げて空間変化を出す
+    if(i >= lqCnt) break;
+    vec3 c = normalize(lq_field(p*(7.0 * (uDensity / 100.0)))*2.0 - 1.0);   // 周波数を上げて空間変化を出す
     color += c;
-    v = lq_slerp(v, c, -0.25);
+    v = lq_slerp(v, c, -0.25 * (uWarp / 100.0));
     p += v/16.0;
   }
-  color /= float(N);
+  color /= float(lqCnt);
   color.yz *= lq_rotate(time);
-  color = tanh(color*2.0)*0.5 + 0.5;
+  color = tanh(color*(2.0 * (uContrast / 100.0)))*0.5 + 0.5;
 
   // グレースケール基調
   float lum = clamp(dot(color, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);

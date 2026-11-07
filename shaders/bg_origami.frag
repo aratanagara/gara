@@ -23,6 +23,19 @@ float og_fbm(vec2 p){ return og_vnoise(p)*0.5 + og_vnoise(p*2.0+7.0)*0.3 + og_vn
 
 vec3 og_tetOffset = vec3(-0.1);
 
+// @param uDetail   3..9 = 9.0
+// @param uFolds    40..120 = 100.0
+// @param uThick    40..200 = 100.0
+// @param uContrast 50..200 = 100.0
+// @param uScale 50..150 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uDetail; // 折りの反復回数 (下げると軽く、形が粗くなる)
+uniform float uFolds; // 折りの縮み方 (%)
+uniform float uThick; // 紙の厚み (%)
+uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
+uniform float uScale; // 物体全体の大きさ (%)
+uniform float uAngle; // 向き (度。固定角でずらす)
+
 vec3 og_Transform(vec3 p){
   const float phi = 1.61803398875;
   // 折りをゆっくり「等速」で動かす(線形)。元の (T±sin(T)) は速度が 0〜2倍に脈打ち、
@@ -35,19 +48,23 @@ vec3 og_Transform(vec3 p){
   const int n = 9;
   float o = 1.0;
   for(int i=0; i<n; i++){
+    if(i >= int(uDetail + 0.5)) break;
     p.x = abs(p.x + o) - o;
     p.xy = p.xy*c0 + p.yx*s0;
     p.xz = p.xz*c1 + p.zx*s1;
-    o = o*0.75;
+    o = o*0.75*(uFolds / 100.0);
   }
   return p;
 }
 
 float og_DistanceField(vec3 pos){
-  vec3 p = og_Transform(pos);
+  float sc = uScale / 100.0;
+  float ca = cos(radians(uAngle)), sa = sin(radians(uAngle));
+  pos.xz = vec2(ca*pos.x - sa*pos.z, sa*pos.x + ca*pos.z);
+  vec3 p = og_Transform(pos / sc);
   // tetrahedra
   p -= og_tetOffset;
-  return max(max(p.x+p.y+p.z, -p.x-p.y+p.z), max(p.x-p.y-p.z, -p.x+p.y-p.z))/sqrt(3.0) - 0.2;
+  return (max(max(p.x+p.y+p.z, -p.x-p.y+p.z), max(p.x-p.y-p.z, -p.x+p.y-p.z))/sqrt(3.0) - 0.2*(uThick / 100.0)) * sc;
 }
 
 vec3 og_Sky(vec3 ray){
@@ -215,5 +232,5 @@ vec3 bg_origami(vec2 fc){
   c = sqrt(c*c + 0.05);
   col = mix(col, 1.0 - c, 0.48);
 
-  return pow(col, vec3(1.0/2.2));
+  return pow(col, vec3(1.0/(2.2 * (uContrast / 100.0))));
 }

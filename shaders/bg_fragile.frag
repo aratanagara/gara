@@ -16,19 +16,36 @@ mat3 fr_rotmat(vec3 v, float angle){
     (1.0-c)*v.x*v.z - s*v.y,    (1.0-c)*v.y*v.z + s*v.x,   c + (1.0-c)*v.z*v.z);
 }
 
+// @param uThick 40..250 = 100.0
+// @param uTwist 0..250 = 100.0
+// @param uWarp 0..180 = 100.0
+// @param uGlow 0..300 = 100.0
+// @param uShine 0..300 = 100.0
+// @param uScale 50..160 = 100.0
+// @param uAngle -180..180 = 0.0
+uniform float uThick;   // チューブの太さ (%)
+uniform float uTwist;   // ねじれの強さ (%)
+uniform float uWarp;   // ループのうねり (歪み) の大きさ (%)
+uniform float uGlow;   // 内側の発光の強さ (%)
+uniform float uShine;   // 鏡面ハイライトの強さ (%)
+uniform float uScale;   // 物体全体の大きさ (%)
+uniform float uAngle;   // 向き (度。固定角でずらす)
+
 // 距離場: 1本の波打つループ(最低限のパス)。半径・高さが大きく動き、局所的に大きく伸縮する。
 //   入り組みを避けつつダイナミックに。単一トーラスなので軽い。
 float fr_de(vec3 p){
-  p = fr_rotmat(normalize(vec3(0.4, 1.0, 0.2)), time*0.3) * p;    // ゆるい全体回転
-  float tw = 0.8*sin(time*0.5);                                   // ねじれ
+  float sc = uScale / 100.0;
+  p /= sc;
+  p = fr_rotmat(normalize(vec3(0.4, 1.0, 0.2)), time*0.3 + radians(uAngle)) * p;    // ゆるい全体回転
+  float tw = 0.8*sin(time*0.5)*(uTwist / 100.0);                                   // ねじれ
   float c = cos(p.y*tw), s = sin(p.y*tw);
   p.xz = mat2(c, -s, s, c) * p.xz;
   float a = atan(p.z, p.x);                                       // ループ上の角度
-  float radC  = 1.7 + 0.8*sin(a + time*1.7) + 0.45*sin(a*3.0 - time*1.1); // 多ローブの whip
+  float radC  = 1.7 + 0.8*sin(a + time*1.7)*(uWarp / 100.0) + 0.45*sin(a*3.0 - time*1.1)*(uWarp / 100.0); // 多ローブの whip
   float yC    = 1.0*sin(a*2.0 + time*1.3) + 0.45*sin(a*3.0 + time*0.8);   // 豊かな波打ち(3Dパス)
   float bulge = pow(max(0.0, sin(a + time*1.2)), 5.0) * max(0.0, 1.2 + 2.0*sin(time*0.9)); // 頻繁に大きく伸びる
   vec2 q = vec2(length(p.xz) - radC, p.y - yC);
-  return length(q) - (0.32 + bulge);                             // チューブを太め(ガラスの厚み)
+  return (length(q) - (0.32 * (uThick / 100.0) + bulge)) * sc;                             // チューブを太め(ガラスの厚み)
 }
 
 vec3 fr_normal(vec3 p){
@@ -86,8 +103,8 @@ vec3 bg_fragile(vec2 fc){
     vol += intens * smoothstep(0.30, 0.0, abs(d));                // 表面付近のみグロー → 背景は暗い
     if(totdist > maxdist) break;
   }
-  vol = pow(vol, 1.3) * 0.009;
-  vec3 col = vec3(vol)*vec3(0.82, 0.90, 1.05) + spec*0.6;
+  vol = pow(vol, 1.3) * 0.009 * (uGlow / 100.0);
+  vec3 col = vec3(vol)*vec3(0.82, 0.90, 1.05) + spec*0.6*(uShine / 100.0);
   col += vec3(0.92, 0.96, 1.0) * (1.0 - glassfade) * 0.22;       // ガラス通過量=白い厚み
 
   if(abs(uCosGrad) > 0.0001){

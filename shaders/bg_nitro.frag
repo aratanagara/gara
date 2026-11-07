@@ -37,15 +37,26 @@ float nit_noise1v(vec3 u){
 
 vec2 nit_minx(vec2 a, vec2 b){ return mix(b, a, step(a.x, b.x)); }
 
+// @param uThick   70..130 = 100.0
+// @param uWarp    0..300  = 100.0
+// @param uDensity 25..400 = 100.0
+// @param uGlow    25..300 = 100.0
+// @param uFog     0..300  = 100.0
+uniform float uThick;     // 雲の厚み (%) (大きいほど雲が太る)
+uniform float uWarp;      // 雲の縦方向のうねり (%)
+uniform float uDensity;   // 縞(段)の細かさ (%)
+uniform float uGlow;      // 全体の明るさ (%)
+uniform float uFog;       // 距離フォグの濃さ (%)
+
 // 距離場: 多オクターブ雲ノイズ - 厚み。距離の太陽(マテリアル 6)。
 vec2 nit_dist(vec3 p, vec3 camLookat){
-  p.y += nit_noise1v(p*0.5)*0.5;
+  p.y += nit_noise1v(p*0.5)*0.5 * (uWarp / 100.0);
   float n = nit_noise1v(p*2.0 + time*0.6)
           + nit_noise1v(p*4.0 + time*0.7)*0.5
           + nit_noise1v(p*8.0)*0.25
           + nit_noise1v(p*16.0)*0.125;
-  float dist = n*0.25 - 0.27;
-  dist = nit_smax(dist, -(abs(fract(p.y*4.0) - 0.5) - 0.15), 0.4);
+  float dist = n*0.25 - 0.27 * (uThick / 100.0);
+  dist = nit_smax(dist, -(abs(fract(p.y*4.0 * (uDensity / 100.0)) - 0.5) - 0.15), 0.4);
   vec2 distMat = vec2(dist, 0.0);
   distMat = nit_minx(distMat, vec2(length(p - camLookat - vec3(0.0, 0.5, -1.0)) - 0.6, 6.0));
   return distMat;
@@ -97,10 +108,10 @@ vec3 bg_nitro(vec2 fc){
     c = e;
   }
   c += marchCount*(1.5 - vec3(4.2, 1.0, 0.41))*0.0001;       // 半直接光の赤み
-  c = mix(1.5 - vec3(0.91, 0.81, 0.99)*1.75, c, exp(-t*0.15)); // 距離フォグ
+  c = mix(1.5 - vec3(0.91, 0.81, 0.99)*1.75, c, exp(-t*0.15 * (uFog / 100.0))); // 距離フォグ
   if(t <= nearClip) c = (1.5 - vec3(1.9, 1.1, 0.9))*0.25;
   c *= pow(nit_sat(1.0 - length(u/2.5)), 2.0);               // 周辺減光
-  c *= 1.2;
+  c *= 1.2 * (uGlow / 100.0);
   c *= 0.85;
   c = clamp(c, 0.0, 1.0);
   c = sqrt(c);
