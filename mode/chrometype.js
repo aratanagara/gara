@@ -35,7 +35,7 @@ const ChromeType = {
   // ── パラメータ (UI から操作)。% は 100 = 既定の効き ──
   P:{
     text:'GARA',
-    typing:0,            // 1 = presets/chrometype.md の文字列を 1 字ずつ打つ (beat モードは拍で、drone モードは時間で)。上の text は使わない
+    typing:0,            // presets/chrometype.md の文字列を出す (beat モードは拍で、drone モードは時間で)。0 = 切 / 1 = 1 字ずつ打つ / 2 = 全文を一度に出し Hold 拍ごとに入れ替える。上の text は使わない
     tyRate:1,            // 打つ速さ (字/拍)
     tyHold:4,            // 打ち終えてから次の文字列へ移るまでの拍数
     tyOrder:1,           // 0 = 順番 / 1 = ランダム
@@ -188,14 +188,16 @@ const ChromeType = {
       const glines = list[i].split('\n').map(l=>this._graphemes(l));
       return { list, idx:i, phrase:list[i], glines, len:glines.reduce((a, g)=>a + g.length, 0), b0, n:0 };
     };
-    const dur = (t)=>{ const tt = t.len/rate; return tt + hold + (P.tyErase > 0 ? tt : 0); };
+    const whole = P.typing >= 2;   // 全文: 1 字ずつ打たず、Hold 拍 (0 なら 1 拍) ごとに丸ごと入れ替える
+    const dur = (t)=>{ if(whole) return Math.max(1, hold); const tt = t.len/rate; return tt + hold + (P.tyErase > 0 ? tt : 0); };
     let ty = this._ty;
     if(!ty || ty.list !== list) ty = start(P.tyOrder > 0 ? pick(-1) : 0, Math.floor(T));
     else if(jump) ty = start(ty.idx, Math.floor(T));
     for(let g=0; g<64 && T - ty.b0 >= dur(ty); g++) ty = start(pick(ty.idx), ty.b0 + dur(ty));
     if(T - ty.b0 >= dur(ty)) ty = start(pick(ty.idx), Math.floor(T));
     const t = T - ty.b0, tt = ty.len/rate;
-    ty.n = t < tt ? Math.min(ty.len, Math.floor(t*rate) + 1)
+    ty.n = whole ? ty.len
+         : t < tt ? Math.min(ty.len, Math.floor(t*rate) + 1)
          : t < tt + hold ? ty.len
          : Math.max(0, ty.len - Math.floor((t - tt - hold)*rate) - 1);
     this._ty = ty;
@@ -1064,7 +1066,8 @@ void main(){
       this._morph0 = performance.now();
       const P = this.P, rate = Math.max(0.05, +P.tyRate || 1);
       const beatSec = (typeof App !== 'undefined' && App.beatMode === 'beat' && typeof BPM !== 'undefined' && BPM.bpm) ? 60/BPM.bpm/(App.beatScale || 1) : 0.5;
-      this._morphDur = 1000*Math.min(1, this._dz(P.tyMorph)*0.01)*beatSec/rate;   // 1 字の間隔に対する割合
+      const stepBeats = P.typing >= 2 ? Math.min(2, Math.max(1, +P.tyHold || 0)) : 1/rate;   // 1 字の間隔 (全文は入れ替えの間隔。長くても 2 拍で移る)
+      this._morphDur = 1000*Math.min(1, this._dz(P.tyMorph)*0.01)*beatSec*stepBeats;
     }
   },
   // 移り変わりの進み (0〜1)。移り変わっていないときは 1 (緩急はシェーダの削り方でつける)

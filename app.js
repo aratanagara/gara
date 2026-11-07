@@ -19791,7 +19791,7 @@ void mainImage(out vec4 o, in vec2 f){
     // タイピング: presets/chrometype.md の文字列を 1 字ずつ打つ。beat モードは拍で、drone モードは時間で (On の間は上の欄の文字を使わない)
     head('Typing');
     if(P.typing > 0 && !CT._words) (CT._wordsP || CT.loadWords()).then(()=>this.refreshChromeTypeParams());   // 保存値で On のまま開いたとき
-    mkSel('Typing', [[0, 'Off'], [1, 'On (拍で打つ)']], P.typing > 0 ? 1 : 0, v=>{
+    mkSel('Typing', [[0, 'Off'], [1, 'On (拍で打つ)'], [2, '全文 (一度に出す)']], Math.round(P.typing || 0), v=>{
       P.typing = parseInt(v, 10);
       if(P.typing > 0 && !CT._words) CT.loadWords().then(()=>this.refreshChromeTypeParams());
     }, true);
