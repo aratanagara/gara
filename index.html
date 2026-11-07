@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794045708">
+<link rel="stylesheet" href="style.css?v=1794046528">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -786,6 +786,24 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div id="rhizomeParams" style="margin-top:6px"></div>
         </div>
 
+        <div class="section rzfan-mode" style="display:none">
+          <h3>Rhizome 扇 <span class="pill section-tag">逃走線 / instanced</span> <span class="default-actions"><button class="resetDefBtn" data-kind="rzfan" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="rzfan" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">小さなバネから青い線が同じ向きに巻きながら扇形に伸び、届いた先で黄緑の円盤がふくらむ。いくつかは黒い種になり、緑の線が円盤を抜けて先へ伸びる。最後は尾が先へ追いついて消える。描き方と地面の倒れは RHIZOME と共通。</div>
+          <div id="rzfanParams" style="margin-top:6px"></div>
+        </div>
+
+        <div class="section rzpacks-mode" style="display:none">
+          <h3>Rhizome 群れの輪 <span class="pill section-tag">packs / instanced</span> <span class="default-actions"><button class="resetDefBtn" data-kind="rzpacks" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="rzpacks" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">黄緑の楕円が輪をまわって順にふくらみ、輪の上の宙の一点から全員へ線が伸びる。輪はゆっくり回り、ときどき一つが輪を離れて逃げる。平らなときは放射状、地面が倒れると円錐に見える。</div>
+          <div id="rzpacksParams" style="margin-top:6px"></div>
+        </div>
+
+        <div class="section rztree-mode" style="display:none">
+          <h3>Rhizome 樹と根 <span class="pill section-tag">tree / instanced</span> <span class="default-actions"><button class="resetDefBtn" data-kind="rztree" title="保存したデフォルトを削除して初期値へ戻す">Reset</button><button class="saveDefBtn" data-kind="rztree" title="現在の値をデフォルトとして保存">Save</button></span></h3>
+          <div class="help" style="font-size:10px;margin-top:4px">赤い二重線の枝が上から二股に分かれながら伸び、白い楕円の節を結ぶ。やがて節のいくつかが黄緑に変わり、枝をまたいで緑の線でつながる (樹からリゾームへ)。最後は深い枝から縮んで消える。</div>
+          <div id="rztreeParams" style="margin-top:6px"></div>
+        </div>
+
         <div class="section surrealfloat-mode" style="display:none">
           <h3>Surreal Float <span class="pill section-tag">浮遊する構造物 / instanced</span> <span class="default-actions"><button class="saveDefBtn" data-kind="surrealfloat" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="surrealfloat" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="surrealfloat" title="パラメータをランダムに変える (色は変えない)">Random 🎲</button></span></h3>
           <div class="help" style="font-size:10px;margin-top:4px">白い砂漠の上空を、マグリット風の構造物 (板・管・石膏球・輪・小窓・白い布) とイヴ・タンギー風の不定形が、それぞれの速さと向きで近づいたり遠ざかったりする。Depth=行き交う速さ、Pan=カメラの横回転、Morph=部品の組み替え。シェーダ版 (Surreal Float) をジオメトリで描き直した軽量版。</div>
@@ -1437,42 +1455,42 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794045708"></script>
-<script src="mode/layer.js?v=1794045708"></script>
-<script src="vendor/iro.min.js?v=1794045708"></script>
-<script src="vendor/mediabunny.min.js?v=1794045708"></script>
-<script src="mode/textdeform.js?v=1794045708"></script>
-<script src="mode/textdeform-comp.js?v=1794045708"></script>
-<script src="mode/ugomeki.js?v=1794045708"></script>
-<script src="mode/slicer.js?v=1794045708"></script>
-<script src="mode/video.js?v=1794045708"></script>
-<script src="mode/aratanagara.js?v=1794045708"></script>
-<script src="vendor/p5.min.js?v=1794045708"></script>
-<script src="mode/cyberui.js?v=1794045708"></script>
-<script src="mode/novel.js?v=1794045708"></script>
-<script src="shaders/inkelly.js?v=1794045708"></script>
-<script src="sketchfx.js?v=1794045708"></script>
-<script src="pixelsortfx.js?v=1794045708"></script>
-<script src="shaders/boltzmann.js?v=1794045708"></script>
-<script src="mode/pen.js?v=1794045708"></script>
-<script src="shaders/caverns.js?v=1794045708"></script>
-<script src="mode/shelf.js?v=1794045708"></script>
-<script src="shaders/ribbon.js?v=1794045708"></script>
-<script src="mode/photoplane.js?v=1794045708"></script>
-<script src="mode/shredder.js?v=1794045708"></script>
-<script src="mode/transflock.js?v=1794045708"></script>
-<script src="mode/liquidpeel.js?v=1794045708"></script>
-<script src="mode/windflock.js?v=1794045708"></script>
-<script src="mode/rhizome.js?v=1794045708"></script>
-<script src="mode/surrealfloat.js?v=1794045708"></script>
-<script src="mode/tower4149.js?v=1794045708"></script>
-<script src="mode/fude.js?v=1794045708"></script>
-<script src="mode/image.js?v=1794045708"></script>
-<script src="mode/spacetype.js?v=1794045708"></script>
-<script src="pollockfx.js?v=1794045708"></script>
-<script src="overlay.js?v=1794045708"></script>
-<script src="gif.js?v=1794045708"></script>
-  <script src="app.js?v=1794045708"></script>
-<script src="camroll.js?v=1794045708" defer></script>
+<script src="presets.js?v=1794046528"></script>
+<script src="mode/layer.js?v=1794046528"></script>
+<script src="vendor/iro.min.js?v=1794046528"></script>
+<script src="vendor/mediabunny.min.js?v=1794046528"></script>
+<script src="mode/textdeform.js?v=1794046528"></script>
+<script src="mode/textdeform-comp.js?v=1794046528"></script>
+<script src="mode/ugomeki.js?v=1794046528"></script>
+<script src="mode/slicer.js?v=1794046528"></script>
+<script src="mode/video.js?v=1794046528"></script>
+<script src="mode/aratanagara.js?v=1794046528"></script>
+<script src="vendor/p5.min.js?v=1794046528"></script>
+<script src="mode/cyberui.js?v=1794046528"></script>
+<script src="mode/novel.js?v=1794046528"></script>
+<script src="shaders/inkelly.js?v=1794046528"></script>
+<script src="sketchfx.js?v=1794046528"></script>
+<script src="pixelsortfx.js?v=1794046528"></script>
+<script src="shaders/boltzmann.js?v=1794046528"></script>
+<script src="mode/pen.js?v=1794046528"></script>
+<script src="shaders/caverns.js?v=1794046528"></script>
+<script src="mode/shelf.js?v=1794046528"></script>
+<script src="shaders/ribbon.js?v=1794046528"></script>
+<script src="mode/photoplane.js?v=1794046528"></script>
+<script src="mode/shredder.js?v=1794046528"></script>
+<script src="mode/transflock.js?v=1794046528"></script>
+<script src="mode/liquidpeel.js?v=1794046528"></script>
+<script src="mode/windflock.js?v=1794046528"></script>
+<script src="mode/rhizome.js?v=1794046528"></script>
+<script src="mode/surrealfloat.js?v=1794046528"></script>
+<script src="mode/tower4149.js?v=1794046528"></script>
+<script src="mode/fude.js?v=1794046528"></script>
+<script src="mode/image.js?v=1794046528"></script>
+<script src="mode/spacetype.js?v=1794046528"></script>
+<script src="pollockfx.js?v=1794046528"></script>
+<script src="overlay.js?v=1794046528"></script>
+<script src="gif.js?v=1794046528"></script>
+  <script src="app.js?v=1794046528"></script>
+<script src="camroll.js?v=1794046528" defer></script>
 </body>
 </html>
