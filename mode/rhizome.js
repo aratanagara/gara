@@ -12,7 +12,7 @@
    - 平らと立ち上がり (Rise / Cycle): 網はすべて地面に置いてあり、Cycle ごとに「平らに見下ろす」と「斜めから見る」を
      繰り返す。斜めのときは地面が奥へ倒れ (Tilt)、回り (Yaw)、四角は菱形に、楕円は潰れた楕円に見える。
      横長の面 (どれも平行に奥へ向く) が蝶番のように 90° 立ち上がり (面ごとに少しずつずれる)、面には人の外側の輪郭が下辺から切り抜かれている
-     (股から内側の線は無く、下辺は体の幅だけ切れる。頭が上辺から出る人は上辺も首の幅だけ切れる)。流れる青い矢印は宙に浮き、うねる赤線と
+     (腕と股から内側の線は無く、下辺は体の幅だけ切れる。頭が上辺から出る人は上辺も首の幅だけ切れる)。流れる青い矢印は宙に浮き、うねる赤線と
      手前の緑の波の帯が現れる。立ち上がると楕円の半分が菱形に変わり、そこをつなぐ線もサーモン色になる (図 1 → 図 2)。
      Rise 0 で平らのまま (以前と同じ見た目)。
    - Style: 網 (図 1) は平らなときに縦の面・矢印・赤線・帯が出ず、立ち上がるときだけ現れる。
@@ -50,6 +50,7 @@ const Rhizome = {
     spread:100,     // 子が親から離れて生まれる距離 (%)
     line:100,       // 線の太さ (%)
     pencil:100,     // 色鉛筆のかすれと塗りむら (%)
+    hand:100,       // 手描きの揺れ (%)。線がうねり、縁が揺れ、線の太さにむらが出る
     pop:100,        // ポップの弾み (%)
     kick:60,        // 拍でノードがふくらむ量 (%)
     drift:40,       // 画面がゆっくり流れる量 (%)
@@ -79,6 +80,7 @@ const Rhizome = {
     ['Spread',   'spread',   10,  300, 1,   'pct'],
     ['Line',     'line',     20,  400, 1,   'pct'],
     ['Pencil',   'pencil',   0,   200, 1,   'pct'],
+    ['Hand',     'hand',     0,   300, 1,   'pct'],
     ['Pop',      'pop',      0,   300, 1,   'pct'],
     ['Kick',     'kick',     0,   200, 1,   'pct'],
     ['Drift',    'drift',    0,   300, 1,   'pct'],
@@ -99,10 +101,11 @@ const Rhizome = {
   // 股から内側の線は持たず、下は閉じない (面の下辺を体の幅だけ切って、切り抜きにする)
   FIG:null,
   FIG_FOOT:0.10,   // 足元の半幅 (下辺を切る幅)
-  FIG_HALF:0.15,   // 輪郭のいちばん外 (腕) の半幅
+  FIG_HALF:0.11,   // 輪郭のいちばん外 (肩) の半幅
   _figure(){
     if(this.FIG) return this.FIG;
-    const R = [[this.FIG_FOOT,0],[0.095,0.12],[0.09,0.28],[0.10,0.44],[0.135,0.43],[0.15,0.57],[0.14,0.70],[0.11,0.77],[0.05,0.79],[0.03,0.82]];
+    // 腕は無く、肩から足元までほぼまっすぐ下りる
+    const R = [[this.FIG_FOOT,0],[0.10,0.20],[0.105,0.45],[0.11,0.62],[0.105,0.71],[0.085,0.765],[0.05,0.79],[0.03,0.82]];
     const pts = R.slice();
     const hc = 0.895, hr = 0.068;
     for(let k = 0; k <= 12; k++){
@@ -136,6 +139,7 @@ layout(location=4) in vec4 iD;   // 楕円: 縁の色 / 四角形: 3・4 番目�
 uniform vec2 uCam;               // 画面の中心
 uniform vec2 uHalf;              // 画面の半幅・半高
 uniform float uPx;               // 1px の長さ
+uniform float uHand;             // 手描きの揺れ (形が最大で約 8px × uHand ずれる)
 out vec2 vW;
 flat out vec4 vA;
 flat out vec4 vB;
@@ -144,7 +148,7 @@ flat out vec4 vD;
 void main(){
   vA = iA; vB = iB; vC = iC; vD = iD;
   float type = iB.x;
-  float pad = iB.z * 1.2 + 3.0 * uPx;
+  float pad = iB.z * 1.35 + (3.0 + 8.0 * uHand) * uPx;
   vec2 w;
   if(type < 0.5){                                   // 線分
     vec2 a = iA.xy, b = iA.zw;
@@ -176,6 +180,7 @@ flat in vec4 vC;
 flat in vec4 vD;
 uniform float uPx;
 uniform float uPencil;
+uniform float uHand;
 uniform vec3 uSqFill;
 out vec4 o;
 float h2(vec2 p){
@@ -204,17 +209,28 @@ void main(){
   float tooth = vn(w * vec2(900.0, 340.0));
   float grain = 1.0 - uPencil * 0.42 * smoothstep(0.25, 0.95, tooth);
   float wob = (vn(w * 70.0 + 3.1) - 0.5) * 0.9 * px * uPencil;
+  // 手描きの揺れ (uHand): 形を測る位置をゆるいノイズ (波長およそ 90px と 30px) でずらす。線は横へうねり、楕円・四角の縁も揺れる。
+  // 紙の目とかすれ (上) はずらさない。線の太さには筆圧のようなむらを付ける
+  vec2 hq = w / (90.0 * px);
+  w += ((vec2(vn(hq + 1.7), vn(hq + 8.3)) - 0.5) * 9.0 + (vec2(vn(hq * 3.1 + 4.4), vn(hq * 3.1 + 2.2)) - 0.5) * 2.2) * px * uHand;
+  float press = 1.0 + 0.56 * uHand * (vn(hq * 1.7 + 6.0) - 0.5);
   vec3 col = vC.rgb;
   float a = 0.0;
   if(type < 0.5){                                   // 線分
     float d = seg(w, vA.xy, vA.zw);
-    a = (1.0 - smoothstep(vB.z - 0.5 * px, vB.z + px, d + wob)) * grain;
+    float hw = vB.z * clamp(press, 0.6, 1.3);
+    a = (1.0 - smoothstep(hw - 0.5 * px, hw + px, d + wob)) * grain;
   } else if(type < 1.5){                            // 楕円 (塗り + 濃い縁 + 塗りの筆致)
     vec2 q = rot(-vB.y) * (w - vA.xy);
     float de = (length(q / vA.zw) - 1.0) * vA.w;
+    // マーカーの塗りは縁から少しずれ、はみ出したり足りなかったりする (uHand。0 で縁と同じ形)
+    vec2 fo = (vec2(h2(vA.xy * 913.0), h2(vA.xy * 577.0 + 3.0)) - 0.5) * 0.30 * vA.zw * uHand;
+    float dfl = (length((q - fo) / vA.zw) - 1.0) * vA.w;
     float hatch = 0.5 + 0.5 * sin(dot(w, vec2(0.62, 0.78)) * 1100.0 + wob / max(px, 1e-7) * 4.0);
-    col = mix(vC.rgb, vD.rgb, smoothstep(-2.6 * px, -0.3 * px, de)) * (1.0 - uPencil * 0.07 * hatch);
-    a = (1.0 - smoothstep(-px, px, de)) * 0.94;
+    float rim = smoothstep(-2.6 * px, -0.3 * px, de) * (1.0 - smoothstep(-px, px, de));   // 縁の内側の濃い帯
+    float fil = 1.0 - smoothstep(-px, px, dfl);
+    col = mix(vC.rgb * (1.0 - (uPencil * 0.07 + uHand * 0.07) * hatch), vD.rgb, rim / max(max(rim, fil), 1e-4));
+    a = max(rim, fil) * 0.94;
   } else if(type < 2.5){                            // 点
     float d = length(w - vA.xy) - vA.z;
     a = 1.0 - smoothstep(-0.5 * px, px, d);
@@ -225,12 +241,13 @@ void main(){
     bool inside = (c0 >= 0.0 && c1 >= 0.0 && c2 >= 0.0 && c3 >= 0.0) || (c0 <= 0.0 && c1 <= 0.0 && c2 <= 0.0 && c3 <= 0.0);
     float sd = inside ? -d : d;
     float fa = (1.0 - smoothstep(-px, px, sd)) * vB.y * (1.0 - uPencil * 0.25 * tooth);
-    float oa = (1.0 - smoothstep(vB.z * 1.2, vB.z * 1.2 + px, d + wob)) * 0.92 * grain;
+    float hw = vB.z * 1.2 * clamp(press, 0.6, 1.3);
+    float oa = (1.0 - smoothstep(hw, hw + px, d + wob)) * 0.92 * grain;
     float A = (oa + fa * (1.0 - oa)) * vB.w;
     o = vec4((vC.rgb * oa + uSqFill * fa * (1.0 - oa)) * vB.w, A);
     return;
   } else {                                          // 紙
-    col = vC.rgb * (0.985 + 0.03 * vn(w * vec2(140.0, 52.0)));
+    col = vC.rgb * (0.985 + 0.03 * vn(vW * vec2(140.0, 52.0)));
     a = 1.0;
   }
   a *= vB.w;
@@ -260,7 +277,7 @@ void main(){
     this.ok = !!this.prog;
     if(this.ok){
       const U = (n)=>gl.getUniformLocation(this.prog, n);
-      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), sqFill:U('uSqFill') };
+      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), sqFill:U('uSqFill') };
       this.vao = gl.createVertexArray();
       gl.bindVertexArray(this.vao);
       this.cornerVBO = gl.createBuffer();
@@ -719,7 +736,7 @@ void main(){
         // 人の輪郭 (面の下辺に立つ切り抜き。下辺は体の幅だけ切れる。4 分の 1 は頭が上辺から出て、上辺も首の幅だけ切れる)
         let gapTop = null, gapBot = null;
         if(H(id, n, 13) < figK){
-          // 人の半幅 (腕まで FIG_HALF × 背の高さ) と両端の余白が面に収まるようにする。収まらなければ人を小さくする
+          // 人の半幅 (肩まで FIG_HALF × 背の高さ) と両端の余白が面に収まるようにする。収まらなければ人を小さくする
           const pad = 0.015 * sizeK;
           const hf = Math.min(Hh * (H(id, n, 14) < 0.25 ? 1.10 + 0.05 * H(id, n, 15) : 0.50 + 0.20 * H(id, n, 15)), Math.max(0, W * 0.5 - pad) / this.FIG_HALF);
           const tall = hf * 0.96 > Hh;                         // 頭が上辺から出る
@@ -806,6 +823,7 @@ void main(){
       gl.uniform2f(this.U.half, aspect * 0.5, 0.5);
       gl.uniform1f(this.U.px, 1 / Math.max(1, h));
       gl.uniform1f(this.U.pencil, Math.max(0, dz(P.pencil) * 0.01));
+      gl.uniform1f(this.U.hand, Math.max(0, dz(P.hand) * 0.01));
       gl.uniform3f(this.U.sqFill, C.sqFill[0], C.sqFill[1], C.sqFill[2]);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instVBO);
       if(data.byteLength > this.instCap){
