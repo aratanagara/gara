@@ -337,6 +337,14 @@
      "file": "bg_shard_collage.frag",
      "func": "bg_shard_collage",
      "name": "Shard Collage"
+    },
+    {
+     "file": "bg_glass_frost.frag",
+     "func": "bg_glass_frost",
+     "name": "Glass Frost",
+     "ch": [
+      "slotA"
+     ]
     }
    ],
    "exclude": [
