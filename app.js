@@ -15482,7 +15482,7 @@ ${outBlock}
       toast('削除: '+nm+'(戻るで復元可)');
     });
   },
-  // before=true: to の手前へ / false: to の後ろへ挿入 (Visual タブの shaderReorder と同仕様)
+  // before=true: to の手前へ / false: to の後ろへ挿入 (Visual タブの catalogReorder と同仕様)
   presetReorder(from, to, before){
     const lib = this._loadPresetLib();
     if(from<0 || from>=lib.length || to<0 || to>=lib.length || from===to) return;
@@ -15499,36 +15499,54 @@ ${outBlock}
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
-  // 保存済みの並び順(名前配列)に合わせて PRESETS 内のシェーダ項目を並べ替える(非シェーダの位置は不変)。
-  //   並び順は保存デフォルト vj.def.shaderOrder = サーバー store (?name=defs) が正で、全端末・全オリジンで共通。
-  //   sid (S001〜) は表示順と無関係に shaders/sids.json で固定 (並べ替えても番号は変わらない)。
-  //   並びに無いシェーダ (新規追加分) は読込順のまま末尾に続く。
-  _applyShaderOrder(){
-    let order = null;
-    try{ order = JSON.parse(localStorage.getItem('vj.def.shaderOrder') || 'null'); }catch(e){}
-    if(!Array.isArray(order) || !order.length) return;
-    const pos = [];
-    PRESETS.forEach((p, i)=>{ if(this._isShaderPreset(p)) pos.push(i); });
-    const shaders = pos.map(i => PRESETS[i]);
-    shaders.sort((a, b)=>{
-      let ia = order.indexOf(a.name), ib = order.indexOf(b.name);
-      if(ia < 0) ia = 1e9; if(ib < 0) ib = 1e9;
-      return ia - ib;
-    });
-    pos.forEach((i, k)=>{ PRESETS[i] = shaders[k]; });
+  // ─── Code / Shader / Movie のドラッグ並べ替え ────────────────────
+  //   区分ごとの並び順 (名前配列) を保存デフォルト vj.def.<key> に持つ = サーバー store (?name=defs) が正で、全端末・全オリジンで共通。
+  //   Shader の sid (S001〜) は並べ替えても変わらない (shaders/sids.json で固定)。Code の C 番号と Movie の M 番号は表示順。
+  //   並びに無い項目 (新規追加分) は読込順のまま末尾に続く。
+  _orderKeys:{ shader:'shaderOrder', mode:'codeOrder', movie:'movieOrder' },
+  // PRESETS 項目の区分 (Visual タブの見出しと同じ)。「なし」と VIDEO は並べ替えない
+  _presetCat(p){
+    if(!p || p.kind === 'none' || p.kind === 'video') return null;
+    return this._isShaderPreset(p) ? 'shader' : 'mode';
   },
-  shaderReorder(fromIdx, toIdx, before){
-    if(!this._isShaderPreset(PRESETS[fromIdx]) || !this._isShaderPreset(PRESETS[toIdx]) || fromIdx === toIdx) return;
-    const names = PRESETS.filter(p => this._isShaderPreset(p)).map(p => p.name);
-    const fromName = PRESETS[fromIdx].name, toName = PRESETS[toIdx].name;
+  // items を区分 cat の保存済みの並び順で並べた新しい配列 (nameOf = 項目の名前)
+  _sortByOrder(items, cat, nameOf){
+    let order = null;
+    try{ order = JSON.parse(localStorage.getItem('vj.def.' + this._orderKeys[cat]) || 'null'); }catch(e){}
+    if(!Array.isArray(order) || !order.length) return items.slice();
+    const rank = new Map(order.map((n, k)=>[n, k]));
+    const r = (it, k)=> rank.has(nameOf(it)) ? rank.get(nameOf(it)) : 1e9 + k;
+    return items.map((it, k)=>[it, r(it, k)]).sort((a, b)=> a[1] - b[1]).map(x => x[0]);
+  },
+  // 保存済みの並び順に合わせて PRESETS 内の Code / Shader 項目を並べ替える (区分ごとの位置の枠は不変)
+  _applyPresetOrder(){
+    for(const cat of ['shader', 'mode']){
+      const pos = [];
+      PRESETS.forEach((p, i)=>{ if(this._presetCat(p) === cat) pos.push(i); });
+      const sorted = this._sortByOrder(pos.map(i => PRESETS[i]), cat, p => p.name);
+      pos.forEach((i, k)=>{ PRESETS[i] = sorted[k]; });
+    }
+  },
+  // names (いまの表示順) の中で fromName を toName の手前 (before) / 後ろへ動かし、区分 cat の並び順として保存して一覧を作り直す
+  _reorderNames(cat, names, fromName, toName, before){
+    if(fromName === toName) return;
+    names = names.slice();
     const fi = names.indexOf(fromName);
-    if(fi >= 0) names.splice(fi, 1);
-    let ti = names.indexOf(toName);
+    if(fi < 0) return;
+    names.splice(fi, 1);
+    const ti = names.indexOf(toName);
     if(ti < 0) return;
     names.splice(before ? ti : ti + 1, 0, fromName);
-    try{ localStorage.setItem('vj.def.shaderOrder', JSON.stringify(names)); }catch(e){}
-    this._putServerDef('shaderOrder', names);   // 並び順 = sid を全端末へ同期
+    const key = this._orderKeys[cat];
+    try{ localStorage.setItem('vj.def.' + key, JSON.stringify(names)); }catch(e){}
+    this._putServerDef(key, names);   // 並び順を全端末へ同期
     if(UI && UI.populatePresets) UI.populatePresets();
+  },
+  // Code / Shader のタイル (PRESETS の index) を同じ区分の中で動かす
+  catalogReorder(fromIdx, toIdx, before){
+    const cat = this._presetCat(PRESETS[fromIdx]);
+    if(!cat || cat !== this._presetCat(PRESETS[toIdx])) return;
+    this._reorderNames(cat, PRESETS.filter(p => this._presetCat(p) === cat).map(p => p.name), PRESETS[fromIdx].name, PRESETS[toIdx].name, before);
   },
   // ─── プリセットバンク (数字キー 1〜0 に全状態を保存/呼出) ───────────────
   saveBank(n){
@@ -18380,6 +18398,29 @@ void mainImage(out vec4 o, in vec2 f){
   },
   // シェーダ並べ替えのドロップ挿入線をクリア
   _clearShDrop(){ if(this._shDropTile){ this._shDropTile.style.boxShadow = ''; this._shDropTile = null; } },
+  // Visual タブのタイルを同じ区分 (cat) の中でドラッグ並べ替えできるようにする (間にピンクの挿入線)。
+  //   key = タイルの識別 (PRESETS の index / 動画の名前)。落としたら apply(動かすタイルの key, 落とした先の key, 手前か)
+  _bindReorder(tile, cat, key, apply){
+    tile.draggable = true;
+    tile.addEventListener('dragstart', e=>{ UI._shDrag = {cat, key}; tile.style.opacity = '0.4'; try{ e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(key)); }catch(_){} });
+    tile.addEventListener('dragend', ()=>{ tile.style.opacity = ''; UI._clearShDrop(); UI._shDrag = null; });
+    tile.addEventListener('dragover', e=>{
+      const d = UI._shDrag;
+      if(!d || d.cat !== cat || d.key === key) return;
+      e.preventDefault(); try{ e.dataTransfer.dropEffect = 'move'; }catch(_){}
+      const rect = tile.getBoundingClientRect();
+      const before = (e.clientX - rect.left) < rect.width / 2;
+      UI._clearShDrop();
+      tile.style.boxShadow = (before ? '-3px 0 0 0 ' : '3px 0 0 0 ') + '#ff2d9b';
+      UI._shDropTile = tile; UI._shDropBefore = before;
+    });
+    tile.addEventListener('drop', e=>{
+      e.preventDefault();
+      const before = UI._shDropBefore; UI._clearShDrop();
+      const d = UI._shDrag; UI._shDrag = null;
+      if(d && d.cat === cat && d.key !== key) apply(d.key, key, before);
+    });
+  },
   // Preset タブのドラッグ挿入線 (Visual タブと同仕様: タイル間にピンクの線)
   _clearPrDrop(){ if(this._prDropTile){ this._prDropTile.style.boxShadow = ''; this._prDropTile = null; } },
   // Visual タイルの表示名オーバーライド (サーバー保存=presets/store.php?name=visualnames + localStorage キャッシュ。key=元名)
@@ -18439,11 +18480,11 @@ void mainImage(out vec4 o, in vec2 f){
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
 
-    App._applyShaderOrder();   // 保存済みのシェーダ並び順を適用(ドラッグ並べ替え)
+    App._applyPresetOrder();   // 保存済みの Code / Shader の並び順を適用 (ドラッグ並べ替え)
 
     // 連番 (sid): シェーダ=S001〜 は shaders/sids.json の登録番号で固定 (並び替えても変わらない)。
     //   未登録のシェーダは登録済みの最大番号の後ろに名前順で仮の番号を振る (sids.json への登録漏れ)。
-    //   Code(旧mode)=C001〜 は表示順。「なし」「MOVIE」は無番(Movie タイルは M001〜 で別採番)。
+    //   Code(旧mode)=C001〜 は表示順 (ドラッグで並べ替えると付け直す)。「なし」「MOVIE」は無番(Movie タイルは M001〜 で別採番、これも表示順)。
     //   表示専用で p.name は変えない(サムネ slug 維持=番号を含めない)。
     {
       const reg = App._shaderSids;
@@ -18583,27 +18624,9 @@ void mainImage(out vec4 o, in vec2 f){
       tile.draggable = true;
       tile.addEventListener('dragstart', e=>{ UI._visDragIdx = i; try{ e.dataTransfer.setData('text/plain', String(i)); }catch(_){} });
       tile.addEventListener('dragend', ()=>{ setTimeout(()=>{ UI._visDragIdx = null; }, 0); });
-      // シェーダのみドラッグ並べ替え可(間にピンクの挿入線)
-      if(tile.dataset.cat === 'shader'){
-        tile.draggable = true;
-        tile.addEventListener('dragstart', e=>{ UI._shDragFrom = i; tile.style.opacity = '0.4'; try{ e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', String(i)); }catch(_){} });
-        tile.addEventListener('dragend', ()=>{ tile.style.opacity = ''; UI._clearShDrop(); UI._shDragFrom = null; });
-        tile.addEventListener('dragover', e=>{
-          if(UI._shDragFrom == null || UI._shDragFrom === i || !App._isShaderPreset(PRESETS[i])) return;
-          e.preventDefault(); try{ e.dataTransfer.dropEffect = 'move'; }catch(_){}
-          const rect = tile.getBoundingClientRect();
-          const before = (e.clientX - rect.left) < rect.width / 2;
-          UI._clearShDrop();
-          tile.style.boxShadow = (before ? '-3px 0 0 0 ' : '3px 0 0 0 ') + '#ff2d9b';
-          UI._shDropTile = tile; UI._shDropBefore = before;
-        });
-        tile.addEventListener('drop', e=>{
-          e.preventDefault();
-          const before = UI._shDropBefore; UI._clearShDrop();
-          const from = UI._shDragFrom; UI._shDragFrom = null;
-          if(from != null && from !== i) App.shaderReorder(from, i, before);
-        });
-      }
+      // Code / Shader は同じ区分の中でドラッグ並べ替え可 (各見出しの先頭に置く「なし」は除く)
+      const rcat = catOverride ? null : App._presetCat(p);
+      if(rcat) UI._bindReorder(tile, rcat, i, (from, to, before)=> App.catalogReorder(from, to, before));
       grid.appendChild(tile);
       this.thumbCanvases[i] = c;
       c.addEventListener('__drawn__', ()=>{ if(ph.parentNode) ph.parentNode.removeChild(ph); });
@@ -18684,7 +18707,14 @@ void mainImage(out vec4 o, in vec2 f){
         const nx = movieLbl.nextElementSibling;
         if(nx && nx.classList && nx.classList.contains('thumb-tile') && nx.dataset.cat === 'movie') nx.remove();
         if(movieLbl.parentNode) movieLbl.remove(); return; }
-      movies.forEach((item, i) => grid.insertBefore(makeMovieTile(item, i + 1), shaderLbl));
+      // 保存済みの並び順で並べ (M 番号は表示順)、Movie の中でドラッグ並べ替え可
+      movies = App._sortByOrder(movies, 'movie', m => m.name);
+      const mnames = movies.map(m => m.name);
+      movies.forEach((item, i)=>{
+        const tile = makeMovieTile(item, i + 1);
+        UI._bindReorder(tile, 'movie', item.name, (from, to, before)=> App._reorderNames('movie', mnames, from, to, before));
+        grid.insertBefore(tile, shaderLbl);
+      });
       UI.applyVisualFilter();
     })();
   },
