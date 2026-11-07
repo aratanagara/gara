@@ -8487,6 +8487,18 @@ void main(){
       slot.fbIdx ^= 1;
       return;
     }
+    if(slot.kind === 'chrometype'){
+      if(typeof ChromeType === 'undefined') return;
+      if(!ChromeType.initialized) ChromeType.init(this.gl);
+      ChromeType.update();
+      const target = slot.fbos[slot.fbIdx];
+      ChromeType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
     if(slot.kind === 'surrealfloat'){
       if(typeof SurrealFloat === 'undefined') return;
       if(!SurrealFloat.initialized) SurrealFloat.init(this.gl);
@@ -11530,8 +11542,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -12707,6 +12719,7 @@ const App = {
     PRESETS.push({ name:'★ RHIZOME 群れの輪', kind:'rzpacks', ch:[], src:'' });
     PRESETS.push({ name:'★ RHIZOME 積層', kind:'rzstack', ch:[], src:'' });
     PRESETS.push({ name:'★ RHIZOME 筒と網', kind:'rztube', ch:[], src:'' });
+    PRESETS.push({ name:'★ CHROME TYPE (有機 3D 文字)', kind:'chrometype', ch:[], src:'' });
     LOAD('Loading settings…', 28);
     // サーバー共通の既定値 (defaults.json) を localStorage より先に適用
     await this.applyServerDefaults();
@@ -14067,6 +14080,16 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'chrometype'){
+      s.kind = 'chrometype';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'chrometype';
+      if(typeof ChromeType !== 'undefined' && !ChromeType.initialized) ChromeType.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('chrometype');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'surrealfloat'){
       s.kind = 'surrealfloat';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'surrealfloat';
@@ -14187,6 +14210,7 @@ ${outBlock}
       case 'rhizome': case 'rzfan': case 'rzpacks': case 'rzstack': case 'rztube':
         return (typeof RhizomeKinds !== 'undefined' && RhizomeKinds[kind]) ? RhizomeKinds[kind].P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
+      case 'chrometype': return (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null;
       case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
       case 'textdeform': return (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null;
@@ -14730,6 +14754,7 @@ ${outBlock}
 	      rzstack: (typeof RhizomeStack !== 'undefined' && RhizomeStack.P) ? RhizomeStack.P : null,
 	      rztube: (typeof RhizomeTube !== 'undefined' && RhizomeTube.P) ? RhizomeTube.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
+	      chrometype: (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
 	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null,
@@ -15497,7 +15522,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -15968,7 +15993,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -18477,7 +18502,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -18577,6 +18602,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'rzstack') ? 'RHIZOME\n積層'
                      : (p.kind === 'rztube') ? 'RHIZOME\n筒と網'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
+                     : (p.kind === 'chrometype') ? 'CHROME\nTYPE'
                      : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
                      : (p.kind === 'spacetype') ? 'SPACE\nTYPE'
@@ -18922,7 +18948,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude' && slot.kind !== 'chrometype';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -18954,6 +18980,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isSF = slot.kind === 'surrealfloat';
     $$('.surrealfloat-mode').forEach(el => el.style.display = isSF ? '' : 'none');
     if(isSF && this.refreshSurrealParams) this.refreshSurrealParams();
+    const isCT = slot.kind === 'chrometype';
+    $$('.chrometype-mode').forEach(el => el.style.display = isCT ? '' : 'none');
+    if(isCT && this.refreshChromeTypeParams) this.refreshChromeTypeParams();
     const isT4 = slot.kind === 'tower4149';
     $$('.tower4149-mode').forEach(el => el.style.display = isT4 ? '' : 'none');
     if(isT4 && this.refreshTower4149Params) this.refreshTower4149Params();
@@ -19307,6 +19336,7 @@ void mainImage(out vec4 o, in vec2 f){
     const rnd = (a,b)=> a + Math.random()*(b-a);
     let n = 0;
     sec.querySelectorAll('input[type=range]').forEach(inp=>{
+      if(inp.dataset.norand) return;   // 大きさ・位置など、変えると画面から外れる項目
       const mi = parseFloat(inp.min), ma = parseFloat(inp.max);
       if(!isFinite(mi) || !isFinite(ma) || ma <= mi) return;
       const lab = ((inp.parentElement && inp.parentElement.querySelector('label')) || {}).textContent || '';
@@ -19321,7 +19351,7 @@ void mainImage(out vec4 o, in vec2 f){
       n++;
     });
     sec.querySelectorAll('select').forEach(sl=>{
-      if(!sl.options.length || sl.disabled) return;
+      if(!sl.options.length || sl.disabled || sl.dataset.norand) return;
       sl.selectedIndex = Math.floor(Math.random()*sl.options.length);
       sl.dispatchEvent(new Event('change', {bubbles:true}));
       n++;
@@ -19683,6 +19713,171 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshTower4149Params();
       });
       row.appendChild(b); }
+  },
+  refreshChromeTypeParams(){
+    const root = document.getElementById('chrometypeParams'); if(!root) return;
+    if(typeof ChromeType === 'undefined' || !ChromeType.initialized){
+      root.innerHTML = '<div class="help">CHROME TYPE preset を選ぶと初期化されます</div>'; return;
+    }
+    const CT = ChromeType, P = CT.P;
+    const pct = v=>String(Math.round(v))+'%';
+    const int = v=>String(Math.round(v));
+    const deg = v=>String(Math.round(v))+'°';
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    const NO_DEAD = { seed:1 };
+    const NO_RAND = { size:1, posY:1, speed:1 };   // Random で変えない (画面から外れる・止まる)
+    root.innerHTML = '';
+    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkSel = (label, opts, value, onChange, noRand)=>{   // opts: [[value, name], ...]
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const sel=document.createElement('select');
+      opts.forEach(([v, name])=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=name; sel.appendChild(o); });
+      sel.value = String(value); if(sel.selectedIndex < 0) sel.selectedIndex = 0;
+      if(noRand) sel.dataset.norand = '1';
+      sel.addEventListener('change', ()=>{ onChange(sel.value); App._undoSchedule && App._undoSchedule(); });
+      row.appendChild(lab); row.appendChild(sel);
+      return sel;
+    };
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    const mkColor = (label, key)=>{
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.dataset.default = toHex((CT.PDefaults && CT.PDefaults[key]) || P[key]);
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const val=document.createElement('div'); val.className='val'; val.textContent='';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    };
+    const head = (title)=>{
+      const h=document.createElement('div'); h.className='help'; h.textContent=title;
+      h.style.cssText='font-size:10px;margin-top:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.75';
+      root.appendChild(h);
+    };
+    const slider = ([label, key, mi, ma, step, fmt])=>{
+      const row = mkRow();
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      if(NO_RAND[key]) inp.dataset.norand = '1';
+      const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
+      const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    };
+    // 文字入力 (改行で複数行)。日本語の変換中は確定まで反映しない
+    {
+      const ta=document.createElement('textarea'); ta.value=P.text; ta.rows=2; ta.spellcheck=false; ta.placeholder='3D にする文字 (改行で複数行)';
+      ta.style.cssText='width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:14px;padding:6px;margin-bottom:4px;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.15);border-radius:4px';
+      let composing=false;
+      ta.addEventListener('compositionstart', ()=>{ composing=true; });
+      ta.addEventListener('compositionend', ()=>{ composing=false; P.text=ta.value; });
+      ta.addEventListener('input', ()=>{ if(!composing) P.text=ta.value; });
+      ta.addEventListener('change', ()=>{ P.text=ta.value; App._undoSchedule && App._undoSchedule(); });
+      root.appendChild(ta);
+    }
+    mkSel('Style', CT.STYLES.map((st, i)=>[i, st.name]), Math.round(P.style || 0), v=>{ CT.setStyle(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true);
+    const fonts = (typeof MT_FONTS !== 'undefined') ? MT_FONTS : [{name:'Sans', ff:'sans-serif'}];
+    mkSel('Font', fonts.map(f=>[f.ff, f.name]), P.font || fonts[Math.min(1, fonts.length - 1)].ff, v=>{ P.font = v; }, true);
+    mkSel('Weight', [[400, 'Regular'], [700, 'Bold'], [900, 'Black']], Math.round(P.weight || 900), v=>{ P.weight = parseInt(v, 10); });
+    const groups = [
+      ['Shape', [
+        ['Stretch',   'stretch',  30, 400, 1, pct],
+        ['Smooth',    'smooth',   0,  300, 1, pct],
+        ['Merge',     'merge',    0,  100, 1, pct],
+        ['Melt X',    'meltX',    30, 400, 1, pct],
+        ['Holes',     'holes',    0,  100, 1, pct],
+        ['Hole Size', 'holeSize', 20, 300, 1, pct],
+        ['Web',       'web',      20, 300, 1, pct],
+        ['Soft',      'soft',     0,  300, 1, pct],
+        ['Seed',      'seed',     0,  999, 1, int],
+      ]],
+      ['Fins & Roots', [
+        ['Fins',      'fins',     0,  300, 1, pct],
+        ['Fin Len',   'finLen',   10, 300, 1, pct],
+        ['Layers',    'layers',   0,  300, 1, pct],
+        ['Fin Thick', 'finThick', 5,  200, 1, pct],
+        ['Spread',    'spread',   0,  400, 1, pct],
+        ['Splay',     'splay',    0,  400, 1, pct],
+        ['Tendrils',  'tendrils', 0,  300, 1, pct],
+        ['Ten Len',   'tenLen',   10, 300, 1, pct],
+      ]],
+      ['Volume', [
+        ['Thick',     'thick',    5,  400, 1, pct],
+        ['Round',     'round',    10, 400, 1, pct],
+        ['Puff',      'puff',     0,  300, 1, pct],
+        ['Lumps',     'lumps',    0,  150, 1, pct],
+      ]],
+      ['Deform', [
+        ['Twist',     'twist',    -300, 300, 1, pct],
+        ['Bend',      'bend',     -300, 300, 1, pct],
+        ['Liquid',    'liquid',   0,  300, 1, pct],
+        ['Liq Freq',  'liqFreq',  10, 400, 1, pct],
+      ]],
+      ['Motion', [
+        ['Spin',      'spin',     -400, 400, 1, pct],
+        {steps:true, label:'Spin Step', key:'spinStep', vals:[0, 45, 90, 180, 360], names:['連続', '45°', '90°', '180°', '360°']},
+        ['Tumble',    'tumble',   -300, 300, 1, pct],
+        ['Tilt',      'tilt',     -90, 90, 1, deg],
+        ['Roll',      'roll',     -180, 180, 1, deg],
+        ['Sway',      'sway',     0,  300, 1, pct],
+        ['Size',      'size',     10, 400, 1, pct],
+        ['Pos Y',     'posY',     -100, 100, 1, pct],
+        ['Speed',     'speed',    0,  400, 1, pct],
+        ['Kick',      'kick',     0,  300, 1, pct],
+      ]],
+    ];
+    for(const [title, specs] of groups){
+      head(title);
+      for(const spec of specs){
+        if(spec.steps){                               // 決まった値だけを取るスライダー
+          const row = mkRow();
+          const lab=document.createElement('label'); lab.textContent=spec.label;
+          const near = v=>spec.vals.reduce((b,x,i)=> Math.abs(x-v) < Math.abs(spec.vals[b]-v) ? i : b, 0);
+          const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=spec.vals.length-1; inp.step=1; inp.value=near(P[spec.key]||0);
+          const val=document.createElement('div'); val.className='val'; val.textContent=spec.names[inp.value];
+          inp.addEventListener('input', ()=>{ P[spec.key]=spec.vals[inp.value]; val.textContent=spec.names[inp.value]; });
+          row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+          continue;
+        }
+        slider(spec);
+      }
+    }
+    head('Material');
+    mkSel('Material', CT.MATS.map((m, i)=>[i, m.name]), Math.round(P.mat || 0), v=>{ CT.setMat(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true);
+    for(const spec of [
+      ['Metal',     'metal',    0,  100, 1, pct],
+      ['Rough',     'rough',    0,  100, 1, pct],
+      ['Gloss',     'gloss',    0,  300, 1, pct],
+      ['Light',     'envBri',   0,  300, 1, pct],
+      ['Light Rot', 'envRot',   -180, 180, 1, deg],
+      ['Sparkle',   'sparkle',  0,  300, 1, pct],
+      ['Irid',      'irid',     0,  100, 1, pct],
+      ['Grain',     'grain',    0,  200, 1, pct],
+    ]) slider(spec);
+    mkColor('Tint', 'tint');
+    // 画像テクスチャ: images/ のフォルダ (IMAGE モードと同じ一覧。ドロップした画像も選べる)
+    head('Texture');
+    const IM = (typeof ImageMode !== 'undefined') ? ImageMode : null;
+    if(IM && !(IM.folders || []).length && !CT._folderReq && IM.loadFolderIndex){
+      CT._folderReq = true;
+      IM.loadFolderIndex().then(()=>{ if(GL.slots[App.activeSlot] && GL.slots[App.activeSlot].kind === 'chrometype') this.refreshChromeTypeParams(); });
+    }
+    const folders = IM ? (IM.folders || []) : [];
+    mkSel('Folder', [['', '(なし)']].concat(folders.map(f=>[f.dir, f.name || f.dir])), P.texFolder || '', v=>{
+      P.texFolder = v; P.texImage = '';
+      if(v && !(P.texAmt > 0)) P.texAmt = 100;
+      this.refreshChromeTypeParams();
+    }, true);
+    const fsel = folders.find(f=>f.dir === P.texFolder);
+    if(fsel && !fsel.single){
+      mkSel('Image', (fsel.images || []).map(n=>[n, n]), P.texImage || ((fsel.images || [])[0] || ''), v=>{ P.texImage = v; }, true);
+    }
+    mkSel('Tex Mode', [[0, '正面に貼る'], [1, '三面から貼る'], [2, '映り込みに使う']], Math.round(P.texMode || 0), v=>{ P.texMode = parseInt(v, 10); }, true);
+    slider(['Tex Amt',   'texAmt',   0,  100, 1, pct]);
+    slider(['Tex Scale', 'texScale', 10, 400, 1, pct]);
+    head('Background');
+    mkColor('BG (Slot A)', 'bgColor');
+    mkSel('AA', [[0, 'Off'], [2, '2x'], [4, '4x']], Math.round(P.aa || 0), v=>{ P.aa = parseInt(v, 10); }, true);
   },
   refreshSurrealParams(){
     const root = document.getElementById('surrealParams'); if(!root) return;
