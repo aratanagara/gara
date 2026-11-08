@@ -45,6 +45,68 @@ uniform float uAngle; // 花の向き = ロール (度。固定角でずらす)
 uniform float uTilt; // 花の傾き (度。固定角)
 uniform float uScale; // 花全体の大きさ (%。カメラは動かない)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は背景扱いで縁が欠ける)
+// @param uPetalCurl 30..200 = 100
+// @param uTipThin 30..250 = 100
+// @param uPetalRound 30..150 = 100
+// @param uSpiralA 3..8 = 5
+// @param uSpiralB 5..13 = 8
+// @param uCamHeight -100..100 = 0
+// @param uCamSide -100..100 = 0
+// @param uPerspective 95..200 = 100
+// @param uLightYaw -180..180 = 0
+// @param uEnvYaw -180..180 = 0
+// @param uGlossBroad 5..250 = 100
+// @param uGlossSharp 5..250 = 100
+// @param uSparkSharp 5..250 = 100
+// @param uRefractAmount 0..300 = 100
+// @param uReflectAmount 0..800 = 100
+// @param uRimPower 10..400 = 100
+// @param uRimStrength 0..800 = 100
+// @param uEdgeShadow 0..300 = 100
+// @param uEdgeShadowWidth 30..250 = 100
+// @param uBodyOpacity 30..250 = 100
+// @param uTrailSpread 0..400 = 100
+// @param uTrailDriftX -100..100 = 0
+// @param uTrailDriftY -100..100 = 0
+// @param uFrostColor color = #ffffff
+// @param uRefractColor color = #ffffff
+// @param uReflectColor color = #ffffff
+// @param uSparkleColor color = #ffffff
+// @param uTrailColor color = #ffffff
+uniform float uPetalCurl; // 花びらの反り (%)
+uniform float uTipThin; // 花びら先端の薄さ (%)。小さいほど先端が薄い
+uniform float uPetalRound; // 花びら先端の丸み (%)。大きいほど丸く太い
+uniform float uSpiralA; // 螺旋の一方の本数 (既定 5)。フィボナッチ以外では並びが崩れる
+uniform float uSpiralB; // 螺旋のもう一方の本数 (既定 8)
+uniform float uCamHeight; // カメラの高さ (%)。見下ろし / 見上げ
+uniform float uCamSide; // カメラの左右の振り (%)
+uniform float uPerspective; // パースの強さ (%)。上げるほど望遠で平ら
+uniform float uLightYaw; // スペキュラ光源の水平回転 (度)
+uniform float uEnvYaw; // 環境 (ソフトボックス) の水平回転 (度)
+uniform float uGlossBroad; // 広いグロスの絞り (%)。大きいほど小さく鋭い
+uniform float uGlossSharp; // 鋭いハイライトの絞り (%)
+uniform float uSparkSharp; // ピンのきらめきの絞り (%)
+uniform float uRefractAmount; // 屈折で透ける環境の明るさ (%)
+uniform float uReflectAmount; // 反射の強さ (%)
+uniform float uRimPower; // フレネル (縁の反射) の絞り (%)。大きいほど縁に細く出る
+uniform float uRimStrength; // フレネルの強さ (%)
+uniform float uEdgeShadow; // 花びらの境界の影の濃さ (%)
+uniform float uEdgeShadowWidth; // 花びらの境界の影の幅 (%)
+uniform float uBodyOpacity; // 花びらの不透明度の底 (%)
+uniform float uTrailSpread; // 残像のにじみの広がり (%)
+uniform float uTrailDriftX; // 残像を横へ流す (%)
+uniform float uTrailDriftY; // 残像を縦へ流す (%)
+uniform vec3 uFrostColor; // 磨りガラスの乳白色のティント
+uniform vec3 uRefractColor; // 屈折して透ける色のティント
+uniform vec3 uReflectColor; // 反射色のティント
+uniform vec3 uSparkleColor; // スペキュラ・きらめきのティント
+uniform vec3 uTrailColor; // 残像のティント (毎フレーム掛かる)
+
+vec3 ec_yaw(vec3 v, float deg){
+  float a = radians(deg);
+  float c = cos(a), s = sin(a);
+  return vec3(c * v.x + s * v.z, v.y, -s * v.x + c * v.z);
+}
 
 ec_Model ec_leaf(vec3 p, vec3 cellData){
   vec2 cell = cellData.xy;
@@ -72,7 +134,7 @@ ec_Model ec_leaf(vec3 p, vec3 cellData){
     vec3 n = normalize(vec3(1,0,.35));
     wedge = -dot(p, n);
     wedge = max(wedge, dot(p, n*vec3(1,1,-1)));
-    wedge = ec_smax(wedge, p.z - len*1.12 - ins, len);
+    wedge = ec_smax(wedge, p.z - len*1.12 - ins, len * (uPetalRound / 100.0));
     p.z -= ins;
 
     ins = .2;
@@ -80,7 +142,7 @@ ec_Model ec_leaf(vec3 p, vec3 cellData){
     n = normalize(vec3(1,0,.4));
     float wedge2 = -dot(p, n);
     wedge2 = max(wedge2, dot(p, n*vec3(1,1,-1)));
-    wedge2 = ec_smax(wedge2, p.z - len*.95 - ins, len*.6);
+    wedge2 = ec_smax(wedge2, p.z - len*.95 - ins, len*.6 * (uPetalRound / 100.0));
     p.z -= ins;
 
     float top = p.y - len*.5;
@@ -89,8 +151,8 @@ ec_Model ec_leaf(vec3 p, vec3 cellData){
     len *= mix(1.5, .65, curve);
     // 先端ほど薄くして尖らせる(穴あき防止のため厚めに)
     float tipf = clamp(p.z / max(len, 0.001), 0.0, 1.0);
-    float th = mix(0.055, 0.035, smoothstep(0.2, 0.95, tipf)) * (uThick / 100.0);
-    float rz = -mix(.2, .7, curve);
+    float th = mix(0.055, 0.035 * (uTipThin / 100.0), smoothstep(0.2, 0.95, tipf)) * (uThick / 100.0);
+    float rz = -mix(.2, .7, curve) * (uPetalCurl / 100.0);
     ec_pR(p.zy, rz);
     slice = length(p - vec3(0,len,0)) - len;
     d2 = abs(slice) - th;
@@ -133,7 +195,7 @@ vec3 ec_calcCellData(vec2 cell, vec2 offset, float maxBloomOffset,
 ec_Model ec_opU(ec_Model a, ec_Model b){ if(a.d < b.d) return a; return b; }
 
 void ec_calcPhyllotaxis(){
-  vec2 cc = vec2(5., 8.);
+  vec2 cc = vec2(uSpiralA, uSpiralB);
   float aa = atan(cc.x / cc.y);
   float scale = (EC_PI*2.) / sqrt(cc.x*cc.x + cc.y*cc.y);
   mat2 mRot = mat2(cos(aa), -sin(aa), sin(aa), cos(aa));
@@ -229,6 +291,7 @@ mat3 ec_rotZ(float a){ return mat3(cos(a),-sin(a),0, sin(a),cos(a),0, 0,0,1); }
 // スタジオ風環境マップ(磨き銀の反射先)。上が明るく下が暗い + 強いハイライトバンド。
 vec3 ec_env(vec3 r){
   r = normalize(r);
+  if(uEnvYaw != 0.0) r = ec_yaw(r, uEnvYaw);
   vec3 base = mix(vec3(0.05,0.05,0.07), vec3(0.78,0.82,0.92), smoothstep(-0.35,0.95, r.y));
   // 床の照り返し
   base += smoothstep(0.0,-0.7, r.y) * vec3(0.10,0.10,0.12);
@@ -286,12 +349,12 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
   vec3 envR = ec_env(refrR) * 0.22;
   vec3 envG = ec_env(refrG) * 0.24;
   vec3 envB = ec_env(refrB) * 0.28;
-  vec3 refrCol = vec3(envR.r, envG.g, envB.b);
+  vec3 refrCol = vec3(envR.r, envG.g, envB.b) * (uRefractAmount / 100.0) * uRefractColor;
   // 磨りガラスに固定: milky 強め(乳白色を上げてフロスト感を強化)
-  vec3 frostBase = vec3(0.40, 0.44, 0.52) * 0.95 * (uFrost / 100.0);
+  vec3 frostBase = vec3(0.40, 0.44, 0.52) * 0.95 * (uFrost / 100.0) * uFrostColor;
   // 反射光: ガラス光沢を強めるため env を持ち上げて明るく
-  vec3 reflCol = pow(ec_env(rr), vec3(0.50)) * 0.55;
-  float fres = 0.04 + 0.42 * pow(1.0 - abs(dot(rd, n)), 5.0);
+  vec3 reflCol = pow(ec_env(rr), vec3(0.50)) * 0.55 * (uReflectAmount / 100.0) * uReflectColor;
+  float fres = min(0.04 + 0.42 * (uRimStrength / 100.0) * pow(1.0 - abs(dot(rd, n)), 5.0 * (uRimPower / 100.0)), 1.0);
   vec3 glass = frostBase + refrCol;
   glass = mix(glass, reflCol + frostBase * 0.25, fres);
   // 多層スペキュラ(ハードな光沢)+ 極鋭スパークル(キラッ)
@@ -300,25 +363,28 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
   vec3 l3 = normalize(vec3( 0.15,-0.55, 0.82));
   vec3 l4 = normalize(vec3( 0.65, 0.10, 0.55));
   vec3 l5 = normalize(vec3(-0.20, 0.10,-0.97));
+  if(uLightYaw != 0.0){ l1 = ec_yaw(l1, uLightYaw); l2 = ec_yaw(l2, uLightYaw); l3 = ec_yaw(l3, uLightYaw); l4 = ec_yaw(l4, uLightYaw); l5 = ec_yaw(l5, uLightYaw); }
   // 中広 + 中鋭 + 極鋭 の 3 段でガラス光沢
   float b1 = max(dot(rr,l1),0.0), b2 = max(dot(rr,l2),0.0);
   float b3 = max(dot(rr,l3),0.0), b4 = max(dot(rr,l4),0.0);
   float b5 = max(dot(rr,l5),0.0);
-  vec3 specBlob = vec3(pow(b1, 80.0)*1.6 + pow(b2, 60.0)*1.3 + pow(b3, 100.0)*1.8);     // 広めグロス
-  vec3 specSharp = vec3(pow(b1, 280.0)*3.5 + pow(b3, 320.0)*3.8 + pow(b4, 240.0)*3.0);  // 鋭ハイライト
-  vec3 specPin = vec3(pow(b1, 900.0)*8.0 + pow(b3, 1100.0)*9.0 + pow(b5, 700.0)*6.0);   // 極鋭ピン
-  glass += specBlob + specSharp + specPin;
+  float gb = uGlossBroad / 100.0, gs = uGlossSharp / 100.0, gp = uSparkSharp / 100.0;
+  vec3 specBlob = vec3(pow(b1, 80.0*gb)*1.6 + pow(b2, 60.0*gb)*1.3 + pow(b3, 100.0*gb)*1.8);     // 広めグロス
+  vec3 specSharp = vec3(pow(b1, 280.0*gs)*3.5 + pow(b3, 320.0*gs)*3.8 + pow(b4, 240.0*gs)*3.0);  // 鋭ハイライト
+  vec3 specPin = vec3(pow(b1, 900.0*gp)*8.0 + pow(b3, 1100.0*gp)*9.0 + pow(b5, 700.0*gp)*6.0);   // 極鋭ピン
+  glass += (specBlob + specSharp + specPin) * uSparkleColor;
   // 屈折側のキラリ(ガラス内部から透ける小さな光点)
   float is1 = pow(max(dot(refrG, l1), 0.0), 200.0);
   float is2 = pow(max(dot(refrG, l3), 0.0), 200.0);
   glass += (is1 + is2) * vec3(0.85, 0.95, 1.05) * 1.4;
   // 境界線シャドウ(幅広め): より遠くまで距離をサンプルして、影帯を太くする。
-  float dNearby = ec_map(pos + n*(0.10*scl)).d;
-  float boundary = clamp((0.07*scl - dNearby) * (16.0/scl), 0.0, 1.0);
-  glass *= 1.0 - boundary * 0.55;
+  float esw = uEdgeShadowWidth / 100.0;
+  float dNearby = ec_map(pos + n*(0.10*scl*esw)).d;
+  float boundary = clamp((0.07*scl*esw - dNearby) * (16.0/scl), 0.0, 1.0);
+  glass *= max(1.0 - boundary * 0.55 * (uEdgeShadow / 100.0), 0.0);
   // 不透明度を大幅に下げて背景が透けるように。スパークル位置は局所的に不透明。
   float spInt = pow(max(dot(rr,vec3( 0.4, 0.75,-0.35)),0.0), 240.0);
-  float opacity = clamp(0.32 + fres * 0.55 + spInt * 3.0, 0.32, 1.0);
+  float opacity = clamp(0.32 * (uBodyOpacity / 100.0) + fres * 0.55 + spInt * 3.0, 0.32 * (uBodyOpacity / 100.0), 1.0);
   return vec4(glass, opacity);
 }
 
@@ -330,8 +396,11 @@ vec3 bg_echeveria(vec2 fc){
   ec_modelMat = ec_rotZ(-.9 + radians(uAngle)) * ec_rotX(.05 + radians(uTilt)) * ec_rotY(-1.1);
 
   vec3 camPos = vec3(0,0,-2.6);
+  float focal = 1.8;
+  if(uCamHeight != 0.0 || uCamSide != 0.0) camPos += vec3(uCamSide, uCamHeight, 0.0) * 0.02;
+  if(uPerspective != 100.0){ camPos *= uPerspective / 100.0; focal *= uPerspective / 100.0; }
   mat3 camMat = ec_lookAt(camPos, vec3(0,-.05,0), 0.);
-  vec3 rd = normalize(camMat * vec3(p.xy, 1.8));
+  vec3 rd = normalize(camMat * vec3(p.xy, focal));
   vec3 ro = camPos;
 
   // 単独の最新姿勢を 1 回 march
@@ -344,13 +413,15 @@ vec3 bg_echeveria(vec2 fc){
   // 軌跡 = backbuffer フィードバック(隣接ブラー + フェード)。アルファも一緒に伝播させ、
   // 背景=透明 / 花弁=半透明 / 残像=だんだん透明、として B-Overlay で下のレイヤが透ける。
   vec2 uv = fc / resolution;
-  vec2 px = 1.0 / resolution;
+  vec2 px = 1.0 / resolution * (uTrailSpread / 100.0);
+  if(uTrailDriftX != 0.0 || uTrailDriftY != 0.0) uv += vec2(uTrailDriftX, uTrailDriftY) * 0.00005;
   vec4 prev = texture2D(backbuffer, uv);
   vec4 prevBlur = prev * 0.50
                + texture2D(backbuffer, uv + vec2( px.x,  0.0)) * 0.125
                + texture2D(backbuffer, uv + vec2(-px.x,  0.0)) * 0.125
                + texture2D(backbuffer, uv + vec2( 0.0,   px.y)) * 0.125
                + texture2D(backbuffer, uv + vec2( 0.0,  -px.y)) * 0.125;
+  prevBlur.rgb *= uTrailColor;
   prevBlur *= uTrail / 100.0;                                             // 15% フェード(中庸の残像長)
   float curA = clamp(r.a * 2.0, 0.0, 0.85);                     // 花弁=不透明度~80%(本体を増幅) / 背景(r.a=0)=透明
   bgAlpha = max(prevBlur.a, curA);                              // 残像もアルファに乗せて尾を引く

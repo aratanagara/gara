@@ -60,6 +60,21 @@ float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * R
 // @param uRainbowCycles 1..8 = 3
 // @param uRainbowAmt 0..300 = 100
 // @param uBandCount 1..8 = 3
+// @param uCamDist 80..130 = 100
+// @param uFocal 60..160 = 100
+// @param uEase 0..300 = 100
+// @param uLightSpin -180..180 = 0
+// @param uHorizonGlow 0..200 = 100
+// @param uBackReflect 20..110 = 100
+// @param uBandBlend 0..200 = 100
+// @param uRainbowTwist -300..300 = 0
+// @param uBandPhase -180..180 = 0
+// @param uDiffract 0..300 = 100
+// @param uVignette 0..150 = 0
+// @param uTopTint color = #ffffff
+// @param uBackTint color = #ffffff
+// @param uHighlightTint color = #ffffff
+// @param uGlassTint color = #ffffff
 uniform float uStep; // 段の高さ (CD 1 枚の厚み) (%)
 uniform float uMotion; // 各段の伸び縮みの振幅 (%)
 uniform float uThick; // 段の縁の黒線の太さ (%)
@@ -76,6 +91,21 @@ uniform float uFanCount; // 回折の扇状の筋の本数
 uniform float uRainbowCycles; // 裏面の虹が円周を巡る回数
 uniform float uRainbowAmt; // 裏面の虹の鮮やかさ (%)
 uniform float uBandCount; // 裏面のシルバーと虹の帯の本数
+uniform float uCamDist; // カメラの距離 (%)。小さいと寄る
+uniform float uFocal; // レンズの焦点距離 (%)。小さいと広角
+uniform float uEase; // 回転の緩急の振れ幅 (%)。0 で一定速度
+uniform float uLightSpin; // 移動する光源の位置の回転 (度)。虹の掃引と反射の向きが変わる
+uniform float uHorizonGlow; // 環境の地平線のグローの強さ (%)
+uniform float uBackReflect; // 裏面の鏡の映り込みの強さ (%)。下げると下地の虹が見える
+uniform float uBandBlend; // 鏡像に乗るシルバーと虹の帯の濃さ (%)
+uniform float uRainbowTwist; // 虹が中心から外へ巡る量 (%)。渦巻きになる
+uniform float uBandPhase; // シルバーと虹の帯の位相のずれ (度)
+uniform float uDiffract; // 裏面の回折の虹の強さ (%)
+uniform float uVignette; // 画面の周辺を暗くする量 (%)
+uniform vec3 uTopTint; // CD 天面の白にかけるティント。既定は白で変化なし
+uniform vec3 uBackTint; // 裏面のシルバーと虹の帯にかけるティント。既定は白で変化なし
+uniform vec3 uHighlightTint; // 鏡面ハイライトにかけるティント。既定は白で変化なし
+uniform vec3 uGlassTint; // 中央のガラスの色にかけるティント。既定は白で変化なし
 
 // CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。
 float rh_outer(int k){
@@ -122,7 +152,7 @@ vec3 rh_env(vec3 rd){
   vec3 sky    = vec3(1.05, 1.12, 1.28);                  // 明るい空(鏡像を強烈に)
   vec3 ground = vec3(0.08, 0.07, 0.11);                  // 暗い地面(高コントラスト=鏡らしさ)
   vec3 env = mix(ground, sky, smoothstep(-0.30, 0.30, hgt));
-  env += vec3(0.35) * exp(-12.0*hgt*hgt);                // 地平線グロー
+  env += vec3(0.35) * (uHorizonGlow / 100.0) * exp(-12.0*hgt*hgt);                // 地平線グロー
   vec3 L1 = normalize(vec3(cos(time*0.13), 0.55, sin(time*0.13)));
   float s1 = max(dot(rd, L1), 0.0);
   env += vec3(2.4, 2.2, 1.9) * pow(s1, 40.0);            // 強い太陽グレア
@@ -143,10 +173,10 @@ vec3 bg_romhack(vec2 fc){
   // 回転: 2倍速 + イージングで緩急(時間を sin で歪め、角速度を速→遅に変動)
   float baseY = time*0.8;                              // 横回転(2倍速)
   float baseX = time*0.46;                             // 縦回転(2倍速)
-  float aY = baseY + 0.9*sin(baseY*0.5) + radians(uAngle);               // 緩急(イージング)
-  float aX = baseX + 0.6*sin(baseX*0.6 + 1.3) + radians(uTilt);
-  vec3 cro = vec3(0.0, 0.0, 5.0);
-  vec3 crd = normalize(vec3(sc, -5.0));
+  float aY = baseY + 0.9*(uEase / 100.0)*sin(baseY*0.5) + radians(uAngle);               // 緩急(イージング)
+  float aX = baseX + 0.6*(uEase / 100.0)*sin(baseX*0.6 + 1.3) + radians(uTilt);
+  vec3 cro = vec3(0.0, 0.0, 5.0 * (uCamDist / 100.0));
+  vec3 crd = normalize(vec3(sc, -5.0 * (uFocal / 100.0)));
   float rcx = cos(aX), rsx = sin(aX);
   cro = vec3(cro.x, rcx*cro.y - rsx*cro.z, rsx*cro.y + rcx*cro.z);
   crd = vec3(crd.x, rcx*crd.y - rsx*crd.z, rsx*crd.y + rcx*crd.z);
@@ -193,6 +223,7 @@ vec3 bg_romhack(vec2 fc){
   float lseg = floor(lt);
   float lf = smoothstep(0.0, 1.0, fract(lt));
   vec2 lp = mix(rh_hash4(lseg+1.0).xy, rh_hash4(lseg+2.0).xy, lf)*2.0 - 1.0;  // -1..1 を補間
+  if(uLightSpin != 0.0){ float lsa = radians(uLightSpin); lp = mat2(cos(lsa), -sin(lsa), sin(lsa), cos(lsa)) * lp; }
   vec3 Lw = normalize(vec3(lp*1.3, 0.9));
   float lAng = atan(Lw.y, Lw.x);                            // 光源の角度
 
@@ -204,15 +235,15 @@ vec3 bg_romhack(vec2 fc){
   {
     float a   = ang/6.2831853 + 0.5;                        // 0..1 周回
     float lit = 0.5 + 0.5*dot(rdir, Lw.xy);                 // 光源を向く側で虹が強く出る
-    float hue = a*floor(uRainbowCycles + 0.5) + lAng*0.6 - time*0.05;               // 光源角で虹を掃引(継ぎ目なし)
+    float hue = a*floor(uRainbowCycles + 0.5) + lAng*0.6 - time*0.05 + rn*uRainbowTwist/100.0;               // 光源角で虹を掃引(継ぎ目なし)
     vec3 rainbow = rh_spectral(hue);
     rainbow = mix(rainbow, vec3(1.0), 0.08);
     vec3 gradCol = silver + (rainbow - 0.5) * (0.35 + 0.40*lit) * (uRainbowAmt / 100.0);  // シルバーに虹を加減算(明るさ維持・光源側ほど鮮やか)
-    float blend = 0.5 + 0.5*sin(a*6.2831853*floor(uBandCount + 0.5) + lAng*1.2 - time*0.3);  // 帯も光源で回転
-    bandCol = mix(silver, gradCol, blend);                  // シルバー⇄虹 を滑らかに繋ぐ
+    float blend = 0.5 + 0.5*sin(a*6.2831853*floor(uBandCount + 0.5) + lAng*1.2 - time*0.3 + radians(uBandPhase));  // 帯も光源で回転
+    bandCol = mix(silver, gradCol, blend) * uBackTint;                  // シルバー⇄虹 を滑らかに繋ぐ
   }
   // ── フロント(山側)= CD-R のような白 / バック(平らな面)= 高品質の放射状虹グラデ ──
-  vec3 frontAlbedo = vec3(0.88) + 0.04*pow(abs(rdir.y), 3.0);  // CD-R の白い天面
+  vec3 frontAlbedo = (vec3(0.88) + 0.04*pow(abs(rdir.y), 3.0)) * uTopTint;  // CD-R の白い天面
   vec3 albedo = mix(frontAlbedo, bandCol, backSide);          // 裏=シルバー/虹の滑らかなグラデ
 
   // 各段の縁の黒ボンディング線(フロントの段の区切り)
@@ -248,11 +279,12 @@ vec3 bg_romhack(vec2 fc){
   vec3 color = albedo * dif;
   vec3 envSilver = env * vec3(0.97, 0.98, 1.0);                // 反射環境を僅かにシルバー寄りに
   // 裏面は CD の鏡面: 環境をほぼ完全反射(やりすぎなくらい)。グラデは反射像に薄く乗せる。
-  float reflAmt = mix(0.34 + 0.42*fres, 0.94 + 0.06*fres, backSide);   // 裏=ほぼ完全な鏡
-  vec3 reflCol  = envSilver * mix(vec3(1.0), bandCol*1.45, 0.45*backSide);  // 鏡像に虹/シルバーを乗せる
+  float reflAmt = mix(0.34 + 0.42*fres, 0.94 + 0.06*fres, backSide);
+  if(uBackReflect != 100.0){ reflAmt = mix(0.34 + 0.42*fres, 0.94 * (uBackReflect / 100.0) + 0.06*fres, backSide); }   // 裏=ほぼ完全な鏡
+  vec3 reflCol  = envSilver * mix(vec3(1.0), bandCol*1.45, 0.45*(uBandBlend / 100.0)*backSide);  // 鏡像に虹/シルバーを乗せる
   color = mix(color, reflCol, reflAmt);
-  color += spectrum * diffAmt * 0.16;                           // 裏の異方性虹
-  color += vec3(0.9, 0.93, 1.0) * spec * mix(1.5, 2.2, backSide); // 裏は強いハイライト(クロームのギラつき)
+  color += spectrum * diffAmt * 0.16 * (uDiffract / 100.0);                           // 裏の異方性虹
+  color += vec3(0.9, 0.93, 1.0) * uHighlightTint * spec * mix(1.5, 2.2, backSide); // 裏は強いハイライト(クロームのギラつき)
   // ── CD 的な強烈な反射の筋(円周溝に直交する異方性ハイライト=放射状に走る鏡面筋) ──
   vec3 Tn = normalize(vec3(tang, 0.0001));
   float aniH = dot(Tn, Hh);
@@ -272,7 +304,8 @@ vec3 bg_romhack(vec2 fc){
 
   // ── 中央のクリア(半透明)領域: 放射グラデで塗り潰さず、下が透けるようにする ──
   float clearMask = clamp(smoothstep(rData+0.04, rData-0.04, rn), 0.0, 1.0);
-  color = mix(color, vec3(0.05, 0.07, 0.11), clearMask*0.7);                          // 中央は暗いガラス質(塗り潰さない)
+  color = mix(color, vec3(0.05, 0.07, 0.11) * uGlassTint, clearMask*0.7);                          // 中央は暗いガラス質(塗り潰さない)
   bgAlpha = 1.0 - clearMask * 0.78;                                                    // 中央をしっかり透過(下が透ける)
+  if(uVignette != 0.0){ vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y; color *= 1.0 - clamp(uVignette / 100.0, 0.0, 1.5) * smoothstep(0.25, 0.95, length(vq)); }
   return color;
 }

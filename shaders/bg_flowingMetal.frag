@@ -32,6 +32,22 @@ float fm_sdf1(vec3 p){ return (length(abs(sin(p.yzx)) - abs(cos(p)))) - (uTubeRa
 // @param uCamDist 60..150 = 100.0
 // @param uCamBob 0..250 = 100.0
 // @param uFov 60..160 = 100.0
+// @param uLightAzimuth -180..180 = 0
+// @param uSpecSharp 30..300 = 100
+// @param uFresnel 0..300 = 100
+// @param uShadowDark 0..400 = 100
+// @param uShadowLength 25..400 = 100
+// @param uPatchEdge 20..300 = 100
+// @param uChromeBias 50..200 = 100
+// @param uDepthFade 0..100 = 0
+// @param uCamRoll -60..60 = 0
+// @param uOrbitOffset -180..180 = 0
+// @param uCamLift -100..100 = 0
+// @param uVignette 0..150 = 0
+// @param uMetalTint color = #ffffff
+// @param uMossTint color = #ffffff
+// @param uDirtTint color = #ffffff
+// @param uRimTint color = #ffffff
 uniform float uDetail; // フラクタル層の数 (下げると軽く、形が大きく滑らかになる)
 uniform float uMoss; // 苔・土のパッチの広さ (%)
 uniform float uBump; // ボコボコの凹凸の強さ (%)
@@ -49,6 +65,22 @@ uniform float uGrainScale; // 細かなザラつきの大きさ (%)
 uniform float uCamDist; // カメラの公転半径 (%)
 uniform float uCamBob; // カメラの上下動の幅 (%)
 uniform float uFov; // 画角 (%)
+uniform float uLightAzimuth; // 光源の方位 (度)。陰影・ドロップシャドウ・ハイライトの向きが回る
+uniform float uSpecSharp; // 鏡面ハイライトの鋭さ (%)
+uniform float uFresnel; // 縁の白っぽい反射 (フレネル) の強さ (%)
+uniform float uShadowLength; // パッチのドロップシャドウの長さ (%)
+uniform float uShadowDark; // パッチのドロップシャドウの濃さ (%)
+uniform float uPatchEdge; // 苔・土のパッチの縁のぼかし幅 (%)。小さいとくっきり
+uniform float uChromeBias; // クロームの反射グラデの偏り (%)。上げると暗部が広がる
+uniform float uDepthFade; // 遠くが暗く沈む量 (%)
+uniform float uCamRoll; // カメラの傾き (度)
+uniform float uOrbitOffset; // カメラの公転位置のずらし (度)。別の側から見る
+uniform float uCamLift; // カメラを持ち上げる量 (%)。俯瞰の度合い
+uniform float uVignette; // 画面の周辺を暗くする量 (%)
+uniform vec3 uMetalTint; // 金属面にかけるティント。既定は白で変化なし
+uniform vec3 uMossTint; // 苔にかけるティント。既定は白で変化なし
+uniform vec3 uDirtTint; // 土にかけるティント。既定は白で変化なし
+uniform vec3 uRimTint; // パッチの縁のリム光にかけるティント。既定は白で変化なし
 
 float fm_sdf(vec3 p){
   float result = 0.0;
@@ -125,9 +157,11 @@ float fm_noise(vec3 p){
 float fm_fbm(vec3 p){ return 0.5*fm_noise(p) + 0.25*fm_noise(p*2.03) + 0.125*fm_noise(p*4.07); }
 // SDF をサンプルした「表面と一緒に流れる」低周波スカラ。苔/土のパッチ駆動に使う。
 float fm_flow(vec3 q){ return sin(fm_sdf(q * 0.85) * 1.2 + 1.3) * 0.5 + 0.5; }
+vec3 fm_ry(vec3 v, float a){ float c = cos(a), s = sin(a); return vec3(c*v.x + s*v.z, v.y, -s*v.x + c*v.z); }
 vec3 bg_flowingMetal(vec2 fc){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 xy = I - resolution/2.0;
+  if(uCamRoll != 0.0){ float rl = radians(uCamRoll); float rc = cos(rl), rs = sin(rl); xy = mat2(rc, -rs, rs, rc) * xy; }
   float tnH = tan(radians(45.0)/2.0);
   if(uFov != 100.0) tnH = tan(radians(45.0 * (uFov / 100.0))/2.0);
   float z = resolution.y / tnH;
@@ -135,6 +169,8 @@ vec3 bg_flowingMetal(vec2 fc){
   // カメラの公転 (原点を中心に周回 + ゆるい上下動)。半径は十分大きく取り内部に入らない。
   float ct = time * 0.12;
   vec3 eye = vec3(cos(ct)*(3.2 * (uCamDist / 100.0)), sin(ct*0.5)*(1.4 * (uCamBob / 100.0)), sin(ct)*(3.2 * (uCamDist / 100.0)));
+  if(uOrbitOffset != 0.0){ eye = fm_ry(eye, radians(uOrbitOffset)); }
+  if(uCamLift != 0.0){ eye.y += uCamLift / 100.0 * 3.0; }
   mat3 v2w = fm_view(eye, vec3(0.0), vec3(0.0, 1.0, 0.0));
   vec3 wd = v2w * viewDir;
   float dist = fm_march(eye, wd, 0.0, FM_MAXD);
@@ -149,7 +185,9 @@ vec3 bg_flowingMetal(vec2 fc){
   vec3 refl = reflect(wd, n);
   // クローム反射: なめらかなフルレンジのグラデで階調を増やす(2値潰しを回避)。
   float t = clamp(0.5 + 0.5*refl.y, 0.0, 1.0);
-  vec3 silver = mix(vec3(0.05, 0.055, 0.07), vec3(0.62, 0.65, 0.72), pow(t, 0.8));
+  float tb = pow(t, 0.8);
+  if(uChromeBias != 100.0){ tb = pow(t, 0.8 * (uChromeBias / 100.0)); }
+  vec3 silver = mix(vec3(0.05, 0.055, 0.07), vec3(0.62, 0.65, 0.72), tb);
   silver += smoothstep(0.5, 0.9, t) * vec3(0.12);   // ソフトな明るい帯
   silver += pow(t, 6.0) * vec3(0.14);               // 天頂のグロー
   // 苔のうごめき: SDF同期(p)に加え、時間で蠢く有機的ワープを足した苔用座標 pm。
@@ -166,6 +204,10 @@ vec3 bg_flowingMetal(vec2 fc){
   vec3 lime  = vec3(0.42, 0.60, 0.16);
   vec3 moss  = (m < 0.5) ? mix(brown, green, m*2.0) : mix(green, lime, (m - 0.5)*2.0);
   vec3 dirt  = vec3(0.32, 0.22, 0.11);
+  vec3 fmL = normalize(vec3(0.4, 0.7, 0.5));
+  vec3 fmS1 = normalize(vec3(0.5, 0.7, 0.4));
+  vec3 fmS2 = normalize(vec3(-0.4, 0.6, 0.5));
+  if(uLightAzimuth != 0.0){ float la = radians(uLightAzimuth); fmL = fm_ry(fmL, la); fmS1 = fm_ry(fmS1, la); fmS2 = fm_ry(fmS2, la); }
   // ボコボコ・隆起: 大きな隆起(lump) + 細かいザラつき(gr)、ノイズ勾配で強いバンプ陰影。
   float lump = fm_fbm(pm*(4.0 * (uLumpScale / 100.0)));
   float gs = 10.0 * (uGrainScale / 100.0);
@@ -173,42 +215,50 @@ vec3 bg_flowingMetal(vec2 fc){
   float bE = 0.025, b0 = fm_fbm(pm*gs);
   vec3 grad3 = (vec3(fm_fbm(pm*gs+vec3(bE,0,0)), fm_fbm(pm*gs+vec3(0,bE,0)), fm_fbm(pm*gs+vec3(0,0,bE))) - b0) / bE;
   vec3 bn = normalize(n + grad3 * 1.6 * (uBump / 100.0));                  // 強いバンプ=ボコボコ
-  float bdiff = clamp(dot(bn, normalize(vec3(0.4, 0.7, 0.5))), 0.0, 1.0);
+  float bdiff = clamp(dot(bn, fmL), 0.0, 1.0);
   float bsh = 0.16 + 1.10 * bdiff;                       // 強コントラストの凹凸陰影
   float ao  = 0.50 + 0.60 * smoothstep(0.25, 0.78, lump); // 谷を暗く=隆起感(AO)
   // 反射は使わずマット拡散(=表面に貼り付いた質感)。金属の反射模様を拾わない。
   moss = moss * (0.6 + 1.3*gr) * bsh * ao;
   dirt = dirt * (0.55 + 1.4*gr) * bsh * ao;
+  moss *= uMossTint;
+  dirt *= uDirtTint;
 
   // パッチマスクは SDF同期 + うごめき座標 pm で駆動 → 苔/土が表面と動きつつ蠢く。
   float mcS = 0.5 * (uMoss / 100.0 - 1.0);
   float mcA = 0.74 - mcS;
   float mcB = 0.86 - mcS;
+  if(uPatchEdge != 100.0){ mcB = mcA + 0.12 * (uPatchEdge / 100.0); }
   float mossMask = smoothstep(mcA, mcB, fm_flow(pm));
   float mdS = mcS + 0.5 * (uDirt / 100.0 - 1.0);
-  float dirtMask = smoothstep(0.74 - mdS, 0.86 - mdS, fm_flow(pm + 40.0)) * (1.0 - mossMask*0.8);
+  float dA = 0.74 - mdS, dB = 0.86 - mdS;
+  if(uPatchEdge != 100.0){ dB = dA + 0.12 * (uPatchEdge / 100.0); }
+  float dirtMask = smoothstep(dA, dB, fm_flow(pm + 40.0)) * (1.0 - mossMask*0.8);
 
   // 金属(クローム)ベースに、苔・土をマットで「置換」合成(乗算しない=反射しない)。
-  vec3 col = silver;
+  vec3 col = silver * uMetalTint;
   col = mix(col, moss, mossMask);
   col = mix(col, dirt, dirtMask);
   float matte = max(mossMask, dirtMask);
 
   // 隆起感: パッチの光源側にドロップシャドウ + 縁のリム光彩。
-  vec3 sOff = normalize(vec3(0.4, 0.7, 0.5)) * 0.25;     // 光源方向へオフセット
+  vec3 sOff = fmL * (0.25 * (uShadowLength / 100.0));     // 光源方向へオフセット
   float mossL = smoothstep(mcA, mcB, fm_flow(pm + sOff));
-  float dirtL = smoothstep(0.74 - mdS, 0.86 - mdS, fm_flow(pm + sOff + 40.0)) * (1.0 - mossL*0.8);
+  float dirtL = smoothstep(dA, dB, fm_flow(pm + sOff + 40.0)) * (1.0 - mossL*0.8);
   float matteL = max(mossL, dirtL);
   float drop = clamp(matteL - matte, 0.0, 1.0);          // 隣(光源側)がパッチで自分は金属=影
-  col *= 1.0 - drop * 0.55;                              // ドロップシャドウ
+  col *= max(1.0 - drop * 0.55 * (uShadowDark / 100.0), 0.0);                              // ドロップシャドウ
   float rim = matte * (1.0 - matte) * 4.0;               // パッチ境界
-  col += rim * vec3(0.7, 0.8, 0.55) * 0.22 * (uGlow / 100.0);              // 縁のリム光彩(隆起の照り)
+  col += rim * vec3(0.7, 0.8, 0.55) * 0.22 * (uGlow / 100.0) * uRimTint;              // 縁のリム光彩(隆起の照り)
 
-  float spec = pow(clamp(dot(refl, normalize(vec3(0.5, 0.7, 0.4))), 0.0, 1.0), 60.0)
-             + pow(clamp(dot(refl, normalize(vec3(-0.4, 0.6, 0.5))), 0.0, 1.0), 40.0);
+  float spec = pow(clamp(dot(refl, fmS1), 0.0, 1.0), 60.0)
+             + pow(clamp(dot(refl, fmS2), 0.0, 1.0), 40.0);
+  if(uSpecSharp != 100.0){ spec = pow(clamp(dot(refl, fmS1), 0.0, 1.0), 60.0 * (uSpecSharp / 100.0)) + pow(clamp(dot(refl, fmS2), 0.0, 1.0), 40.0 * (uSpecSharp / 100.0)); }
   col += spec * (1.0 - 0.85*matte) * vec3(1.0) * 0.55 * (uGlow / 100.0);
   float fres = pow(1.0 - clamp(abs(dot(n, wd)), 0.0, 1.0), 4.0);
-  col += fres * (1.0 - 0.6*matte) * vec3(0.8, 0.85, 0.95) * 0.22 * (uGlow / 100.0);
+  col += fres * (1.0 - 0.6*matte) * vec3(0.8, 0.85, 0.95) * 0.22 * (uGlow / 100.0) * (uFresnel / 100.0);
+  if(uDepthFade != 0.0){ col *= exp(-dist * 0.06 * uDepthFade / 100.0); }
+  if(uVignette != 0.0){ vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y; col *= 1.0 - clamp(uVignette / 100.0, 0.0, 1.5) * smoothstep(0.25, 0.95, length(vq)); }
   bgAlpha = 1.0;                              // 金属表面はヒット=不透明
   return clamp(col, 0.0, 1.0);
 }

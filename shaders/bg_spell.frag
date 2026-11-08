@@ -72,6 +72,36 @@ uniform float uLobes;     // 外側の波打ちの山の数
 uniform float uLobeAmp;   // 外側の波打ちの振れ幅 (%)
 uniform float uCoil;      // 全体の巻きつき (%)
 uniform float uRoomHeight; // 床と天井の間隔 (%)
+// @param uCamHeight -80..80 = 0
+// @param uCamPitch -30..30 = 0
+// @param uCamRoll -180..180 = 0
+// @param uCamDistance 60..140 = 100
+// @param uCamFov 50..200 = 100
+// @param uShellRadius 70..130 = 100
+// @param uInnerShellRadius 70..130 = 100
+// @param uInnerLobeAmp 0..200 = 100
+// @param uInnerLobes 1..9 = 3
+// @param uFloorBump 0..300 = 100
+// @param uShellThick 20..300 = 100
+// @param uVolumeGrain 0..300 = 100
+// @param uDepthFade -50..100 = 0
+// @param uLightColor color = #ffffff
+// @param uVoidColor color = #000000
+uniform float uCamHeight; // カメラの高さ (%)。部屋の中で上下
+uniform float uCamPitch; // カメラの俯仰 (度)
+uniform float uCamRoll; // 画面の回転 (度)
+uniform float uCamDistance; // カメラと魔法陣の距離 (%)
+uniform float uCamFov; // 画角 (%)。大きいほど望遠
+uniform float uShellRadius; // 手前の魔法陣の球の半径 (%)
+uniform float uInnerShellRadius; // 奥の魔法陣の球の半径 (%)
+uniform float uInnerLobeAmp; // 奥の魔法陣の波打ちの振れ幅 (%)
+uniform float uInnerLobes; // 奥の魔法陣の波打ちの山の数
+uniform float uFloorBump; // 床と天井の凹凸 (%)
+uniform float uShellThick; // 光の殻の厚み (%)。大きいほど輪郭が太く光る
+uniform float uVolumeGrain; // ボリュームのざらつき (%)
+uniform float uDepthFade; // 奥ほど弱める量 (%)。負で奥を強める
+uniform vec3 uLightColor; // 光のティント
+uniform vec3 uVoidColor; // 闇の色 (暗い部分に足す)
 
 float sp_tubes(vec3 pos){
   float cylinderRadius = .02 * (uThick / 100.0);
@@ -108,7 +138,7 @@ float sp_map(vec3 pos){
   float scene = 1000.;
   float sSc = uScale / 100.0;
   float bump = sp_noise(pos.xz*0.6);          // テクスチャ→手続きノイズ
-  float ground = 2. * (uRoomHeight / 100.0) - bump*.1;
+  float ground = 2. * (uRoomHeight / 100.0) - bump*.1*(uFloorBump / 100.0);
   scene = min(scene, pos.y+ground);
   scene = min(scene, -(pos.y-ground));
 
@@ -116,15 +146,15 @@ float sp_map(vec3 pos){
   p.y += sin(atan(p.z,p.x)*float(int(uLobes + 0.5)))*(3. * (uLobeAmp / 100.0));
   p.xz *= sp_rot(p.y*(.2 * (uCoil / 100.0))-time);
   p = sp_anim1(p);
-  p.x = length(p.xyz)-3.;
+  p.x = length(p.xyz)-3. * (uShellRadius / 100.0);
   scene = sp_smin(scene, sp_tubes(p) * sSc, .5);
   scene = sp_smin(scene, sp_disks(p) * sSc, .5);
 
   p = pos / sSc;
-  p.y += sin(atan(p.z,p.x)*3.)*2.;
+  p.y += sin(atan(p.z,p.x)*float(int(uInnerLobes + 0.5)))*(2. * (uInnerLobeAmp / 100.0));
   p = sp_anim2(p);
   p.xz *= sp_rot(p.y+time);
-  p.x = length(p.xyz)-3.;
+  p.x = length(p.xyz)-3. * (uInnerShellRadius / 100.0);
   scene = sp_smin(scene, sp_tubes(p) * sSc, .3);
   scene = sp_smin(scene, sp_disks(p) * sSc, .3);
 
@@ -135,23 +165,26 @@ vec3 bg_spell(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = (I - 0.5*resolution) / resolution.y;
 
-  vec3 eye = vec3(0., 0., -7.0);
-  vec3 ray = normalize(vec3(uv, .7));
+  vec3 eye = vec3(0., 0., -7.0 * (uCamDistance / 100.0));
+  vec3 ray = normalize(vec3(uv, .7 * (uCamFov / 100.0)));
+  if(uCamPitch != 0.0) ray.yz *= sp_rot(radians(uCamPitch));
+  if(uCamRoll != 0.0) ray.xy *= sp_rot(radians(uCamRoll));
   // マウスの代わりに自動回転
   float a = time*0.12 + radians(uAngle);
   eye.xz *= sp_rot(a);
   ray.xz *= sp_rot(a);
+  if(uCamHeight != 0.0) eye.y = uCamHeight * 0.01;
 
   vec3 pos = eye;
   float shade = 0.;
   for(float i=0.; i<=1.; i += SP_STEPS){
     if(i > uSteps / 50.) break;
     float dist = sp_map(pos);
-    if(dist < SP_VOLUME_BIAS) shade += SP_STEPS;
+    if(dist < SP_VOLUME_BIAS * (uShellThick / 100.0)) shade += SP_STEPS * (1.0 - (uDepthFade / 100.0) * i);
     if(shade >= 1.) break;
-    dist *= SP_STEP_DAMPING + .1*sp_rng(uv+fract(time));
+    dist *= SP_STEP_DAMPING + .1*(uVolumeGrain / 100.0)*sp_rng(uv+fract(time));
     dist = max(SP_MIN_DIST, dist);
     pos += dist * ray;
   }
-  return vec3(shade);
+  return vec3(shade) * uLightColor + uVoidColor * (1.0 - shade);
 }
