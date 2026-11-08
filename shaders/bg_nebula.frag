@@ -75,6 +75,25 @@ vec4 neb_blend(vec4 fg, vec4 bg){ return fg * fg.a + bg * (1.0 - fg.a); }
 // @param uHaze       40..200 = 100.0
 // @param uCoreAlpha  30..130 = 100.0
 // @param uNebTwist   -200..200 = 0.0
+// @param uCenterX    -100..100 = 0
+// @param uCenterY    -100..100 = 0
+// @param uMirrorX    0..100 = 0
+// @param uCoreAspect 40..250 = 100
+// @param uMidAspect  40..250 = 100
+// @param uOuterAspect 40..250 = 100
+// @param uMidTilt    -90..90 = 0
+// @param uOuterTilt  -90..90 = 0
+// @param uCoreSoft   30..300 = 100
+// @param uMidSoft    60..250 = 100
+// @param uMidAlpha   30..120 = 100
+// @param uOuterAlpha 30..130 = 100
+// @param uAlphaCurve -100..100 = 0
+// @param uStars      0..100 = 0
+// @param uGrainAmt   0..100 = 0
+// @param uVignetteAmt 0..100 = 0
+// @param uCoreTint   color = #ffffff
+// @param uMidTint    color = #ffffff
+// @param uOuterTint  color = #ffffff
 uniform float uWarp;   // ブロブのゆらぎ (歪み) の強さ (%)
 uniform float uDensity;   // ゆらぎの細かさ (%)
 uniform float uSoft;   // ブロブの縁のぼかし幅 (%)
@@ -93,6 +112,25 @@ uniform float uBlobOffsetY; // 中間と外側のブロブを互いに逆へず�
 uniform float uHaze;       // 外側のブロブの縁のぼかし (%)。上げると霞のように広がる
 uniform float uCoreAlpha;  // 芯のブロブの濃さ (%)
 uniform float uNebTwist;   // 中心からの距離に比例したねじれ (%)。負で逆回り
+uniform float uCenterX;    // 星雲全体を左右へずらす量 (%)
+uniform float uCenterY;    // 星雲全体を上下へずらす量 (%)
+uniform float uMirrorX;    // 左右の鏡像の折り返し位置 (%)。0 = なし / 上げると折り返しが左端から中央へ寄り 100 で中央の完全な左右対称
+uniform float uCoreAspect; // 暗い芯の横長さ (%)
+uniform float uMidAspect;  // 明るい中間の横長さ (%)
+uniform float uOuterAspect; // 外側の青いブロブの横長さ (%)
+uniform float uMidTilt;    // 中間ブロブの楕円の傾き (度)
+uniform float uOuterTilt;  // 外側ブロブの楕円の傾き (度)
+uniform float uCoreSoft;   // 芯のブロブの縁のぼかし幅 (%)
+uniform float uMidSoft;    // 中間のブロブの縁のぼかし幅 (%)
+uniform float uMidAlpha;   // 中間のブロブの濃さ (%)
+uniform float uOuterAlpha; // 外側のブロブの濃さ (%)
+uniform float uAlphaCurve; // 星雲の濃淡の落ち方 (%)。正で芯だけ濃く / 負で全体に薄く広がる
+uniform float uStars;      // 星屑の量 (%)
+uniform float uGrainAmt;   // 粒子ノイズの量 (%)
+uniform float uVignetteAmt; // 周辺を暗く落とす量 (%)
+uniform vec3 uCoreTint;    // 暗い芯の色味 (掛け算のティント)
+uniform vec3 uMidTint;     // 明るい中間の色味 (掛け算のティント)
+uniform vec3 uOuterTint;   // 外側の青の色味 (掛け算のティント)
 
 float neb_shape(vec2 uv, float radius, float softness, float noiseIntensity, float noiseOffset){
   float noise = neb_snoise(vec3(uv * (1.2 * (uDensity / 100.0)) + noiseOffset, noiseOffset + time * 0.3));
@@ -110,6 +148,8 @@ vec3 bg_nebula(vec2 fc){
   float ang = radians(uAngle);
   uv = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * uv;
   uv.x *= 0.35 / (uAspect / 100.0);                                   // 横長の星雲
+  if(uCenterX != 0.0 || uCenterY != 0.0) uv -= vec2(uCenterX * 0.35, uCenterY) / 100.0 * 0.3;
+  if(uMirrorX > 0.0){ float mAx = -(100.0 - uMirrorX) / 100.0 * 0.35; uv.x = abs(uv.x - mAx) + mAx; }
 
   if(uNebTwist != 0.0){ float ta = length(uv) * uNebTwist / 100.0 * 3.0; float ca = cos(ta), sa = sin(ta); uv = mat2(ca, -sa, sa, ca) * uv; }
   vec2 blobSh = vec2(uBlobOffsetX, uBlobOffsetY) / 100.0 * 0.3;
@@ -118,18 +158,48 @@ vec3 bg_nebula(vec2 fc){
   const vec3 col1 = vec3(0.588, 0.682, 0.906);
   const vec3 col2 = vec3(0.325, 0.514, 0.843);
 
+  vec2 uvC = uv;
+  vec2 uvM = uv - blobSh;
+  vec2 uvO = uv + blobSh;
+  uvC.x *= 100.0 / uCoreAspect;
+  if(uMidTilt != 0.0){ float ma = radians(uMidTilt); uvM = mat2(cos(ma), -sin(ma), sin(ma), cos(ma)) * uvM; }
+  uvM.x *= 100.0 / uMidAspect;
+  if(uOuterTilt != 0.0){ float oa = radians(uOuterTilt); uvO = mat2(cos(oa), -sin(oa), sin(oa), cos(oa)) * uvO; }
+  uvO.x *= 100.0 / uOuterAspect;
+
   vec4 bg = vec4(0.0);
-  vec4 l0 = vec4(col0, neb_shape(uv, 0.4 * (uCoreR / 100.0), 0.3, 0.2 * (uCoreWobble / 100.0), 4.0) * 1.3 * (uCoreAlpha / 100.0));
-  vec4 l1 = vec4(col1, neb_shape(uv - blobSh, 0.6 * (uMidR / 100.0), 0.4, 0.1 * (uMidWobble / 100.0), 6.0) * 1.2);
-  vec4 l2 = vec4(col2, neb_shape(uv + blobSh, 0.4 * (uOuterR / 100.0), 0.8 * (uHaze / 100.0), 0.1 * (uOuterWobble / 100.0), 10.0));
+  vec4 l0 = vec4(col0 * uCoreTint, neb_shape(uvC, 0.4 * (uCoreR / 100.0), 0.3 * (uCoreSoft / 100.0), 0.2 * (uCoreWobble / 100.0), 4.0) * 1.3 * (uCoreAlpha / 100.0));
+  vec4 l1 = vec4(col1 * uMidTint, neb_shape(uvM, 0.6 * (uMidR / 100.0), 0.4 * (uMidSoft / 100.0), 0.1 * (uMidWobble / 100.0), 6.0) * 1.2 * (uMidAlpha / 100.0));
+  vec4 l2 = vec4(col2 * uOuterTint, neb_shape(uvO, 0.4 * (uOuterR / 100.0), 0.8 * (uHaze / 100.0), 0.1 * (uOuterWobble / 100.0), 10.0) * (uOuterAlpha / 100.0));
   vec4 layers = neb_blend(l0, bg);
   layers = neb_blend(l1, layers);
   layers = neb_blend(l2, layers);
+  if(uAlphaCurve != 0.0) layers.a = pow(clamp(layers.a, 0.0, 1.0), exp2(uAlphaCurve / 100.0 * 1.5));
   vec3 color = layers.rgb * layers.a * (uGlow / 100.0);
 
   if(abs(uCosGrad) > 0.0001){
     float lum = dot(color, vec3(0.299, 0.587, 0.114));
     color = mix(color, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
+  }
+  if(uStars > 0.0){
+    float cs = 18.0;
+    vec2 sg = fc / cs;
+    vec2 sid = floor(sg);
+    vec2 sf = fract(sg) - 0.5;
+    float sh = fract(sin(dot(sid, vec2(127.1, 311.7))) * 43758.5453);
+    float sh2 = fract(sin(dot(sid, vec2(269.5, 183.3))) * 43758.5453);
+    vec2 spos = (vec2(sh, sh2) - 0.5) * 0.6;
+    float sv = step(1.0 - uStars / 100.0 * 0.3, fract(sh * 7.31 + sh2 * 3.7)) * smoothstep(0.2, 0.0, length(sf - spos)) * (0.5 + sh);
+    color += vec3(0.85, 0.92, 1.0) * sv;
+    layers.a = max(layers.a, sv);
+  }
+  if(uVignetteAmt > 0.0){
+    vec2 vq = fc / resolution.xy - 0.5;
+    color *= 1.0 - uVignetteAmt / 100.0 * clamp(dot(vq, vq) * 3.0, 0.0, 1.0);
+  }
+  if(uGrainAmt > 0.0){
+    float gn = fract(sin(dot(fc + fract(time) * 37.0, vec2(12.9898, 78.233))) * 43758.5453);
+    color += (gn - 0.5) * uGrainAmt / 100.0 * 0.15 * (0.3 + layers.a);
   }
   bgAlpha = clamp(layers.a, 0.0, 1.0);  // Slot B はブロブ部分のみ
   return color;
