@@ -19848,6 +19848,7 @@ void mainImage(out vec4 o, in vec2 f){
         ['Spin',      'spin',     -400, 400, 1, pct],
         {sel:true, label:'Reverse', key:'spinRev', opts:[[0, 'Off'], [1, 'On (逆回転)']]},
         {sel:true, label:'Random Rev', key:'revAuto', opts:[[0, 'Off'], [1, 'On (ランダムな拍で反転)']]},
+        {sel:true, label:'Attack Rev', key:'revAtk', opts:[[0, 'Off'], [1, 'On (アタックで反転)']]},
         {steps:true, label:'Spin Step', key:'spinStep', vals:[0, 45, 90, 180, 360], names:['連続', '45°', '90°', '180°', '360°']},
         ['Tumble',    'tumble',   -300, 300, 1, pct],
         ['Tilt',      'tilt',     -90, 90, 1, deg],
@@ -19878,6 +19879,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Sparkle',   'sparkle',  0,  300, 1, pct],
       ['Irid',      'irid',     0,  100, 1, pct],
       ['Grain',     'grain',    0,  200, 1, pct],
+      ['Surface',   'surf',     0,  200, 1, pct],
     ]) slider(spec);
     mkColor('Tint', 'tint');
     // 画像テクスチャ: images/ のフォルダ (IMAGE モードと同じ一覧。ドロップした画像も選べる)

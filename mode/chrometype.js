@@ -28,6 +28,7 @@ const ChromeType = {
   _tyT:null, _tyLastB:null,         // タイピングの進み (拍)。進んだ量の絶対値を積む
   _yaw:0, _lastT:null, _lastP:null, // 縦軸まわりの角度 (積む) と前のフレームの時間 / Spin Step の進み
   _dir:1, _dirBeat:null, _revFlip:false, _revLeft:0,   // 回転の向き・切り替えた拍・Random Rev の反転中か・次の反転までの拍数
+  _atkFlip:false, _atkSeed:null, _atkT:0,   // Attack Rev の反転中か・前の Audio.hitSeed・前に反転した時刻
   BK:null,                          // GPU 焼きの資源 {W,H,mask[4],tA,tB,tC,jA,jB,occ,fbos,progs,vao}
   texImg:null, texTex:null, _texUrl:'', _texAspect:1,
   _matT:null,
@@ -72,6 +73,7 @@ const ChromeType = {
     spin:100,            // 縦軸まわりの回転の速さ (%、符号で向き)
     spinRev:0,           // 1 = 逆回転 (Spin と Spin Step の向きを反転。拍の頭で切り替わる)
     revAuto:0,           // 1 = ランダムな拍数 (2〜16 拍) ごとに回転の向きを反転
+    revAtk:0,            // 1 = 音のアタック (Audio.hitSeed が変わる) ごとに回転の向きを反転 (すぐ切り替わる)
     tumble:0,            // 横軸まわりの回転の速さ (%)
     tilt:18,             // 前後の傾き (°)。75 前後で寝かせた見え方 (参考画像)
     roll:0,              // 画面内の傾き (°)
@@ -90,6 +92,7 @@ const ChromeType = {
     sparkle:0,           // ラメ (%)
     irid:0,              // 玉虫色 (%)
     grain:10,            // ざらつき (%)
+    surf:0,              // 肌のノイズ (%): 石膏のざらつき・気泡の穴・色むらを形に貼りつけて出す (回しても流れない)
     tint:[0.86, 0.87, 0.90],   // 地の色
     texAmt:0,            // 画像テクスチャの量 (%)
     texMode:0,           // 0 = 正面に貼る / 1 = 三面から貼る / 2 = 映り込みに使う
@@ -102,18 +105,18 @@ const ChromeType = {
 
   // 材質プリセット: 選ぶと材質パラメータがまとめて入れ替わる (そのあと個別に動かせる)
   MATS:[
-    { name:'Matte (石膏)',      metal:0,   rough:70, gloss:35,  envBri:110, sparkle:0,  irid:0,  grain:22, tint:[0.74,0.74,0.75] },
-    { name:'Chrome',            metal:100, rough:10, gloss:100, envBri:100, sparkle:0,  irid:0,  grain:6,  tint:[0.90,0.91,0.94] },
-    { name:'Black Chrome',      metal:100, rough:16, gloss:100, envBri:80,  sparkle:50, irid:18, grain:16, tint:[0.30,0.28,0.30] },
-    { name:'Candy Red',         metal:0,   rough:6,  gloss:140, envBri:100, sparkle:0,  irid:0,  grain:4,  tint:[0.80,0.02,0.03] },
-    { name:'Gold',              metal:100, rough:14, gloss:100, envBri:100, sparkle:10, irid:0,  grain:6,  tint:[1.00,0.78,0.38] },
-    { name:'Pearl',             metal:20,  rough:30, gloss:80,  envBri:110, sparkle:15, irid:80, grain:8,  tint:[0.92,0.90,0.92] },
+    { name:'Matte (石膏)',      metal:0,   rough:85, gloss:15,  envBri:95,  sparkle:0,  irid:0,  grain:8,  surf:100, tint:[0.80,0.79,0.77] },
+    { name:'Chrome',            metal:100, rough:10, gloss:100, envBri:100, sparkle:0,  irid:0,  grain:6,  surf:0, tint:[0.90,0.91,0.94] },
+    { name:'Black Chrome',      metal:100, rough:16, gloss:100, envBri:80,  sparkle:50, irid:18, grain:16, surf:0, tint:[0.30,0.28,0.30] },
+    { name:'Candy Red',         metal:0,   rough:6,  gloss:140, envBri:100, sparkle:0,  irid:0,  grain:4,  surf:0, tint:[0.80,0.02,0.03] },
+    { name:'Gold',              metal:100, rough:14, gloss:100, envBri:100, sparkle:10, irid:0,  grain:6,  surf:0, tint:[1.00,0.78,0.38] },
+    { name:'Pearl',             metal:20,  rough:30, gloss:80,  envBri:110, sparkle:15, irid:80, grain:8,  surf:0, tint:[0.92,0.90,0.92] },
   ],
   setMat(i){
     const n = this.MATS.length; i = Math.max(0, Math.min(n - 1, Math.round(+i || 0)));
     const m = this.MATS[i];
     this.P.mat = i;
-    for(const k of ['metal','rough','gloss','envBri','sparkle','irid','grain']) this.P[k] = m[k];
+    for(const k of ['metal','rough','gloss','envBri','sparkle','irid','grain','surf']) this.P[k] = m[k];
     this.P.tint = m.tint.slice();
   },
 
@@ -305,6 +308,7 @@ uniform vec2 uWorld;
 uniform float uR, uPuff, uThick, uFinThick;
 uniform vec3 uCam;
 uniform float uMetal, uRough, uGloss, uEnvBri, uEnvRot, uSparkle, uIrid, uGrain;
+uniform float uSurf;
 uniform vec3 uTint;
 uniform float uTexAmt, uTexScale, uTexAspect;
 uniform int uTexMode, uHasTex;
@@ -318,6 +322,16 @@ flat in float vSide;
 out vec4 o;
 ${this._glslProf()}
 float ct_hash(vec3 p){ p = fract(p*vec3(443.897, 441.423, 437.195)); p += dot(p, p.yzx + 19.19); return fract((p.x + p.y)*p.z); }
+// 値ノイズと勾配 (x = 値 0..1 / yzw = 勾配)。石膏の肌 (Surface) に使う
+vec4 ct_vnd(vec3 x){
+  vec3 i = floor(x), f = fract(x);
+  vec3 u = f*f*(3.0 - 2.0*f), du = 6.0*f*(1.0 - f);
+  float a = ct_hash(i), b = ct_hash(i + vec3(1,0,0)), c = ct_hash(i + vec3(0,1,0)), d = ct_hash(i + vec3(1,1,0));
+  float e = ct_hash(i + vec3(0,0,1)), f1 = ct_hash(i + vec3(1,0,1)), g = ct_hash(i + vec3(0,1,1)), h = ct_hash(i + vec3(1,1,1));
+  float k1 = b - a, k2 = c - a, k3 = e - a, k4 = a - b - c + d, k5 = a - c - e + g, k6 = a - b - e + f1, k7 = -a + b + c - d + e - f1 - g + h;
+  return vec4(a + k1*u.x + k2*u.y + k3*u.z + k4*u.x*u.y + k5*u.y*u.z + k6*u.z*u.x + k7*u.x*u.y*u.z,
+              du*vec3(k1 + k4*u.y + k6*u.z + k7*u.y*u.z, k2 + k5*u.z + k4*u.x + k7*u.z*u.x, k3 + k6*u.x + k5*u.y + k7*u.x*u.y));
+}
 // スタジオ照明: 暗い床 / 灰色の壁 / 天井の大きな面光源 / 左右の縦長の光 / 水平の細い光
 vec3 ct_env(vec3 r, float rough){
   float ca = cos(uEnvRot), sa = sin(uEnvRot);
@@ -356,6 +370,7 @@ void main(){
   // 縁: 補間した高さが 0 になる線。MSAA 時は alpha-to-coverage で縁をなめらかにする
   // (ぼかすのは線の外側だけ。内側まで薄くすると上面と下面の継ぎ目に背景が透ける)
   float cover = clamp(vH/max(fwidth(vH), 1e-6) + 1.0, 0.0, 1.0);
+  float lpw = uSurf > 0.0 ? length(fwidth(vLP)) : 0.0;   // 1 画素あたりの肌の座標の幅 (細かすぎる粒を消す)
   if(cover <= 0.0) discard;
   float th = uThick*(vLayer == 0 ? 1.0 : uFinThick);
   vec2 e = 1.0/uTexSize;
@@ -367,6 +382,50 @@ void main(){
   vec3 N = normalize(mat3(vC0, vC1, vC2)*nL);
   vec3 V = normalize(uCam - vWP);
   if(dot(N, V) < -0.2) N = -N;
+  // 石膏の肌: 形の座標 (vLP, F 単位) に貼りつけたざらつきの凹凸 + 気泡の穴 + 色むら
+  float sAlb = 1.0, sCav = 1.0, pw = 0.0;
+  if(uSurf > 0.0){
+    vec3 lp = vLP + float(vLayer)*7.31;
+    vec3 g = vec3(0.0);
+    float fr = 100.0, w = 1.0, sp = 0.0;
+    for(int i=0;i<3;i++){
+      float fade = 1.0 - smoothstep(0.4, 0.95, lpw*fr);
+      vec4 n = ct_vnd(lp*fr + float(i)*17.3);
+      g += n.yzw*w*fade;
+      sp += (n.x - 0.5)*w*fade;
+      fr *= 2.1; w *= 0.8;
+    }
+    g *= 0.34;
+    // 気泡の穴: 近い 8 セルの中で一番近い穴 (ないセルもある) をすり鉢にする
+    vec3 pc = lp*38.0;
+    vec3 b0 = floor(pc - 0.5);
+    float pit = 0.0;
+    float pfade = 1.0 - smoothstep(0.1, 0.25, lpw*38.0);
+    for(int k=0;k<8;k++){
+      vec3 c = b0 + vec3(float(k & 1), float((k >> 1) & 1), float((k >> 2) & 1));
+      float hs = ct_hash(c + 3.7);
+      if(hs > 0.35) continue;
+      vec3 ctr = c + 0.5 + (vec3(ct_hash(c + 1.1), ct_hash(c + 2.3), ct_hash(c + 4.9)) - 0.5)*0.5;
+      float r = mix(0.10, 0.26, ct_hash(c + 6.1));
+      vec3 dv = pc - ctr;
+      float t = dot(dv, dv)/(r*r);
+      if(t < 1.0){
+        float bowl = 1.0 - t;
+        if(bowl > pit){ pit = bowl; g += dv*(2.0/(r*r))*0.025*pfade; }
+      }
+    }
+    pit *= pfade;
+    float m = ct_vnd(lp*2.6 + 11.7).x;
+    float am = min(uSurf, 1.0);
+    pw = am;
+    // 粉の粒: 形に貼りつけた細かい点のむら (細かすぎる所は消す)
+    float gr = ct_hash(floor(lp*280.0));
+    float gfade = 1.0 - smoothstep(0.5, 1.0, lpw*280.0);
+    sAlb = 1.0 + am*((m - 0.5)*0.08 + sp*0.10 + (gr - 0.5)*0.22*gfade);
+    sCav = 1.0 - am*pit*0.6;
+    vec3 gw = mat3(vC0, vC1, vC2)*g;
+    N = normalize(N - uSurf*(gw - dot(gw, N)*N));
+  }
   vec3 R = reflect(-V, N);
   float NV = clamp(dot(N, V), 0.0, 1.0);
 
@@ -386,17 +445,20 @@ void main(){
       alb = mix(alb, tc, uTexAmt);
     }
   }
+  alb *= sAlb;
   // 拡散: 上からの大きな面光源 + 左上の主光
   vec3 L = normalize(vec3(-0.45, 0.75, 0.55));
-  float dif = max(dot(N, L), 0.0);
+  float wr = 0.7*pw;   // 粉っぽさ: 光が回り込んで影が浮く (影は控えめ)
+  float dif = max((dot(N, L) + wr)/(1.0 + wr), 0.0);
   float sky = 0.5 + 0.5*N.y;
-  vec3 irr = vec3(0.26)*sky + vec3(0.08) + vec3(0.9)*dif;
+  vec3 irr = vec3(0.26)*sky + vec3(0.08 + 0.12*pw) + vec3(0.9)*dif;
   irr *= uEnvBri;
   // 縁の暗がり (高さの低い所 = 穴の縁・付け根を少し落とす)
-  float cav = mix(0.72, 1.0, smoothstep(0.0, uR*0.9, vH));
+  float cav = mix(mix(0.72, 1.0, smoothstep(0.0, uR*0.9, vH)), 1.0, 0.45*pw)*sCav;
   vec3 F0 = mix(vec3(0.06), alb, uMetal);
   vec3 Fr = F0 + (1.0 - F0)*pow(1.0 - NV, 5.0)*(1.0 - uRough*0.7);
   vec3 col = alb*irr*(1.0 - uMetal)*cav + env*Fr*uGloss*mix(1.0, cav, 0.5);
+  col += alb*pow(1.0 - NV, 2.5)*0.25*pw*uEnvBri*(1.0 - uMetal);   // 粉の縁のふわっとした明るさ
   // 主光の鋭いハイライト (非金属のつや)
   vec3 Hh = normalize(L + V);
   float sp = pow(max(dot(N, Hh), 0.0), mix(400.0, 12.0, uRough));
@@ -1163,10 +1225,10 @@ void main(){
     const deg = Math.PI/180;
 
     // 回転
-    // 向き (Reverse / Random Rev) は拍の頭で切り替える (drone モードは 0.5 秒 = 1 拍)。角度は毎フレーム積むので向きが変わっても飛ばない
+    // 向き (Reverse / Random Rev) は拍の頭で切り替える (Attack Rev だけはアタックの瞬間) (drone モードは 0.5 秒 = 1 拍)。角度は毎フレーム積むので向きが変わっても飛ばない
     const step = Math.round(+P.spinStep || 0);
     const bt = beatMode ? opts.beat*spd : T*2, bti = Math.floor(bt);
-    if(this._dirBeat == null || Math.abs(bti - this._dirBeat) > 64){ this._dirBeat = bti; this._dir = P.spinRev > 0 ? -1 : 1; this._revFlip = false; this._revLeft = 0; }
+    if(this._dirBeat == null || Math.abs(bti - this._dirBeat) > 64){ this._dirBeat = bti; this._dir = P.spinRev > 0 ? -1 : 1; this._revFlip = false; this._revLeft = 0; this._atkFlip = false; }
     if(bti !== this._dirBeat){
       this._dirBeat = bti;
       if(P.revAuto > 0){
@@ -1175,8 +1237,18 @@ void main(){
           this._revLeft = [2, 4, 4, 8, 8, 16][Math.floor(Math.random()*6)];
         }
       } else { this._revFlip = false; this._revLeft = 0; }
-      this._dir = (P.spinRev > 0 ? -1 : 1)*(this._revFlip ? -1 : 1);
+      this._dir = (P.spinRev > 0 ? -1 : 1)*(this._revFlip ? -1 : 1)*(this._atkFlip ? -1 : 1);
     }
+    // Attack Rev: アタックで拾った瞬間に反転 (拍を待たない)。0.12 秒以内の連打は 1 回とみなす
+    const seed = (typeof Audio !== 'undefined') ? (Audio.hitSeed || 0) : 0;
+    if(P.revAtk > 0){
+      const now = performance.now();
+      if(this._atkSeed != null && seed !== this._atkSeed && now - this._atkT > 120){
+        this._atkFlip = !this._atkFlip; this._atkT = now;
+        this._dir = -this._dir;
+      }
+    } else if(this._atkFlip){ this._atkFlip = false; this._dir = -this._dir; }
+    this._atkSeed = seed;
     if(beatMode && step > 0){
       const b = opts.beat*spd, bi = Math.floor(b), bf = b - bi;
       const p = bi + 1 - Math.pow(1 - Math.min(1, bf*2.2), 3);
@@ -1271,6 +1343,7 @@ void main(){
       u1('uSparkle', Math.max(0, dz(P.sparkle)*0.01));
       u1('uIrid', Math.max(0, Math.min(1, dz(P.irid)*0.01)));
       u1('uGrain', Math.max(0, dz(P.grain)*0.01)*0.5);
+      u1('uSurf', Math.max(0, dz(P.surf)*0.01));
       const tint = Array.isArray(P.tint) ? P.tint : [0.8, 0.8, 0.8];
       if(U.uTint) gl.uniform3f(U.uTint, tint[0], tint[1], tint[2]);
       u1('uTexAmt', this._texReady ? Math.max(0, Math.min(1, dz(P.texAmt)*0.01)) : 0);
