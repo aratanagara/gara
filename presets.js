@@ -84,7 +84,7 @@ void mainImage(out vec4 o, in vec2 f){
   ch: ["","","",""],
   src: `// Shadertoy tlBcDh "Alien megacity" 原作そのまま(単一パス移植)。based on https://www.shadertoy.com/view/4tcGDr
 // @param speed 0..3 = 1
-// @param uVineFreq 75..120 = 100
+// @param uVineFreq 85..120 = 100
 // @param uFoldScale 90..112 = 100
 // @param uCityScale 80..108 = 100
 // @param uVineThick 98..106 = 100
@@ -124,15 +124,17 @@ float sceneSDF_d(vec3 p){
   return result*scale;
 }
 bool gCustom;
+float gVineInv, gCityInv, gMul, gMulInv, gMul2, gMul2Inv, gLayer2;
 float vines(vec3 p, float size1){ return size - length((sin(p/vec3(length((p/gVineDiv)))))*size1)/1.8; }
+float vinesC(vec3 p, float size1){ return size - length((sin(p/vec3(length((p*gVineInv)))))*size1)/1.8; }
 float sceneSDF_c(vec3 p){
-  p /= gCityDiv;
-  float size1 = gSize1, result = vines(p, size1), i = multiplier;
-  for(int j = 0; j < iterations; j++){
-    if(j >= int(uLayers + 0.5)) break;
-    p = sin(p/i)*i - (sin(p*i)/i)*gCrumple;
-    result = min(result, vines(p, size1)/(i));
-    i *= multiplier;
+  p *= gCityInv;
+  float size1 = gSize1, result = vinesC(p, size1);
+  p = sin(p*gMulInv)*gMul - (sin(p*gMul)*gMulInv)*gCrumple;
+  result = min(result, vinesC(p, size1)*gMulInv);
+  if(gLayer2 > 0.5){   // 2 段目 (uLayers = 2)。uniform 由来の分岐なので片方しか実行されない
+    p = sin(p*gMul2Inv)*gMul2 - (sin(p*gMul2)*gMul2Inv)*gCrumple;
+    result = min(result, vinesC(p, size1)*gMul2Inv);
   }
   return result*scale;
 }
@@ -173,6 +175,8 @@ mat3 viewMatrix(vec3 eye, vec3 center, vec3 up){ vec3 f = normalize(center-eye),
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
   gCustom = (uVineFreq != 100.0 || uFoldScale != 100.0 || uCityScale != 100.0 || uVineThick != 100.0 || uLayers != 2.0 || uCrumple != 100.0);
   gVineDiv = 20.0/(uVineFreq/100.0); gCityDiv = scale*60.0/(uCityScale/100.0); gSize1 = 1100.0*(uVineThick/100.0); gCrumple = uCrumple/100.0;
+  gVineInv = 1.0/gVineDiv; gCityInv = 1.0/gCityDiv; gMul = multiplier; gMulInv = 1.0/gMul; gMul2 = gMul*gMul; gMul2Inv = 1.0/gMul2;
+  gLayer2 = (uLayers > 1.5) ? 1.0 : 0.0;
   float T = iTime * speed;
   vec3 viewDir = rayDirection(45.0, iResolution.xy, fragCoord);
   vec3 eye = vec3(-35.0 + sin(T/2.0)/2.0*(uCamSway/100.0), 1.0 + cos(T/2.0)/2.0*(uCamSway/100.0), T);
@@ -2927,12 +2931,6 @@ float heightBlur_d(vec2 c, float lod){
   s += heightAt_d(c+vec2(r,r));    s += heightAt_d(c+vec2(-r,-r));
   return s / 7.0;
 }
-vec3 envAt_d(vec3 dir){
-  float up = dir.y*0.5 + 0.5;
-  vec3 sky = mix(vec3(0.12,0.15,0.22), vec3(0.9,0.95,1.05), up);
-  float hl = smoothstep(0.55, 1.0, dir.y) + 0.5*smoothstep(0.9, 1.0, dir.x*0.5+0.5);
-  return sky + hl * 0.6 * uEnv;
-}
 
 vec3 shade_d(vec2 fragCoord){
   vec2 fc = fragCoord.xy;
@@ -2940,28 +2938,29 @@ vec3 shade_d(vec2 fragCoord){
   float occlusion = 0.0;
   for(float i=2.0;i<=5.0;i++){
     float mh = heightBlur_d(fc, i);
-    occlusion += 4.0 * max(mh - height, 0.0) * (1.0 / i);
+    occlusion += 4.0 * (uOccAmount/100.0) * max(mh - height, 0.0) * (1.0 / i);
   }
   vec3 col = mix(vec3(0.8,0.6,0.4), vec3(1.0), height) * (1.0 - occlusion);
   vec3 totalNormal = vec3(0.0);
   for(float i=3.0;i<=5.0;i++){
     float texelStep = pow(2.0, i);
     vec3 n = normalize(vec3(
-      5.0 * (heightBlur_d(fc+vec2(texelStep,0.0), i) - heightBlur_d(fc-vec2(texelStep,0.0), i)),
-      5.0 * (heightBlur_d(fc+vec2(0.0,texelStep), i) - heightBlur_d(fc-vec2(0.0,texelStep), i)),
+      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fc+vec2(texelStep,0.0), i) - heightBlur_d(fc-vec2(texelStep,0.0), i)),
+      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fc+vec2(0.0,texelStep), i) - heightBlur_d(fc-vec2(0.0,texelStep), i)),
       1.0));
     totalNormal += n;
   }
   vec3 normal = normalize(totalNormal);
   vec3 rayDir = normalize(vec3((fc - iResolution.xy/2.0)/iResolution.y, 1.0));
   vec3 envSampleDir = reflect(rayDir, normal);
-  vec3 envSample = envAt_d(envSampleDir);
+  vec3 envSample = envAt(envSampleDir);
   vec3 applied = 0.6*col + 0.4*col*envSample;
   return applied;
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
-  gCustom = (uBlobScale != 100.0 || uCoarseScale != 100.0 || uBlobDetail != 3.0 || uGoopLevel != 0.0 || uRampSharp != 0.0 || uBlurReach != 100.0 || uOccAmount != 100.0 || uBumpStrength != 100.0 || uHighlightSize != 100.0 || uSideLight != 100.0);
+  // 高さ場に効く param が既定なら元の高さ場の式で描く (陰影の param 4 つは既定の経路の中で効く)
+  gCustom = (uBlobScale != 100.0 || uCoarseScale != 100.0 || uBlobDetail != 3.0 || uGoopLevel != 0.0 || uRampSharp != 0.0 || uBlurReach != 100.0);
   if(!gCustom){ fragColor = vec4(shade_d(fragCoord.xy), 1.0); return; }
   gK1 = 0.001*(uBlobScale/100.0); gK2 = 0.0001*(uCoarseScale/100.0);
   gDetail = int(uBlobDetail + 0.5);
@@ -3874,13 +3873,13 @@ void mainImage(out vec4 O, vec2 u){
   src: `// Shadertoy ttfBDH "Cave at the Edge of the Universe" by jarble — 単一パスそのまま移植。
 //   iMouse 視点回転は除去(自動フライト固定)。marching 上限 1000→260 に短縮(ANGLE/TDR 対策)。
 //   不透明(透過なし)。
-// @param uCaveWidth 94..106 = 100
-// @param uWallCurve 90..112 = 100
+// @param uCaveWidth 94..104 = 100
+// @param uWallCurve 94..112 = 100
 // @param uCaveOpen 85..115 = 100
 // @param uZStretch 88..108 = 100
-// @param uWarpScale 94..106 = 100
+// @param uWarpScale 94..104 = 100
 // @param uCaveShift 50..130 = 100
-// @param uRockRelief 90..130 = 100
+// @param uRockRelief 95..130 = 100
 // @param uSwell 50..175 = 100
 // @param uPhaseSpread 70..140 = 100
 // @param uColorBand 50..200 = 100
@@ -3933,39 +3932,32 @@ mat3 viewMatrix(vec3 eye, vec3 center, vec3 up) {
     return mat3(s, u, -f);
 }
 
+float gShift, gZk, gWarp, gWidth, gCurve, gOpen, gRelief, gSwell;
+vec3 gPhase;
 float sceneSDFP(vec3 p) {
     p /= 20.0;
-    vec2 uv = p.xy - vec2(.5 * (uCaveShift / 100.0));
-    float time = p.z * 2. * (uZStretch / 100.0) + 15.+length(sin(uv/10.0));
-    uv = sin(uv/(20.0 * (uWarpScale / 100.0)+sin(uv.yx/20.0+time)))*(3.0 / (uCaveWidth / 100.0));
-    float len = dot(uv, uv) * (.3 * (uWallCurve / 100.0)) - .4 * (uCaveOpen / 100.0);
-    vec3 z = sin(time + vec3(.23, .19, .17) * (uPhaseSpread / 100.0));
+    vec2 uv = p.xy - vec2(gShift);
+    float time = p.z * gZk + 15.+length(sin(uv/10.0));
+    uv = sin(uv/(gWarp+sin(uv.yx/20.0+time)))*gWidth;
+    float len = dot(uv, uv) * gCurve - gOpen;
+    vec3 z = sin(time + gPhase);
     for (int i = 0; i < ITERATIONS; i++) {
         z += cos(z.zxy + uv.yxy * float(i) * len);
     }
-    float val = z.r * (.06 * (uRockRelief / 100.0)) + .3;
-    val -= smoothstep(.1, -.3, len) * (1.5 * (uSwell / 100.0)) + len * .3 - .4;
+    float val = z.r * gRelief + .3;
+    val -= smoothstep(.1, -.3, len) * gSwell + len * .3 - .4;
     return val;
 }
 
 
-float gCustom;
-int gSix;
-float sceneSDFW(vec3 p){ if(gCustom > 0.5) return sceneSDFP(p); return sceneSDF(p); }
-
+float gCustom;   // 形に効く param が既定から外れているか (1 = param 版の距離関数でレイマーチ)
 vec3 surface_colorW(vec3 p){
     p /= scale;
     p /= 200.0;
-    if(gCustom < 0.5){ return sin(vec3(sceneSDF(p/5.0),sceneSDF(p*3.0),sceneSDF(p*2.0)))/3.0+vec3(.3); }
-    vec3 v;
-    for (int k = 0; k < 3; k++) {
-        if (k >= gSix) break;
-        vec3 q;
-        if(gCustom > 0.5){ q = (k == 0) ? p/(5.0 * (uColorBand / 100.0)) : (k == 1) ? p*(3.0 * (uColorBand / 100.0)) : p*(2.0 * (uColorBand / 100.0)); }
-        else { q = (k == 0) ? p/5.0 : (k == 1) ? p*3.0 : p*2.0; }
-        v[k] = sceneSDFW(q);
-    }
-    return sin(v)/3.0+vec3(.3);
+    if(gCustom < 0.5 && uColorBand == 100.0){ return sin(vec3(sceneSDF(p/5.0),sceneSDF(p*3.0),sceneSDF(p*2.0)))/3.0+vec3(.3); }
+    float cb = uColorBand / 100.0;
+    if(gCustom < 0.5) return sin(vec3(sceneSDF(p/(5.0*cb)),sceneSDF(p*(3.0*cb)),sceneSDF(p*(2.0*cb))))/3.0+vec3(.3);
+    return sin(vec3(sceneSDFP(p/(5.0*cb)),sceneSDFP(p*(3.0*cb)),sceneSDFP(p*(2.0*cb))))/3.0+vec3(.3);
 }
 
 float shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {
@@ -3996,15 +3988,11 @@ vec3 estimateNormal(vec3 p) {
         sceneSDF(vec3(p.x, p.y, p.z  + EPSILON)) - sceneSDF(vec3(p.x, p.y, p.z - EPSILON))
     ));
     }
-    float dd[6];
-    for (int k = 0; k < 6; k++) {
-        if (k >= gSix * 2) break;
-        vec3 q = p;
-        float e = (k & 1) == 0 ? EPSILON : -EPSILON;
-        if (k < 2) q.x += e; else if (k < 4) q.y += e; else q.z += e;
-        dd[k] = sceneSDFW(q);
-    }
-    return normalize(vec3(dd[0] - dd[1], dd[2] - dd[3], dd[4] - dd[5]));
+    return normalize(vec3(
+        sceneSDFP(vec3(p.x + EPSILON, p.y, p.z)) - sceneSDFP(vec3(p.x - EPSILON, p.y, p.z)),
+        sceneSDFP(vec3(p.x, p.y + EPSILON, p.z)) - sceneSDFP(vec3(p.x, p.y - EPSILON, p.z)),
+        sceneSDFP(vec3(p.x, p.y, p.z  + EPSILON)) - sceneSDFP(vec3(p.x, p.y, p.z - EPSILON))
+    ));
 }
 
 vec3 phongContribForLight(vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 eye, vec3 lightPos, vec3 lightIntensity) {
@@ -4030,8 +4018,10 @@ vec3 phongIllumination(vec3 k_a, vec3 k_d, vec3 k_s, float alpha, vec3 p, vec3 e
 }
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord ){
-    gSix = 3;
-    gCustom = (uCaveShift != 100.0 || uZStretch != 100.0 || uWarpScale != 100.0 || uCaveWidth != 100.0 || uWallCurve != 100.0 || uCaveOpen != 100.0 || uPhaseSpread != 100.0 || uRockRelief != 100.0 || uSwell != 100.0 || uColorBand != 100.0) ? 1.0 : 0.0;
+    gCustom = (uCaveShift != 100.0 || uZStretch != 100.0 || uWarpScale != 100.0 || uCaveWidth != 100.0 || uWallCurve != 100.0 || uCaveOpen != 100.0 || uPhaseSpread != 100.0 || uRockRelief != 100.0 || uSwell != 100.0) ? 1.0 : 0.0;
+    gShift = .5 * (uCaveShift / 100.0); gZk = 2. * (uZStretch / 100.0); gWarp = 20.0 * (uWarpScale / 100.0); gWidth = 3.0 / (uCaveWidth / 100.0);
+    gCurve = .3 * (uWallCurve / 100.0); gOpen = .4 * (uCaveOpen / 100.0); gPhase = vec3(.23, .19, .17) * (uPhaseSpread / 100.0);
+    gRelief = .06 * (uRockRelief / 100.0); gSwell = 1.5 * (uSwell / 100.0);
     vec3 viewDir = rayDirection(45.0, iResolution.xy, fragCoord);
     float speed = 1.0;
     float t1 = iTime*speed;
@@ -4266,17 +4256,16 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   src: `// Shadertoy 4cBcz1 "Smoked cherry" by julienledortz — 単一パス移植。
 //   原作の iChannel0 立方体テクスチャ(texCube)は手続き triplanar ノイズに置換。iMouse 除去。
 //   march 上限 2048→520 に短縮(ANGLE/TDR 対策)。ヒット部のみ不透明、背景は Slot B で透過。
-// @param uCylRadius 40..200 = 100
-// @param uWarpAmp 40..150 = 100
-// @param uWarpFreq 50..160 = 100
-// @param uTubeAspect 50..200 = 100
+// @param uCylRadius 60..200 = 100
+// @param uWarpAmp 60..150 = 100
+// @param uWarpFreq 60..160 = 100
+// @param uTubeAspect 70..170 = 100
 // @param uTubeSquare 0..100 = 0
-// @param uTubeTwist -200..200 = 0
-// @param uShellThick 0..100 = 0
-// @param uTubeLength 0..400 = 0
+// @param uTubeTwist -120..120 = 0
+// @param uShellThick 0..60 = 0
 // @param uRim 0..300 = 100
 // @param uWarpPhase -300..300 = 0
-// @param uWarpPasses 1..4 = 4
+// @param uWarpPasses 2..4 = 4
 uniform float uSlotIsA;
 uniform float uWarpPhase; // くねりの位相のずれ (%)。形を切り替える (時間とは無関係)
 uniform float uWarpPasses; // くねりを重ねる段数。既定 4
@@ -4287,7 +4276,6 @@ uniform float uTubeAspect; // 筒の断面の縦横比 (%)。100 で円
 uniform float uTubeSquare; // 断面の角張り (%)。0 で円 / 上げると四角へ
 uniform float uTubeTwist; // 高さに応じた筒のねじれ (%)。0 でなし
 uniform float uShellThick; // 中空の殻の厚み (%)。0 で中身の詰まった筒
-uniform float uTubeLength; // 筒の長さ (%)。0 で無限に伸びる / 上げるほど長い
 uniform float uRim; // 縁の光の強さ (%)
 
 float h31(vec3 p){ p = fract(p*0.1031); p += dot(p, p.yzx+33.33); return fract((p.x+p.y)*p.z); }
@@ -4327,10 +4315,10 @@ vec4 map_d( vec3 p ){
     return vec4( d1, p );
 }
 
-bool gCustom; bool gShape; float gRad;
+bool gCustom; bool gShape; float gRad, gTwist, gAspect, gSquare, gShell;
 float gWa, gWa2, gWa3, gWa4, gWf, gT1, gT2, gT3, gT4;
-vec4 map( vec3 p ){
-    if(gShape && uTubeTwist != 0.0){ float ta = p.y * uTubeTwist / 100.0; float ca = cos(ta), sa = sin(ta); p.xz = mat2(ca, -sa, sa, ca) * p.xz; }
+// くねり・太さだけの param 用 (断面の形の計算を含めない = 軽い)
+vec4 map_w( vec3 p ){
     p.x += gWa*sin( gWf*p.y + gT1 );
     p.y += gWa*sin( gWf*p.z + gT1 );
     p.z += gWa*sin( gWf*p.x + gT1 );
@@ -4343,18 +4331,29 @@ vec4 map( vec3 p ){
     p.x += gWa4*sin( gWf*p.y + gT4 );
     p.y += gWa4*sin( gWf*p.z + gT4 );
     p.z += gWa4*sin( gWf*p.x + gT4 );
-    float d1;
-    if(gShape){
-    vec2 pq = p.xz;
-    if(uTubeAspect != 100.0){ pq *= vec2(1.0, uTubeAspect/100.0); }
-    float rr = length(pq);
-    if(uTubeSquare != 0.0){ float nn = 2.0 + uTubeSquare/25.0; vec2 q = max(abs(pq), 1e-4); rr = pow(pow(q.x,nn) + pow(q.y,nn), 1.0/nn); }
-    d1 = rr - 1.0*(uCylRadius/100.0);
-    if(uShellThick != 0.0){ d1 = abs(d1) - uShellThick/100.0*0.3; }
-    if(uTubeLength != 0.0){ d1 = max(d1, abs(p.y) - uTubeLength/200.0); }
-    } else {
-    d1 = length(p.xz) - gRad;
-    }
+    float d1 = length(p.xz) - gRad;
+    d1 *= 0.01;
+    return vec4( d1, p );
+}
+// 断面の形 (ねじれ・縦横比・角張り・殻) も変える param 用
+vec4 map( vec3 p ){
+    if(gTwist != 0.0){ float ta = p.y * gTwist; float ca = cos(ta), sa = sin(ta); p.xz = mat2(ca, -sa, sa, ca) * p.xz; }
+    p.x += gWa*sin( gWf*p.y + gT1 );
+    p.y += gWa*sin( gWf*p.z + gT1 );
+    p.z += gWa*sin( gWf*p.x + gT1 );
+    p.x += gWa2*sin( gWf*p.y + gT2 );
+    p.y += gWa2*sin( gWf*p.z + gT2 );
+    p.z += gWa2*sin( gWf*p.x + gT2 );
+    p.x += gWa3*sin( gWf*p.y + gT3 );
+    p.y += gWa3*sin( gWf*p.z + gT3 );
+    p.z += gWa3*sin( gWf*p.x + gT3 );
+    p.x += gWa4*sin( gWf*p.y + gT4 );
+    p.y += gWa4*sin( gWf*p.z + gT4 );
+    p.z += gWa4*sin( gWf*p.x + gT4 );
+    // 断面: 縦横比 → 円と四角 (チェビシェフ距離) の混ぜ → 殻。pow を使わない軽い式
+    vec2 pq = p.xz * vec2(1.0, gAspect);
+    float d1 = mix(length(pq), max(abs(pq.x), abs(pq.y)), gSquare) - gRad;
+    d1 = (gShell > 0.0) ? abs(d1) - gShell : d1;
     d1 *= 0.01;
     return vec4( d1, p );
 }
@@ -4373,6 +4372,16 @@ vec4 intersect( in vec3 ro, in vec3 rd, in float maxd ){
     }
     return vec4( t, res );
     }
+    if(!gShape){
+    for( int i=0; i<520; i++ ){
+        vec4 tmp = map_w( ro+rd*t );
+        res = tmp.yzw;
+        float h = tmp.x;
+        if( h<precis || t>maxd ) break;
+        t += h;
+    }
+    return vec4( t, res );
+    }
     for( int i=0; i<520; i++ ){
         vec4 tmp = map( ro+rd*t );
         res = tmp.yzw;
@@ -4383,7 +4392,7 @@ vec4 intersect( in vec3 ro, in vec3 rd, in float maxd ){
     return vec4( t, res );
 }
 
-vec4 mapS( vec3 p ){ if(!gCustom) return map_d(p); return map(p); }
+vec4 mapS( vec3 p ){ if(!gCustom) return map_d(p); if(!gShape) return map_w(p); return map(p); }
 vec3 calcNormal( in vec3 pos ){
     vec2 e = vec2(1.0,-1.0)*0.001;
     return normalize( e.xyy*mapS( pos + e.xyy ).x +
@@ -4406,11 +4415,12 @@ float calcOcc( in vec3 pos, in vec3 nor ){
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     float wp = uWarpPhase/100.0;
-    gShape = (uTubeTwist != 0.0 || uTubeAspect != 100.0 || uTubeSquare != 0.0 || uShellThick != 0.0 || uTubeLength != 0.0);
+    gShape = (uTubeTwist != 0.0 || uTubeAspect != 100.0 || uTubeSquare != 0.0 || uShellThick != 0.0);
     gRad = 1.0*(uCylRadius/100.0);
+    gTwist = uTubeTwist/100.0; gAspect = uTubeAspect/100.0; gSquare = uTubeSquare/100.0; gShell = uShellThick/100.0*0.3;
     gCustom = gShape || uCylRadius != 100.0 || uWarpAmp != 100.0 || uWarpFreq != 100.0 || uWarpPhase != 0.0 || uWarpPasses != 4.0;
     gWa = 0.5*(uWarpAmp/100.0); gWf = 3.0*(uWarpFreq/100.0);
-    gWa2 = (uWarpPasses > 1.5) ? gWa : 0.0;
+    gWa2 = gWa;
     gWa3 = (uWarpPasses > 2.5) ? gWa : 0.0;
     gWa4 = (uWarpPasses > 3.5) ? gWa : 0.0;
     gT1 = iTime*0.1 + wp; gT2 = iTime*0.3 + wp; gT3 = iTime*0.2 + wp; gT4 = iTime*0.1 + wp;
