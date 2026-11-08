@@ -53,6 +53,25 @@ uniform float uSteps; // レイマーチのステップ数 (下げると軽く�
 // @param uShine      25..400  = 100.0
 // @param uCamShiftX -80..80 = 0.0
 // @param uCamShiftY -30..30 = 0.0
+// @param uFocal 50..200 = 100
+// @param uCamRoll -180..180 = 0
+// @param uCamYaw -30..30 = 0
+// @param uCamPitch -30..30 = 0
+// @param uFogDensity 0..400 = 100
+// @param uVignetteReach 40..300 = 100
+// @param uLightHeight 20..300 = 100
+// @param uLightSide -100..100 = 0
+// @param uLightLead -100..100 = 0
+// @param uShadowFill 0..80 = 30
+// @param uSurfaceWarmth 0..100 = 0
+// @param uRimPower 40..300 = 100
+// @param uBumpScale 40..160 = 100
+// @param uFilmGrain 0..100 = 0
+// @param uFogColor color = #000000
+// @param uBeadColor color = #ffffff
+// @param uTubeColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uRimColor color = #ffffff
 uniform float uTubeRadius; // らせん管の輪の半径 (%)
 uniform float uBeadOrbit; // 球のらせんの輪の半径 (%)
 uniform float uPitch; // らせんのねじれの粗さ (%)。0 でまっすぐな輪
@@ -65,6 +84,25 @@ uniform float uCrossOffset; // 2 本目の管の位置ずれ (%)
 uniform float uShine; // 鏡面ハイライトの鋭さ (%)
 uniform float uCamShiftX; // カメラの横ずれ (%)
 uniform float uCamShiftY; // カメラの縦ずれ (%)
+uniform float uFocal; // 画角 (%)。大きいと望遠で遠近感が弱まり、小さいと広角
+uniform float uCamRoll; // カメラの傾き (度)
+uniform float uCamYaw; // カメラの左右の振り (度)
+uniform float uCamPitch; // カメラの上下の振り (度)
+uniform float uFogDensity; // 霧の濃さ (%)。大きいと遠景が早く霧に沈む
+uniform float uVignetteReach; // 周辺減光の届く範囲 (%)
+uniform float uLightHeight; // 光源の高さ (%)
+uniform float uLightSide; // 光源の横位置のずれ (%)
+uniform float uLightLead; // 光源の前後位置のずれ (%)。+ で進行方向の手前へ
+uniform float uShadowFill; // 影側に残る明るさ (%)。小さいと陰影が深い
+uniform float uSurfaceWarmth; // 表面の緑に混ぜる赤み (%)
+uniform float uRimPower; // 縁の光の広がり (%)。小さいと縁が広く光る
+uniform float uBumpScale; // 表面の凹凸の細かさ (%)
+uniform float uFilmGrain; // ざらつき (%)
+uniform vec3 uFogColor; // 霧の色
+uniform vec3 uBeadColor; // 球の色味 (掛け算)
+uniform vec3 uTubeColor; // 管の色味 (掛け算)
+uniform vec3 uSpecColor; // 鏡面ハイライトの色味 (掛け算)
+uniform vec3 uRimColor; // 縁の光の色味 (掛け算)
 
 float kk_sdHelix(vec3 p){
   float len = length(p.xy);
@@ -141,18 +179,22 @@ float kk_rayMarch(vec3 ro, vec3 rd){
 vec3 bg_kuko(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = (2.0*I - resolution.xy) / resolution.y;
+  vec2 uvScr = uv;
+  if(uCamRoll != 0.0){ float ra = radians(uCamRoll); float rc = cos(ra), rs = sin(ra); uv = vec2(rc*uv.x - rs*uv.y, rs*uv.x + rc*uv.y); }
   vec3 col = vec3(0.0);
 
   vec3 ro = vec3(4.0, 3.0, -time*0.5);
   if(uCamShiftX != 0.0 || uCamShiftY != 0.0) ro.xy += vec2(uCamShiftX, uCamShiftY) * 0.035;
-  vec3 rd = normalize(vec3(uv, -1.0));
+  vec3 rd = normalize(vec3(uv, -1.0 * (uFocal / 100.0)));
+  if(uCamYaw != 0.0){ float ya = radians(uCamYaw); float yc = cos(ya), ys = sin(ya); rd = vec3(yc*rd.x + ys*rd.z, rd.y, -ys*rd.x + yc*rd.z); }
+  if(uCamPitch != 0.0){ float pa = radians(uCamPitch); float pc = cos(pa), ps = sin(pa); rd = vec3(rd.x, pc*rd.y - ps*rd.z, ps*rd.y + pc*rd.z); }
   float dt = kk_rayMarch(ro, rd);
 
   if(dt > 0.0){
     vec3 p = ro + rd*dt;
     vec3 norm = kk_calcNorm(p);
 
-    float scale = 2.0;
+    float scale = 2.0 * (uBumpScale / 100.0);
     float texOffset = 0.01;
 
     vec3 tex  = kk_tex3D(p*scale, norm);
@@ -162,22 +204,29 @@ vec3 bg_kuko(vec2 fc){
 
     vec3 bump = normalize(norm + vec3(texGrad*0.3*(uBump / 100.0), 0));
 
-    vec3 lightPos = vec3(sin(time)*1.0, 5.0, -time*0.5 + 2.0);
+    vec3 lightPos = vec3(sin(time)*1.0 + uLightSide * 0.06, 5.0 * (uLightHeight / 100.0), -time*0.5 + 2.0 + uLightLead * 0.06);
     vec3 L = normalize(lightPos - p);
 
     float diff = max(dot(bump, L), 0.0);
-    float fre  = pow(1.0 - abs(dot(bump, rd)), 3.0);
+    float fre  = pow(1.0 - abs(dot(bump, rd)), 3.0 * (uRimPower / 100.0));
     vec3  hal  = normalize(L - rd);
     float spec = pow(max(dot(bump, hal), 0.0), 32.0 * (uShine / 100.0));
 
     vec3 baseCol = (3. + cos(4. + vec3(0,4,4))) / dt * vec3(0, 0.5, 0.2);
 
-    col  = baseCol * (diff*0.7 + 0.3);          // diffuse + ambient
-    col += vec3(0.4, 0.6, 1.0) * spec * 1.5 * (uGlow / 100.0);    // specular
-    col += vec3(0.2, 0.4, 0.6) * fre  * 1.4 * (uGlow / 100.0);    // fresnel rim
+    if(uSurfaceWarmth != 0.0){ baseCol.r = baseCol.g * (uSurfaceWarmth / 100.0); }
+    if(uBeadColor != vec3(1.0) || uTubeColor != vec3(1.0)){
+      float dsp = min(kk_sdHelixOfSpheres(p), kk_sdHelixOfSpheres(p + vec3(-1.6, -1, 0)));
+      baseCol *= mix(uTubeColor, uBeadColor, smoothstep(0.06, 0.0, dsp));
+    }
+
+    col  = baseCol * (diff*0.7 + uShadowFill / 100.0);          // diffuse + ambient
+    col += vec3(0.4, 0.6, 1.0) * spec * 1.5 * (uGlow / 100.0) * uSpecColor;    // specular
+    col += vec3(0.2, 0.4, 0.6) * fre  * 1.4 * (uGlow / 100.0) * uRimColor;    // fresnel rim
   }
 
-  col = mix(col, vec3(0), 1.0 - exp(-0.0019 * dt*dt*dt));                 // fog
-  col = mix(vec3(0), col, smoothstep(3.9, 0.1, length(uv*vec2(1.4, 1)))); // vignette
+  col = mix(col, uFogColor, 1.0 - exp(-0.0019 * (uFogDensity / 100.0) * dt*dt*dt));                 // fog
+  col = mix(vec3(0), col, smoothstep(3.9, 0.1, length(uvScr*vec2(1.4, 1) * (100.0 / uVignetteReach)))); // vignette
+  if(uFilmGrain != 0.0){ col += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * (uFilmGrain / 100.0) * 0.2; }
   return col;
 }
