@@ -8,8 +8,30 @@ const Aratanagara = {
   pieces:null, cap:0,
   strideFloats:22,
   // ── パラメータ (背景色のみ。Slot A で敷き、空気遠近の溶け先にもなる / Slot B は透過) ──
-  P:{ bgColor:[0.690, 0.733, 0.800] },
-  PDefaults:{ bgColor:[0.690, 0.733, 0.800] },
+  P:{ bgColor:[0.690, 0.733, 0.800],
+      pieces:48, shardSize:100, spread:100, drift:100, flutter:100, tumble:100, twist:100, curl:100,
+      camDist:100, eyeHeight:0, roam:0, haze:0, flatBlue:0, chrome:100, frontHue:0 },
+  PDefaults:{ bgColor:[0.690, 0.733, 0.800],
+      pieces:48, shardSize:100, spread:100, drift:100, flutter:100, tumble:100, twist:100, curl:100,
+      camDist:100, eyeHeight:0, roam:0, haze:0, flatBlue:0, chrome:100, frontHue:0 },
+  // 見出し (Save / Reset / Random) の下に並ぶスライダー。pieces / 数以外は uniform で効く
+  SPECS:[
+    ['Pieces',       'pieces',    12,   72,  1,   'int'],
+    ['Shard Size',   'shardSize', 40,   200, 1,   'pct'],
+    ['Spread',       'spread',    30,   200, 1,   'pct'],
+    ['Drift',        'drift',     0,    250, 1,   'pct'],
+    ['Flutter',      'flutter',   0,    300, 1,   'pct'],
+    ['Tumble',       'tumble',    0,    300, 1,   'pct'],
+    ['Twist',        'twist',     0,    250, 1,   'pct'],
+    ['Curl',         'curl',      0,    300, 1,   'pct'],
+    ['Camera Dist',  'camDist',   50,   200, 1,   'pct'],
+    ['Eye Height',   'eyeHeight', -150, 150, 1,   'pct'],
+    ['Roam',         'roam',      0,    60,  1,   'pct'],
+    ['Haze',         'haze',      0,    100, 1,   'pct'],
+    ['Flat Blue',    'flatBlue',  0,    100, 1,   'pct'],
+    ['Chrome',       'chrome',    0,    180, 1,   'pct'],
+    ['Front Hue',    'frontHue',  -180, 180, 1,   'deg'],
+  ],
 
   init(gl){
     if(this.initialized) return;
@@ -27,6 +49,14 @@ uniform float uTime;
 uniform float uFlowTime;   // 群れの前進を駆動する時間。BPM で急加速→急減速に warp される(移動で拍を表現)
 uniform float uCamDist;   // カメラ距離倍率(web版で遠く)
 uniform float uRoam;      // 群れ全体の大きな回遊(web版)
+uniform float uShard;     // 紙片の大きさ
+uniform float uSpread;    // 群れの広がり
+uniform float uDrift;     // 流れ場に流される量
+uniform float uFlutter;   // はためき
+uniform float uTumble;    // 回転(タンブル)
+uniform float uTwist;     // ねじれ
+uniform float uCurl;      // 反り(カール)
+uniform float uEyeY;      // カメラの高さ
 out vec3 vNormal;
 out vec3 vWorld;
 out float vBaseShade;
@@ -93,7 +123,8 @@ void main(){
   float sizeMetric = aBase1.x * aBase1.z;                                        // len*scale(大きさ)
   float smallBoost = mix(2.4, 0.6, smoothstep(0.18, 1.10, sizeMetric));          // 小さいかけらほど強烈にカール
   float twistBoost = mix(1.8, 0.75, smoothstep(0.18, 1.10, sizeMetric));         // 小さいかけらほど強烈にねじれ
-  float curve = aBase1.w * aBase1.x * aBase1.z * (0.40 + 0.78 * pow(0.5 + 0.5*sin(uTime*0.5 + aExtra.z), 2.2)) * smallBoost;   // 鋭いピークで強烈に巻く
+  float cw = aBase1.w * uCurl;
+  float curve = cw * aBase1.x * aBase1.z * (0.40 + 0.78 * pow(0.5 + 0.5*sin(uTime*0.5 + aExtra.z), 2.2)) * smallBoost;   // 鋭いピークで強烈に巻く
   vec3 p = vec3(
     local.x,
     local.y + aExtra.x * curve * (0.58*u*u - 0.15),
@@ -107,15 +138,15 @@ void main(){
   float twH2 = fract(sin(twN* 4.1414 + aBase0.w*2.71) * 43758.5453);
   float twRate = mix(0.55, 1.7, twH2);                         // 長手方向のねじれ率(ピーク強烈に)
   float twDir  = (twH1 < 0.5 ? -1.0 : 1.0);                    // 向き(エピソードごとに反転しうる)
-  float bodyTwist = u * twRate * twDir * (0.6 + twH1*1.05) * twEnv * twistBoost;   // ピーク時に大きくねじれる(小片ほど強)
+  float bodyTwist = u * twRate * twDir * (0.6 + twH1*1.05) * twEnv * twistBoost * uTwist;   // ピーク時に大きくねじれる(小片ほど強)
   p.yz = mat2(cos(bodyTwist), -sin(bodyTwist), sin(bodyTwist), cos(bodyTwist)) * p.yz;
   float dynScale = 1.0 + (0.09 + isHero*0.10 + aBase3.w*0.020) * sin(uTime*0.48 + aExtra.w);
-  p *= dynScale;
+  p *= dynScale * uShard;
 
   vec3 tangent = normalize(vec3(
     1.0,
-    aExtra.x * aBase1.w * u * 0.88 * smallBoost,
-    aBase1.w * u * 1.34 * smallBoost
+    aExtra.x * cw * u * 0.88 * smallBoost,
+    cw * u * 1.34 * smallBoost
   ));
   vec3 widthDir = normalize(vec3(0.0, 1.0, aExtra.y * 0.055));
   vec3 n = normalize(cross(tangent, widthDir));
@@ -128,7 +159,7 @@ void main(){
   vec3 upv = cross(fwd, rgt);
   // 進行方向に垂直な軸(rgt)まわりのタンブル: 紙片が空気を受けて end-over-end に回る。
   // 個体ごとに一定速度 + 乱流(gust)・高速で揺らぐ。自然な軸の一貫した回転なのでランダムには見えない。trailは線が乱れるので回さない。
-  float tumbleNT = (1.0 - isTrail*0.92) * smoothstep(1.5, 0.25, aBase1.x*aBase1.z);   // 大きいシェイプほど反転しにくい
+  float tumbleNT = (1.0 - isTrail*0.92) * smoothstep(1.5, 0.25, aBase1.x*aBase1.z) * uTumble;   // 大きいシェイプほど反転しにくい
   float pitchT = (uTime*(1.0 + aExtra.w*0.30) + aBase0.w*2.1) * tumbleNT
                + (gust*1.6 + moving*0.5) * sin(uTime*0.7 + aBase0.w*1.3) * tumbleNT;
   float cpT = cos(pitchT), spT = sin(pitchT);
@@ -143,7 +174,7 @@ void main(){
   fwd = fwdY;
   float bank = clamp(dot(acc, rgt) * 0.16, -1.0, 1.0);          // 旋回(横加速度)で内側に傾く
   float flutterAmp = 0.15 + isHero*0.04 + gust*0.60 + moving*0.18;   // 突風・高速で激しく翻る
-  float flutter = sin(uTime*(2.0 + aBase3.z*0.9 + isTrail*0.6) + aExtra.z) * flutterAmp;
+  float flutter = sin(uTime*(2.0 + aBase3.z*0.9 + isTrail*0.6) + aExtra.z) * flutterAmp * uFlutter;
   float roll = bank + flutter + aBase2.x*0.15;
   float cr = cos(roll), sr = sin(roll);
   vec3 rgtB = rgt*cr + upv*sr;
@@ -156,28 +187,28 @@ void main(){
   float smallF = 1.0 - smoothstep(0.20, 0.55, aBase1.x * aBase1.z);
   float spreadScale = mix(1.0, 0.45, smallF);
   float dispScale   = mix(1.0, 0.62, smallF);
-  float dispA = 0.62 * (0.7 + 0.6*gust);
+  float dispA = 0.62 * (0.7 + 0.6*gust) * uDrift;
   vec3 disp = f0 * dispA;                                       // 流れ場の変位(突風で大きく流れる)
-  vec3 world = p + anchor*0.95*spreadScale + disp*dispScale;
+  vec3 world = p + anchor*0.95*spreadScale*uSpread + disp*dispScale;
 
   // ---- 追従線 = 蛇/ムチ: 頭(u=+1)が現在の流れ位置を先導、胴体は頭の通った軌跡を後ろから辿ってしなる ----
   if(isTrail > 0.5){
     float tspan = 3.2;                                          // 胴体が辿る過去の長さ(flow時間)
     float headU = u*0.5 + 0.5;                                  // 0(尾)..1(頭)
     float to = (1.0 - headU) * tspan;                           // 頭=0 → 尾=tspan 過去
-    vec3 cc = anchor*0.95*spreadScale + flow(anchor, ft - to) * dispA;          // 中心線(過去の頭位置)
-    vec3 cf = anchor*0.95*spreadScale + flow(anchor, ft - to + 0.07) * dispA;   // 頭寄り(接線用)
+    vec3 cc = anchor*0.95*spreadScale*uSpread + flow(anchor, ft - to) * dispA;          // 中心線(過去の頭位置)
+    vec3 cf = anchor*0.95*spreadScale*uSpread + flow(anchor, ft - to + 0.07) * dispA;   // 頭寄り(接線用)
     vec3 tg = normalize(cf - cc + vec3(0.0001, 0.0, 0.0));
     // 溜め→突き: 各点の過去位相で頭方向へ -溜め→+突き(頭ほど強い)
     float spp = fract((ft - to) * 0.5 + aBase0.w*0.5);
     cc += tg * strikeMag(spp) * 0.55 * (0.4 + 0.6*headU);
     vec3 sd = normalize(cross(tg, vec3(0.0,1.0,0.0)) + vec3(0.0001,0.0,0.0));
-    world = cc + sd * (aLocal.y * aBase1.z);                    // 幅(テーパー込み)を側方へ
+    world = cc + sd * (aLocal.y * aBase1.z * uShard);                    // 幅(テーパー込み)を側方へ
     n = normalize(cross(sd, tg));                              // リボン法線
   }
   float cam = 1.10 + uTime*0.7854 + sin(uTime*0.07)*0.30;        // 一周=8秒(2π/8)。微小な緩急つき・常に同方向
   float camR = (3.05 + sin(uTime*0.05)*0.35) * uCamDist;        // 距離を取る + 軽い寄り引き(web版は遠く)
-  vec3 eye = vec3(cos(cam)*camR, 0.45 + sin(uTime*0.09)*0.30, sin(cam)*camR);
+  vec3 eye = vec3(cos(cam)*camR, 0.45 + sin(uTime*0.09)*0.30 + uEyeY, sin(cam)*camR);
   vec3 target = vec3(0.28, 0.06, 0.0);   // 群れの重心(やや右寄り)を見て画面に収める
   vec3 forward = normalize(target - eye);
   vec3 right = normalize(cross(vec3(0.0,1.0,0.0), forward));
@@ -212,7 +243,14 @@ uniform float uHiOnly;   // 1=影を落とさずハイライトのみ(web版)
 uniform float uFog;      // 大気遠近の強さ(web版)
 uniform vec3  uBg;       // 背景色 (空気遠近の溶け先)
 uniform float uCamDist;  // カメラ距離倍率(fogレンジ補正用)
+uniform float uChrome;   // 裏面クロームの縞とぎらつき
+uniform float uFrontHue; // 表面ブルーの色相回転 (rad)
 out vec4 o;
+vec3 hueRot(vec3 c, float a){
+  float s = sin(a), co = cos(a);
+  vec3 k = vec3(0.57735027);
+  return c*co + cross(k, c)*s + k*dot(k, c)*(1.0 - co);
+}
 void main(){
   vec3 nn = normalize(vNormal);
   if(!gl_FrontFacing) nn = -nn;
@@ -237,6 +275,7 @@ void main(){
   blue += vec3(0.30,0.38,0.90) * blueHi * mix(0.05, 0.32, uHiOnly);   // 青面ハイライト(hi-only時は強め)
   blue += vec3(0.55,0.62,1.00) * (spec1*0.03 + spec2*0.02 + blueEdge*0.03) * mix(1.0, 3.5, uHiOnly);   // スペキュラ
   blue += vec3(0.070,0.095,0.250) * pow(max(0.0, band), 5.5) * 0.55;
+  if(uFrontHue != 0.0) blue = max(hueRot(blue, uFrontHue), 0.0);
 
   float isBig = step(0.5, vKind) * (1.0 - step(1.5, vKind));
   float mirrorFreq = mix(34.0, 14.0, isBig);
@@ -247,9 +286,9 @@ void main(){
   float rimChrome = pow(rim, 2.0) * (0.40 + 0.60*d2);
   vec3 chrome = mix(vec3(0.030,0.034,0.046), vec3(0.58,0.66,0.78), pow(light, 1.5));   // 裏面クロームは常に元のまま(影あり)
   chrome = mix(chrome, vec3(0.165,0.180,0.215), pow(1.0-mirror, 3.0) * 0.12);
-  chrome = mix(chrome, vec3(0.82,0.91,1.00), stripe * 0.52);
+  chrome = mix(chrome, vec3(0.82,0.91,1.00), min(stripe * 0.52 * uChrome, 1.0));
   chrome += vec3(0.95,0.98,1.00) * (spec1*0.50 + spec2*0.42 + rimChrome*0.24);
-  chrome = mix(chrome, vec3(1.00,1.00,0.96), glint * 0.62);
+  chrome = mix(chrome, vec3(1.00,1.00,0.96), min(glint * 0.62 * uChrome, 1.0));
 
   vec3 col = gl_FrontFacing ? blue : chrome;
   // 空気遠近(view空間z): 奥ほど(1) 手前ほど(0)
@@ -328,7 +367,8 @@ void main(){
     gl.bindVertexArray(null);
     this.vao = gl.createVertexArray();
     this.vbo = gl.createBuffer();
-    this.pieces = Array.from({length: this.pieceCount || 48}, (_, i)=>this._piece(i));
+    this._pn = this._pieceN(); this._pnPend = 0;
+    this.pieces = Array.from({length: this._pn}, (_, i)=>this._piece(i));
     const data = this._buildStatic();
     this.cap = data.length / this.strideFloats;
     gl.bindVertexArray(this.vao);
@@ -350,6 +390,26 @@ void main(){
     }
     gl.bindVertexArray(null);
     this.initialized = true;
+  },
+
+  _dz(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
+  _pieceN(){ return this.pieceCount || Math.round(this._dz(this.P.pieces)); },
+  _u(name){ const c = this._ulc || (this._ulc = {}); return name in c ? c[name] : (c[name] = this.gl.getUniformLocation(this.prog, name)); },
+  // 紙片の数が変わったら (指を離して 6 フレーム止まってから) 頂点を作り直す
+  _remesh(){
+    const n = this._pieceN();
+    if(n === this._pn){ this._pnPend = 0; return; }
+    if(n !== this._pnTry){ this._pnTry = n; this._pnPend = 0; return; }
+    if(++this._pnPend < 6) return;
+    const gl = this.gl;
+    this._pn = n; this._pnPend = 0;
+    this.pieces = Array.from({length: n}, (_, i)=>this._piece(i));
+    const data = this._buildStatic();
+    this.cap = data.length / this.strideFloats;
+    gl.bindVertexArray(this.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
+    gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
   },
 
   _hash(n){
@@ -561,6 +621,8 @@ void main(){
 
   render({fbo,w,h,slot,beat,clock}){
     const gl = this.gl;
+    this._remesh();
+    const P = this.P, dz = (v)=>this._dz(v);
     this._ensureDepth(w,h);
     this._ensureAA(w,h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.aaFbo);
@@ -606,11 +668,21 @@ void main(){
       gl.uniform1f(gl.getUniformLocation(this.prog,'uFlowTime'), this._flowTime);
     }
     gl.uniform1f(gl.getUniformLocation(this.prog,'uAlpha'), 1);
-    gl.uniform1f(gl.getUniformLocation(this.prog,'uHiOnly'), this.highlightOnly ? 1 : 0);
-    gl.uniform1f(gl.getUniformLocation(this.prog,'uFog'), this.fogAmt || 0);
+    gl.uniform1f(gl.getUniformLocation(this.prog,'uHiOnly'), this.highlightOnly ? 1 : dz(P.flatBlue)/100);
+    gl.uniform1f(gl.getUniformLocation(this.prog,'uFog'), (this.fogAmt || 0) + dz(P.haze)/100);
     gl.uniform3f(gl.getUniformLocation(this.prog,'uBg'), bgc[0], bgc[1], bgc[2]);
-    gl.uniform1f(gl.getUniformLocation(this.prog,'uCamDist'), this.camDist || 1.0);
-    gl.uniform1f(gl.getUniformLocation(this.prog,'uRoam'), this.roam || 0.0);
+    gl.uniform1f(gl.getUniformLocation(this.prog,'uCamDist'), (this.camDist || 1.0) * (dz(P.camDist)/100));
+    gl.uniform1f(gl.getUniformLocation(this.prog,'uRoam'), (this.roam || 0.0) + dz(P.roam)/100);
+    gl.uniform1f(this._u('uShard'), dz(P.shardSize)/100);
+    gl.uniform1f(this._u('uSpread'), dz(P.spread)/100);
+    gl.uniform1f(this._u('uDrift'), dz(P.drift)/100);
+    gl.uniform1f(this._u('uFlutter'), dz(P.flutter)/100);
+    gl.uniform1f(this._u('uTumble'), dz(P.tumble)/100);
+    gl.uniform1f(this._u('uTwist'), dz(P.twist)/100);
+    gl.uniform1f(this._u('uCurl'), dz(P.curl)/100);
+    gl.uniform1f(this._u('uEyeY'), dz(P.eyeHeight)/100*0.8);
+    gl.uniform1f(this._u('uChrome'), dz(P.chrome)/100);
+    gl.uniform1f(this._u('uFrontHue'), dz(P.frontHue)*Math.PI/180);
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, this.cap);
     gl.bindVertexArray(null);
