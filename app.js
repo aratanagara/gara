@@ -17282,6 +17282,21 @@ void mainImage(out vec4 o, in vec2 f){
       Movie.setRate(v);
       if(rv) rv.textContent = v.toFixed(2);
     });
+    for(const [id, key, fmt] of this._vidFx()){
+      const el = $('#' + id), out = $('#' + id + 'Val');
+      if(el) el.addEventListener('input', ()=>{
+        const v = parseFloat(el.value);
+        Movie.P[key] = v;
+        if(out) out.textContent = App.effDisplay(v, fmt);
+      });
+    }
+    const mir = $('#vidMirror');
+    if(mir) mir.addEventListener('change', ()=>{ Movie.P.mirror = parseInt(mir.value, 10) || 0; });
+  },
+  _vidFx(){
+    const pct = v=>Math.round(v) + '%';
+    return [['vidRotate','rotate',v=>Math.round(v)+'°'], ['vidTile','tile',pct], ['vidAspect','aspect',pct], ['vidWave','wave',pct],
+            ['vidWaveFreq','waveFreq',v=>String(Math.round(v))], ['vidVignette','vignette',pct], ['vidBars','bars',pct]];
   },
 
   refreshBeatMode(){
@@ -18972,7 +18987,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isWF = slot.kind === 'windflock';
     $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
     if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
-    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rzstack', 'rztube', 'ribbon', 'caverns', 'boltzmann']){   // SPECS を持つエンジンは kind ごとに別の見出しとパラメータ
+    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rzstack', 'rztube', 'ribbon', 'caverns', 'boltzmann', 'shelf', 'aratanagara']){   // SPECS を持つエンジンは kind ごとに別の見出しとパラメータ
       const on = slot.kind === k;
       $$('.' + k + '-mode').forEach(el => el.style.display = on ? '' : 'none');
       if(on && this.refreshSpecParams) this.refreshSpecParams(k);
@@ -19024,6 +19039,12 @@ void mainImage(out vec4 o, in vec2 f){
     const fit = $('#vidFit'); if(fit) fit.value = v.P.fit;
     const rate = $('#vidRate'); const rv = $('#vidRateVal');
     if(rate){ rate.value = v.P.rate; if(rv) rv.textContent = v.P.rate.toFixed(2); }
+    for(const [id, key, fmt] of this._vidFx()){
+      const el = $('#' + id), out = $('#' + id + 'Val');
+      if(el) el.value = v.P[key];
+      if(out) out.textContent = App.effDisplay(v.P[key], fmt);
+    }
+    const mir = $('#vidMirror'); if(mir) mir.value = String(v.P.mirror);
   },
 
   bindImage(){
@@ -19541,6 +19562,8 @@ void mainImage(out vec4 o, in vec2 f){
     if(kind === 'ribbon') return (typeof Ribbon !== 'undefined') ? Ribbon : null;
     if(kind === 'caverns') return (typeof Caverns !== 'undefined') ? Caverns : null;
     if(kind === 'boltzmann') return (typeof Boltzmann !== 'undefined') ? Boltzmann : null;
+    if(kind === 'shelf') return (typeof Shelf !== 'undefined') ? Shelf : null;
+    if(kind === 'aratanagara') return (typeof Aratanagara !== 'undefined') ? Aratanagara : null;
     return null;
   },
   // エンジンの SPECS からスライダーを組む (RHIZOME 系 / Ribbon / Caverns / Boltzmann 共通)

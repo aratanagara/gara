@@ -30,6 +30,14 @@ const Movie = {
       P:{
         rate:1.0,
         fit:'auto',           // 'auto' | 'cover' | 'contain' | 'stretch'
+        rotate:0,             // 画面の回転 (deg)
+        mirror:0,             // 折り返し: 0=なし / 1=左右 / 2=上下 / 3=両方
+        tile:100,             // 敷き詰め数 (%。200 = 2×2)
+        aspect:100,           // 横の伸縮 (%)
+        wave:0,               // 波打ち (%)
+        waveFreq:6,           // 波の本数 (画面あたり)
+        vignette:0,           // 周辺の暗さ (%)
+        bars:0,               // 上下の黒帯 (%)
       },
       // 再生方向は矢印キー (App.timeDir) で制御。beat モードの拍ジャンプは常時 ON (1 beat)。
       _lastSubBeat:-1,
@@ -98,9 +106,30 @@ uniform vec2  u_vidSize;
 uniform int   u_fit;     // 0=cover, 1=contain, 2=stretch
 uniform vec2  u_pan;     // NDC
 uniform float u_zoom;
+uniform float u_fx;      // 0 = 効果なし (従来の経路)
+uniform vec4  u_fx1;     // x=回転(rad) y=折り返し z=敷き詰め数 w=横の伸縮
+uniform vec4  u_fx2;     // x=波の振れ幅 y=波の本数 z=周辺の暗さ w=黒帯
+uniform float u_time;
 varying vec2 v_uv;
 void main(){
   vec2 uv = v_uv;
+  if(u_fx > 0.5){   // 画面に対する変形 (回転 → 横の伸縮 → 波 → 折り返し → 敷き詰め)
+    highp float asp = u_viewSize.x / max(u_viewSize.y, 1.0);
+    highp vec2 p = uv - 0.5;
+    if(u_fx1.x != 0.0){
+      p.x *= asp;
+      highp float c = cos(u_fx1.x), s = sin(u_fx1.x);
+      p = vec2(c*p.x - s*p.y, s*p.x + c*p.y);
+      p.x /= asp;
+    }
+    p.x /= u_fx1.w;
+    if(u_fx2.x > 0.0) p += u_fx2.x * 0.06 * vec2(sin(p.y * u_fx2.y * 6.2831853 + u_time * 1.7), sin(p.x * u_fx2.y * 6.2831853 + u_time * 1.3));
+    float m = u_fx1.y;
+    if(m > 0.5 && m != 2.0) p.x = -abs(p.x);
+    if(m > 1.5) p.y = -abs(p.y);
+    if(u_fx1.z > 1.0) p = fract(p * u_fx1.z + 0.5) - 0.5;
+    uv = p + 0.5;
+  }
   if(u_fit != 2 && u_vidSize.x > 0.5 && u_vidSize.y > 0.5){
     float va = u_viewSize.x / max(u_viewSize.y, 1.0);
     float ta = u_vidSize.x  / max(u_vidSize.y,  1.0);
@@ -127,8 +156,14 @@ void main(){
     uv = fract(uv);
   }
   // 低速時のフレーム補間: 前フレームと現フレームの線形クロスフェード (軽量な frame mix)
-  gl_FragColor = (u_mixT >= 0.999) ? texture2D(u_tex, uv)
+  vec4 col = (u_mixT >= 0.999) ? texture2D(u_tex, uv)
                : mix(texture2D(u_texPrev, uv), texture2D(u_tex, uv), clamp(u_mixT, 0.0, 1.0));
+  if(u_fx > 0.5){
+    vec2 q = v_uv - 0.5;
+    if(u_fx2.z > 0.0) col.rgb *= 1.0 - u_fx2.z * smoothstep(0.35, 1.0, length(q) * 1.4142136);
+    if(u_fx2.w > 0.0 && abs(q.y) > 0.5 * (1.0 - u_fx2.w)) col.rgb = vec3(0.0);
+  }
+  gl_FragColor = col;
 }`,
 
   init(gl){
@@ -156,6 +191,10 @@ void main(){
       fit:      gl.getUniformLocation(this.prog, 'u_fit'),
       pan:      gl.getUniformLocation(this.prog, 'u_pan'),
       zoom:     gl.getUniformLocation(this.prog, 'u_zoom'),
+      fx:       gl.getUniformLocation(this.prog, 'u_fx'),
+      fx1:      gl.getUniformLocation(this.prog, 'u_fx1'),
+      fx2:      gl.getUniformLocation(this.prog, 'u_fx2'),
+      time:     gl.getUniformLocation(this.prog, 'u_time'),
     };
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
@@ -817,6 +856,20 @@ void main(){
     gl.uniform1i(this.locs.fit, fitMode === 'contain' ? 1 : (fitMode === 'stretch' ? 2 : 0));
     gl.uniform2f(this.locs.pan, pan.x, pan.y);
     gl.uniform1f(this.locs.zoom, zoom);
+    {
+      const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+      const P = s.P;
+      const rot = dz(P.rotate), mir = Math.round(dz(P.mirror)), tile = Math.max(1, dz(P.tile) / 100), asp = dz(P.aspect) / 100;
+      const wave = dz(P.wave) / 100, vig = dz(P.vignette) / 100, bars = dz(P.bars) / 100;
+      const on = (rot !== 0 || mir !== 0 || tile !== 1 || asp !== 1 || wave !== 0 || vig !== 0 || bars !== 0) ? 1 : 0;
+      gl.uniform1f(this.locs.fx, on);
+      if(on){
+        const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[slotKey] : null;
+        gl.uniform4f(this.locs.fx1, rot * Math.PI / 180, mir, tile, asp);
+        gl.uniform4f(this.locs.fx2, wave, dz(P.waveFreq), vig, bars);
+        gl.uniform1f(this.locs.time, (sl && typeof sl._clock === 'number') ? sl._clock : 0);
+      }
+    }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
   },
 

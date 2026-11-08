@@ -13,7 +13,31 @@ const Shelf = {
   vao:null,
   startTime:0,
   fovY: 2*Math.atan(0.5/1.05),
-  P:{ dark:false },
+  P:{ dark:false,
+      camDist:100, fovScale:100, camSwing:100, camHeight:0, camRoll:0,
+      lightAz:0, lightElev:0, keyLight:100, ambient:100, stairGlow:100, fogDensity:100, spineColors:0,
+      bookGaps:100, bookWidth:100, bookHeight:100, shelfPitch:100, helixPitch:100, poleThick:100 },
+  // 見出し (Save / Reset / Random) の下に並ぶスライダー。照明・色の列は Slot A の通常表示 (Dark OFF) だけに効く
+  SPECS:[
+    ['Distance',       'camDist',     50,   110, 1,   'pct'],
+    ['Field of View',  'fovScale',    50,   170, 1,   'pct'],
+    ['Elev Swing',     'camSwing',    0,    160, 1,   'pct'],
+    ['Eye Height',     'camHeight',   -3,   6,   0.1, 'f2'],
+    ['Roll',           'camRoll',     -90,  90,  1,   'deg'],
+    ['Light Azimuth',  'lightAz',     -180, 180, 1,   'deg'],
+    ['Light Elevation','lightElev',   -150, 20,  1,   'deg'],
+    ['Key Light',      'keyLight',    0,    160, 1,   'pct'],
+    ['Ambient',        'ambient',     0,    300, 1,   'pct'],
+    ['Stair Glow',     'stairGlow',   0,    400, 1,   'pct'],
+    ['Fog',            'fogDensity',  0,    300, 1,   'pct'],
+    ['Spine Colors',   'spineColors', 0,    100, 1,   'pct'],
+    ['Book Gaps',      'bookGaps',    0,    500, 1,   'pct'],
+    ['Book Width',     'bookWidth',   70,   200, 1,   'pct'],
+    ['Book Height',    'bookHeight',  50,   115, 1,   'pct'],
+    ['Shelf Spacing',  'shelfPitch',  90,   160, 1,   'pct'],
+    ['Stair Pitch',    'helixPitch',  50,   200, 1,   'pct'],
+    ['Pole Thickness', 'poleThick',   20,   500, 1,   'pct'],
+  ],
 
   // ── シーン定数（原典と一致）──
   C:{ WALL_R:4.0, WALL_T:0.05, COL_N:16, SHELF_P:0.56, BOOK_D:0.24, UNIT_W:0.1745,
@@ -54,8 +78,17 @@ const Shelf = {
     }
   },
 
-  _buildMesh(){
-    const C=this.C, arr=[], TAU=Math.PI*2, PI=Math.PI;
+  _dz(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
+  // メッシュの形を変える param の倍率 (既定 100% = 原典と同じ数値)
+  _meshK(){
+    const P=this.P, dz=(v)=>this._dz(v);
+    return { gap:dz(P.bookGaps)/100, bw:dz(P.bookWidth)/100, bh:dz(P.bookHeight)/100, pitch:dz(P.shelfPitch)/100, helix:dz(P.helixPitch)/100, pole:dz(P.poleThick)/100 };
+  },
+  _meshSig(k){ return [k.gap,k.bw,k.bh,k.pitch,k.helix,k.pole].join(','); },
+  _derive(k){ return Object.assign({}, this.C, { SHELF_P:this.C.SHELF_P*k.pitch, HELIX_P:this.C.HELIX_P*k.helix, POLE_R:this.C.POLE_R*k.pole }); },
+
+  _buildMesh(km){
+    const C=this._derive(km), arr=[], TAU=Math.PI*2, PI=Math.PI;
     const secAng=TAU/C.COL_N, colHW=C.WALL_R*PI/C.COL_N;
     const rowMin=Math.floor(C.Y_MIN/C.SHELF_P)-1, rowMax=Math.ceil(C.Y_MAX/C.SHELF_P)+1;
     for(let ci=0; ci<C.COL_N; ci++){
@@ -67,14 +100,14 @@ const Shelf = {
         let pos=-colHW + this._h2(ci*7.1, row*11.3)*C.UNIT_W*0.4;
         for(let bi=0; bi<22; bi++){
           const bSeed=this._h2(ci*17.3+bi*3.7, row*2.1);
-          if(this._h1(bSeed+5.9)<0.07) pos += C.UNIT_W*(0.4+this._h1(bSeed+6.7)*0.4);
+          if(this._h1(bSeed+5.9)<0.07*km.gap) pos += C.UNIT_W*(0.4+this._h1(bSeed+6.7)*0.4);
           if(pos>=colHW+0.05) break;
           const r_=this._h1(bSeed+3.1);
-          const bw=C.UNIT_W*(0.32+r_*r_*0.78);
-          const bH=0.30+this._h1(bSeed)*0.16;
+          const bw=C.UNIT_W*(0.32+r_*r_*0.78)*km.bw;
+          const bH=(0.30+this._h1(bSeed)*0.16)*km.bh;
           const bD=C.BOOK_D*(0.45+this._h1(bSeed+1.7)*0.55);
           const bCU=-bD*0.5-C.WALL_T, bCV=-C.SHELF_P*0.5+0.030+bH*0.5, bLW=pos+bw*0.5, bLA=bCU+C.WALL_R;
-          this._addBox(arr, bLA*cosA-bLW*sinA, shelfCY+bCV, bLA*sinA+bLW*cosA, bD*0.5, bH*0.5, bw*0.5, rotY, 1);
+          this._addBox(arr, bLA*cosA-bLW*sinA, shelfCY+bCV, bLA*sinA+bLW*cosA, bD*0.5, bH*0.5, bw*0.5, rotY, 1, 0.02+0.98*this._h1(bSeed+8.3));
           pos += bw;
           if(pos>=colHW+0.05) break;
         }
@@ -127,9 +160,10 @@ const Shelf = {
 in vec3 aPos; in vec3 aNor; in float aMat; in vec3 aBary; in float aPhase;
 uniform mat4 uMVP; uniform vec3 uCam; uniform float uTime;
 uniform vec3 uHelix;   // (HELIX_R, HELIX_P, STEP_ANG)
-out vec3 vNor; out float vMat; out float vDist; out float vWorldY; out vec3 vBary; out float vStepWave;
+out vec3 vNor; out float vMat; out float vDist; out float vWorldY; out vec3 vBary; out float vStepWave; out float vBook;
 void main(){
   vMat=aMat; vBary=aBary;
+  vBook=(aMat>0.5 && aMat<1.5) ? aPhase : 0.0;   // 本 1 冊ごとの値 (棚板は 0)
   vec3 pos=aPos, nrm=aNor;
   vStepWave=0.0;
   if(aMat>2.5){                          // 階段(mat3): helix 軌道に沿って回転しながら上昇(継ぎ目なしループ)
@@ -157,9 +191,16 @@ void main(){
 
   FRAG:`#version 300 es
 precision highp float;
-in vec3 vNor; in float vMat; in float vDist; in float vWorldY; in vec3 vBary; in float vStepWave;
+in vec3 vNor; in float vMat; in float vDist; in float vWorldY; in vec3 vBary; in float vStepWave; in float vBook;
 uniform float uDarkMode;
 uniform float uWire;
+uniform float uLightAz;     // 光源の方位 (deg)
+uniform float uLightElev;   // 光源の仰角の増減 (deg)
+uniform float uKey;         // 主光源の強さ
+uniform float uAmb;         // 環境光の強さ
+uniform float uGlow;        // 階段の光バンド
+uniform float uFogK;        // 霧の濃さ
+uniform float uSpine;       // 背表紙の色づけ
 out vec4 fragColor;
 void main(){
   if(uWire > 0.5){
@@ -172,6 +213,11 @@ void main(){
   }
   vec3 nor=normalize(vNor);
   vec3 lightDir=normalize(vec3(-0.4,1.0,-0.3));
+  if(uLightAz != 0.0 || uLightElev != 0.0){
+    float el=clamp(asin(lightDir.y)+radians(uLightElev), -1.48, 1.5707963);
+    float az=atan(lightDir.z, lightDir.x)+radians(uLightAz);
+    lightDir=vec3(cos(el)*cos(az), sin(el), cos(el)*sin(az));
+  }
   float darkMode = step(0.5, uDarkMode);
   vec3 lightCol=mix(vec3(1.00,0.97,0.94), vec3(0.74,0.68,0.58), darkMode);
   float diff=max(dot(nor,lightDir),0.0);
@@ -182,13 +228,17 @@ void main(){
   vec3 baseLight=(vMat<1.5 || vMat>2.5) ? vec3(0.91,0.90,0.88) : vec3(0.28,0.22,0.16);   // 階段(mat3)も明色
   vec3 baseDark =(vMat<1.5 || vMat>2.5) ? vec3(0.30,0.27,0.22) : vec3(0.12,0.085,0.055);
   vec3 base=mix(baseLight, baseDark, darkMode);
-  vec3 col=base*(diff*lightCol*1.05 + ambCol*0.30);
-  col += mix(vec3(1.0,0.92,0.72)*0.30, vec3(0.55,0.38,0.18)*0.24, darkMode)*vStepWave; // 階段を上昇する暖色の光バンド
+  if(uSpine > 0.0 && vBook > 0.0){   // 本ごとに色相と明るさをずらして背表紙に見立てる
+    vec3 tint=0.5+0.5*cos(6.2831853*(vBook*3.0+vec3(0.0,0.33,0.67)));
+    base=mix(base, base*tint*(0.55+0.9*fract(vBook*7.0)), uSpine);
+  }
+  vec3 col=base*(diff*lightCol*1.05*uKey + ambCol*0.30*uAmb);
+  col += mix(vec3(1.0,0.92,0.72)*0.30, vec3(0.55,0.38,0.18)*0.24, darkMode)*vStepWave*uGlow; // 階段を上昇する暖色の光バンド
   vec3 darkBg=mix(vec3(0.06,0.06,0.07), vec3(0.010,0.012,0.016), darkMode);
   col=mix(col, darkBg, clamp((1.0-smoothstep(-14.0,8.0,vWorldY))*1.5, 0.0, 1.0));
   vec3 farBg=mix(vec3(0.97,0.97,0.96), vec3(0.070,0.066,0.060), darkMode);
   vec3 bg=mix(darkBg, farBg, smoothstep(-8.0,15.0,vWorldY));
-  col=mix(col, bg, clamp((vDist-4.0)/7.0, 0.0, 1.0));
+  col=mix(col, bg, clamp((vDist-4.0)/7.0*uFogK, 0.0, 1.0));
   col=pow(clamp(col,0.0,1.0), vec3(0.4545));
   fragColor=vec4(col,1.0);
 }`,
@@ -209,7 +259,8 @@ void main(){
     const prog=gl.createProgram(); gl.attachShader(prog,vs); gl.attachShader(prog,fs); gl.linkProgram(prog);
     if(!__glReady(gl, prog, true)){ console.error('[Shelf link]', gl.getProgramInfoLog(prog)); this.initialized=true; this.ok=false; return false; }
     this.prog=prog;
-    const data=this._buildMesh();
+    this._mk=this._meshK(); this._msig=this._meshSig(this._mk); this._Cb=this._derive(this._mk); this._mpend=0;
+    const data=this._buildMesh(this._mk);
     this.nVerts=data.length/11;
     this.vao=gl.createVertexArray();
     gl.bindVertexArray(this.vao);
@@ -232,6 +283,13 @@ void main(){
       uWire: gl.getUniformLocation(prog,'uWire'),
       uTime: gl.getUniformLocation(prog,'uTime'),
       uHelix: gl.getUniformLocation(prog,'uHelix'),
+      uLightAz: gl.getUniformLocation(prog,'uLightAz'),
+      uLightElev: gl.getUniformLocation(prog,'uLightElev'),
+      uKey: gl.getUniformLocation(prog,'uKey'),
+      uAmb: gl.getUniformLocation(prog,'uAmb'),
+      uGlow: gl.getUniformLocation(prog,'uGlow'),
+      uFogK: gl.getUniformLocation(prog,'uFogK'),
+      uSpine: gl.getUniformLocation(prog,'uSpine'),
     };
     this.startTime=performance.now()/1000;
     this.initialized=true; this.ok=true;
@@ -251,12 +309,28 @@ void main(){
 
   update(){ /* 時刻は render 内で参照 */ },
 
+  // メッシュの形を変える param が動いたら (指を離して 6 フレーム止まってから) 頂点を作り直す
+  _remesh(){
+    const km=this._meshK(), sig=this._meshSig(km);
+    if(sig===this._msig){ this._mpend=0; return; }
+    if(sig!==this._mpendSig){ this._mpendSig=sig; this._mpend=0; return; }
+    if(++this._mpend<6) return;
+    const gl=this.gl, data=this._buildMesh(km);
+    this._mk=km; this._msig=sig; this._Cb=this._derive(km); this._mpend=0;
+    this.nVerts=data.length/11;
+    gl.bindVertexArray(this.vao); gl.bindBuffer(gl.ARRAY_BUFFER, this.buf); gl.bufferData(gl.ARRAY_BUFFER, data, gl.STATIC_DRAW);
+    gl.bindVertexArray(null);
+  },
+
   render(opts){
     if(!this.ok) return;
     const gl=this.gl, { fbo, w, h, slot } = opts;
     const dark = !!(this.P && this.P.dark);
     const wire = dark || (slot === 'B');             // dark モード or Slot B = ワイヤーフレーム
     const t = (typeof opts.clock === 'number') ? opts.clock : (performance.now()/1000 - this.startTime);
+    this._remesh();
+    const dz=(v)=>this._dz(v), P=this.P;
+    const kDist=dz(P.camDist)/100, kFov=dz(P.fovScale)/100, kSwing=dz(P.camSwing)/100, roll=dz(P.camRoll);
 
     // beat 同期: 拍ごとにカメラをわずかに引き寄せてパンチを出す(beat モード時のみ / drone では無反応)
     let beatPulse = 0.0;
@@ -269,9 +343,9 @@ void main(){
     // 自動公転カメラ(anon-press サイトの構図を再現: タワー内部から中央の柱・階段・周囲の棚を見る)
     //   radius 2.1〜3.5(WALL_R=4 の内側)/ 仰角を大きく上下スイング / 注視点は中心(0,0,0)固定 / 連続回転。
     const camAngle  = t*0.6 + Math.sin(t*0.23)*0.3;
-    const camElev   = Math.sin(t*0.31)*0.80 + Math.sin(t*0.53+1.7)*0.45 + Math.sin(t*0.13+3.1)*0.30 + Math.sin(t*0.89+0.5)*0.15;
-    const camRadius = Math.max(2.7, Math.min(3.3, 3.0 + Math.sin(t*0.19+2.0)*0.35 + Math.sin(t*0.11)*0.18 + Math.sin(t*0.47+1.0)*0.10)) * (1.0 - beatPulse*0.06);   // ズーム変動を穏やかに
-    const camTargetY= 0.0;
+    const camElev   = (Math.sin(t*0.31)*0.80 + Math.sin(t*0.53+1.7)*0.45 + Math.sin(t*0.13+3.1)*0.30 + Math.sin(t*0.89+0.5)*0.15) * kSwing;
+    const camRadius = Math.max(2.7, Math.min(3.3, 3.0 + Math.sin(t*0.19+2.0)*0.35 + Math.sin(t*0.11)*0.18 + Math.sin(t*0.47+1.0)*0.10)) * (1.0 - beatPulse*0.06) * kDist;   // ズーム変動を穏やかに
+    const camTargetY= dz(P.camHeight);
     const ce=Math.cos(camElev), se=Math.sin(camElev), ca=Math.cos(camAngle), sa=Math.sin(camAngle);
     const ex=camRadius*ce*ca, ey=camRadius*se+camTargetY, ez=camRadius*ce*sa;
 
@@ -293,9 +367,14 @@ void main(){
     }
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
 
-    const proj=this._perspective(this.fovY, w/h, 0.05, 80.0);
+    const proj=this._perspective(this.fovY*kFov, w/h, 0.05, 80.0);
     const view=this._lookAt(ex,ey,ez, 0, camTargetY, 0);
-    const mvp=this._mul(proj, view);
+    let mvp=this._mul(proj, view);
+    if(roll !== 0){   // 画面の傾き (縦横比を保ったまま回す)
+      const a=roll*Math.PI/180, c=Math.cos(a), sn=Math.sin(a), asp=w/h, R=new Float32Array(16);
+      R[0]=c; R[1]=sn*asp; R[4]=-sn/asp; R[5]=c; R[10]=1; R[15]=1;
+      mvp=this._mul(R, mvp);
+    }
 
     gl.useProgram(this.prog);
     gl.bindVertexArray(this.vao);
@@ -304,7 +383,11 @@ void main(){
     gl.uniform1f(this.locs.uDarkMode, dark ? 1.0 : 0.0);
     gl.uniform1f(this.locs.uWire, wire ? 1.0 : 0.0);
     gl.uniform1f(this.locs.uTime, t);
-    gl.uniform3f(this.locs.uHelix, this.C.HELIX_R, this.C.HELIX_P, (Math.PI*2)/this.C.STEPS_N);
+    gl.uniform3f(this.locs.uHelix, this._Cb.HELIX_R, this._Cb.HELIX_P, (Math.PI*2)/this._Cb.STEPS_N);
+    gl.uniform1f(this.locs.uLightAz, dz(P.lightAz)); gl.uniform1f(this.locs.uLightElev, dz(P.lightElev));
+    gl.uniform1f(this.locs.uKey, dz(P.keyLight)/100); gl.uniform1f(this.locs.uAmb, dz(P.ambient)/100);
+    gl.uniform1f(this.locs.uGlow, dz(P.stairGlow)/100); gl.uniform1f(this.locs.uFogK, dz(P.fogDensity)/100);
+    gl.uniform1f(this.locs.uSpine, dz(P.spineColors)/100);
     gl.drawArrays(gl.TRIANGLES, 0, this.nVerts);
 
     // 後始末(他パスへ影響させない)
