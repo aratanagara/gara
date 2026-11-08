@@ -76,6 +76,31 @@ const LiquidPeel = {
     ink:[0.914, 0.933, 0.949],    // インクの色
     paper:[0, 0, 0],              // 下地 (紙) の色。Slot A では背景にも敷く
     bodyCol:[0.914, 0.933, 0.949], // 本体の色 (bodyLink=0 のとき)
+    posX:0,           // 本体の横位置 (% 画面高さ比。+ で右)
+    posY:0,           // 本体の縦位置 (% 画面高さ比。+ で上)
+    roll:0,           // 画面の回転 (度。場面全体を視軸まわりに回す。重力の向きも一緒に回る)
+    lens:100,         // 画角 (%)。小さいと広角 (遠近が強い) / 大きいと望遠 (平ら)。本体の見かけの大きさは保つ
+    yaw:0,            // 本体の向き (度。回転の初期位相。面は首振りの中心もずれる)
+    lightA:0,         // 光の向き (度。視軸まわりに回す)
+    lightZ:100,       // 光の手前っぽさ (%)。小さいと真横からの光 (陰影が強い) / 大きいと正面光
+    pShade:0,         // 破片の陰影 (%)。破片の向き (反り) に応じて明暗がつく
+    rim:0,            // 本体の縁の光 (%)。負で縁を暗く
+    round:0,          // 破片の角丸 (% 短辺の半分に対する割合)
+    taper:0,          // 破片の先細り (%)。負で先が広がる
+    twist:0,          // 破片のひねり (%)。めくれるときに長辺まわりにねじれる
+    gap:100,          // 破片が本体から浮く高さ (%)
+    lenVar:100,       // 破片の長さのばらつき (%)
+    widVar:100,       // 破片の幅のばらつき (%)
+    fallCurve:2.0,    // 落ち方の曲線 (指数。小さいと最初から速い / 大きいとためてから落ちる)
+    fallDir:0,        // 落ちる向き (度。0=真下)
+    fadeStart:60,     // 落ちながら薄れ始める位置 (% 落下の進み)
+    peelSpan:22,      // 破片 1 枚がめくれて落ちきるまでの長さ (% 周期)
+    liftShare:36,     // めくれに使う時間の割合 (% 1 枚の動きのうち。残りが落下)
+    peelPhase:0,      // 剥がれ周期の位相 (%)。Peel Rate を 0 にすると、この位置で止まる
+    toneVar:0,        // 破片ごとの明るさのばらつき (%)
+    hueVar:0,         // 破片ごとの色相のばらつき (度。±)
+    bodyLine:100,     // 本体の線の太さ (% Line に対する倍率)
+    noiseY:100,       // Deform のノイズの縦の伸び (%)。大きいと縦縞のような起伏
   },
   stateTex:[null, null], stateFBO:[null, null], stateN:0, stateRead:0, _lastClock:null, _stateMode:0,
 
@@ -85,7 +110,9 @@ const LiquidPeel = {
     this.startTime = performance.now()/1000;
 
     // ── 共通 GLSL (ノイズ / 液体 SDF / 形状の表面)。使う側で uT, uMorph, uBlobs, uS, uWobble, uSwell, uShape, uDeform を宣言すること ──
-    const common = `#define EYE 3.6
+    const common = `uniform float uEye, uRollA, uLightA, uLightZ, uNoiseY;
+uniform vec2  uOff;
+#define EYE uEye
 float h1(float n){ return fract(sin(n*91.3458)*47453.5453); }
 vec2  h2(float n){ return fract(sin(vec2(n*12.9898, n*78.233))*43758.5453); }
 vec3  h3(float n){ return fract(sin(vec3(n*12.9898, n*78.233, n*37.719))*43758.5453); }
@@ -126,6 +153,7 @@ float bodyS(vec2 p){ return body(p / uSwell) * uSwell; }   // 膨らみ (拍 / �
 #define RB (0.6*uS*uSwell)                                  // 基準半径 (球の半径。変位量もこれ基準)
 // ── Deform (不定形): 変位量 (無次元)。こぶ (Blobs = 低周波の密度) + 細かい揺らぎ (Wobble) が時間で流れる ──
 float dAmt(vec3 q){
+  q.y *= uNoiseY;
   float t = uT * uMorph;
   float fL = 0.6 + 0.35*uBlobs;
   return 0.55*(fbm3(q*fL + vec3(t*0.3, t*0.2, -t*0.25)) - 0.44) + uWobble*0.15*(fbm3(q*4.5 - vec3(t*0.2)) - 0.44);
@@ -146,6 +174,9 @@ void baseSurf(vec3 q, out vec3 P0, out vec3 N0){
 // 変形後の表面 (素の表面 + 法線方向の変位)
 vec3 surf(vec3 q){ vec3 P0, N0; baseSurf(q, P0, N0); return P0 + N0 * (RB * uDeform * dAmt(P0 / RB)); }
 vec2 rot2(vec2 v, float a){ float c = cos(a), s = sin(a); return vec2(c*v.x - s*v.y, s*v.x + c*v.y); }
+vec3 camX(vec3 w){ if(uRollA != 0.0) w.xy = rot2(w.xy, uRollA); return w + vec3(uOff, 0.0); }   // 画面の回転 → 位置
+vec3 camN(vec3 n){ if(uRollA != 0.0) n.xy = rot2(n.xy, uRollA); return n; }
+vec3 lightDir(){ return (uLightA == 0.0 && uLightZ == 1.0) ? normalize(vec3(-0.4, 0.6, -0.7)) : normalize(vec3(rot2(vec2(-0.4, 0.6), uLightA), -0.7*uLightZ)); }
 `;
 
     const vs = `#version 300 es
@@ -156,6 +187,7 @@ uniform float uT, uFcl, uCells, uS, uShape, uBlobs, uWobble, uMorph, uDeform, uJ
 uniform float uTilt, uSpinA, uSwell, uDepth, uMinSS, uLineSkip, uRotate, uRotVar, uReveal, uOrder;
 uniform float uStateMode, uPeelMode, uDt, uPeelSpd;   // マウス剥がれ: 状態更新パス / 剥がれ方 / フレーム時間 / 進む速さ
 uniform float uPeelVar, uPeelAmt;                      // 剥がれる速さのムラ / 量のムラ
+uniform float uRound, uTaper, uTwist, uGap, uLenVar, uWidVar, uFallPow, uFallA, uFadeS, uSpan, uLiftSh, uFallSh, uPhase, uPShade, uToneVar, uHueVar;
 uniform vec4  uMouse;                                  // (x, y) 0..1 (y 上向き), z = 押している, w = 半径 (画面高さ比)
 uniform sampler2D uState;                              // 破片ごとの剥がれの進み (前フレーム)
 out float vState;
@@ -166,6 +198,8 @@ out float vDet;
 out float vLineOn;
 out float vHinge;                // 1 = 下辺 (ヒンジ) が接地中 → 下辺の線を描かない
 out float vAppear;               // Reveal: 本体の色から浮かび上がる (0=本体と同じ色 / 1=破片の色)
+out float vShade;                // 破片の陰影 (1=なし)
+out vec2  vVar;                  // 破片ごとの明るさ / 色相のずれ
 
 ${common}
 
@@ -175,7 +209,9 @@ float gW1, gW2, gK, gTh, gLayer, gLiftMix;
 mat3  gM;
 // 破片面上の点 (x: 横 -1..1, y: 縦 -1..1, y=-1 が下端=ヒンジ) → ワールド。
 //   下端から上へ向かう帯を曲率 gK で法線側へ反らせ、180° で折り返した先は真っ直ぐ下へ垂らす → 面の姿勢 → 落下
+float gLiftV = 0.0;
 vec3 place(float x, float y){
+  if(uTaper != 0.0) x *= 1.0 - uTaper * (y + 1.0) * 0.5;
   float L = (y + 1.0) * gW1;                        // ヒンジ (下端) からの距離 (0..2w1)
   vec3 upv = -gDn;
   vec3 o;
@@ -189,10 +225,11 @@ vec3 place(float x, float y){
     o = upv * (su*c - sn*si) + gN * (su*si + sn*c);
   }
   vec3 Q = gHp + gA2 * (x * gW2) + o + gN * gLayer;
+  if(uTwist != 0.0) Q += gN * (x * gW2 * uTwist * gLiftV * (y + 1.0) * 0.5);
   // 貼り付いている間は接平面ではなく実際の表面に沿わせる (形状と Deform なりに曲がる)。めくれ始めると円弧へ移る
   vec3 Qs = surf(gHp + gA2 * (x * gW2) + upv * L) + gN * gLayer;
   Q = mix(Qs, Q, gLiftMix);
-  return gM * Q + vec3(0.0, 0.0, EYE) + gFallW;
+  return camX(gM * Q + vec3(0.0, 0.0, EYE) + gFallW);
 }
 vec2 proj(vec3 p){ return uFcl * p.xy / p.z; }
 
@@ -297,7 +334,7 @@ void main(){
   // ── マウス剥がれの状態更新パス: 破片 1 枚 = 状態テクスチャの 1 点。画面上の破片の位置がマウスの半径内なら進め始める ──
   vState = 0.0;
   if(uStateMode > 0.5){
-    vec3  Pw = gM * gP + vec3(0.0, 0.0, EYE);
+    vec3  Pw = camX(gM * gP + vec3(0.0, 0.0, EYE));
     vec2  s0 = proj(Pw);                                            // 画面高 = 1 の単位
     float asp = uRes.x / uRes.y;
     vec2  sc = vec2(0.5 + s0.x / asp, 0.5 + s0.y);                  // 0..1 (y 上向き)
@@ -311,7 +348,7 @@ void main(){
     vState = p / 2.5;
     gl_Position = vec4(((i + 0.5)/N)*2.0 - 1.0, ((j + 0.5)/N)*2.0 - 1.0, 0.0, 1.0);
     gl_PointSize = 1.0;
-    vLoc = vec2(0.0); vHalfPx = vec2(1.0); vDepthF = 1.0; vDet = 0.0; vLineOn = 1.0; vHinge = 0.0; vAppear = 1.0;
+    vLoc = vec2(0.0); vHalfPx = vec2(1.0); vDepthF = 1.0; vDet = 0.0; vLineOn = 1.0; vHinge = 0.0; vAppear = 1.0; vShade = 1.0; vVar = vec2(0.0);
     return;
   }
 
@@ -325,14 +362,14 @@ void main(){
   } else {
     // 自動: 全体で 1 本の周期 G。破片は Order の順 (まとまり = ノイズ順 / 下から上 / 上から下) に剥がれ始め、
     //   最後の破片が落ち終わる時刻 = 周期の終わりで全部が一斉に貼り直される (全部落ちきったらリセット)。
-    float G  = fract(uT * uPeelRate);
-    float D = 0.22 / spdK;                                          // 1 枚のめくれ + 落下が周期に占める割合 (速さのムラで伸縮)
+    float G  = fract(uT * uPeelRate + uPhase);
+    float D = uSpan / spdK;                                          // 1 枚のめくれ + 落下が周期に占める割合 (速さのムラで伸縮)
     float hN  = clamp(0.5 + 0.5 * (gM * gP).y / ext, 0.0, 1.0);     // 0=下端 / 1=上端 (世界座標)
     float tOrd = (uOrder < 0.5) ? 0.85*tNoise
                : ((uOrder < 1.5) ? 0.75*hN : 0.75*(1.0 - hN)) + 0.10*tNoise;   // 高さ順はノイズを少し混ぜて前線を波打たせる
-    float sK = (1.0 - 0.22) * clamp(tOrd + 0.15*hr.y, 0.0, 1.0);   // 剥がれ始める時刻
+    float sK = (1.0 - uSpan) * clamp(tOrd + 0.15*hr.y, 0.0, 1.0);   // 剥がれ始める時刻
     float pp = (G - sK) / D;
-    qb = (pp <= 0.0) ? 0.0 : ((pp < 0.36) ? pp/0.36 : 1.0 + (pp - 0.36)/0.64);   // めくれ 36% / 落下 64%
+    qb = (pp <= 0.0) ? 0.0 : ((pp < uLiftSh) ? pp/uLiftSh : 1.0 + (pp - uLiftSh)/uFallSh);   // めくれ 36% / 落下 64%
     qb *= allow;                                                    // Peel Amt で剥がれない破片
   }
   float q  = max(qa, qb);
@@ -355,16 +392,22 @@ void main(){
   // ── 破片の形: Transmute Flock の筆先と同じ細長い矩形。大きさは 3 段階に量子化 ──
   float jit3 = max(0.25, mix(1.0, 0.5 + floor(hs.x*3.0)*0.5, uJitter));
   float bsz  = cs*0.5*uOverlap*jit3;
-  gW1 = bsz * sqrt(uAspect) * (0.9 + 0.7*fract(hc.y*5.17)) * 0.75;   // 縦の半長
-  gW2 = bsz / sqrt(uAspect) * (0.5 + 0.4*fract(hc.z*7.31)) * 1.2;    // 横の半幅
+  float vL = 0.9 + 0.7*fract(hc.y*5.17), vW = 0.5 + 0.4*fract(hc.z*7.31);
+  if(uLenVar != 1.0) vL = 1.25 + (vL - 1.25) * uLenVar;
+  if(uWidVar != 1.0) vW = 0.7 + (vW - 0.7) * uWidVar;
+  gW1 = bsz * sqrt(uAspect) * vL * 0.75;   // 縦の半長
+  gW2 = bsz / sqrt(uAspect) * vW * 1.2;    // 横の半幅
   // ── ヒンジ = 下端 (表面の上に置く)。上端から外へ反り返って折り返し、頭が下を向いてぶら下がる ──
   gHp = surf(gP - up*gW1);
   gK  = lift * uLift * 2.0 / max(2.0*gW1, 1e-4);          // 総角度 = lift × Lift × 2 (既定 2.4 → 4.8 rad: 折り返し + 垂れ)
   gLiftMix = smoothstep(0.0, 0.3, lift);                    // めくれ始めで表面沿いから円弧へ
   gTh = f * uTumble * 1.5 * sin(uT*2.0 + hc.z*6.2832);
-  gLayer = 0.012*uS + 0.025*uS*h1(i*3.7 + j*5.1 + 0.3) + f * 0.10*uS;   // 本体から少し浮かせる + 重なり順の高さ差 + 落下中は面から離れる
+  gLiftV = lift;
+  gLayer = (0.012*uS + 0.025*uS*h1(i*3.7 + j*5.1 + 0.3)) * uGap + f * 0.10*uS;   // 本体から少し浮かせる + 重なり順の高さ差 + 落下中は面から離れる
   // 落下はワールド座標の真下。Drift で横流れ、少し手前へも
-  gFallW = vec3((hr.y - 0.5) * 2.0 * uDrift * uS * f, -f*f * uFall * uS * (0.7 + 0.6*hs.y), -f * 0.06*uS);
+  float ff = (uFallPow == 2.0) ? f*f : pow(f, uFallPow);
+  gFallW = vec3((hr.y - 0.5) * 2.0 * uDrift * uS * f, -ff * uFall * uS * (0.7 + 0.6*hs.y), -f * 0.06*uS);
+  if(uFallA != 0.0) gFallW.xy = rot2(gFallW.xy, uFallA);
 
   vec3 P0 = place(0.0, 0.0), Pa = place(1.0, 0.0), Pb = place(0.0, 1.0);
   vec3 wp = place(aCorner.x, aCorner.y);
@@ -381,9 +424,17 @@ void main(){
   gl_Position = vec4(2.0 * uFcl * wp.x / asp, 2.0 * uFcl * wp.y, zc, wp.z);
   vLoc    = aCorner;
   vHalfPx = vec2(length(f1), length(f2)) * uRes.y;
-  float fade = 1.0 - smoothstep(0.6, 1.0, f);                      // 落ちながら薄れて消える
+  float fade = 1.0 - smoothstep(uFadeS, 1.0, f);                      // 落ちながら薄れて消える
   vDepthF = mix(1.0, clamp(1.6 - 0.6*(P0.z/EYE), 0.15, 1.0), uDepth) * fade;
   vAppear = appear;
+  vShade = 1.0;
+  if(uPShade != 0.0){
+    vec3 Nw = normalize(cross(Pa - P0, Pb - P0) + vec3(1e-7, 0.0, 0.0));
+    if(Nw.z > 0.0) Nw = -Nw;
+    vShade = mix(1.0, 0.45 + 0.55*max(0.0, dot(Nw, lightDir())), uPShade);
+  }
+  vVar = vec2(0.0);
+  if(uToneVar != 0.0 || uHueVar != 0.0){ vec2 hv = h2(i*5.3 + j*9.7 + 1.9); vVar = vec2(-uToneVar * hv.x, (hv.y - 0.5) * 2.0 * uHueVar); }
   vDet    = step(fract(hc.z*3.1), 0.07);
   vLineOn = (h1(i*0.531 + j*7.9 + 0.37) < uLineSkip) ? 0.0 : 1.0;
   vHinge  = 1.0 - smoothstep(0.0, 0.2, f);                           // 落ち始めると下辺の線が現れる
@@ -399,6 +450,9 @@ in float vLineOn;
 in float vHinge;
 in float vAppear;
 in float vState;
+in float vShade;
+in vec2  vVar;
+uniform float uRound;
 uniform float uLine, uLineK, uFill, uDetail, uOpaque, uPaperAlpha, uEdgeOn, uBodyTone, uAppearPaper, uStateMode;
 uniform vec3  uInk, uPaper, uBodyCol;
 out vec4 frag;
@@ -414,6 +468,12 @@ void main(){
   float dTop = (1.0 - vLoc.y) / fw.y;
   float dBot = (1.0 + vLoc.y) / fw.y;
   float d    = min(dx, min(dTop, mix(dBot, 1e5, vHinge)));   // 接地中は下辺 (ヒンジ) の線なし
+  if(uRound > 0.0){                                          // 角丸: 縁までの px 距離の角を丸める (外側は捨てる)。接地中の下辺は丸めない
+    float ey = min(dTop, mix(dBot, 1e5, vHinge));
+    float rr = uRound * min(vHalfPx.x, vHalfPx.y) * 0.95;
+    vec2  q  = vec2(rr - dx, rr - ey);
+    if(q.x > 0.0 && q.y > 0.0){ float dc = rr - length(q); if(dc < -0.5) discard; d = min(d, max(dc, 0.0)); }
+  }
   float lw = max(uLine, 0.05) * 0.5;
   float aa = 0.7;
   float band  = (1.0 - smoothstep(lw, lw + aa, d)) * uLineK * uEdgeOn;   // 縁の線 (塗りでは重なった破片の境のひび割れになる)。Edge なしで消す
@@ -423,12 +483,19 @@ void main(){
   float inkOutline = lines;
   float inkFill    = 1.0 - lines;
   float ink = mix(inkOutline, inkFill, uFill) * vDepthF;
+  vec3 inkC = uInk * vShade;
+  if(vVar.x != 0.0 || vVar.y != 0.0){                            // 破片ごとの明るさ / 色相のずれ
+    inkC *= 1.0 + vVar.x;
+    float hc = cos(vVar.y), hs = sin(vVar.y);
+    inkC = inkC*hc + cross(vec3(0.57735), inkC)*hs + vec3(0.57735)*dot(vec3(0.57735), inkC)*(1.0 - hc);
+    inkC = max(inkC, 0.0);
+  }
   vec3 bodyCol = mix(uPaper, uBodyCol, uBodyTone * vDepthF);   // Reveal の出現時はこの色 (Appear=本体の色) か紙色から破片の色へ
   if(uAppearPaper > 0.5) bodyCol = uPaper;
-  if(uOpaque > 0.5){ frag = vec4(mix(bodyCol, mix(uPaper, uInk, ink), vAppear), 1.0); }
+  if(uOpaque > 0.5){ frag = vec4(mix(bodyCol, mix(uPaper, inkC, ink), vAppear), 1.0); }
   else {
     float a = ink + uPaperAlpha * (1.0 - ink);
-    vec3  c = (ink * uInk + (1.0 - ink) * uPaperAlpha * uPaper) / max(a, 1e-5);
+    vec3  c = (ink * inkC + (1.0 - ink) * uPaperAlpha * uPaper) / max(a, 1e-5);
     frag = vec4(mix(bodyCol, c, vAppear), max(a, 1.0 - vAppear));
   }
 }`;
@@ -438,7 +505,7 @@ void main(){
 uniform vec2  uRes;
 uniform float uFcl, uTilt, uSpinA;
 uniform float uT, uMorph, uBlobs, uS, uWobble, uSwell, uShape, uDeform;
-uniform float uLine, uLineK, uLit;
+uniform float uLine, uLineK, uLit, uBodyLine, uRim;
 `;
     const bodyPose = `
 mat3 pose(){
@@ -483,8 +550,8 @@ void main(){
     if(dot(N, N0) < 0.0) N = -N;
   }
   mat3 M = pose();
-  vec3 wp = M * P + vec3(0.0, 0.0, EYE);
-  vN = M * N; vZ = wp.z; vPlane = vec2(0.0); vPos = wp; vBase = P0; vNl = N0;
+  vec3 wp = camX(M * P + vec3(0.0, 0.0, EYE));
+  vN = camN(M * N); vZ = wp.z; vPlane = vec2(0.0); vPos = wp; vBase = P0; vNl = N0;
   gl_Position = project(wp);
 }`;
     const bodyVS2 = `#version 300 es
@@ -504,8 +571,8 @@ void main(){
     if(N.z > 0.0) N = -N;
   }
   mat3 M = pose();
-  vec3 wp = M * P + vec3(0.0, 0.0, EYE);
-  vN = M * N; vZ = wp.z; vPlane = c; vPos = wp; vBase = vec3(c, 0.0); vNl = vec3(0.0, 0.0, -1.0);
+  vec3 wp = camX(M * P + vec3(0.0, 0.0, EYE));
+  vN = camN(M * N); vZ = wp.z; vPlane = c; vPos = wp; vBase = vec3(c, 0.0); vNl = vec3(0.0, 0.0, -1.0);
   gl_Position = project(wp);
 }`;
     const bodyFS = `#version 300 es
@@ -518,14 +585,14 @@ out vec4 frag;
 void main(){
   float sd = (uShape < 0.5) ? bodyS(vPlane) : -1e3;
   if(sd > 0.0) discard;                                   // 液体の外は描かない
-  vec3  L = normalize(vec3(-0.4, 0.6, -0.7));
+  vec3  L = lightDir();
   bool flatBody = (uShape < 0.5) || (uShape > 1.5 && uShape < 2.5);
   vec3  Nn = normalize(vN);
   float ndl = (flatBody && uDeform < 0.001) ? 0.75 : max(0.0, dot(Nn, L));   // 平らな面は陰影を付けない
   float shade = (uLit > 0.5) ? 0.45 + 0.55*ndl : 1.0;   // Shading なしは Body の色で平坦
   float depthF = mix(1.0, clamp(1.6 - 0.6*(vZ/EYE), 0.15, 1.0), uDepth);
   // 本体の線 (Line と同じ px 幅): 輪郭 (視線と法線が直交) + 幾何的な縁 (立方体の辺 / 円柱の口 / 長方形と液体の外周)
-  float lw = max(uLine, 0.05) * 0.5, aa = 0.7;
+  float lw = max(uLine * uBodyLine, 0.05) * 0.5, aa = 0.7;
   float ndv = abs(dot(Nn, normalize(-vPos)));
   float silPx = ndv / max(fwidth(ndv), 1e-5);
   float edgeW = 1e3;                                      // 縁までの距離 (素の形状のローカル座標で正確に)
@@ -539,6 +606,8 @@ void main(){
   float sil  = (flatBody && uDeform < 0.001) ? 0.0 : (1.0 - smoothstep(lw, lw + aa, silPx));
   float line = max(sil, 1.0 - smoothstep(lw, lw + aa, edgePx)) * uLineK;
   vec3 col = mix(uPaper, uBodyCol, uBodyTone * shade * depthF);
+  if(uRim > 0.0) col += uInk * (uRim * pow(1.0 - ndv, 3.0) * uBodyTone);                              // 縁の光
+  else if(uRim < 0.0) col = mix(col, uPaper, clamp(-uRim * pow(1.0 - ndv, 3.0), 0.0, 1.0) * uBodyTone);   // 縁を暗く
   col = mix(col, mix(uPaper, uInk, depthF), line);
   frag = vec4(col, 1.0);                                  // 本体は不透明 (Slot B でも)
 }`;
@@ -715,6 +784,35 @@ void main(){
     gl.uniform1f(U('uAppearPaper'), Math.round(P.appear || 0));
     gl.uniform3f(U('uInk'), ink[0], ink[1], ink[2]);
     gl.uniform3f(U('uPaper'), paper[0], paper[1], paper[2]);
+    gl.uniform1f(U('uRound'), dz(P.round) * 0.01);
+    gl.uniform1f(U('uTaper'), dz(P.taper) * 0.01);
+    gl.uniform1f(U('uTwist'), dz(P.twist) * 0.01);
+    gl.uniform1f(U('uGap'), Math.max(0, dz(P.gap)) / 100);
+    gl.uniform1f(U('uLenVar'), dz(P.lenVar) / 100);
+    gl.uniform1f(U('uWidVar'), dz(P.widVar) / 100);
+    gl.uniform1f(U('uFallPow'), Math.max(0.5, dz(P.fallCurve)));
+    gl.uniform1f(U('uFallA'), dz(P.fallDir) * Math.PI / 180);
+    gl.uniform1f(U('uFadeS'), Math.max(0, Math.min(95, dz(P.fadeStart))) / 100);
+    gl.uniform1f(U('uSpan'), Math.max(5, Math.min(60, dz(P.peelSpan))) / 100);
+    { const ls = Math.max(10, Math.min(80, dz(P.liftShare))) / 100;
+      gl.uniform1f(U('uLiftSh'), ls); gl.uniform1f(U('uFallSh'), 1 - ls); }
+    gl.uniform1f(U('uPhase'), dz(P.peelPhase) / 100);
+    gl.uniform1f(U('uPShade'), dz(P.pShade) * 0.01);
+    gl.uniform1f(U('uToneVar'), dz(P.toneVar) * 0.01);
+    gl.uniform1f(U('uHueVar'), dz(P.hueVar) * Math.PI / 180);
+    this._setCamUniforms(U);
+  },
+  // カメラ・光 (破片と本体の両プログラム共通)
+  _setCamUniforms(U){
+    const gl = this.gl, P = this.P;
+    const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+    const lens = Math.max(0.3, Math.min(3, dz(P.lens) / 100));
+    gl.uniform1f(U('uEye'), 3.6 * lens);
+    gl.uniform1f(U('uRollA'), dz(P.roll) * Math.PI / 180);
+    gl.uniform2f(U('uOff'), dz(P.posX) * 0.02, dz(P.posY) * 0.02);
+    gl.uniform1f(U('uLightA'), dz(P.lightA) * Math.PI / 180);
+    gl.uniform1f(U('uLightZ'), Math.max(0.1, dz(P.lightZ) / 100));
+    gl.uniform1f(U('uNoiseY'), Math.max(0.1, dz(P.noiseY) / 100));
   },
 
   render(opts){
@@ -730,7 +828,8 @@ void main(){
     const bt = (beatMode && opts.beat != null) ? opts.beat : clock * 6.0 * (bpm / 120);
     const T = bt * 0.12 * (dz(P.speed) * 0.01);
     const N = Math.max(4, Math.min(128, Math.round(dz(P.cells))));
-    const fcl = 1.6 / Math.max(0.3, Math.min(2.0, dz(P.persp)));
+    const lensK = Math.max(0.3, Math.min(3, dz(P.lens) / 100));
+    const fcl = 1.6 / Math.max(0.3, Math.min(2.0, dz(P.persp))) * lensK;
     const audioReact = (typeof Audio !== 'undefined' && Audio.react) ? Math.max(0, Math.min(1, Audio.react)) : 0;
     const kick = beatMode ? Math.pow(1.0 - (bt - Math.floor(bt)), 3.0) * dz(P.swell) : 0;
     const swell = 1.0 + 0.25*kick + 0.3*audioReact*dz(P.audio);
@@ -738,7 +837,7 @@ void main(){
     const lineK = 0.25 + 0.75 * (()=>{ const t = Math.max(0, Math.min(1, lineEff / 0.12)); return t*t*(3 - 2*t); })();
     const shape = Math.round(P.shape || 0);
     const flat = (shape === 0 || shape === 2);     // 面 (液体 / 縦の面) は真横にならないよう往復、立体は回り続ける
-    const spinA = flat ? 0.5 * Math.sin(T * 0.5 * (dz(P.spin) * 0.01)) : T * 0.35 * (dz(P.spin) * 0.01);
+    const spinA = (flat ? 0.5 * Math.sin(T * 0.5 * (dz(P.spin) * 0.01)) : T * 0.35 * (dz(P.spin) * 0.01)) + dz(P.yaw) * Math.PI / 180;
     const tilt = flat ? Math.max(-0.35, Math.min(0.35, dz(P.tilt))) : dz(P.tilt);   // 面は寝ないよう傾きを制限
     const S = 0.9 * Math.max(0.1, dz(P.size));
     const ink = P.ink || [0.914, 0.933, 0.949];
@@ -829,6 +928,9 @@ void main(){
       gl.uniform3f(B('uInk'), ink[0], ink[1], ink[2]);
       gl.uniform3f(B('uPaper'), paper[0], paper[1], paper[2]);
       gl.uniform3f(B('uBodyCol'), bodyCol[0], bodyCol[1], bodyCol[2]);
+      gl.uniform1f(B('uBodyLine'), dz(P.bodyLine) / 100);
+      gl.uniform1f(B('uRim'), dz(P.rim) * 0.01);
+      this._setCamUniforms(B);
       if(!flat){ const cube = (shape === 4); gl.bindVertexArray(cube ? this.cubeVAO : this.sphereVAO); gl.drawElements(gl.TRIANGLES, cube ? this.cubeCount : this.sphereCount, gl.UNSIGNED_SHORT, 0); }
       else     { gl.bindVertexArray(this.gridVAO);   gl.drawElements(gl.TRIANGLES, this.gridCount,   gl.UNSIGNED_SHORT, 0); }
       gl.bindVertexArray(null);

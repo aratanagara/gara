@@ -19933,6 +19933,27 @@ void mainImage(out vec4 o, in vec2 f){
       ['Gust',       'gust',      0,    2,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
       ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
+      ['Pos X',      'posX',     -40,   40,  1,     pct],
+      ['Pos Y',      'posY',     -30,   30,  1,     pct],
+      ['Lens',       'lens',      50,   250, 1,     pct],
+      ['Reach X',    'reachX',    0,    250, 1,     pct],
+      ['Reach Y',    'reachY',    0,    250, 1,     pct],
+      ['Reach Z',    'reachZ',    0,    250, 1,     pct],
+      ['Path Freq',  'pathFreq',  50,   200, 1,     pct],
+      ['Peak Pos',   'peakPos',   30,   250, 1,     pct],
+      ['Sheet Taper','sheetTaper',20,   200, 1,     pct],
+      ['Beads',      'beads',     0,    90,  1,     pct],
+      ['Bead Count', 'beadN',     1,    12,  1,     v=>String(Math.round(v))],
+      ['Flare',      'flare',    -90,   200, 1,     pct],
+      ['Plate Taper','plateTaper',-80,  90,  1,     pct],
+      ['Plate Shear','plateShear',-100, 100, 1,     pct],
+      ['Flutter',    'flutter',   0,    100, 1,     pct],
+      ['Stray Reach','strayReach',20,   300, 1,     pct],
+      ['Stray Size', 'straySize', 30,   300, 1,     pct],
+      ['Hatch Pitch','hatchPitch',3,    24,  1,     v=>String(Math.round(v))+'px'],
+      ['Hue Var',    'hueVar',    0,    180, 1,     deg],
+      ['Tone Var',   'toneVar',   0,    100, 1,     pct],
+      ['Tail Mix',   'tailMix',   0,    100, 1,     pct],
       ['Seed',       'seed',      0,    999, 1,     v=>String(Math.round(v))],
       {sel:true, label:'Hold (静止)', key:'hold', opts:['動く', '静止 (Phase の時刻で固定)']},
       ['Phase',      'phase',     0,    120, 0.1,   v=>v.toFixed(1)+'s'],
@@ -19962,7 +19983,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
-    for(const [label,key] of [['Ink','ink'],['Paper','paper']]){
+    for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Tail Color','tailCol']]){
       const row = mkRow();
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
@@ -19978,7 +19999,7 @@ void mainImage(out vec4 o, in vec2 f){
         for(const spec of specs){
           if(spec.sel) continue;
           const [label,key,mi,ma,step] = spec;
-          if(key === 'audio' || key === 'paperAlpha' || key === 'camYaw' || key === 'camPitch' || key === 'phase') continue;
+          if(key === 'audio' || key === 'paperAlpha' || key === 'camYaw' || key === 'camPitch' || key === 'phase' || key === 'posX' || key === 'posY' || key === 'lens') continue;
           const v = mi + Math.random()*(ma - mi);
           P[key] = +(Math.round(v/step)*step).toFixed(4);
         }
@@ -20651,6 +20672,31 @@ void mainImage(out vec4 o, in vec2 f){
       ['Detail',     'detail',    0,    1,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
       ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
+      ['Pos X',      'posX',     -40,   40,  1,     v=>String(Math.round(v))+'%'],
+      ['Pos Y',      'posY',     -30,   30,  1,     v=>String(Math.round(v))+'%'],
+      ['Roll',       'roll',     -180,  180, 1,     v=>String(Math.round(v))+'°'],
+      ['Lens',       'lens',      50,   250, 1,     v=>String(Math.round(v))+'%'],
+      ['Yaw',        'yaw',      -180,  180, 1,     v=>String(Math.round(v))+'°'],
+      ['Light Dir',  'lightA',   -180,  180, 1,     v=>String(Math.round(v))+'°'],
+      ['Light Front','lightZ',    20,   300, 1,     v=>String(Math.round(v))+'%'],
+      ['Piece Shade','pShade',    0,    100, 1,     v=>String(Math.round(v))+'%'],
+      ['Rim',        'rim',      -100,  100, 1,     v=>String(Math.round(v))+'%'],
+      ['Round',      'round',     0,    100, 1,     v=>String(Math.round(v))+'%'],
+      ['Taper',      'taper',    -60,   90,  1,     v=>String(Math.round(v))+'%'],
+      ['Twist',      'twist',    -150,  150, 1,     v=>String(Math.round(v))+'%'],
+      ['Gap',        'gap',       0,    500, 1,     v=>String(Math.round(v))+'%'],
+      ['Len Var',    'lenVar',    0,    200, 1,     v=>String(Math.round(v))+'%'],
+      ['Wid Var',    'widVar',    0,    200, 1,     v=>String(Math.round(v))+'%'],
+      ['Fall Curve', 'fallCurve', 1,    4,   0.05,  f2],
+      ['Fall Dir',   'fallDir',  -180,  180, 1,     v=>String(Math.round(v))+'°'],
+      ['Fade Start', 'fadeStart', 0,    95,  1,     v=>String(Math.round(v))+'%'],
+      ['Peel Span',  'peelSpan',  5,    60,  1,     v=>String(Math.round(v))+'%'],
+      ['Lift Share', 'liftShare', 10,   80,  1,     v=>String(Math.round(v))+'%'],
+      ['Peel Phase', 'peelPhase', 0,    100, 1,     v=>String(Math.round(v))+'%'],
+      ['Tone Var',   'toneVar',   0,    100, 1,     v=>String(Math.round(v))+'%'],
+      ['Hue Var',    'hueVar',    0,    180, 1,     v=>String(Math.round(v))+'°'],
+      ['Body Line',  'bodyLine',  0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Noise Y',    'noiseY',    25,   400, 1,     v=>String(Math.round(v))+'%'],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
@@ -20691,7 +20737,7 @@ void mainImage(out vec4 o, in vec2 f){
         for(const spec of specs){
           if(spec.sel) continue;
           const [label,key,mi,ma,step] = spec;
-          if(key === 'audio' || key === 'paperAlpha') continue;
+          if(key === 'audio' || key === 'paperAlpha' || key === 'posX' || key === 'posY' || key === 'roll' || key === 'lens' || key === 'yaw' || key === 'peelPhase') continue;
           const v = mi + Math.random()*(ma - mi);
           P[key] = +(Math.round(v/step)*step).toFixed(4);
         }
