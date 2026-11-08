@@ -193,6 +193,10 @@ const Fude = {
     refill:2,         // 墨継ぎの間隔 (画数)
     splay:0.5,        // 毛先の割れ
     rough:0.3,        // 縁の荒れ
+    edgeSoft:0,       // 線の縁のぼけ
+    bristleLean:0,    // 毛の筋の傾き (線に対して斜めの筋)
+    fineHair:38,      // 細い毛の筋の割合 (%)
+    rimDry:40,        // 線の縁のかすれやすさ (%)
     // 墨
     density:0.9,      // 墨の濃さ (低いと Ink 2 へ寄る = 淡墨)
     tone:0.35,        // 濃淡のむら
@@ -206,7 +210,15 @@ const Fude = {
     splatSize:0.7,    // 飛沫の大きさ
     splatSpread:1,    // 飛沫の飛距離
     sheen:0,          // 濡れた墨の艶
+    sheenAngle:129.8, // 艶の光の向き (°)
+    sheenPower:6,     // 艶の締まり (大きいほど細く鋭い)
+    inkGamma:1,       // 墨の濃淡のカーブ (1 より大きいと淡い部分が増える)
+    edgeRing:0,       // 縁だけ濃く残す (中が抜けて輪郭になる)
+    bleedHalo:100,    // にじみの滲み出し (%)
     grain:0.3,        // 紙の目
+    grainSize:100,    // 紙の目の粗さ (%)
+    paperMottle:0,    // 紙の雲むら (低周波の濃淡)
+    paperVignette:0,  // 紙の四隅の焼け
     paperAlpha:0,     // Slot B での紙の不透明度
     colorMode:0,      // 0=指定色 (Ink / Ink 2 / Paper) / 1=セットから選ぶ / 2=セットからランダム / 3=完全ランダム
     colorSet:0,       // colorMode=1 のセットの番号
@@ -1322,7 +1334,7 @@ uniform float uW0, uBristles, uStreak, uBContrast, uRefill;
 #define uSpeedDry F0.z
 #define uSplay    F0.w
 #define uRough    F1.x
-uniform float uTone, uPool, uFlowT, uBoilOff;
+uniform float uTone, uPool, uFlowT, uBoilOff, uSoft, uLean, uFine, uRim;
 out vec4 frag;
 ${NOISE}
 void main(){
@@ -1338,14 +1350,14 @@ void main(){
   float edge = 1.0 - uRough*0.4*vn(vec2(sW*1.1 + rnd, x > 0.0 ? 3.0 : 9.0));
   float tailTip = max(0.0, vS - vSLim)/vW;
   float r = length(vec2(x, max(over, tailTip)))/edge;
-  float aa = clamp(fwidth(r), 0.02, 0.35);
+  float aa = clamp(fwidth(r), 0.02, 0.35) + uSoft*0.6;
   float mask = 1.0 - smoothstep(1.0 - aa, 1.0 + aa*0.5, r);
   if(mask <= 0.0) discard;
 
   // 毛の筋: 太さ方向に細かく、進行方向に長いノイズ
   float bid = x*uBristles*0.5 + rnd + uBoilOff;
-  float ys  = sW/uStreak + uFlowT + rnd*0.37;
-  float b = vn(vec2(bid, ys))*0.62 + vn(vec2(bid*2.7 + 5.0, ys*1.7 + 9.0))*0.38;
+  float ys  = sW/uStreak + uFlowT + rnd*0.37 + x*uLean;
+  float b = mix(vn(vec2(bid, ys)), vn(vec2(bid*2.7 + 5.0, ys*1.7 + 9.0)), uFine);
   b = clamp((b - 0.5)*uBContrast + 0.5, 0.0, 1.0);
 
   // 墨の残量: uRefill 画ごとに墨を継ぐ
@@ -1353,7 +1365,7 @@ void main(){
   inkT += 0.14*(vn(vec2(sW*0.25, vRand*9.0)) - 0.5);
   float dry = uKasure*vDry*smoothstep(uDryStart, 1.0, inkT);
   dry *= 1.0 - uSpeedDry*smoothstep(0.1, 0.7, vCurv);
-  dry += uKasure*0.4*smoothstep(0.5, 1.0, abs(x))*smoothstep(uDryStart*0.6, 1.0, inkT);
+  dry += uKasure*uRim*smoothstep(0.5, 1.0, abs(x))*smoothstep(uDryStart*0.6, 1.0, inkT);
   dry = min(dry, 0.8);                               // どれだけ乾いても筋は残す (線が消えると字にならない)
   float t = dry*1.15 - 0.22;
   float cov = smoothstep(t - 0.05, t + 0.07, b);
@@ -1415,6 +1427,7 @@ uniform sampler2D uTex;
 uniform vec2  uRes;
 uniform vec3  uInk, uInk2, uPaper;
 uniform float uDensity, uOverlap, uBleed, uBleedS, uFiber, uGrain, uSheen, uFade, uOpaque, uPaperAlpha;
+uniform float uSheenAng, uSheenPow, uGamma, uRing, uHalo, uGrainS, uMottle, uVig;
 uniform int   uTaps;
 out vec4 frag;
 ${NOISE}
@@ -1437,24 +1450,34 @@ void main(){
     sum /= float(uTaps);
     float fib = vn(p*uBleedS*3.0)*0.5 + 0.5;
     float halo = smoothstep(0.12, 0.62, sum*fib*1.4);
-    float wet = max(a, halo*0.82);
+    float wet = max(a, min(1.0, halo*0.82*uHalo));
     tone += (wet - a)*0.72;
     a = wet;
   }
-  float tooth = vn(p*uRes.y*0.33)*0.6 + vn(p*uRes.y*0.11 + 3.0)*0.4;
+  float tooth = vn(p*uRes.y*0.33*uGrainS)*0.6 + vn(p*uRes.y*0.11*uGrainS + 3.0)*0.4;
   float dryEdge = 1.0 - smoothstep(0.55, 1.0, a);
   a *= 1.0 - uGrain*smoothstep(0.42, 0.78, tooth)*(0.4 + 0.6*dryEdge);
 
   float dark = clamp(uDensity*(a > 0.001 ? clamp(tone/max(t.r, 0.02), 0.0, 1.0) : 1.0) + pool*0.6 + over*uOverlap, 0.0, 1.0);
+  if(uGamma != 1.0) dark = pow(dark, uGamma);
+  if(uRing > 0.0){
+    float rp = uRes.y/180.0;
+    vec2 q = rp/uRes;
+    float nb = 0.25*(texture(uTex, vUv + vec2(q.x, 0.0)).r + texture(uTex, vUv - vec2(q.x, 0.0)).r + texture(uTex, vUv + vec2(0.0, q.y)).r + texture(uTex, vUv - vec2(0.0, q.y)).r);
+    float ring = clamp((t.r - nb)*3.0, 0.0, 1.0);
+    dark *= mix(1.0, 0.2 + 0.8*ring, uRing);
+  }
   vec3 ink = mix(uInk2, uInk, dark);
   if(uSheen > 0.0){
     vec2 px = 2.0/uRes;
     float gx = texture(uTex, vUv + vec2(px.x, 0.0)).r - texture(uTex, vUv - vec2(px.x, 0.0)).r;
     float gy = texture(uTex, vUv + vec2(0.0, px.y)).r - texture(uTex, vUv - vec2(0.0, px.y)).r;
-    ink += uSheen*0.5*pow(clamp(dot(normalize(vec3(gx, gy, 0.6)), normalize(vec3(-0.5, 0.6, 0.6))), 0.0, 1.0), 6.0);
+    ink += uSheen*0.5*pow(clamp(dot(normalize(vec3(gx, gy, 0.6)), normalize(vec3(cos(uSheenAng), sin(uSheenAng), 0.6/0.7810250))), 0.0, 1.0), uSheenPow);
   }
   a = clamp(a, 0.0, 1.0)*uFade;
   vec3 paper = uPaper*(1.0 - uGrain*0.07*(tooth - 0.5));
+  if(uMottle > 0.0) paper *= 1.0 - uMottle*0.3*(vn(p*3.0 + 41.0)*0.65 + vn(p*7.5 + 13.0)*0.35);
+  if(uVig > 0.0){ vec2 vc = vUv*2.0 - 1.0; paper *= 1.0 - uVig*0.55*smoothstep(0.35, 1.5, length(vc)); }
   if(uOpaque > 0.5){ frag = vec4(mix(paper, ink, a), 1.0); }
   else {
     float o = a + uPaperAlpha*(1.0 - a);
@@ -1714,6 +1737,8 @@ void main(){
       f('uBristles', Math.max(1, +P.bristles||1)); f('uStreak', Math.max(0.1, +P.streak||1)); f('uBContrast', +P.bristleContrast||1);
       f('uRefill', Math.max(1, Math.round(+P.refill||1)));
       f('uTone', dz(P.tone)); f('uPool', dz(P.pool));
+      f('uSoft', dz(P.edgeSoft)); f('uLean', dz(P.bristleLean));
+      f('uFine', Math.max(0, Math.min(100, +P.fineHair))/100); f('uRim', Math.max(0, +P.rimDry)/100);
       f('uFlowT', (+P.flow||0)*bt*0.1); f('uBoilOff', boilOff);
       gl.bindVertexArray(this.vao);
       gl.drawElements(gl.TRIANGLES, this.indexCount, gl.UNSIGNED_INT, 0);
@@ -1752,6 +1777,9 @@ void main(){
     c('uDensity', dz(P.density)); c('uOverlap', dz(P.overlap)); c('uBleed', bleed); c('uBleedS', Math.max(0.5, +P.bleedScale||1));
     c('uFiber', dz(P.bleedFiber)); c('uGrain', dz(P.grain)); c('uSheen', dz(P.sheen)); c('uFade', Math.max(0, Math.min(1, fade)));
     c('uOpaque', opaque ? 1 : 0); c('uPaperAlpha', dz(P.paperAlpha));
+    c('uSheenAng', (+P.sheenAngle||0)*Math.PI/180); c('uSheenPow', Math.max(1, +P.sheenPower||1)); c('uGamma', Math.max(0.1, +P.inkGamma||1));
+    c('uRing', dz(P.edgeRing)); c('uHalo', Math.max(0, +P.bleedHalo)/100); c('uGrainS', Math.max(0.1, +P.grainSize)/100);
+    c('uMottle', dz(P.paperMottle)); c('uVig', dz(P.paperVignette));
     gl.uniform1i(U(cp,'uTaps'), taps);
     gl.bindVertexArray(this.emptyVAO);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
