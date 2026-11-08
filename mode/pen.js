@@ -15,11 +15,16 @@ const Pen = {
   strokes:[], clock:0, _last:0, _lastTick:null,
   _camTarget:null, _camFrom:null, _camDur:0, _camT:1,
   cam:{ rotX:0.10, rotY:0.0, zoom:1.0 },
+  _yawAdd:0, _pitchAdd:0, _rollAdd:0, _camD:1250, _fovE:920, _op:0.97, _fog:0,
 
   // パラメータ (元 index.html の P。photo 系は除外)
   P:{ count:100, width:1.0, peak:1.0, bleed:1.0, kasure:1.0, len:1.0, depth:0.35, speed:1.0,
       color:1,     // 0=mono / 1=ランダムパレット / 2=共有パレット
-      bgColor:[0xdd/255, 0xdd/255, 0xdd/255] },   // 紙 (Slot A の背景色 / Slot B は透過)
+      bgColor:[0xdd/255, 0xdd/255, 0xdd/255],   // 紙 (Slot A の背景色 / Slot B は透過)
+      persp:100, camPitch:0, camYaw:0, camRoll:0, camWander:100, spread:100,
+      arcBow:100, zigRate:22, zigAmp:100, milliRate:60, jumpRate:55, jumpPow:100, blotSize:100, waver:100, taper:100,
+      grain:100, edgeF:100, edgeSoft:0, palRun:72, edgeShade:40, opacity:97, hold:100, fade:100, spawnDiv:2, depthFog:0,
+      monoInk:[0,0,0], palTint:[1,1,1] },
 
   // 定数
   BLEED:1.52, SPHERE_R:500, STRIDE:5, CAM_DIST:1250, FOV:920,   // 球状ハコ(半径 SPHERE_R)。カメラは奥へ引き FOV で見かけ倍率を維持
@@ -66,6 +71,13 @@ uniform vec3  u_cosA;
 uniform vec3  u_cosB;
 uniform vec3  u_cosC;
 uniform vec3  u_cosD;
+uniform float u_grain;
+uniform float u_lumpF;
+uniform float u_soft;
+uniform float u_run;
+uniform float u_shade;
+uniform vec3  u_monoInk;
+uniform vec3  u_palTint;
 
 vec3 cosinePalette(float t){
   return clamp(u_cosA + u_cosB * cos(6.28318*(u_cosC*t + u_cosD)), 0.0, 1.0);
@@ -79,8 +91,8 @@ float vnoise(vec2 p){
 }
 float brushRadius(float theta, float seed, float bleed){
   vec2 p1 = vec2(cos(theta*1.0), sin(theta*1.0)) * 2.1 + seed*vec2(0.37,1.19);
-  vec2 p2 = vec2(cos(theta*3.0), sin(theta*3.0)) * 1.4 + seed*vec2(1.81,0.63);
-  vec2 p3 = vec2(cos(theta*8.0), sin(theta*8.0)) * 0.8 + seed*vec2(3.14,2.71);
+  vec2 p2 = vec2(cos(theta*3.0*u_lumpF), sin(theta*3.0*u_lumpF)) * 1.4 + seed*vec2(1.81,0.63);
+  vec2 p3 = vec2(cos(theta*8.0*u_lumpF), sin(theta*8.0*u_lumpF)) * 0.8 + seed*vec2(3.14,2.71);
   float n = vnoise(p1)*0.50 + vnoise(p2)*0.32 + vnoise(p3)*0.18;
   float lumpAmp = 0.38 * bleed;
   return clamp(1.0 - lumpAmp*0.28 + n*lumpAmp*1.56, 0.40, 1.60);
@@ -95,11 +107,11 @@ void main(){
     float ep = max(smoothstep(0.12,0.0,u), smoothstep(0.88,1.0,u));
     bRad = clamp(bRad + ep*0.28*u_bleed, 0.40, 1.65);
   }
-  float strokeMask = step(dist, bRad);
+  float strokeMask = (u_soft > 0.0) ? 1.0 - smoothstep(bRad*(1.0 - 0.5*u_soft), bRad, dist) : step(dist, bRad);
   float cr=cos(u_brot), sr=sin(u_brot);
   vec2 kUV = vec2(cr*u - sr*v*0.5, sr*u + cr*v*0.5);
-  float kNoise = vnoise(kUV*vec2(9.0,5.5)+u_seed*3.1)*0.60
-               + vnoise(kUV*vec2(21.0,13.0)+u_seed*7.7)*0.40;
+  float kNoise = vnoise(kUV*vec2(9.0,5.5)*u_grain+u_seed*3.1)*0.60
+               + vnoise(kUV*vec2(21.0,13.0)*u_grain+u_seed*7.7)*0.40;
   float edgeProx  = dist / max(bRad, 0.01);
   float kThresh   = u_kasure * 0.52 * smoothstep(0.15, 1.0, edgeProx);
   float kasureMask = step(kThresh, kNoise);
@@ -108,11 +120,12 @@ void main(){
 
   vec3 col;
   if(u_colorMode > 0.5){
-    float t = u_cosPhase + u*0.72;   // fract しない: cos は連続なので継ぎ目(白→黒の急変)が出ない
+    float t = u_cosPhase + u*u_run;   // fract しない: cos は連続なので継ぎ目(白→黒の急変)が出ない
     col = cosinePalette(t);
-    col *= 0.75 + 0.25*(1.0 - edgeProx*0.4);
+    col *= 0.75 + 0.25*(1.0 - edgeProx*u_shade);
+    col *= u_palTint;
   } else {
-    col = u_ink;
+    col = u_ink + u_monoInk;
   }
   gl_FragColor = vec4(col, alpha);
 }`,
@@ -149,6 +162,13 @@ void main(){
       cosB:      gl.getUniformLocation(prog, 'u_cosB'),
       cosC:      gl.getUniformLocation(prog, 'u_cosC'),
       cosD:      gl.getUniformLocation(prog, 'u_cosD'),
+      grain:     gl.getUniformLocation(prog, 'u_grain'),
+      lumpF:     gl.getUniformLocation(prog, 'u_lumpF'),
+      soft:      gl.getUniformLocation(prog, 'u_soft'),
+      run:       gl.getUniformLocation(prog, 'u_run'),
+      shade:     gl.getUniformLocation(prog, 'u_shade'),
+      monoInk:   gl.getUniformLocation(prog, 'u_monoInk'),
+      palTint:   gl.getUniformLocation(prog, 'u_palTint'),
     };
     this.vbuf = gl.createBuffer();
     this._last = performance.now();
@@ -160,6 +180,8 @@ void main(){
 
   // ── helpers ──
   _rand(a,b){ return a + Math.random()*(b-a); },
+  _pv(k, d){ const v = this.P[k]; if(v == null) return d; return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
+  _pct(k){ return this._pv(k, 100) / 100; },
   _bez3d(p0,p1,p2,p3,t){
     const m=1-t;
     return [
@@ -195,32 +217,37 @@ void main(){
   // ── camera ──
   _toView(p){
     const px=p[0],py=p[1],pz=p[2], c=this.cam;
-    const cy=Math.cos(c.rotY), sy=Math.sin(c.rotY);
+    const ry=c.rotY + this._yawAdd, rx=c.rotX + this._pitchAdd;
+    const cy=Math.cos(ry), sy=Math.sin(ry);
     const x1= px*cy + pz*sy;
     const z1=-px*sy + pz*cy;
-    const cx=Math.cos(c.rotX), sx=Math.sin(c.rotX);
+    const cx=Math.cos(rx), sx=Math.sin(rx);
     const y2= py*cx - z1*sx;
     const z2= py*sx + z1*cx;
-    return [x1, y2, z2 + this.CAM_DIST / c.zoom];
+    return [x1, y2, z2 + this._camD / c.zoom];
   },
   _proj(vp){
     const vz=vp[2];
     if(vz < 1.0) return null;
-    const d=this.FOV/vz;
-    return [vp[0]*d/(this.W*0.5), vp[1]*d/(this.H*0.5)];
+    const d=this._fovE/vz;
+    let x=vp[0]*d, y=vp[1]*d;
+    const r=this._rollAdd;
+    if(r !== 0){ const c=Math.cos(r), s=Math.sin(r); const x2=x*c - y*s; y = x*s + y*c; x = x2; }
+    return [x/(this.W*0.5), y/(this.H*0.5)];
   },
 
   makeRandomStroke(born){
     const P=this.P, rand=(a,b)=>this._rand(a,b);
-    const penType = Math.random() < 0.60 ? 'milli' : 'gpen';   // 細いミリペン(松本大洋風ダマ)多め / G ペン
+    const penType = Math.random() < this._pv('milliRate', 60)/100 ? 'milli' : 'gpen';   // 細いミリペン(松本大洋風ダマ)多め / G ペン
     const style = penType==='milli' ? 0 : (Math.random()<0.5 ? 0 : 2);   // FS エッジ質感: gpen は 0/2 で変化 / milli は 0(クリーン)
     const pathType = Math.random() < P.depth ? 'depth' : 'arc';
 
     let p0,p1,p2,p3;
     const lenScale = P.len;
+    const sphereR = this.SPHERE_R * this._pct('spread');
 
     if(pathType === 'depth'){
-      const ctr=this._ballPoint(this.SPHERE_R);
+      const ctr=this._ballPoint(sphereR);
       const cx=ctr[0], cy=ctr[1], startZ=ctr[2];
       const len=rand(400,900)*lenScale;
       const tiltX=rand(-.5,.5), tiltY=rand(-.5,.5);
@@ -232,13 +259,13 @@ void main(){
       p1=[p0[0]+(p3[0]-p0[0])*.25+sx, p0[1]+(p3[1]-p0[1])*.25+sy, p0[2]+(p3[2]-p0[2])*.25];
       p2=[p0[0]+(p3[0]-p0[0])*.75-sx, p0[1]+(p3[1]-p0[1])*.75-sy, p0[2]+(p3[2]-p0[2])*.75];
     } else {
-      const ctr=this._ballPoint(this.SPHERE_R);
+      const ctr=this._ballPoint(sphereR);
       const cx=ctr[0], cy=ctr[1], cz=ctr[2];
       const len=rand(500,1100)*lenScale;
       const ang=rand(0,Math.PI*2);
       const cos=Math.cos(ang), sin=Math.sin(ang);
       const px=-sin, py=cos;
-      const cv=rand(120,340)*(Math.random()<.5?1:-1);
+      const cv=rand(120,340)*this._pct('arcBow')*(Math.random()<.5?1:-1);
       const zb=rand(60,180)*(Math.random()<.5?1:-1);
       p0=[cx-cos*len*.50,           cy-sin*len*.50,           cz   ];
       p1=[cx-cos*len*.13+px*cv*.90, cy-sin*len*.13+py*cv*.90, cz+zb];
@@ -248,7 +275,7 @@ void main(){
 
     // 長さに応じた適応分割(短い線は少なく=軽量化)。多段カーブは多め。300固定をやめ平均を大幅減。
     const rawLen = Math.hypot(p3[0]-p0[0], p3[1]-p0[1], p3[2]-p0[2]);
-    const multi = Math.random() < 0.22;
+    const multi = Math.random() < this._pv('zigRate', 22)/100;
     const SEG = Math.max(40, Math.min(160, Math.round(rawLen/8 * (multi?1.4:1))));
     let pts;
     if(multi){
@@ -258,7 +285,7 @@ void main(){
       const ref=this._ballPoint(1);                            // 適当な参照方向
       let px=ax[1]*ref[2]-ax[2]*ref[1], py=ax[2]*ref[0]-ax[0]*ref[2], pz=ax[0]*ref[1]-ax[1]*ref[0];
       const pl=Math.hypot(px,py,pz)||1; px/=pl; py/=pl; pz/=pl;   // 主軸に垂直な単位ベクトル
-      const amp=rand(150,360);
+      const amp=rand(150,360)*this._pct('zigAmp');
       const way=[p0];
       for(let k=1;k<=nBend;k++){
         const f=k/(nBend+1), sgn=(k%2? 1 : -1);
@@ -280,17 +307,18 @@ void main(){
       : _expW(0.8, 12.0, 0.6)    // 0.8〜12.0(指数分布。細主体で稀に太い)
     ) * P.width;
     // 幅のジャンプ(段差): ジャンプ率で 0〜3 段。各ジャンプ点で太さが別レベルへ跳ぶ(細い線の中に急な太細)。
-    const jN = Math.random() < 0.55 ? (1 + Math.floor(Math.random()*3)) : 0;
-    const jArr=[]; for(let j=0;j<jN;j++) jArr.push({ t:rand(0.12,0.88), mul:rand(0.35,2.1) }); jArr.sort((a,b)=>a.t-b.t);
+    const jN = Math.random() < this._pv('jumpRate', 55)/100 ? (1 + Math.floor(Math.random()*3)) : 0;
+    const jumpK=this._pct('jumpPow'), blotK=this._pct('blotSize'), waverK=this._pct('waver'), taperK=this._pct('taper');
+    const jArr=[]; for(let j=0;j<jN;j++) jArr.push({ t:rand(0.12,0.88), mul:Math.pow(rand(0.35,2.1), jumpK) }); jArr.sort((a,b)=>a.t-b.t);
     const jumpMul = t => { let m=1; for(const jp of jArr){ if(t>=jp.t) m=jp.mul; } return m; };
     const taperT = Math.max(0, Math.min(1, (rawLen - 300) / 800));
     let widthAt;
     if(penType === 'milli'){
       // 松本大洋風ミリペン: 細い等幅 + うねり + ダマ(インク溜まりのコブ)。
-      const wob=rand(0.05,0.16), f=rand(2,5), ph=rand(0,Math.PI*2);
+      const wob=rand(0.05,0.16)*waverK, f=rand(2,5), ph=rand(0,Math.PI*2);
       const blobN=Math.floor(rand(1,5)), blobs=[];
-      for(let b=0;b<blobN;b++) blobs.push({ tc:rand(0.08,0.92), amp:rand(0.5,1.6), sig:rand(0.012,0.045) });
-      const eLen=0.06;   // 端を軽く尖らせる(ハードカット回避)。線形テーパー。
+      for(let b=0;b<blobN;b++) blobs.push({ tc:rand(0.08,0.92), amp:rand(0.5,1.6)*blotK, sig:rand(0.012,0.045) });
+      const eLen=0.06*taperK;   // 端を軽く尖らせる(ハードカット回避)。線形テーパー。
       widthAt = t => {
         const endT = Math.min(t/eLen, (1-t)/eLen, 1);
         let w = baseMax * (0.82 + wob*Math.sin(t*Math.PI*f + ph));
@@ -299,8 +327,8 @@ void main(){
       };
     } else {
       // G ペン: 入り/抜きは線形ランプ(二次関数的な急激さをやめ、一定率で増減)。抜きは入りよりやや短め。
-      const entryLen = 0.22 + 0.16*taperT;
-      const exitLen  = 0.18 + 0.14*taperT;
+      const entryLen = (0.22 + 0.16*taperT)*taperK;
+      const exitLen  = (0.18 + 0.14*taperT)*taperK;
       const swellAmt = Math.min(0.6, (0.05 + rand(0, 0.12)) * P.peak);  // 中央膨らみは控えめ(中央が山にならないように)
       widthAt = t => {
         const inT  = Math.min(t / entryLen, 1.0);          // 線形に増加
@@ -330,7 +358,7 @@ void main(){
     const drawMult = style===2 ? rand(1.3,1.9) : 1.0;
     const sSpd = rand(0.7, 3.2);                              // ストロークごとに速度を大きくばらつかせる
     const spd = 1.0/(Math.max(P.speed,0.05) * sSpd);         // sSpd 大 = 速い(duration 短い)。全体的に速め。
-    const drawDur=rand(0.35,1.4)*drawMult*spd, holdDur=rand(.12,.7)*spd, fadeDur=rand(.22,.7)*spd;
+    const drawDur=rand(0.35,1.4)*drawMult*spd, holdDur=rand(.12,.7)*spd*this._pct('hold'), fadeDur=rand(.22,.7)*spd*this._pct('fade');
     const lifespan=drawDur+holdDur+fadeDur;
 
     const dark=rand(0.0,0.04);
@@ -353,7 +381,7 @@ void main(){
     const drawProg=Math.min(1.0, age/s.drawDur);
     const fadeStart=s.drawDur+s.holdDur;
     const fadeProg=age>fadeStart?(age-fadeStart)/s.fadeDur:0;
-    const baseA=(1.0-Math.min(1,fadeProg))*0.97;
+    const baseA=(1.0-Math.min(1,fadeProg))*this._op;
     const tMax=s.prog2t(drawProg);
     const visSeg=Math.floor(tMax*SEGS);
     if(visSeg<1) return null;
@@ -376,7 +404,9 @@ void main(){
       Lc.push(this._proj(this._toView([c[0]-wx*w, c[1]-wy*w, c[2]-wz*w])));
       Rc.push(this._proj(this._toView([c[0]+wx*w, c[1]+wy*w, c[2]+wz*w])));
       const isTip=(i===visSeg-1 && drawProg<1.0);
-      av.push(baseA*(isTip?(tMax*SEGS-i):1.0));
+      let fa=baseA;
+      if(this._fog !== 0){ const vz=this._toView(c)[2], ft=Math.max(0, Math.min(1, (vz - (this._camD-700))/1400)); fa = baseA*(1.0 - this._fog*ft); }
+      av.push(fa*(isTip?(tMax*SEGS-i):1.0));
     }
 
     const data=[];
@@ -404,8 +434,9 @@ void main(){
     // カメラ: 球のランダムな表面地点へ移動(easeInOut で緩急=各点付近で減速→次点へ加速)。
     if(this._camTarget == null || this._camT >= 1){
       this._camFrom = { x:this.cam.rotX, y:this.cam.rotY };
-      this._camTarget = { x: this._rand(-1.15, 1.15),                        // 緯度(gimbal 回避のためクランプ)
-                          y: this.cam.rotY + this._rand(-Math.PI, Math.PI) }; // 経度(相対で最大 ±180°)
+      const wk = this._pct('camWander');
+      this._camTarget = { x: Math.max(-1.45, Math.min(1.45, this._rand(-1.15, 1.15) * wk)),   // 緯度(gimbal 回避のためクランプ)
+                          y: this.cam.rotY + this._rand(-Math.PI, Math.PI) * wk }; // 経度(相対で最大 ±180°)
       this._camDur = this._rand(0.9, 2.8);                                   // 移動時間のばらつき=緩急/ペース
       this._camT = 0;
     }
@@ -418,7 +449,7 @@ void main(){
     // 呼び出し側から beat ×A を反映済みの visual beat が渡る。
     const beat = (typeof beatCount === 'number') ? beatCount
       : ((typeof App !== 'undefined' && App.visualBeat) ? App.visualBeat() : ((typeof BPM!=='undefined' && BPM.beatCount) ? BPM.beatCount() : this.clock*2.0));
-    const tick = Math.floor(beat * this.SUBBEAT);
+    const tick = Math.floor(beat * this._pv('spawnDiv', this.SUBBEAT));
     if(this._lastTick == null) this._lastTick = tick;
     const n=Math.min(this.strokes.length, this.P.count);
     if(tick !== this._lastTick){
@@ -451,6 +482,14 @@ void main(){
     if(!this.initialized) return;
     const gl=this.gl, { fbo, w, h, slot }=opts;
     this.W=w; this.H=h;
+    this._yawAdd = this._pv('camYaw', 0) * Math.PI/180;
+    this._pitchAdd = this._pv('camPitch', 0) * Math.PI/180;
+    this._rollAdd = this._pv('camRoll', 0) * Math.PI/180;
+    const pk = this._pct('persp');
+    this._camD = this.CAM_DIST * pk;
+    this._fovE = this.FOV * pk;
+    this._op = this._pv('opacity', 97) / 100;
+    this._fog = this._pv('depthFog', 0) / 100;
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0,0,w,h);
     if(gl.bindVertexArray) gl.bindVertexArray(null);   // 既存 VAO を汚さない
@@ -478,6 +517,14 @@ void main(){
     gl.vertexAttribPointer(this.LOC.uv,   2, gl.FLOAT, false, 20, 8);
     gl.vertexAttribPointer(this.LOC.alpha,1, gl.FLOAT, false, 20, 16);
 
+    const L=this.LOC, mi=this.P.monoInk || [0,0,0], pt=this.P.palTint || [1,1,1];
+    gl.uniform1f(L.grain, this._pct('grain'));
+    gl.uniform1f(L.lumpF, this._pct('edgeF'));
+    gl.uniform1f(L.soft, this._pv('edgeSoft', 0) / 100);
+    gl.uniform1f(L.run, this._pv('palRun', 72) / 100);
+    gl.uniform1f(L.shade, this._pv('edgeShade', 40) / 100);
+    gl.uniform3f(L.monoInk, mi[0], mi[1], mi[2]);
+    gl.uniform3f(L.palTint, pt[0], pt[1], pt[2]);
     const n=Math.min(this.strokes.length, this.P.count);
     for(let i=0;i<n;i++){ const s=this.strokes[i]; if(s) this._drawStroke(s); }
 
