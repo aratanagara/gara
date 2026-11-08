@@ -27,6 +27,13 @@ vec3 sb_hash3(vec3 p){
 // @param uScale 40..130 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uSteps 100..240 = 240.0
+// @param uCoreSquash 50..180 = 100
+// @param uCoreCube 0..100 = 0
+// @param uCoreLump 0..100 = 0
+// @param uCoreRibs 0..100 = 0
+// @param uCoreSpiral 0..100 = 0
+// @param uCoreWaist -50..50 = 0
+// @param uCoreEgg -50..50 = 0
 uniform float uDensity;   // 棘 (結晶) の数の密度 (%)
 uniform float uSharp;   // 棘の鋭さ (%。大きいほど細く尖る)
 uniform float uSpike;   // 棘の伸びる量 (%)
@@ -35,6 +42,13 @@ uniform float uContrast;   // コントラスト (ガンマ) (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
+uniform float uCoreSquash;   // 核の縦方向の長さ (%)。下げると平たく、上げると縦長
+uniform float uCoreCube;   // 核を角張った立方体へ寄せる量 (%)
+uniform float uCoreLump;   // 核の表面のでこぼこ (%)
+uniform float uCoreRibs;   // 核に刻む横縞の溝 (%)
+uniform float uCoreSpiral;   // 核に刻む螺旋の溝 (%)
+uniform float uCoreWaist;   // 核のくびれ (負) / 腹の膨らみ (正) (%)
+uniform float uCoreEgg;   // 核を卵形にする量 (%)。正で上が尖り、負で下が尖る
 
 // 方向 n に対する突起(棘)高さ。各セルに円錐状の鋭い棘を立て、位置/高さ/有無をランダム化(非一様)。
 float sb_disp(vec3 n){
@@ -57,7 +71,27 @@ float sb_disp(vec3 n){
   return (0.4 + 0.7*needle) * sb_amp;
 }
 
+bool sb_custom = false;
+
+float sb_mapC(vec3 p){
+  float sc = uScale / 100.0;
+  float lp = length(p);
+  if(uCoreSquash != 100.0 || uCoreWaist != 0.0 || uCoreEgg != 0.0){
+    vec3 q = p;
+    if(uCoreSquash != 100.0) q.y *= 100.0 / uCoreSquash;
+    if(uCoreWaist != 0.0) q.xz *= 1.0 + (uCoreWaist / 100.0) * cos(q.y * 4.0);
+    if(uCoreEgg != 0.0) q.y *= 1.0 + (uCoreEgg / 200.0) * sign(q.y);
+    lp = length(q);
+  }
+  if(uCoreCube != 0.0){ vec3 q2 = p * p; lp = mix(lp, sqrt(sqrt(dot(q2, q2))), uCoreCube / 100.0); }
+  if(uCoreLump != 0.0) lp -= (uCoreLump / 100.0) * 0.12 * sin(p.x*9.0) * sin(p.y*9.0) * sin(p.z*9.0);
+  if(uCoreRibs != 0.0) lp -= (uCoreRibs / 100.0) * 0.08 * sin(p.y*30.0);
+  if(uCoreSpiral != 0.0) lp -= (uCoreSpiral / 100.0) * 0.08 * sin(p.y*24.0 + atan(p.z, p.x)*3.0);
+  return (lp / sc - sb_core - sb_disp(normalize(p))) * sc;   // 小さい核を放射状に変位 → ウニ
+}
+
 float sb_map(vec3 p){
+  if(sb_custom) return sb_mapC(p);
   float sc = uScale / 100.0;
   return (length(p) / sc - sb_core - sb_disp(normalize(p))) * sc;   // 小さい核を放射状に変位 → ウニ
 }
@@ -130,11 +164,17 @@ vec3 bg_spikeball(vec2 fc){
   ro.yz = rx*ro.yz; rd.yz = rx*rd.yz;
   ro.xz = ry*ro.xz; rd.xz = ry*rd.xz;
 
+  sb_custom = (uCoreSquash != 100.0 || uCoreWaist != 0.0 || uCoreEgg != 0.0 || uCoreCube != 0.0 || uCoreLump != 0.0 || uCoreRibs != 0.0 || uCoreSpiral != 0.0);
   vec3 col = vec3(0.0);
   bgAlpha = 0.0;           // 背景は透過(重ねられる)
 
   // バウンディング球(中心原点, 半径 1+最大棘高+余白)で早期棄却 & 行進帯を限定
   float R = (sb_core + 1.7*sb_amp + 0.15) * (uScale / 100.0);
+  if(uCoreSquash != 100.0) R *= max(1.0, uCoreSquash / 100.0);
+  if(uCoreWaist != 0.0) R *= 1.0 / (1.0 - abs(uCoreWaist) / 100.0);
+  if(uCoreEgg != 0.0) R *= 1.0 / (1.0 - abs(uCoreEgg) / 200.0);
+  if(uCoreCube != 0.0) R += sb_core * 0.32 * (uCoreCube / 100.0) * (uScale / 100.0);
+  R += (0.12 * (uCoreLump / 100.0) + 0.08 * (uCoreRibs / 100.0) + 0.08 * (uCoreSpiral / 100.0)) * (uScale / 100.0);
   float bdot = dot(ro, rd);
   float cc = dot(ro, ro) - R*R;
   float h = bdot*bdot - cc;

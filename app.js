@@ -18972,10 +18972,10 @@ void mainImage(out vec4 o, in vec2 f){
     const isWF = slot.kind === 'windflock';
     $$('.windflock-mode').forEach(el => el.style.display = isWF ? '' : 'none');
     if(isWF && this.refreshWindflockParams) this.refreshWindflockParams();
-    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rzstack', 'rztube']){   // RHIZOME 系は kind ごとに別の見出しとパラメータ
+    for(const k of ['rhizome', 'rzfan', 'rzpacks', 'rzstack', 'rztube', 'ribbon', 'caverns', 'boltzmann']){   // SPECS を持つエンジンは kind ごとに別の見出しとパラメータ
       const on = slot.kind === k;
       $$('.' + k + '-mode').forEach(el => el.style.display = on ? '' : 'none');
-      if(on && this.refreshRhizomeParams) this.refreshRhizomeParams(k);
+      if(on && this.refreshSpecParams) this.refreshSpecParams(k);
     }
     const isSF = slot.kind === 'surrealfloat';
     $$('.surrealfloat-mode').forEach(el => el.style.display = isSF ? '' : 'none');
@@ -19535,12 +19535,20 @@ void mainImage(out vec4 o, in vec2 f){
       });
       row.appendChild(b); }
   },
-  refreshRhizomeParams(kind){
-    kind = kind || 'rhizome';
+  // SPECS ([label, key, min, max, step, fmt] / 選択式 {sel}) を持つ kind エンジン
+  _specEngine(kind){
+    if(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[kind]) return RhizomeKinds[kind];
+    if(kind === 'ribbon') return (typeof Ribbon !== 'undefined') ? Ribbon : null;
+    if(kind === 'caverns') return (typeof Caverns !== 'undefined') ? Caverns : null;
+    if(kind === 'boltzmann') return (typeof Boltzmann !== 'undefined') ? Boltzmann : null;
+    return null;
+  },
+  // エンジンの SPECS からスライダーを組む (RHIZOME 系 / Ribbon / Caverns / Boltzmann 共通)
+  refreshSpecParams(kind){
     const root = document.getElementById(kind + 'Params'); if(!root) return;
-    const RZ = (typeof RhizomeKinds !== 'undefined') ? RhizomeKinds[kind] : null;
-    if(!RZ || !RZ.initialized){
-      root.innerHTML = '<div class="help">RHIZOME preset を選ぶと初期化されます</div>'; return;
+    const RZ = this._specEngine(kind);
+    if(!RZ || !RZ.initialized || !RZ.SPECS){
+      root.innerHTML = '<div class="help">preset を選ぶと初期化されます</div>'; return;
     }
     const P = RZ.P;
     const formats = { pct:v=>String(Math.round(v))+'%', f2:v=>v.toFixed(2), int:v=>String(Math.round(v)), deg:v=>String(Math.round(v))+'°' };

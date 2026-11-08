@@ -10,25 +10,52 @@
 // @param uDensity  60..200  = 100.0
 // @param uWarp     0..300   = 100.0
 // @param uContrast 25..250  = 100.0
+// @param uBandSplit 50..200 = 100.0
+// @param uCoreGain 20..300 = 100.0
+// @param uCoreFloor 30..400 = 100.0
+// @param uCoreSharp 50..200 = 100.0
+// @param uCarry 60..200 = 100.0
+// @param uBandFreq 40..250 = 100.0
+// @param uStretchX 50..200 = 100.0
+// @param uShear -100..100 = 0.0
+// @param uLens -100..100 = 0.0
+// @param uCrossWarp -100..100 = 0.0
 uniform float uDetail;     // 重ねる層の数 (下げると軽く、模様が単純になる)
 uniform float uDensity;    // 模様の細かさ (%)
 uniform float uWarp;       // 層ごとの歪みの強さ (%)
 uniform float uContrast;   // 明暗の強さ (%)
+uniform float uBandSplit; // 赤の帯だけを細かく・粗くする (%)。帯の色のずれ方が変わる
+uniform float uCoreGain; // 光の核の強さ (%)
+uniform float uCoreFloor; // 光の核の飽和点 (%)。下げると核が鋭く尖る
+uniform float uCoreSharp; // 光の核の絞り込み (%)
+uniform float uCarry; // 層から層へ持ち越す光の量の逆数 (%)。下げると前の層の光が強く残る
+uniform float uBandFreq; // 虹色の帯の細かさ (%)
+uniform float uStretchX; // 横方向の伸縮 (%)
+uniform float uShear; // 縦位置に応じた横ずれ (%)
+uniform float uLens; // 画面端の膨らみ・つぼみ (%)。正で端が引き伸ばされる
+uniform float uCrossWarp; // 歪みの縦横の絡め方 (%)。0 = そのまま / 負で逆回り
 
 vec3 bg_iridiscious(vec2 fc){
   // ズーム/パン: 中心基準でスケールしてからパン
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
+
+  if(uStretchX != 100.0) I.x = (I.x - resolution.x * 0.5) * (uStretchX / 100.0) + resolution.x * 0.5;
+  if(uShear != 0.0) I.x += (I.y - resolution.y * 0.5) * (uShear / 100.0);
+  if(uLens != 0.0){ vec2 d = (I - resolution * 0.5) / resolution.y; I += (I - resolution * 0.5) * (uLens / 100.0) * 0.5 * dot(d, d); }
 
   float i = 0.0, s = 14.0 * (uDensity / 100.0);
   vec4 O = vec4(0.0), q = vec4(0.0), l = vec4(0.0);
 
   for(; i++ < 11.0; ){
     if(i > floor(uDetail + 0.5)) break;
-    q.xy = sin(time + s * I/resolution.y + q.yx * 2.0 * (uWarp / 100.0));
-    l += 0.1 / max(dot(q = sin(q), q*4.0), 0.1);
+    vec2 qw = q.yx;
+    if(uCrossWarp > 0.0) qw = mix(q.yx, q.xy, uCrossWarp / 100.0);
+    if(uCrossWarp < 0.0) qw = q.yx * (1.0 + 2.0 * uCrossWarp / 100.0);
+    q.xy = sin(time + s * I/resolution.y + qw * 2.0 * (uWarp / 100.0));
+    l += (0.1 * (uCoreGain / 100.0)) / max(dot(q = sin(q), q * (4.0 * (uCoreSharp / 100.0))), 0.1 * (uCoreFloor / 100.0));
     s *= 0.8;
-    O += sin(l*vec4(3.0,2.0,1.0,1.0) + i*0.7) / s;
-    l /= 4.0;
+    O += sin(l*vec4(3.0 * (uBandSplit / 100.0),2.0,1.0,1.0) * (uBandFreq / 100.0) + i*0.7) / s;
+    l /= 4.0 * (uCarry / 100.0);
   }
 
   O = tanh(O*O * (uContrast / 100.0));

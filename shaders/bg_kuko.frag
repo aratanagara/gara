@@ -41,11 +41,35 @@ uniform float uGlow; // ハイライト・縁の光 (%)
 uniform float uSize; // 球ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+// @param uTubeRadius 80..120 = 100.0
+// @param uBeadOrbit  70..140  = 100.0
+// @param uPitch 40..220 = 100.0
+// @param uStrands 100..300 = 100.0
+// @param uTubeAspect 60..200 = 100.0
+// @param uBeadGap    50..200  = 100.0
+// @param uBlendTube 25..220 = 100.0
+// @param uCellSize 80..130 = 100.0
+// @param uCrossOffset 0..300  = 100.0
+// @param uShine      25..400  = 100.0
+// @param uCamShiftX -80..80 = 0.0
+// @param uCamShiftY -30..30 = 0.0
+uniform float uTubeRadius; // らせん管の輪の半径 (%)
+uniform float uBeadOrbit; // 球のらせんの輪の半径 (%)
+uniform float uPitch; // らせんのねじれの粗さ (%)。0 でまっすぐな輪
+uniform float uStrands; // 輪あたりのらせんの本数 (100 = 1 本、200 = 2 本 …)
+uniform float uTubeAspect; // 管の断面の縦横比 (%)
+uniform float uBeadGap; // 球どうしの間隔 (%)
+uniform float uBlendTube; // 管どうしがつながる滑らかさ (%)
+uniform float uCellSize; // らせんを並べる升目の大きさ (%)
+uniform float uCrossOffset; // 2 本目の管の位置ずれ (%)
+uniform float uShine; // 鏡面ハイライトの鋭さ (%)
+uniform float uCamShiftX; // カメラの横ずれ (%)
+uniform float uCamShiftY; // カメラの縦ずれ (%)
 
 float kk_sdHelix(vec3 p){
   float len = length(p.xy);
-  float a = sin(atan(p.y, p.x) - p.z*0.5 + radians(uAngle));
-  return length(vec2(len - 2.5, a)) - 0.4 * (uThick / 100.0);
+  float a = sin(atan(p.y, p.x) * float(int(uStrands / 100.0 + 0.5)) - p.z*0.5*(uPitch / 100.0) + radians(uAngle));
+  return length(vec2(len - 2.5 * (uTubeRadius / 100.0), a * (uTubeAspect / 100.0))) - 0.4 * (uThick / 100.0);
 }
 
 float kk_smin(float d1, float d2, float k){
@@ -61,26 +85,27 @@ float kk_sdHelixOfSpheres(vec3 p){
   float len   = length(p.xy);
   float angle = atan(p.y, p.x) + radians(uAngle);
   float n = uBeads;            // spheres per rotation
-  float helixRadius = 2.5;
+  float helixRadius = 2.5 * (uBeadOrbit / 100.0);
   vec3 spherePos = vec3(
     len - helixRadius,        // radial offset to helix
     0.154,                    // perpendicular to helix path
-    fract(n * angle) - 0.5    // periodic spacing along helix
+    (fract(n * angle) - 0.5) * (uBeadGap / 100.0)    // periodic spacing along helix
   );
   return kk_sdSphere(spherePos, 0.15 * (uSize / 100.0));
 }
 
 float kk_map(vec3 p){
-  vec3 p0 = vec3(mod(p.x, 7.) - 7.*0.5,
-                 mod(p.y, 7.) - 7.*0.5,
+  float cs = 7.0 * (uCellSize / 100.0);
+  vec3 p0 = vec3(mod(p.x, cs) - cs*0.5,
+                 mod(p.y, cs) - cs*0.5,
                  p.z);
   p0.y += sin(p.x*2. + time*2.0) * 0.1 * (uMotion / 100.0);
   p0.z += sin(p.x*2. + time*2.5) * 0.1 * (uMotion / 100.0);
   float d = kk_sdHelix(p0);
 
-  vec3 p1 = p + vec3(1, 1, 0);
-  p1 = vec3(mod(p1.x, 7.) - 7.*0.5,
-            mod(p1.y, 7.) - 7.*0.5,
+  vec3 p1 = p + vec3(1, 1, 0) * (uCrossOffset / 100.0);
+  p1 = vec3(mod(p1.x, cs) - cs*0.5,
+            mod(p1.y, cs) - cs*0.5,
             p.z);
   p1.z += sin(p1.y*3. + time*1.5) * 0.1 * (uMotion / 100.0);
   p1.z += sin(p1.x*1. + time*2.5) * 0.2 * (uMotion / 100.0);
@@ -89,7 +114,7 @@ float kk_map(vec3 p){
   float d3 = kk_sdHelixOfSpheres(p);
   float d4 = kk_sdHelixOfSpheres(p + vec3(-1.6, -1, 0));
 
-  return kk_smin(d3, kk_smin(d4, kk_smin(d, d1, 0.2), 0.09), 0.09);
+  return kk_smin(d3, kk_smin(d4, kk_smin(d, d1, 0.2 * (uBlendTube / 100.0)), 0.09), 0.09);
 }
 
 vec3 kk_calcNorm(vec3 p){
@@ -119,6 +144,7 @@ vec3 bg_kuko(vec2 fc){
   vec3 col = vec3(0.0);
 
   vec3 ro = vec3(4.0, 3.0, -time*0.5);
+  if(uCamShiftX != 0.0 || uCamShiftY != 0.0) ro.xy += vec2(uCamShiftX, uCamShiftY) * 0.035;
   vec3 rd = normalize(vec3(uv, -1.0));
   float dt = kk_rayMarch(ro, rd);
 
@@ -142,7 +168,7 @@ vec3 bg_kuko(vec2 fc){
     float diff = max(dot(bump, L), 0.0);
     float fre  = pow(1.0 - abs(dot(bump, rd)), 3.0);
     vec3  hal  = normalize(L - rd);
-    float spec = pow(max(dot(bump, hal), 0.0), 32.0);
+    float spec = pow(max(dot(bump, hal), 0.0), 32.0 * (uShine / 100.0));
 
     vec3 baseCol = (3. + cos(4. + vec3(0,4,4))) / dt * vec3(0, 0.5, 0.2);
 

@@ -64,6 +64,17 @@ vec4 neb_blend(vec4 fg, vec4 bg){ return fg * fg.a + bg * (1.0 - fg.a); }
 // @param uGlow 20..200 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uAspect 40..250 = 100.0
+// @param uCoreR      50..140 = 100.0
+// @param uMidR       50..125 = 100.0
+// @param uOuterR     50..160 = 100.0
+// @param uCoreWobble 0..300 = 100.0
+// @param uMidWobble  0..300 = 100.0
+// @param uOuterWobble 0..300 = 100.0
+// @param uBlobOffsetX -70..70 = 0.0
+// @param uBlobOffsetY -60..60 = 0.0
+// @param uHaze       40..200 = 100.0
+// @param uCoreAlpha  30..130 = 100.0
+// @param uNebTwist   -200..200 = 0.0
 uniform float uWarp;   // ブロブのゆらぎ (歪み) の強さ (%)
 uniform float uDensity;   // ゆらぎの細かさ (%)
 uniform float uSoft;   // ブロブの縁のぼかし幅 (%)
@@ -71,6 +82,17 @@ uniform float uSize;   // ブロブの大きさ (%)
 uniform float uGlow;   // 明るさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uAspect;   // 星雲の横長さ (%)
+uniform float uCoreR;      // 暗い芯のブロブの半径 (%)
+uniform float uMidR;       // 明るい中間のブロブの半径 (%)
+uniform float uOuterR;     // 外側の青いブロブの半径 (%)
+uniform float uCoreWobble; // 芯のブロブの縁のうねり (%)
+uniform float uMidWobble;  // 中間のブロブの縁のうねり (%)
+uniform float uOuterWobble; // 外側のブロブの縁のうねり (%)
+uniform float uBlobOffsetX; // 中間と外側のブロブを互いに逆へずらす量 X (%)
+uniform float uBlobOffsetY; // 中間と外側のブロブを互いに逆へずらす量 Y (%)
+uniform float uHaze;       // 外側のブロブの縁のぼかし (%)。上げると霞のように広がる
+uniform float uCoreAlpha;  // 芯のブロブの濃さ (%)
+uniform float uNebTwist;   // 中心からの距離に比例したねじれ (%)。負で逆回り
 
 float neb_shape(vec2 uv, float radius, float softness, float noiseIntensity, float noiseOffset){
   float noise = neb_snoise(vec3(uv * (1.2 * (uDensity / 100.0)) + noiseOffset, noiseOffset + time * 0.3));
@@ -89,14 +111,17 @@ vec3 bg_nebula(vec2 fc){
   uv = mat2(cos(ang), -sin(ang), sin(ang), cos(ang)) * uv;
   uv.x *= 0.35 / (uAspect / 100.0);                                   // 横長の星雲
 
+  if(uNebTwist != 0.0){ float ta = length(uv) * uNebTwist / 100.0 * 3.0; float ca = cos(ta), sa = sin(ta); uv = mat2(ca, -sa, sa, ca) * uv; }
+  vec2 blobSh = vec2(uBlobOffsetX, uBlobOffsetY) / 100.0 * 0.3;
+
   const vec3 col0 = vec3(0.157, 0.235, 0.424);
   const vec3 col1 = vec3(0.588, 0.682, 0.906);
   const vec3 col2 = vec3(0.325, 0.514, 0.843);
 
   vec4 bg = vec4(0.0);
-  vec4 l0 = vec4(col0, neb_shape(uv, 0.4, 0.3, 0.2, 4.0) * 1.3);
-  vec4 l1 = vec4(col1, neb_shape(uv, 0.6, 0.4, 0.1, 6.0) * 1.2);
-  vec4 l2 = vec4(col2, neb_shape(uv, 0.4, 0.8, 0.1, 10.0));
+  vec4 l0 = vec4(col0, neb_shape(uv, 0.4 * (uCoreR / 100.0), 0.3, 0.2 * (uCoreWobble / 100.0), 4.0) * 1.3 * (uCoreAlpha / 100.0));
+  vec4 l1 = vec4(col1, neb_shape(uv - blobSh, 0.6 * (uMidR / 100.0), 0.4, 0.1 * (uMidWobble / 100.0), 6.0) * 1.2);
+  vec4 l2 = vec4(col2, neb_shape(uv + blobSh, 0.4 * (uOuterR / 100.0), 0.8 * (uHaze / 100.0), 0.1 * (uOuterWobble / 100.0), 10.0));
   vec4 layers = neb_blend(l0, bg);
   layers = neb_blend(l1, layers);
   layers = neb_blend(l2, layers);

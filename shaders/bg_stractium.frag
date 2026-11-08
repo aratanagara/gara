@@ -66,6 +66,24 @@ uniform float uGlow;   // 全体の明るさ (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
+// @param uCoreRadius 70..120 = 100
+// @param uTwistA -250..250 = 0
+// @param uTwistB -250..250 = 0
+// @param uTwistC -250..250 = 0
+// @param uOctaveRatio 80..130 = 100
+// @param uBulgeBase 40..170 = 100
+// @param uWeightY 0..250 = 100
+// @param uRedBand 0..300 = 100
+// @param uRockGrain 40..250 = 100
+uniform float uCoreRadius; // 球の芯の半径 (%)
+uniform float uTwistA;   // 1 軸目のうねりの追加の捻れ (%)。0 = なし / 負で逆
+uniform float uTwistB;   // 2 軸目のうねりの追加の捻れ (%)。0 = なし / 負で逆
+uniform float uTwistC;   // 3 軸目のうねりの追加の捻れ (%)。0 = なし / 負で逆
+uniform float uOctaveRatio; // 折り重ねごとの細かさの倍率 (%)
+uniform float uBulgeBase; // 変形の常時ぶんの膨らみ (%)。時間で増減する分とは別
+uniform float uWeightY;  // 2 軸目の変形の効き (%)
+uniform float uRedBand;  // 膨らんだ部分の赤い色づき (%)
+uniform float uRockGrain; // 岩肌の模様の細かさ (%)
 
 float st_SinRep(float a){
   float h = 0.0, mult = 1.0;
@@ -73,8 +91,34 @@ float st_SinRep(float a){
   return h;
 }
 
+float st_SinRepC(float a){
+  float h = 0.0, mult = 1.0;
+  for(int i=0; i<ST_SIN_REPS; i++){ if(i >= int(uDetail + 0.5)) break; h += cos(a*mult*(uDensity / 100.0))/mult; mult *= 2.0 * (uOctaveRatio / 100.0); }
+  return h;
+}
+
 // 歪んだ球の距離場。変形を激しめに(振幅アップ + 強めの渦)。
+vec2 st_DistanceToObjectC(vec3 p){
+  float sc = uScale / 100.0;
+  p /= sc;
+  p = st_RotateY(p, p.y*0.7*(uTwist / 100.0) - cos(st_localTime)*0.7 + radians(uAngle));          // 強めの渦
+  float h = 0.0;
+  vec3 pa = st_RotateY(p, p.z*3.14*0.25);
+  if(uTwistA != 0.0) pa = st_RotateY(pa, p.z*uTwistA/100.0);
+  h += st_SinRepC(pa.x);
+  vec3 pb = st_RotateZ(p, p.x*3.14*0.25);
+  if(uTwistB != 0.0) pb = st_RotateZ(pb, p.x*uTwistB/100.0);
+  h += st_SinRepC(pb.y) * (uWeightY / 100.0);
+  vec3 pc = st_RotateX(p, p.y*3.14*0.25);
+  if(uTwistC != 0.0) pc = st_RotateX(pc, p.y*uTwistC/100.0);
+  h += st_SinRepC(pc.z);
+  float material = h;
+  float final = length(p) - 4.0 * (uCoreRadius / 100.0) - h*(0.5 * (uBulgeBase / 100.0) + sin(st_localTime)*0.6) * (uWarp / 100.0);  // 変形を激しめ
+  return vec2(final * sc, material);
+}
+
 vec2 st_DistanceToObject(vec3 p){
+  if(uCoreRadius != 100.0 || uTwistA != 0.0 || uTwistB != 0.0 || uTwistC != 0.0 || uOctaveRatio != 100.0 || uBulgeBase != 100.0 || uWeightY != 100.0) return st_DistanceToObjectC(p);
   float sc = uScale / 100.0;
   p /= sc;
   p = st_RotateY(p, p.y*0.7*(uTwist / 100.0) - cos(st_localTime)*0.7 + radians(uAngle));          // 強めの渦
@@ -167,10 +211,13 @@ vec3 bg_stractium(vec2 fc){
     vec3 ref = reflect(relVec, normal);
 
     vec3 rp = st_RotateY(pos, pos.y*0.4 - cos(st_localTime)*0.4);
-    float n = st_noise(rp*4.0) + st_noise(rp*8.0) + st_noise(rp*16.0) + st_noise(rp*32.0);
+    float n;
+    if(uRockGrain == 100.0) n = st_noise(rp*4.0) + st_noise(rp*8.0) + st_noise(rp*16.0) + st_noise(rp*32.0);
+    else n = st_noise(rp*(4.0*(uRockGrain / 100.0))) + st_noise(rp*(8.0*(uRockGrain / 100.0))) + st_noise(rp*(16.0*(uRockGrain / 100.0))) + st_noise(rp*(32.0*(uRockGrain / 100.0)));
     n = st_saturate(n*0.25*0.95 + 0.05);
     vec3 texColor = vec3(0.2, 0.3, 0.3)*n;
-    texColor += vec3(0.99, 0.21, 0.213) * clamp(length(pos)-4.0, 0.0, 0.4);
+    if(uRedBand == 100.0) texColor += vec3(0.99, 0.21, 0.213) * clamp(length(pos)-4.0, 0.0, 0.4);
+    else texColor += vec3(0.99, 0.21, 0.213) * clamp(length(pos)-4.0, 0.0, 0.4) * (uRedBand / 100.0);
     texColor += vec3(1.0, 21.0, 26.0)*0.6 * st_saturate(length(normalU)-0.01);
     texColor -= vec3(0.0, 0.3, 0.5) * st_saturate(-distAndMat.y*(0.9 + sin(st_localTime+0.5)*0.9));
     texColor = max(vec3(0.02), texColor);

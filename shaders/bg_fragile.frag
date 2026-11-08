@@ -32,6 +32,32 @@ uniform float uShine;   // 鏡面ハイライトの強さ (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
+// @param uLoopRadius 70..125  = 100.0
+// @param uWhipAmp    0..200   = 100.0
+// @param uWhip3      0..200   = 100.0
+// @param uWhipLobes  1..4     = 3.0
+// @param uLift       0..160   = 100.0
+// @param uLiftLobes  1..3     = 2.0
+// @param uLift3      0..130   = 100.0
+// @param uGlowReach  40..180  = 100.0
+// @param uSquash     75..125  = 100.0
+// @param uCamElev    70..200   = 100.0
+// @param uRefract    93..108  = 100.0
+// @param uGlassFade  50..140  = 100.0
+// @param uShinePow   30..300  = 100.0
+uniform float uLoopRadius; // ループの半径 (%)
+uniform float uWhipAmp;    // 大きな 1 周期のうねりの振れ幅 (%)
+uniform float uWhip3;      // 細かいローブのうねりの振れ幅 (%)
+uniform float uWhipLobes;  // 細かいローブの数
+uniform float uLift;       // 上下の波打ちの高さ (%)
+uniform float uLiftLobes;  // 上下の波の山の数
+uniform float uLift3;      // 細かい上下の波の高さ (%)
+uniform float uGlowReach;  // 表面の発光のにじみの幅 (%)
+uniform float uSquash;     // チューブ断面の縦横比 (%)。下げると平たいリボン、上げると縦長
+uniform float uCamElev;    // カメラの上下の振れ幅 (%)
+uniform float uRefract;    // ガラスの屈折率の差 (%)。上げるほど屈折が弱い
+uniform float uGlassFade;  // ガラスを通るごとの減衰 (%)。上げると奥まで見える
+uniform float uShinePow;   // ハイライトの鋭さ (%)
 
 // 距離場: 1本の波打つループ(最低限のパス)。半径・高さが大きく動き、局所的に大きく伸縮する。
 //   入り組みを避けつつダイナミックに。単一トーラスなので軽い。
@@ -43,11 +69,14 @@ float fr_de(vec3 p){
   float c = cos(p.y*tw), s = sin(p.y*tw);
   p.xz = mat2(c, -s, s, c) * p.xz;
   float a = atan(p.z, p.x);                                       // ループ上の角度
-  float radC  = 1.7 + 0.8*sin(a + time*1.7)*(uWarp / 100.0) + 0.45*sin(a*3.0 - time*1.1)*(uWarp / 100.0); // 多ローブの whip
-  float yC    = 1.0*sin(a*2.0 + time*1.3) + 0.45*sin(a*3.0 + time*0.8);   // 豊かな波打ち(3Dパス)
+  float radC  = 1.7 * (uLoopRadius / 100.0) + 0.8*(uWhipAmp / 100.0)*sin(a + time*1.7)*(uWarp / 100.0) + 0.45*(uWhip3 / 100.0)*sin(a*float(int(uWhipLobes + 0.5)) - time*1.1)*(uWarp / 100.0); // 多ローブの whip
+  float yC    = 1.0*(uLift / 100.0)*sin(a*float(int(uLiftLobes + 0.5)) + time*1.3) + 0.45*(uLift3 / 100.0)*sin(a*3.0 + time*0.8);   // 豊かな波打ち(3Dパス)
   float bulge = pow(max(0.0, sin(a + time*1.2)), 5.0) * max(0.0, 1.2 + 2.0*sin(time*0.9)); // 頻繁に大きく伸びる
   vec2 q = vec2(length(p.xz) - radC, p.y - yC);
-  return (length(q) - (0.32 * (uThick / 100.0) + bulge)) * sc;                             // チューブを太め(ガラスの厚み)
+  float qd = length(q);
+  float sqF = 1.0;
+  if(uSquash != 100.0){ float sk = uSquash / 100.0; qd = length(vec2(q.x, q.y * sk)); sqF = min(1.0, 1.0 / sk); }
+  return (qd * sqF - (0.32 * (uThick / 100.0) + bulge)) * sc;                             // チューブを太め(ガラスの厚み)
 }
 
 vec3 fr_normal(vec3 p){
@@ -65,7 +94,7 @@ vec3 bg_fragile(vec2 fc){
   // カメラ: 原点(中心オブジェクト)を周回
   float ct = time*0.3;
   float camDist = 4.0;
-  vec3 from = vec3(cos(ct)*camDist, sin(ct*0.6)*1.6, sin(ct)*camDist);
+  vec3 from = vec3(cos(ct)*camDist, sin(ct*0.6)*1.6*(uCamElev / 100.0), sin(ct)*camDist);
   vec3 cw = normalize(-from);
   vec3 cu = normalize(cross(vec3(0.0, 1.0, 0.0), cw));
   vec3 cv = cross(cw, cu);
@@ -80,6 +109,7 @@ vec3 bg_fragile(vec2 fc){
   float jit = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);  // バンディング対策のディザ
   float totdist = jit*0.12, glassfade = 1.0, ref = 0.0, vol = 0.0, maxdist = 11.0;
   vec3 spec = vec3(0.0);
+  float shp = 40.0 * (uShinePow / 100.0);
   for(int r = 0; r < 56; r++){ if(r >= int(uSteps + 0.5)) break;                                    // 軽量化: 60→46 ステップ
     vec3 p = from + totdist*raydir;
     float d = fr_de(p);
@@ -88,21 +118,21 @@ vec3 bg_fragile(vec2 fc){
     vec3 n = (abs(d) < 0.35) ? fr_normal(p) : vec3(0.0, 0.0, 1.0);  // 表面付近のみ法線
     if(d > 0.0 && ref > 0.5){
       ref = 0.0;
-      if(dot(raydir, n) < -0.5) raydir = normalize(refract(raydir, n, 1.0/0.88));
+      if(dot(raydir, n) < -0.5) raydir = normalize(refract(raydir, n, 1.0/(0.88 * (uRefract / 100.0))));
       vec3 refl = reflect(raydir, n);
-      spec += lightcol1*pow(max(dot(refl, light1), 0.0), 40.0)*intens*0.75;
-      spec += lightcol2*pow(max(dot(refl, light2), 0.0), 40.0)*intens*0.75;
+      spec += lightcol1*pow(max(dot(refl, light1), 0.0), shp)*intens*0.75;
+      spec += lightcol2*pow(max(dot(refl, light2), 0.0), shp)*intens*0.75;
     }
     if(d < 0.0 && ref < 0.05){
       ref = 1.0;
-      if(dot(raydir, n) < -0.05) raydir = normalize(refract(raydir, n, 0.88));
+      if(dot(raydir, n) < -0.05) raydir = normalize(refract(raydir, n, 0.88 * (uRefract / 100.0)));
       vec3 refl = reflect(raydir, n);
-      glassfade *= 0.6;
-      spec += lightcol1*pow(max(dot(refl, light1), 0.0), 40.0)*intens;
-      spec += lightcol2*pow(max(dot(refl, light2), 0.0), 40.0)*intens;
+      glassfade *= 0.6 * (uGlassFade / 100.0);
+      spec += lightcol1*pow(max(dot(refl, light1), 0.0), shp)*intens;
+      spec += lightcol2*pow(max(dot(refl, light2), 0.0), shp)*intens;
     }
     totdist += max(0.008, abs(d)*0.5);                            // 細かい刻みでジャギー低減
-    vol += intens * smoothstep(0.30, 0.0, abs(d));                // 表面付近のみグロー → 背景は暗い
+    vol += intens * smoothstep(0.30 * (uGlowReach / 100.0), 0.0, abs(d));                // 表面付近のみグロー → 背景は暗い
     if(totdist > maxdist) break;
   }
   vol = pow(vol, 1.3) * 0.009 * (uGlow / 100.0);

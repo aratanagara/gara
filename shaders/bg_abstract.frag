@@ -25,6 +25,9 @@ vec3 aa_aces(vec3 color){
   return M2 * (a / b);
 }
 
+// @param uPhi 94..110 = 100.0
+uniform float uPhi; // 場の模様の比率 (%)。模様の並びが変わる
+
 // Dot Noise (XorDev) — golden-ratio 回転による gyroid 風 irrational 場 [-3,+3]
 float aa_dot_noise(vec3 p){
   const float PHI = 1.618033988;
@@ -33,7 +36,8 @@ float aa_dot_noise(vec3 p){
     -0.278044873, -0.303026659, +0.911518454,
     +0.772087367, +0.494042493, +0.399753815
   );
-  return dot(cos(GOLD * p), sin(PHI * p * GOLD));
+  float PHIk = PHI * (uPhi / 100.0);
+  return dot(cos(GOLD * p), sin(PHIk * p * GOLD));
 }
 
 mat2 aa_rot(float a){
@@ -47,11 +51,33 @@ mat2 aa_rot(float a){
 // @param uWarp    0..500 = 100.0
 // @param uOrb     0..300 = 100.0
 // @param uSteps 50..150 = 150.0
+// @param uOrbSweep 0..200 = 100.0
+// @param uOrbBob 0..300 = 100.0
+// @param uBandFreq 50..200 = 100.0
+// @param uMinStep 50..200 = 100.0
+// @param uStepGain 50..200 = 100.0
+// @param uGround 0..250 = 100.0
+// @param uFieldFlat 50..200 = 100.0
+// @param uCamHeight -100..100 = 0.0
+// @param uCamSway 0..200 = 0.0
+// @param uRoll -90..90 = 0.0
+// @param uFocal 60..160 = 100.0
 uniform float uGlow; // 全体の明るさ (%)
 uniform float uDensity; // 場の模様の細かさ (%)
 uniform float uWarp; // 奥行きに沿ったねじれ (%)
 uniform float uOrb; // 移動オーブの明るさ (%)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+uniform float uOrbSweep; // オーブが左右へ動く幅 (%)
+uniform float uOrbBob; // オーブの上下の揺れ (%)
+uniform float uBandFreq; // 奥行き方向の色の帯の細かさ (%)
+uniform float uMinStep; // 1 ステップの最小の進み (%)。上げると遠くまで届く
+uniform float uStepGain; // 場の距離に応じた進みの係数 (%)
+uniform float uGround; // 地面の傾きの強さ (%)。0 で地面のない塊
+uniform float uFieldFlat; // 場の縦方向の細かさ (%)
+uniform float uCamHeight; // カメラの高さ。正で場の上へ
+uniform float uCamSway; // カメラの左右の揺れ (%)
+uniform float uRoll; // 画面の傾き (度)
+uniform float uFocal; // 画角の広さ (%)。上げると広角
 
 vec3 bg_abstract(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -63,8 +89,12 @@ vec3 bg_abstract(vec2 fc){
   uv.x *= resolution.x / resolution.y;
 
   // Ray direction & camera pos
-  vec3 d = normalize(vec3(2.0 * I, 0.0) - resolution.xyy);
-  vec3 p = vec3(0, 0, t);
+  vec3 dd = vec3(2.0 * I, 0.0) - resolution.xyy;
+  dd.z *= 100.0 / uFocal;
+  vec3 d = normalize(dd);
+  if(uRoll != 0.0){ float ra = radians(uRoll); float rc = cos(ra), rs = sin(ra); d.xy = mat2(rc, -rs, rs, rc) * d.xy; }
+  vec3 p = vec3(0, uCamHeight / 100.0, t);
+  if(uCamSway != 0.0) p.x = sin(t * 0.2) * (uCamSway / 100.0);
 
   vec3 l = vec3(0.0);   // accumulated radiance
 
@@ -74,17 +104,19 @@ vec3 bg_abstract(vec2 fc){
     vec3 rp = p;
     p.xy *= aa_rot(p.z * 0.0001 * (uWarp / 100.0));
     // Step distance (positive safe stepping)
-    float s = abs(aa_dot_noise(rp * (uDensity / 100.0)) + (p.y)) * 0.1 + 0.015;
+    vec3 rq = rp * (uDensity / 100.0);
+    rq.y *= uFieldFlat / 100.0;
+    float s = abs(aa_dot_noise(rq) + (p.y * (uGround / 100.0))) * (0.1 * (uStepGain / 100.0)) + 0.015 * (uMinStep / 100.0);
 
     // Step forward
     p += d * s;
 
     // Accumulate radiance: field glow + moving orb
-    l += (sin(p.z * 0.5 - vec3(0.5, 0.8, 0.9)) /
+    l += (sin(p.z * (0.5 * (uBandFreq / 100.0)) - vec3(0.5, 0.8, 0.9)) /
          (abs(s * 0.001) + 1e-6))
          + 0.3 * (uOrb / 100.0) * vec3(7, 4, 1) /
-         (length(uv + vec2(-1.0 + 2.0 * smoothstep(-1.0, 1.0, sin(t * 0.50)),
-                           -0.4 + sin(t * 0.25) * 0.3))
+         (length(uv + vec2(-1.0 * (uOrbSweep / 100.0) + 2.0 * (uOrbSweep / 100.0) * smoothstep(-1.0, 1.0, sin(t * 0.50)),
+                           -0.4 + sin(t * 0.25) * (0.3 * (uOrbBob / 100.0))))
           * (1e-3 * abs(sin(t * 0.4) * 0.5 + 2.0)));
   }
 

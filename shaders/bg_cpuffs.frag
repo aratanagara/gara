@@ -7,8 +7,8 @@
 //   マクロ/ヘルパは CP_ で名前空間化。
 // =====================================================
 
-#define CP_P(z) (vec3(tanh(cos((z) * .3) * .4) * 16., \
-                      tanh(cos((z) * .4) * .3) * 16., (z)))
+#define CP_P(z) (vec3(tanh(cos((z) * .3) * .4) * (16. * (uSwayX / 100.)), \
+                      tanh(cos((z) * .4) * .3) * (16. * (uSwayY / 100.)), (z)))
 #define CP_rot(a) mat2(cos(a + vec4(0, 33, 11, 0)))
 
 // @param uDetail   2..6 = 6.0
@@ -25,6 +25,26 @@ uniform float uFog; // 奥の霞の届く距離 (%)
 uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+// @param uSwayX 40..150 = 100
+// @param uSwayY 40..150 = 100
+// @param uTunnelWidth 70..140 = 100
+// @param uRoadHeight 60..140 = 100
+// @param uRoadWave 25..250 = 100
+// @param uFoldLimit 88..115 = 100
+// @param uFoldScale 92..108 = 100
+// @param uFoldOffset 94..110 = 100
+// @param uInflate 90..115 = 100
+// @param uGrainDepth 40..200 = 100
+uniform float uSwayX; // 道の左右の蛇行の振れ幅 (%)
+uniform float uSwayY; // 道の上下の蛇行の振れ幅 (%)
+uniform float uTunnelWidth; // 道まわりの空間の広さ (%)
+uniform float uRoadHeight; // 路面の高さ (%)
+uniform float uRoadWave; // 路面のうねりの細かさ (%)
+uniform float uFoldLimit; // 折り畳みの境界の広さ (%)
+uniform float uFoldScale; // 折り畳みの拡大率 (%)
+uniform float uFoldOffset; // 折り畳みの引き込み量 (%)
+uniform float uInflate; // 球状の膨らみ (%)
+uniform float uGrainDepth; // 表面の細かい凹凸の深さ (%)
 
 vec3 bg_cpuffs(vec2 fc){
   vec2 u = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -43,21 +63,21 @@ vec3 bg_cpuffs(vec2 fc){
     p = q + D*d;
     o += sin(p*.3)*.01 + .01;
     p.xy -= CP_P(p.z).xy;
-    p.xy *= .5;
-    p.y -= 1.75;
-    p.y += (.15*(uMotion / 100.)*(sin(p.x + T*3.5) +
-                 sin(p.z + T*1.5) +
-                 sin(p.z + T*2.8)));
+    p.xy *= .5 * (uTunnelWidth / 100.);
+    p.y -= 1.75 * (uRoadHeight / 100.);
+    p.y += (.15*(uMotion / 100.)*(sin(p.x * (uRoadWave / 100.) + T*3.5) +
+                 sin(p.z * (uRoadWave / 100.) + T*1.5) +
+                 sin(p.z * (uRoadWave / 100.) + T*2.8)));
     ws = .6 * (uPuff / 100.);
     w = .3;
     for(j = 0.; j++ < 6. && j <= nd; p *= l, w *= l)
-      p = clamp(p, -2.0, 2.0) * 2.0 - p,
-      p = abs(sin(p)) - 1.,
-      l = ws/dot(p, p) + 1.2;
+      p = clamp(p, -2.0 * (uFoldLimit / 100.), 2.0 * (uFoldLimit / 100.)) * (2.0 * (uFoldScale / 100.)) - p,
+      p = abs(sin(p)) - (uFoldOffset / 100.),
+      l = ws/dot(p, p) + 1.2 * (uInflate / 100.);
     o += sin(p*.3)*.05 + .009;
     s = length(p)/w;
     for(a = .2; a < 1.;
-        s -= abs(dot(sin(T + (q + D*d)*a*14.), vec3(.008)))/a,
+        s -= abs(dot(sin(T + (q + D*d)*a*14.), vec3(.008 * (uGrainDepth / 100.))))/a,
         a += a);
     d += s;
   }

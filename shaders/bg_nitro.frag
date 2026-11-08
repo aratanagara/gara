@@ -43,22 +43,43 @@ vec2 nit_minx(vec2 a, vec2 b){ return mix(b, a, step(a.x, b.x)); }
 // @param uGlow    25..300 = 100.0
 // @param uFog     0..300  = 100.0
 // @param uSteps  28..52 = 52.0
+// @param uBandBlend 100..160 = 100
+// @param uSliceWidth 100..180 = 100
+// @param uFineGrain 100..200 = 100
+// @param uCloudScale 100..300 = 100
+// @param uSquash 100..400 = 100
+// @param uBigPuff 100..180 = 100
+// @param uCamPitch -40..60 = 0
+// @param uCamDist 60..160 = 100
+// @param uCamYaw -100..100 = 0
 uniform float uThick;     // 雲の厚み (%) (大きいほど雲が太る)
 uniform float uWarp;      // 雲の縦方向のうねり (%)
 uniform float uDensity;   // 縞(段)の細かさ (%)
 uniform float uGlow;      // 全体の明るさ (%)
 uniform float uFog;       // 距離フォグの濃さ (%)
 uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
+uniform float uBandBlend; // 縞と雲のなじませ幅 (%)。小さいと段がくっきり
+uniform float uSliceWidth; // 水平な縞の切り込みの太さ (%)
+uniform float uCloudScale; // 雲の塊の大きさ (%)
+uniform float uSquash;    // 雲の縦の潰れ具合 (%)。小さいほど縦長、大きいほど平たい層
+uniform float uBigPuff;   // 大きな雲塊の量 (%)
+uniform float uFineGrain; // 細かい雲粒の量 (%)。0 でなめらかな雲
+uniform float uCamPitch;  // カメラの仰角 (度)。正で見下ろし
+uniform float uCamDist;   // カメラの距離 (%)
+uniform float uCamYaw;    // カメラの方位の回し (%)
 
 // 距離場: 多オクターブ雲ノイズ - 厚み。距離の太陽(マテリアル 6)。
 vec2 nit_dist(vec3 p, vec3 camLookat){
   p.y += nit_noise1v(p*0.5)*0.5 * (uWarp / 100.0);
-  float n = nit_noise1v(p*2.0 + time*0.6)
-          + nit_noise1v(p*4.0 + time*0.7)*0.5
-          + nit_noise1v(p*8.0)*0.25
-          + nit_noise1v(p*16.0)*0.125;
+  vec3 q = p;
+  if(uCloudScale != 100.0){ q = p * (uCloudScale / 100.0); }
+  if(uSquash != 100.0){ q.y *= uSquash / 100.0; }
+  float n = nit_noise1v(q*2.0 + time*0.6)*(uBigPuff / 100.0)
+          + nit_noise1v(q*4.0 + time*0.7)*0.5
+          + nit_noise1v(q*8.0)*0.25*(uFineGrain / 100.0)
+          + nit_noise1v(q*16.0)*0.125*(uFineGrain / 100.0);
   float dist = n*0.25 - 0.27 * (uThick / 100.0);
-  dist = nit_smax(dist, -(abs(fract(p.y*4.0 * (uDensity / 100.0)) - 0.5) - 0.15), 0.4);
+  dist = nit_smax(dist, -(abs(fract(p.y*4.0 * (uDensity / 100.0)) - 0.5) - 0.15 * (uSliceWidth / 100.0)), 0.4 * (uBandBlend / 100.0));
   vec2 distMat = vec2(dist, 0.0);
   distMat = nit_minx(distMat, vec2(length(p - camLookat - vec3(0.0, 0.5, -1.0)) - 0.6, 6.0));
   return distMat;
@@ -73,9 +94,10 @@ vec3 bg_nitro(vec2 fc){
   vec3 camUp = vec3(0.0, 1.0, 0.0);
   vec3 camLookat = vec3(0.0);
   float mxa = 0.375*NIT_PI*2.0 - 0.7;          // iMouse=0 相当の固定方位
-  float mya = 0.0;
+  float mya = radians(uCamPitch);
+  if(uCamYaw != 0.0){ mxa += uCamYaw / 100.0; }
   vec3 camPos = vec3(0.0);
-  camPos += vec3(cos(mya)*cos(mxa), sin(mya), cos(mya)*sin(mxa)) * 3.2;
+  camPos += vec3(cos(mya)*cos(mxa), sin(mya), cos(mya)*sin(mxa)) * 3.2 * (uCamDist / 100.0);
   camPos.z   -= time*0.5;                       // 雲の中を前進
   camLookat.z -= time*0.5;
   camPos += nit_hash3(u);                       // カメラジッタ(粗い根探しを隠す)

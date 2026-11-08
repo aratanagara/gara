@@ -21,9 +21,39 @@ mat2 mj_Zdist(mat2 prev, mat2 ZR, mat2 ZI){
     vec2(min(min(abs(ZR[0][1]), abs(ZI[0][1])), prev[0][1]), min(min(abs(ZR[1][1]), abs(ZI[1][1])), prev[1][1]))
   );
 }
+// @param uTrapStart 1..5 = 2
+// @param uRing2Pos 40..250 = 100
+// @param uRing3Pos 40..250 = 100
+// @param uRing2Gain 0..200 = 100
+// @param uRing3Gain 0..200 = 100
+// @param uJuliaReal 94..106 = 100
+// @param uJuliaImag 94..106 = 100
+// @param uSliceW 60..160 = 100
+// @param uTailThin 30..300 = 100
+// @param uSilverGain 0..160 = 100
+// @param uBlueGain 0..250 = 100
+uniform float uTrapStart; // オービットトラップを取り始める反復 (既定 2)
+uniform float uRing2Pos;  // 2 本目の輪郭線の位置 (%)
+uniform float uRing3Pos;  // 3 本目の輪郭線の位置 (%)
+uniform float uRing2Gain; // 2 本目の輪郭線の濃さ (%)
+uniform float uRing3Gain; // 3 本目の輪郭線の濃さ (%)
+uniform float uJuliaReal; // ジュリア定数の実部側の大きさ (%)
+uniform float uJuliaImag; // ジュリア定数の虚部側の大きさ (%)
+uniform float uSliceW;    // 4D 断面の奥行き位置 (%)
+uniform float uTailThin;  // 古い残像の線の細さ (%)
+uniform float uSilverGain; // シルバー線の濃さ (%)
+uniform float uBlueGain;  // 青い線の濃さ (%)
 mat2 mj_RAWTRAP(mat2 ZR, mat2 ZI, mat2 CR, mat2 CI){
   mat2 CZR = ZR, CZI = ZI;
   mat2 big = mat2(vec2(10000.0), vec2(10000.0));
+  if(uTrapStart != 2.0){
+    int ts = int(uTrapStart + 0.5);
+    for(int i=0;i<70;i++){
+      if(i > ts){ big = mj_Zdist(big, CZR, CZI); }
+      mj_iterator(CZR, CZI, CR, CI);
+    }
+    return big;
+  }
   for(int i=0;i<70;i++){
     if(i>2){ big = mj_Zdist(big, CZR, CZI); }
     mj_iterator(CZR, CZI, CR, CI);
@@ -43,8 +73,8 @@ float mj_line(float a, float wid){
   // 主輪郭(a=0 のリング)
   float L = smoothstep(wid*1.5, 0.0, abs(a));
   // 補助輪郭(複数の同心輪)で花弁感を出す
-  L = max(L, smoothstep(wid, 0.0, abs(a - 0.045)) * 0.7);
-  L = max(L, smoothstep(wid*0.8, 0.0, abs(a - 0.095)) * 0.45);
+  L = max(L, smoothstep(wid, 0.0, abs(a - 0.045 * (uRing2Pos / 100.0))) * 0.7 * (uRing2Gain / 100.0));
+  L = max(L, smoothstep(wid*0.8, 0.0, abs(a - 0.095 * (uRing3Pos / 100.0))) * 0.45 * (uRing3Gain / 100.0));
   return L;
 }
 
@@ -87,21 +117,21 @@ vec3 bg_matrixjulia(vec2 fc){
     float T6 = cos(tt*(0.5*11.0/29.0));
     CST = mj_RXY(T1)*mj_RXZ(T2)*mj_RXW(T3)*mj_RYZ(T4)*mj_RYW(T5)*mj_RZW(T6)*CST;
     mat2 plane = mat2(vec2(CST.x,CST.z), vec2(CST.y,CST.w));
-    mat2 Creal = mat2(vec2(0.1,0.2), vec2(0.3,0.2));
-    mat2 Cimag = mat2(vec2(0.2,0.1), vec2(-0.2,0.1));
-    mat2 Zreal = mat2(plane[0], vec2(0.3,0.2));
+    mat2 Creal = mat2(vec2(0.1,0.2), vec2(0.3,0.2)) * (uJuliaReal / 100.0);
+    mat2 Cimag = mat2(vec2(0.2,0.1), vec2(-0.2,0.1)) * (uJuliaImag / 100.0);
+    mat2 Zreal = mat2(plane[0], vec2(0.3,0.2) * (uSliceW / 100.0));
     mat2 Zimag = mat2(plane[1], vec2(0.3,0.15));
     mat2 RAW = mj_RAWTRAP(Zreal, Zimag, Creal, Cimag);
     float a=RAW[0][0], b=RAW[1][0], c=RAW[0][1], d=RAW[1][1];
     // 古い軌跡ほど線を細く(輪郭感を保ったまま薄く残す)
-    float wid = mix(0.012, 0.004, float(k)/float(TRAILS-1)) * (uThick / 100.0);
+    float wid = mix(0.012, 0.004 * (uTailThin / 100.0), float(k)/float(TRAILS-1)) * (uThick / 100.0);
     float La = mj_line(a, wid);
     float Lb = mj_line(b, wid);
     float Lc = mj_line(c, wid);
     float Ld = mj_line(d, wid);
     float w = pow(FADE * (uFade / 100.0), float(k));
     // 線そのもの(面ではない)を 4 色で配色
-    col += (RED*La + BLUE*Lc + SIL*(Lb+Ld)*0.55) * w;
+    col += (RED*La + BLUE*Lc*(uBlueGain / 100.0) + SIL*(Lb+Ld)*0.55*(uSilverGain / 100.0)) * w;
     web += (La + Lb + Lc + Ld) * w;
   }
 

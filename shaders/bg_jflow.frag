@@ -43,6 +43,32 @@ uniform float uGlow; // 白いフィラメントの明るさ (%)
 uniform float uHueSpread; // 結晶内の色相のばらつき (%)
 uniform float uSize; // 結晶ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+// @param uLanes      50..130  = 100.0
+// @param uSizeSpread 80..200  = 100.0
+// @param uStretch    60..140  = 100.0
+// @param uJuliaZoom  70..130  = 100.0
+// @param uCWobble    0..300   = 100.0
+// @param uTwistAmt   0..250   = 100.0
+// @param uWarpFreq   40..250  = 100.0
+// @param uShardAmt   0..170   = 100.0
+// @param uGiantSize  40..115  = 100.0
+// @param uRimSoft    20..160  = 100.0
+// @param uBoundary   50..140  = 100.0
+// @param uFacet      40..250  = 100.0
+// @param uFilament   30..300  = 100.0
+uniform float uLanes; // 結晶が散らばる縦の範囲 (%)
+uniform float uSizeSpread; // 大きさの偏り (%)。下げると大きな結晶が増え、上げると微小な結晶ばかりになる
+uniform float uStretch; // 結晶の流れ方向の伸び (%)。下げると横に引き伸ばされる
+uniform float uJuliaZoom; // Julia 集合を覗く倍率 (%)。形の切り取り方が変わる
+uniform float uCWobble; // Julia の定数 c の揺れ幅 (%)。0 で形の変化が穏やかに
+uniform float uTwistAmt; // 結晶のひねり (%)
+uniform float uWarpFreq; // 歪みの波の細かさ (%)
+uniform float uShardAmt; // 欠片になる結晶の割合 (%)。0 で全部欠片、上げると完全な結晶が増える
+uniform float uGiantSize; // 巨大な結晶の最大サイズ (%)
+uniform float uRimSoft; // 結晶の輪郭のにじみ (%)。下げると外周がくっきり切れる
+uniform float uBoundary; // 結晶の縁の厚み (%)。上げると外側の脱出域まで残る
+uniform float uFacet; // 縁の稜線の本数 (%)
+uniform float uFilament; // 内部のフィラメントの太さ (%)
 
 vec3 bg_jflow(vec2 fc){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -58,28 +84,28 @@ vec3 bg_jflow(vec2 fc){
     if(i >= int(uCount + 0.5)) break;
     vec4  rnd  = jf_hash4(float(i)*1.7 + 3.0);
     vec4  rnd2 = jf_hash4(float(i)*2.9 + 11.0);
-    float yc    = (rnd.x*2.0 - 1.0) * 0.86;                // 縦レーン
-    float scale = (0.04 + 2.3*pow(rnd.y, 3.0)) * (uSize / 100.0);            // 大きさ(極端: 微小多数+まれに画面横切る巨大)
+    float yc    = (rnd.x*2.0 - 1.0) * 0.86 * (uLanes / 100.0);                // 縦レーン
+    float scale = (0.04 + 2.3*(uGiantSize / 100.0)*pow(rnd.y, 3.0 * (uSizeSpread / 100.0))) * (uSize / 100.0);            // 大きさ(極端: 微小多数+まれに画面横切る巨大)
     float speed = 0.26 + 0.85*rnd.z;                       // 流れる速さ(スピード感)
     float spin  = (rnd.w - 0.5) * 2.4;                     // 自転(速め)
     float span  = 2.0*asp + 1.8;                           // 画面外まで含む幅
     // 右(+)から左(-)へ流れ、端で巻き戻す
     float xc = (asp + 0.9) - mod(T*speed + rnd.x*span, span);
     float yb = yc + 0.05*sin(T*(0.6 + rnd.w) + float(i));  // ゆらぎ
-    float shard = step(0.58, rnd2.x);                      // 一部は欠片(破断面でカット)
+    float shard = step(0.58 * (uShardAmt / 100.0), rnd2.x);                      // 一部は欠片(破断面でカット)
 
     vec2 d = uv - vec2(xc, yb);
     if(dot(d, d) > (scale*1.85)*(scale*1.85)) continue;    // 遠い結晶は早期スキップ
 
     vec2 p = jf_rot(d/scale, T*spin + rnd.y*6.2831 + radians(uAngle));
-    p.x *= 0.82;                                           // 流れ方向にややストレッチ(スピード感)
+    p.x *= 0.82 * (uStretch / 100.0);                                           // 流れ方向にややストレッチ(スピード感)
     // ワープ + ねじれ: 中心からの距離でひねり、ドメインワープで不規則化(刻々と変形)
     float tw = (0.8 + 1.4*rnd.z) * sin(T*0.9 + rnd.x*6.0);
-    vec2  pw = jf_rot(p, tw * length(p));
-    pw += 0.22*(uWarp / 100.0)*sin(pw.yx*3.4 + T*1.8 + rnd.w*6.2831);
+    vec2  pw = jf_rot(p, tw * (uTwistAmt / 100.0) * length(p));
+    pw += 0.22*(uWarp / 100.0)*sin(pw.yx*3.4*(uWarpFreq / 100.0) + T*1.8 + rnd.w*6.2831);
     // Julia: c を速めにカーディオイド上で morph(結晶が刻々と変形)
-    vec2 z = pw * 1.18;
-    vec2 c = jf_C(jf_R(T*1.2 + float(i)*0.7)) * (1.0 + 0.10*sin(T*1.3 + float(i)));
+    vec2 z = pw * 1.18 * (uJuliaZoom / 100.0);
+    vec2 c = jf_C(jf_R(T*1.2 + float(i)*0.7)) * (1.0 + 0.10*(uCWobble / 100.0)*sin(T*1.3 + float(i)));
     float k = 0.0;
     float trap = 1e9;                                      // オービットトラップ(内部のフラクタル模様)
     for(int it = 0; it < JF_ITER; it++){
@@ -92,8 +118,8 @@ vec3 bg_jflow(vec2 fc){
     float esc    = k / float(nIt);
     float inside = step(float(nIt) - 0.5, k);          // 脱出しない=結晶本体
     // 形マスク: 境界付近のみ残す(外側のすぐ脱出域は消す=シャープな結晶輪郭)
-    float shape  = inside + (1.0 - inside) * smoothstep(0.10, 0.55, esc);
-    float radial = smoothstep(1.8, 0.5, length(p));        // 結晶の輪郭にクランプ
+    float shape  = inside + (1.0 - inside) * smoothstep(0.10, 0.55 * (uBoundary / 100.0), esc);
+    float radial = smoothstep(1.8, 0.5 * (uRimSoft / 100.0), length(p));        // 結晶の輪郭にクランプ
     if(shard > 0.5){                                       // 欠片: 片側を破断面でカット
       vec2 cn = jf_rot(vec2(1.0, 0.0), rnd2.y*6.2831);
       float cut = dot(p, cn) - (rnd2.z - 0.5)*1.4;
@@ -103,8 +129,8 @@ vec3 bg_jflow(vec2 fc){
     if(amt <= 0.001) continue;
 
     // 中の模様 = オービットトラップの内部フィラメント + エスケープ等高線(デンドライト)
-    float pat   = 1.0 - smoothstep(0.0, 0.16, trap);       // 内部のフラクタル模様(明るい筋)
-    float facet = abs(fract(k*0.2) * 2.0 - 1.0);           // 5反復ごとの稜線(境界)
+    float pat   = 1.0 - smoothstep(0.0, 0.16 * (uFilament / 100.0), trap);       // 内部のフラクタル模様(明るい筋)
+    float facet = abs(fract(k*0.2*(uFacet / 100.0)) * 2.0 - 1.0);           // 5反復ごとの稜線(境界)
     float ridge = smoothstep(0.35, 0.95, facet) * (1.0 - inside);
 
     // 立体感は控えめ + 鋭く小さいハイライト。発光させずコントラストで見せる(H17 のバランス)。

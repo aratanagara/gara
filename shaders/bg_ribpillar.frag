@@ -24,6 +24,18 @@ mat2 rp_r2(float a){ float s=sin(a), c=cos(a); return mat2(c,s,-s,c); }
 // @param uFog    0..200  = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uSteps 16..36 = 36.0
+// @param uSquashFreq 50..200 = 100
+// @param uBlockFine 0..250 = 100
+// @param uWallGap 60..150 = 100
+// @param uCeilGap 60..150 = 100
+// @param uRoadGap 60..150 = 100
+// @param uTerrainDepth 40..200 = 100
+// @param uBlockHeight 0..250 = 100
+// @param uHoleDepth 0..250 = 100
+// @param uBlockFreq 50..200 = 100
+// @param uTwistPitch 0..300 = 100
+// @param uSideWave 0..300 = 100
+// @param uEdgeGlow 0..160 = 100
 uniform float uTwist;     // コースのねじれ (%)
 uniform float uWarp;      // 横縦の潰れ・伸びの強さ (%)
 uniform float uGlow;      // 光源 (orb) の光の強さ (%)
@@ -31,6 +43,18 @@ uniform float uGlitch;    // 画素ごとの時間ジッタ (モーションブ�
 uniform float uFog;       // 奥の群青のかかり具合 (%)
 uniform float uAngle; // トンネルの向き = ロール (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、奥が粗くなる)
+uniform float uSquashFreq; // 横縦の潰れ・伸びの波の細かさ (%)
+uniform float uBlockFine; // 中くらいの段差ブロックの高さ (%)
+uniform float uWallGap; // 左右の壁の間隔 (%)
+uniform float uCeilGap; // 天井の高さ (%)
+uniform float uRoadGap; // 路面の深さ (%)
+uniform float uTerrainDepth; // ノイズ地形の食い込む深さ (%)
+uniform float uBlockHeight; // 階段状ブロックの段差の高さ (%)
+uniform float uHoleDepth; // 細かい穴の深さ (%)
+uniform float uBlockFreq; // ブロック模様の細かさ (%)
+uniform float uTwistPitch; // 進むにつれて巻くねじれの量 (%)
+uniform float uSideWave; // 横うねりの振れ幅 (%)
+uniform float uEdgeGlow; // 白いエッジ光の量 (%)
 
 float rp_map(vec3 p){
   vec3 q = RP_P(p.z);
@@ -42,18 +66,18 @@ float rp_map(vec3 p){
 
   p.xy -= q.xy;                  // パスに沿って空間を移動
   // コースをねじる + 潰す + うねらせる(カオス。穴あきOK)
-  p.xy *= rp_r2((sin(p.z*0.02)*1.8 + p.z*0.013) * (uTwist / 100.0) + radians(uAngle));     // ねじり(コルク栓状)
-  p.x  *= 1.0 + 0.55*(uWarp / 100.0)*sin(p.z*0.03 + 1.0);           // 横方向に潰れる/伸びる
-  p.y  *= 1.0 + 0.55*(uWarp / 100.0)*sin(p.z*0.04);                 // 縦方向に潰れる/伸びる
-  p.x  += sin(p.z*0.06)*6.0;                         // 横うねり
+  p.xy *= rp_r2((sin(p.z*0.02)*1.8 + p.z*0.013*(uTwistPitch / 100.0)) * (uTwist / 100.0) + radians(uAngle));     // ねじり(コルク栓状)
+  p.x  *= 1.0 + 0.55*(uWarp / 100.0)*sin(p.z*0.03*(uSquashFreq / 100.0) + 1.0);           // 横方向に潰れる/伸びる
+  p.y  *= 1.0 + 0.55*(uWarp / 100.0)*sin(p.z*0.04*(uSquashFreq / 100.0));                 // 縦方向に潰れる/伸びる
+  p.x  += sin(p.z*0.06)*6.0*(uSideWave / 100.0);                         // 横うねり
 
-  float r = 4e1 - p.y;           // 路面
+  float r = 4e1*(uRoadGap / 100.0) - p.y;           // 路面
   p = abs(p);                    // 角トンネルのミラー
-  float t = min(4e1 - p.x, 32. - p.y);
-  float s = -p.y - 26.;          // ノイズ地形
-  s -= abs(dot(round(sin(.1*p + .1*p.yzx)), vec3(4.)));
-  s -= abs(dot(round(sin(.1*p*0.5 + .1*p.yzx*0.5)*16.)*0.125, vec3(6.)));
-  s -= abs(dot(round(sin(.07*p - .05*p.zxy)*8.)*0.22, vec3(5.)));  // 追加ノイズ(穴)
+  float t = min(4e1*(uWallGap / 100.0) - p.x, 32.*(uCeilGap / 100.0) - p.y);
+  float s = -p.y - 26.*(uTerrainDepth / 100.0);          // ノイズ地形
+  s -= abs(dot(round(sin((.1*p + .1*p.yzx) * (uBlockFreq / 100.0))), vec3(4.*(uBlockHeight / 100.0))));
+  s -= abs(dot(round(sin((.1*p*0.5 + .1*p.yzx*0.5) * (uBlockFreq / 100.0))*16.)*0.125, vec3(6.*(uBlockFine / 100.0))));
+  s -= abs(dot(round(sin(.07*p - .05*p.zxy)*8.)*0.22, vec3(5.*(uHoleDepth / 100.0))));  // 追加ノイズ(穴)
   return min(e, max(t + s*0.1, r + s));
 }
 
@@ -76,7 +100,7 @@ vec3 bg_ribpillar(vec2 fc){
   for(; i++ < floor(uSteps + 0.5) && d < 2e3;){
     p = ro + D * d;
     d += s = max(rp_map(p) * .65, .001);
-    o += 6.0*(uGlow / 100.0)*vec4(1,2,5,0)*rp_lights + 1.6/s;   // 白いエッジ光を増やす
+    o += 6.0*(uGlow / 100.0)*vec4(1,2,5,0)*rp_lights + 1.6*(uEdgeGlow / 100.0)/s;   // 白いエッジ光を増やす
   }
 
   // ライン光源を赤→群青(ウルトラマリン)に

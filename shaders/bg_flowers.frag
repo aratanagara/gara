@@ -15,11 +15,33 @@ vec4 bufB[N_HIDDEN/2];
 // @param uContrast 25..300 = 100.0
 // @param uSat      0..250  = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uShapeA   0..200 = 100.0
+// @param uShapeB   0..200 = 100.0
+// @param uShapeC   0..200 = 100.0
+// @param uShapeD   0..200 = 100.0
+// @param uSeedA    -200..200 = 0.0
+// @param uSeedB    -200..200 = 0.0
+// @param uMirrorAxis -60..60 = 0.0
+// @param uSwirl    -200..200 = 0.0
+// @param uStretch  50..200 = 100.0
+// @param uRipple   0..200 = 0.0
+// @param uPetalSym 0..12 = 0.0
 uniform float uDensity;   // 模様のスケール (%)
 uniform float uMotion;    // 形の変化の振幅 (%。速度ではなく変化の幅)
 uniform float uContrast;  // コントラスト (%)
 uniform float uSat;       // 彩度 (%)
 uniform float uAngle; // 花の向き (度。固定角でずらす)
+uniform float uShapeA; // 形の変化 A (ネットワーク入力 1 の振幅 %)
+uniform float uShapeB; // 形の変化 B (入力 2 の振幅 %)
+uniform float uShapeC; // 形の変化 C (入力 3 の振幅 %)
+uniform float uShapeD; // 形の変化 D (入力 4 の振幅 %)
+uniform float uSeedA; // 入力 1 の固定オフセット (%)。花の種類を変える
+uniform float uSeedB; // 入力 2 の固定オフセット (%)
+uniform float uMirrorAxis; // 左右の鏡像の軸位置 (%)。0 = なし / 正負で軸が左右へ動く
+uniform float uSwirl; // 中心からの距離に比例したねじれ (%)。負で逆回り
+uniform float uStretch; // 横方向の伸縮 (%)。下げると横に細長い花
+uniform float uRipple; // 座標のさざ波 (%)。花弁の縁がうねる
+uniform float uPetalSym; // 放射状の対称数 (枚数)。0 = なし
 
 vec4 cppn_fn(vec2 coordinate, float in0, float in1, float in2, float in3) {
     vec4 tmp;
@@ -195,7 +217,18 @@ vec3 bg_flowers(vec2 fc){
   uv = vec2(1., -1.) * 2. * (uDensity / 100.0) * (uv - vec2(0.5, 0.5));
   float aF = radians(uAngle);
   uv = mat2(cos(aF), -sin(aF), sin(aF), cos(aF)) * uv;
-  vec3 fl = cppn_fn(uv, sin(time) * (uMotion / 100.0), sin(2.*time) * (uMotion / 100.0), sin(3.*time) * (uMotion / 100.0), sin(4.*time) * (uMotion / 100.0)).rgb;
+  uv.x *= (uStretch / 100.0);
+  if(uMirrorAxis != 0.0){ float ax = uMirrorAxis / 100.0; uv.x = abs(uv.x - ax) + ax; }
+  if(uSwirl != 0.0){ float ta = length(uv) * uSwirl / 100.0; float ca = cos(ta), sa = sin(ta); uv = mat2(ca, -sa, sa, ca) * uv; }
+  if(uPetalSym >= 1.5){
+    float ns = floor(uPetalSym + 0.5);
+    float seg = TAU / ns;
+    float ang = atan(uv.y, uv.x);
+    ang = abs(mod(ang + 0.5 * seg, seg) - 0.5 * seg);
+    uv = length(uv) * vec2(cos(ang), sin(ang));
+  }
+  if(uRipple > 0.0) uv += (uRipple / 100.0) * 0.15 * sin(uv.yx * 5.0 + 1.3);
+  vec3 fl = cppn_fn(uv, sin(time) * (uMotion / 100.0) * (uShapeA / 100.0) + uSeedA / 100.0, sin(2.*time) * (uMotion / 100.0) * (uShapeB / 100.0) + uSeedB / 100.0, sin(3.*time) * (uMotion / 100.0) * (uShapeC / 100.0), sin(4.*time) * (uMotion / 100.0) * (uShapeD / 100.0)).rgb;
   float flLum = dot(fl, vec3(0.299, 0.587, 0.114));
   return clamp(mix(vec3(flLum), fl, uSat / 100.0), 0.0, 1.0);
 }

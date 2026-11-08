@@ -16,6 +16,16 @@
 // @param uAngle -180..180 = 0.0
 // @param uScale 50..110 = 100.0
 // @param uSteps 120..256 = 256.0
+// @param uWaveAmp 0..250 = 100.0
+// @param uWaveFreq 40..200 = 100.0
+// @param uTubeStretch 50..150 = 100.0
+// @param uCoarseWarp 40..160 = 100.0
+// @param uFineWarp 0..220 = 100.0
+// @param uCoilFreq 70..130 = 100.0
+// @param uTubeSquare 0..100 = 0.0
+// @param uTubeFlat -40..70 = 0.0
+// @param uSssGlow 0..250 = 100.0
+// @param uAoReach 85..200 = 100.0
 uniform float uWarp;      // うねり (ドメイン変形) の強さ (%)
 uniform float uThick;     // チューブの太さ (%)
 uniform float uDensity;   // 虹色の帯の密度 (%。0 で一色)
@@ -24,15 +34,25 @@ uniform float uGlow;      // 拡散光の強さ (%)
 uniform float uAngle; // チューブの向き (度。固定角でずらす)
 uniform float uScale; // チューブ全体の大きさ (%。カメラは動かない)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は外れ扱いで面が欠ける)
+uniform float uWaveAmp; // 全体の大きな蛇行の振れ幅 (%)
+uniform float uWaveFreq; // 蛇行の波長の細かさ (%)
+uniform float uTubeStretch; // チューブの長手方向の伸縮 (%)
+uniform float uCoarseWarp; // いちばん大きいうねりの振れ幅 (%)
+uniform float uFineWarp; // 細かいうねり (後ろ 2 段) の振れ幅 (%)
+uniform float uCoilFreq; // 大きいうねりの周期の細かさ (%)
+uniform float uTubeSquare; // 断面を四角に寄せる量 (%)
+uniform float uTubeFlat; // 断面を平たく / 縦長にする (%)。正で平たく、負で細く
+uniform float uSssGlow; // 縁の暖色の透け感 (%)
+uniform float uAoReach; // 陰影 (AO) の届く距離 (%)
 
 vec3 sd_warp(vec3 p){
   float t = time;
-  p.y += 0.45*sin(0.6*p.x - 0.9*t);
-  p.x *= 0.62;
-  p += 0.90*(uWarp / 100.0)*sin(1.8*p.yzx + vec3(0.0, 0.0, 1.7*t));
+  p.y += 0.45*(uWaveAmp / 100.0)*sin(0.6*(uWaveFreq / 100.0)*p.x - 0.9*t);
+  p.x *= 0.62 * (uTubeStretch / 100.0);
+  p += 0.90*(uCoarseWarp / 100.0)*(uWarp / 100.0)*sin(1.8*(uCoilFreq / 100.0)*p.yzx + vec3(0.0, 0.0, 1.7*t));
   p += 0.42*(uWarp / 100.0)*sin(3.3*p.zxy + vec3(0.0, 0.0, 0.9*t));
-  p += 0.21*(uWarp / 100.0)*sin(5.1*p.yzx + vec3(0.0, 0.0, 0.5*t));
-  p += 0.10*(uWarp / 100.0)*sin(6.7*p.zxy + vec3(0.0, 0.0, 0.2*t));
+  p += 0.21*(uFineWarp / 100.0)*(uWarp / 100.0)*sin(5.1*p.yzx + vec3(0.0, 0.0, 0.5*t));
+  p += 0.10*(uFineWarp / 100.0)*(uWarp / 100.0)*sin(6.7*p.zxy + vec3(0.0, 0.0, 0.2*t));
   return p;
 }
 
@@ -40,7 +60,11 @@ vec3 sd_warp(vec3 p){
 float sd_map(vec3 p){
   float sc = uScale / 100.0;
   vec3 q = sd_warp(p / sc);
-  return (length(q.yz) - 2.3 * (uThick / 100.0)) * 0.025 * sc;
+  vec2 yz = q.yz;
+  if(uTubeFlat != 0.0) yz.y *= 1.0 + uTubeFlat / 100.0;
+  float L = length(yz);
+  if(uTubeSquare != 0.0) L = mix(L, max(abs(yz.x), abs(yz.y)), uTubeSquare / 100.0);
+  return (L - 2.3 * (uThick / 100.0)) * 0.025 * sc;
 }
 
 // 4-tap tetrahedron normal
@@ -67,7 +91,7 @@ float sd_trace(vec3 ro, vec3 rd){
 
 // 簡易 AO(複数方向に距離場をサンプル。下限を持たせ完全遮蔽=黒を防止)
 float sd_ao(vec3 p, vec3 n){
-  const float h = 0.22;
+  float h = 0.22 * (uAoReach / 100.0);
   float ao = 0.0;
   for(int i = 0; i < 6; i++){
     vec3 dir = sin( float(i)*vec3(2.1, 5.7, 11.3) + vec3(1.0, 2.0, 4.0) );
@@ -126,7 +150,7 @@ vec3 bg_sinedeform(vec2 fc){
     col += 3.6*(uGlow / 100.0)*mate*dif;                                 // diffuse(dome)
     col += spe*1.6;                                      // 鏡面ハイライト
     col += mate*occ*(0.5 + 0.5*nor.y);                  // ambient(常に≥0)
-    col += mate*1.1*fre*fre*vec3(1.0, 0.82, 0.66)*occ;  // sss(暖色)
+    col += mate*(1.1*(uSssGlow / 100.0))*fre*fre*vec3(1.0, 0.82, 0.66)*occ;  // sss(暖色)
 
     col = pow(col, vec3(0.30, 0.42, 0.5) * (uContrast / 100.0));              // トーンマップ
   }

@@ -22,6 +22,16 @@ float ng_box(vec3 p, float s){ return length(max(abs(p) - vec3(s), 0.0)); }
 // @param uAngle    -180..180 = 0.0
 // @param uScale    50..200 = 100.0
 // @param uSteps  18..30 = 30.0
+// @param uCoreSize 40..250 = 100
+// @param uBoxSize 40..250 = 100
+// @param uBoxRound 0..100 = 0
+// @param uSpreadY 0..300 = 100
+// @param uSkew 50..200 = 100
+// @param uPulse 0..200 = 100
+// @param uCamDist 60..140 = 100
+// @param uCamHeight 0..250 = 100
+// @param uBoxStretch 40..250 = 100
+// @param uRim 0..300 = 100
 uniform float uDetail;     // 合体させる box の数 (下げると軽く、塊が単純になる)
 uniform float uSoft;       // 合体の滑らかさ = smin の半径 (%)
 uniform float uSpread;     // box の散らばる範囲 (%) (0 = 中心に固まる)
@@ -29,27 +39,42 @@ uniform float uContrast;   // ガンマの強さ (%)
 uniform float uAngle;      // box それぞれの向きのオフセット (度)
 uniform float uScale;      // 物体全体の大きさ (%)
 uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
+uniform float uCoreSize;   // 中心の球の大きさ (%)
+uniform float uBoxSize;    // box 1 個の大きさ (%)
+uniform float uBoxRound;   // box の角の丸み (%)。0 で角ばったまま
+uniform float uSpreadY;    // box の上下の散らばり (%)
+uniform float uSkew;       // box のせん断のかかり方 (%)。大きいほど歪んだ形
+uniform float uPulse;      // 塊全体の脈動の振れ幅 (%)
+uniform float uCamDist;    // カメラの距離 (%)
+uniform float uCamHeight;  // カメラの高さ (%)。0 で真横から、大きいと見下ろし
+uniform float uBoxStretch; // box の奥行き方向の伸び (%)。小さいと平たい板、大きいと棒
+uniform float uRim;        // 輪郭の縁取りの強さ (%)
 
 // 球 + 10 個の box を回転/スキューしながら smin 合体(刻々と変形)
 vec2 ng_map(vec3 pos){
   float objS = uScale / 100.0;
   pos /= objS;
-  float res = ng_sphere(pos, 0.5);
+  float res = ng_sphere(pos, 0.5 * (uCoreSize / 100.0));
   float t   = time;
-  float amp = sin(t*0.5)*0.5 + 1.0;
+  float amp = sin(t*0.5)*0.5*(uPulse / 100.0) + 1.0;
   for(float i = 0.0; i < 10.0; i++){
     if(i >= floor(uDetail + 0.5)) break;
     float a = i + t + radians(uAngle);
     vec3 off = vec3(sin(t*1.2 + i*0.3)*amp*5.0,
-                    sin(t + cos(i*0.5 + t))*amp,
+                    sin(t + cos(i*0.5 + t))*amp*(uSpreadY / 100.0),
                     cos(t*0.45 - i*2.0)*amp*2.0) * (uSpread / 100.0);
     vec3 ppos = pos + off;
-    float d = length(ppos)*0.3;
+    float d = length(ppos)*0.3*(uSkew / 100.0);
     ppos.xy *= mat2(cos(a), sin(a), -sin(a), cos(a));
     ppos.zy *= mat2(cos(-a), sin(a), -sin(a), cos(a));
     ppos *= mat3(1.0, d, d,  d, 1.0, d,  d, d, 1.0);
     ppos *= mat3(sin(d+t), d, d*d,  d, d, d,  -d, i*sin(d+i), -1.0);
-    res = ng_smin(res, ng_box(ppos, 0.2), 4.0 * (uSoft / 100.0));
+    float bs = 0.2 * (uBoxSize / 100.0);
+    vec3 bq = ppos;
+    if(uBoxStretch != 100.0){ bq.z /= uBoxStretch / 100.0; }
+    float bx = ng_box(bq, bs);
+    if(uBoxRound != 0.0){ float br = min(bs, 0.15) * (uBoxRound / 100.0); bx = ng_box(bq, bs - br) - br; }
+    res = ng_smin(res, bx, 4.0 * (uSoft / 100.0));
   }
   return vec2(res * objS, 5.0);
 }
@@ -109,7 +134,7 @@ vec3 ng_render(vec3 ro, vec3 rd, out float hitOut){
     brdf += 0.30*amb*occ;
     brdf += 0.40*dom*occ;
     brdf += 0.30*bac*occ;
-    brdf += 0.40*fre*occ;
+    brdf += 0.40*fre*occ*(uRim / 100.0);
     col = brdf;
   }
   return clamp(col, 0.0, 1.0);
@@ -130,8 +155,8 @@ vec3 bg_ngray(vec2 fc){
   p.x *= resolution.x / resolution.y;
 
   float ctime   = 15.0 + time*5.0;                 // カメラ・オービット
-  float camDist = 13.0;
-  vec3 ro = vec3(-0.5 + camDist*cos(0.1*ctime), 5.0, 0.5 + camDist*sin(0.1*ctime));
+  float camDist = 13.0 * (uCamDist / 100.0);
+  vec3 ro = vec3(-0.5 + camDist*cos(0.1*ctime), 5.0 * (uCamHeight / 100.0), 0.5 + camDist*sin(0.1*ctime));
   vec3 ta = vec3(-0.001, 0.0, 0.0);
   mat3 ca = ng_setCamera(ro, ta, 0.0);
   vec3 rd = ca * normalize(vec3(p.xy, 2.5));

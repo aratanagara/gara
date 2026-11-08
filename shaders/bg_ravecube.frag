@@ -32,6 +32,33 @@ float wr_tesseract4(vec4 p, vec4 b){
   vec4 q = abs(p) - b;
   return length(max(q, 0.0)) + min(max(max(q.x, q.y), max(q.z, q.w)), 0.0);
 }
+// @param uSplitX -30..30 = 0
+// @param uSplitY -30..30 = 0
+// @param uSplitZ -30..30 = 0
+// @param uCellRound 20..250 = 100
+// @param uEdgePush -4..25 = 0
+// @param uSliceW -150..150 = 0
+// @param uWDepth 30..250 = 100
+// @param uStretchPulse 0..300 = 100
+// @param uCubeBound 45..120 = 100
+// @param uSpecSharp 55..300 = 100
+// @param uRimSharp 30..300 = 100
+// @param uAoReach 30..250 = 100
+// @param uFogDist 30..200 = 100
+uniform float uSplitX; // X 方向の分割位置のずれ (%)
+uniform float uSplitY; // Y 方向の分割位置のずれ (%)
+uniform float uSplitZ; // Z 方向の分割位置のずれ (%)
+uniform float uCellRound; // 各ボックスの角の丸み (%)
+uniform float uEdgePush; // 外縁のボックスを外へ押し広げる量 (%)
+uniform float uSliceW; // 4 次元を切る位置 (%)。形がテッセラクトの断面で変わる
+uniform float uWDepth; // 4 次元方向の厚み (%)
+uniform float uStretchPulse; // ボックスの縦横比の脈動の振れ幅 (%)
+uniform float uCubeBound; // 全体を切り出す外枠の大きさ (%)
+uniform float uSpecSharp; // 反射ハイライトの鋭さ (%)
+uniform float uRimSharp; // 縁の光 (フレネル) の鋭さ (%)
+uniform float uAoReach; // 接触影の届く距離 (%)
+uniform float uFogDist; // 遠景が背景に溶ける距離 (%)
+
 // 4D の回転体を w=wSlice の 3D スライスで切り出した距離。p:3D 座標、b:3D サイズ。
 // 内部で 4D テッセラクトを 4D 回転 → スライス。回転位相 t で形状が連続変化。
 float wr_tesseract_slice(vec3 p, vec3 b, float t, float wSlice){
@@ -45,7 +72,7 @@ float wr_tesseract_slice(vec3 p, vec3 b, float t, float wSlice){
   p4 = wr_r4YZ(p4, t*0.22 + 1.9);
   // 4D テッセラクト(w 軸長を平均サイズに)
   float bw = (b.x + b.y + b.z) * (1.0/3.0);
-  return wr_tesseract4(p4, vec4(b, bw));
+  return wr_tesseract4(p4, vec4(b, bw * (uWDepth / 100.0)));
 }
 
 vec3  wr_rdg = vec3(0);
@@ -81,6 +108,7 @@ vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   for(float i = 0.; i < 5.; i++){
     if(i >= ITERS) break;
     vec3 divHash = vec3(0.49, 0.501, 0.511);
+    if(uSplitX != 0.0 || uSplitY != 0.0 || uSplitZ != 0.0) divHash += vec3(uSplitX, uSplitY, uSplitZ) / 100.0;
     vec3 divide = divHash * dim + dMin;
     dMax = mix(dMax, divide, step(p, divide));
     dMin = mix(divide, dMin, step(p, divide));
@@ -95,7 +123,9 @@ vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   vec3 center = (dMin + dMax)/2.0;
   float b = 0.;
   if(any(isEdge)){
-    float expand = 1.05 + 0.45*(uMotion / 100.0)*(sin(length(center+100.0)*0.35 + t*3.0*WR_PI/3.)*0.5 + 0.5);
+    float expandBase = 1.05;
+    if(uEdgePush != 0.0) expandBase += uEdgePush / 100.0;
+    float expand = expandBase + 0.45*(uMotion / 100.0)*(sin(length(center+100.0)*0.35 + t*3.0*WR_PI/3.)*0.5 + 0.5);
     if(isEdge.x){ dim.x += abs(center.x*expand-center.x)*2.0; center.x *= expand; }
     if(isEdge.y){ dim.y += abs(center.y*expand-center.y)*2.0; center.y *= expand; }
     if(isEdge.z){ dim.z += abs(center.z*expand-center.z)*2.0; center.z *= expand; }
@@ -107,7 +137,9 @@ vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   dim -= 0.4 * ((200.0 - uSize) / 100.0);
   // 4D 回転体: 各セルを w=0 スライスのテッセラクトとして描画。
   // 4D 回転で時間とともにスライスが変化し、立方体が断面で「うねりながら姿を変える」。
-  float a = wr_tesseract_slice(p - center, dim*0.5, t, 0.0) - 0.18;
+  float a;
+  if(uSliceW != 0.0) a = wr_tesseract_slice(p - center, dim*0.5, t, uSliceW / 100.0) - 0.18 * (uCellRound / 100.0);
+  else a = wr_tesseract_slice(p - center, dim*0.5, t, 0.0) - 0.18 * (uCellRound / 100.0);
   wr_nsdf = a;
   a = min(a, b);
   id = wr_h11(id)*1000.0;
@@ -151,9 +183,9 @@ vec3 wr_map(vec3 p){
   p.yz *= wr_rot(rYZ); rd2.yz *= wr_rot(rYZ);
   p.xz *= wr_rot(rXZ); rd2.xz *= wr_rot(rXZ);
   // スケール脈動(4D の w 由来)
-  scl *= vec3(1.0 + sin(ph2)*0.15, 1.0 + cos(ph3)*0.15, 1.0 + sin(ph4)*0.15);
+  scl *= vec3(1.0 + sin(ph2)*0.15*(uStretchPulse / 100.0), 1.0 + cos(ph3)*0.15*(uStretchPulse / 100.0), 1.0 + sin(ph4)*0.15*(uStretchPulse / 100.0));
   a = wr_blocks(p, scl, rd2) + 0.01;
-  a.x = max(wr_box(p, vec3(scl*1.4)), a.x);
+  a.x = max(wr_box(p, vec3(scl*1.4*(uCubeBound / 100.0))), a.x);
   return vec3(a.x * sc, a.y, wr_nsdf * sc);
 }
 vec3 wr_norm(vec3 p){
@@ -161,7 +193,7 @@ vec3 wr_norm(vec3 p){
   return normalize(wr_map(p).x - vec3(wr_map(p-e.xyy).x, wr_map(p-e.yxy).x, wr_map(p-e.yyx).x));
 }
 
-#define WR_AO(a,n,p) smoothstep(-a, a, wr_map(p + n*a).z)
+#define WR_AO(a0,n,p) smoothstep(-(a0)*(uAoReach / 100.0), (a0)*(uAoReach / 100.0), wr_map(p + n*((a0)*(uAoReach / 100.0))).z)
 
 vec3 bg_ravecube(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -195,13 +227,15 @@ vec3 bg_ravecube(vec2 fc){
     float env = 0.5 + 0.5*rr.y;
     vec3 chrome = mix(vec3(0.03, 0.035, 0.05), vec3(0.92, 0.94, 1.00), smoothstep(0.12, 0.88, env));
     chrome += pow(env, 8.0) * vec3(0.22);
-    float spec = pow(length(sin(rr*5.)*.5 + .5)/sqrt(3.), 6.0);   // 鋭い反射ハイライト
-    float fres = pow(1.0 - abs(dot(rd, n)), 4.0);
+    float spec = pow(length(sin(rr*5.)*.5 + .5)/sqrt(3.), 6.0 * (uSpecSharp / 100.0));   // 鋭い反射ハイライト
+    float fres = pow(1.0 - abs(dot(rd, n)), 4.0 * (uRimSharp / 100.0));
     chrome += (spec * vec3(1.0) * 1.2 + fres * vec3(0.7, 0.75, 0.9) * 0.5) * (uGlow / 100.0);
     float ao = WR_AO(0.3, n, p) * WR_AO(0.5, n, p) * WR_AO(0.9, n, p);
     col = chrome * pow(clamp(ao, 0.0, 1.0), 0.4);
   }
   vec3 bg = mix(vec3(0.05, 0.055, 0.07), vec3(0.12, 0.13, 0.17), length(uv));
-  col = mix(col, bg, dO/WR_MDIST);
+  float fogK = dO/(WR_MDIST * (uFogDist / 100.0));
+  if(uFogDist != 100.0) fogK = clamp(fogK, 0.0, 1.0);
+  col = mix(col, bg, fogK);
   return col;
 }

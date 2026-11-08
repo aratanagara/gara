@@ -18,6 +18,28 @@ uniform float uGlow;   // 発光の強さ (%)
 uniform float uSat;   // 色の彩度 (%)
 uniform float uSoft;   // リボン縁のぼかし幅 (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+// @param uRibbonTwist 0..300 = 100.0
+// @param uWave 85..250 = 100.0
+// @param uRibbonWidth 50..170 = 100.0
+// @param uFlutter 25..250 = 100.0
+// @param uFlutterFreq 40..250 = 100.0
+// @param uRibbonGap 50..125 = 100.0
+// @param uHaloHeight 20..200 = 100.0
+// @param uHaloGlow 0..400 = 100.0
+// @param uSwirl -300..300 = 0.0
+// @param uMirror 0..100 = 0.0
+// @param uColorBands 20..300 = 100.0
+uniform float uRibbonTwist; // リボンが奥行きに沿ってねじれる量 (%)
+uniform float uWave;        // リボンの大きなうねりの振れ幅 (%)
+uniform float uRibbonWidth; // リボン 1 本の幅 (%)
+uniform float uFlutter;     // リボン面のはためき (細かい波) の振れ幅 (%)
+uniform float uFlutterFreq; // はためきの細かさ (%)
+uniform float uRibbonGap;   // リボン同士の間隔 (%)。下げると詰まり、上げると疎になる
+uniform float uHaloHeight;  // 上方の光源の高さ (%)
+uniform float uHaloGlow;    // 上方の光源のにじみの強さ (%)
+uniform float uSwirl;       // 中心からの距離に比例したねじれ (%)。0 = なし / 負で逆回り
+uniform float uMirror;      // 左右の鏡像対称 (%)。0 = なし / 100 で完全な左右対称
+uniform float uColorBands;  // 奥行き方向の色帯の細かさ (%)
 
 vec3 bg_ribbon(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -26,17 +48,26 @@ vec3 bg_ribbon(vec2 fc){
   vec2 uv = (I - 0.5*r.xy) / r.y;
   float rot = time*0.25 + radians(uAngle);                                       // 画面中心(uv=0)を起点に回転
   uv = mat2(cos(rot), -sin(rot), sin(rot), cos(rot)) * uv;
+  if(uMirror > 0.0) uv.x = mix(uv.x, abs(uv.x), uMirror / 100.0);
+  if(uSwirl != 0.0){ float sa = length(uv) * uSwirl / 100.0; uv = mat2(cos(sa), -sin(sa), sin(sa), cos(sa)) * uv; }
   uv = uv*2.8 + vec2(-0.7, -0.45);  // 引き(×2.8, 全体が見える) + 右上へ
 
   vec4 o = vec4(0.0);
   for(o *= i; i++ < 100.0; p = 1.5*vec3(uv*d*(uDensity / 100.0), d + t)){
     if(i > uSteps) break;
-    s = 5e-3 + abs(s)*0.07;
+    s = 5e-3 + abs(s)*(0.07*(uRibbonWidth/100.0));
     d += s;
-    o += (1.0 + sin(i*0.5 + 1.5*vec4(3, 1.5, 1, 0)))/s
-       + vec4(1, 1, 3, 1) / length(uv + vec2(0.0, -0.7));
-    p.xy *= mat2(cos(d*0.1 - 4.0 - vec4(0, 11, 33, 0)));
+    o += (1.0 + sin(i*(0.5*(uColorBands/100.0)) + 1.5*vec4(3, 1.5, 1, 0)))/s
+       + vec4(1, 1, 3, 1)*(uHaloGlow/100.0) / length(uv + vec2(0.0, -0.7*(uHaloHeight/100.0)));
+    if(uRibbonTwist != 100.0) p.xy *= mat2(cos(d*(0.1*(uRibbonTwist/100.0)) - 4.0 - vec4(0, 11, 33, 0)));
+    else p.xy *= mat2(cos(d*0.1 - 4.0 - vec4(0, 11, 33, 0)));
     s += cos(p.x + p.y)*2.0 + 1.5 + abs(dot(0.2*sin(vec3(p.xy*1.5, p.z + t*5.0)), vec3(0, 9, 2)));
+    if(uWave != 100.0) s += cos(p.x + p.y)*(2.0*(uWave/100.0 - 1.0));
+    if(uRibbonGap != 100.0) s += 1.5*(uRibbonGap/100.0 - 1.0);
+    if(uFlutter != 100.0 || uFlutterFreq != 100.0){
+      s += abs(dot((0.2*(uFlutter/100.0))*sin(vec3(p.xy*(1.5*(uFlutterFreq/100.0)), p.z + t*5.0)), vec3(0, 9, 2)))
+         - abs(dot(0.2*sin(vec3(p.xy*1.5, p.z + t*5.0)), vec3(0, 9, 2)));
+    }
   }
   o = tanh(o*o*(uGlow / 100.0)/3e7);
 

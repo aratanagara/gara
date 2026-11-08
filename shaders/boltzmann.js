@@ -16,12 +16,46 @@ const Boltzmann = {
   MAXW: 384,
   SUBSTEPS: 8,   // 8倍速
 
+  // ── パラメータ (プリセットモードの UI から操作。使う直前に App.deadParam を通す)。既定値 = 従来と同一の動き ──
+  //   Post FX (renderWarp) では使わない (常に既定値)。
+  P:{
+    force:100,       // 流れを押す力の強さ (%)
+    swirl:100,       // 中心まわりの渦の強さ (%)
+    centerSpread:100,// 渦の中心が画面中央からずれる幅 (%)
+    swell:100,       // 大きなうねりの強さ (%)
+    swellSize:100,   // うねりの大きさ (%)。上げると大きくゆったりした波に
+    radial:100,      // 膨張⇔収縮の放射の強さ (%)
+    viscosity:100,   // 粘り (流れのなめらかさ, %)
+    smear:100,       // 色の境界のにじみ (%)
+    crisp:100,       // 引き伸ばされた模様をどこまでシャープに保つか (%)
+    relief:100,      // 色の凹凸 (陰影の深さ, %)
+    sharpen:100,     // まとまった輪郭のシャープさ (%)
+    bloom:100,       // 明るい所のにじみ光 (%)
+  },
+  PDefaults:null,
+  SPECS:[
+    ['Force',         'force',        0,   300, 1, 'pct'],
+    ['Swirl',         'swirl',        0,   400, 1, 'pct'],
+    ['Center Spread', 'centerSpread', 0,   300, 1, 'pct'],
+    ['Swell',         'swell',        0,   400, 1, 'pct'],
+    ['Swell Size',    'swellSize',    25,  400, 1, 'pct'],
+    ['Radial',        'radial',       0,   400, 1, 'pct'],
+    ['Viscosity',     'viscosity',    20,  400, 1, 'pct'],
+    ['Smear',         'smear',        0,   500, 1, 'pct'],
+    ['Crisp',         'crisp',        20,  500, 1, 'pct'],
+    ['Relief',        'relief',       0,   400, 1, 'pct'],
+    ['Sharpen',       'sharpen',      0,   400, 1, 'pct'],
+    ['Bloom',         'bloom',        0,   600, 1, 'pct'],
+  ],
+  _pv:null,   // 今回の描画で使う倍率 (render = P から / renderWarp = すべて 1)
+
   VS:`#version 300 es
 in vec2 a_xy; void main(){ gl_Position=vec4(a_xy,0.,1.); }`,
 
   A_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uA, uD, uB; uniform vec2 uRes; uniform float uInit, uT, uAmp, uSeed, uEnv, uDir, uSettle; out vec4 Q;
+uniform float uForce, uSwirl, uCenterSpread, uSwell, uSwellSize, uRadial, uViscosity;
 #define R uRes
 #define T(U) texture(uA,(U)/R)
 #define Bp(U) texture(uB,(U)/R)
@@ -38,7 +72,7 @@ void main(){
   Q += 0.25*(n.w+e.y+s.z+w.x) - pr(Q) - vec4(px,-px,py,-py);
   float z=.8-length(Bp(U).xyz);
   // 4近傍平均は市松(checkerboard)モードを正確に殺す。強い力ほど市松不安定が育つため uAmp で増強。
-  Q = mix(mix(Q,0.25*(n+e+s+w), 0.01 + 0.07*uAmp*uAmp), vec4(pr(Q)), .01*(1.-z));
+  Q = mix(mix(Q,0.25*(n+e+s+w), (0.01 + 0.07*uAmp*uAmp)*uViscosity), vec4(pr(Q)), .01*(1.-z));
   // 力場: 上向き一辺倒をやめ、時間で回転する方向 + 中心まわりの渦。
   // 明度依存を弱めて(fz)流れの圧縮=特定色への集中(面積比の崩れ)を抑える。
   // uAmp(0..1) で運動の性格が変わる: 力の強さ / 回転速度 / 渦 / 乱流 / 放射バースト。
@@ -46,14 +80,14 @@ void main(){
   // uSeed(リセットごとにランダム) で初期位相・渦の向き/中心・乱流位相が毎回変わる。
   float a2 = uAmp*uAmp;
   float fa = uT*mix(0.12, 1.1, a2) + uSeed*6.2831;                                  // ゆっくり強く回る(全体のうねり)
-  vec2 ctr = U - R*(0.5 + 0.3*(vec2(fract(uSeed*3.71), fract(uSeed*5.33)) - 0.5));  // 渦中心もランダム
+  vec2 ctr = U - R*(0.5 + 0.3*uCenterSpread*(vec2(fract(uSeed*3.71), fract(uSeed*5.33)) - 0.5));  // 渦中心もランダム
   float vdir = (uDir != 0.0) ? uDir : mix(-1.0, 1.0, step(0.5, fract(uSeed*7.31)));  // uDir!=0: 左右(符号)で渦の向き / 0: シード依存
-  vec2 fd = normalize(vec2(sin(fa), -cos(fa)) + vdir*mix(0.35, 3.6, uAmp)*normalize(vec2(-ctr.y, ctr.x) + 1e-4));
+  vec2 fd = normalize(vec2(sin(fa), -cos(fa)) + vdir*mix(0.35, 3.6, uAmp)*uSwirl*normalize(vec2(-ctr.y, ctr.x) + 1e-4));
   // 大きなうねり: 低周波(画面半分スケール)の揺らぎで全体をぐわんと動かす(細かい乱流ではなく)
-  fd = normalize(fd + a2*2.2*vec2(sin(U.y*0.03 + uT*1.3 + uSeed*13.7), cos(U.x*0.025 - uT*1.1 + uSeed*31.4)));
+  fd = normalize(fd + a2*2.2*uSwell*vec2(sin(U.y*0.03/uSwellSize + uT*1.3 + uSeed*13.7), cos(U.x*0.025/uSwellSize - uT*1.1 + uSeed*31.4)));
   float fz = mix(0.4, z, 0.6);
-  vec2 fv = fd*mix(0.25, 28.0, a2);
-  fv += a2*24.0*sin(uT*1.6 + uSeed*6.2831)*normalize(ctr + 1e-4);                   // 膨張⇔収縮の放射スウェル(ぐわん)
+  vec2 fv = fd*mix(0.25, 28.0, a2)*uForce;
+  fv += a2*24.0*uRadial*sin(uT*1.6 + uSeed*6.2831)*normalize(ctr + 1e-4);                   // 膨張⇔収縮の放射スウェル(ぐわん)
   fv *= mix(0.3, 1.9, uEnv);   // 拍頭バースト → easeOutQuint 減衰の混色リズム(BPM同期)
   Q += (st > 0.0 ? 0.0 : 0.0008)*fz*vec4(fv.x, -fv.x, fv.y, -fv.y);
   Q = mix(Q, vec4(pr(Q)), st);
@@ -65,6 +99,7 @@ void main(){
   D_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uA, uD; uniform vec2 uRes; uniform float uInit, uSettle; out vec4 Q;
+uniform float uSmear;
 #define R uRes
 #define A(U) texture(uA,(U)/R)
 #define dd(U) texture(uD,(U)/R)
@@ -76,7 +111,7 @@ void main(){
   vec4 q=A(U), n=A(U+vec2(0,1)), e=A(U+vec2(1,0)), s=A(U-vec2(0,1)), w=A(U-vec2(1,0)),
        N=Dv(U+vec2(0,1)), E=Dv(U+vec2(1,0)), S=Dv(U-vec2(0,1)), W=Dv(U-vec2(1,0));
   Q += 0.25*((n.w-q.z)*(N-Q)+(e.y-q.x)*(E-Q)+(s.z-q.w)*(S-Q)+(w.x-q.y)*(W-Q));
-  Q = mix(Q, 0.25*(N+E+S+W), 0.008);  // 位置場の拡散は控えめ(輪郭ソリッドとノイズ抑制のバランス)
+  Q = mix(Q, 0.25*(N+E+S+W), 0.008*uSmear);  // 位置場の拡散は控えめ(輪郭ソリッドとノイズ抑制のバランス)
   if(uInit>0.5) Q=vec4(U,0,0);
   // 暴走・NaN の浄化: 壊れた位置(ホワイトノイズ源)は恒等位置へリセット。
   // NaN は比較が常に false になり下流の検出を全て素通りするため、ここで断つ。
@@ -87,6 +122,7 @@ void main(){
   B_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uD, uImg, uSrc; uniform vec2 uRes; uniform float uHasImg, uUseSrc; out vec4 Q;
+uniform float uCrisp;
 #define R uRes
 #define D(U) texture(uD,(U)/R)
 // 画像未ロード時のフォールバック(滑らかなカラー場)
@@ -110,7 +146,7 @@ void main(){
   float ch = max(max(length(D(U+vec2(1,0)).xy - d0c), length(D(U-vec2(1,0)).xy - d0c)),
                  max(length(D(U+vec2(0,1)).xy - d0c), length(D(U-vec2(0,1)).xy - d0c))) / R.x;
   float gm = max(max(length(gx), length(gy)), ch);
-  const float t = 0.02;                                  // ~10倍ストレッチまでシャープ
+  float t = 0.02*uCrisp;                                 // ~10倍ストレッチまでシャープ
   float g2 = (gm <= t) ? gm : t + (gm - t)*3.0;          // 閾値超はぼかしを3倍勾配で強化
   g2 = min(g2, 0.18);
   float base = max(length(gx), length(gy));
@@ -125,6 +161,7 @@ void main(){
   C_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uB; uniform vec2 uRes; out vec4 Q;
+uniform float uRelief;
 #define R uRes
 #define T(U) texture(uB,(U)/R)
 void main(){
@@ -132,7 +169,7 @@ void main(){
   vec3 base=T(U).xyz;                       // 流された画像の色
   // 高さ場(輝度)から法線 → 柔らかな陰影 + ハイライト(色は保持)
   float n=length(T(U+vec2(0,1))), e=length(T(U+vec2(1,0))), s=length(T(U-vec2(0,1))), w=length(T(U-vec2(1,0)));
-  vec3 no=normalize(vec3((e-w)*3.0, (n-s)*3.0, 1.0));
+  vec3 no=normalize(vec3((e-w)*3.0*uRelief, (n-s)*3.0*uRelief, 1.0));
   float spec=pow(max(dot(reflect(no, vec3(0,0,1)), normalize(vec3(1))), 0.0), 12.0);
   vec3 col = base*(0.5 + 0.5*no.z) + spec*vec3(0.85,0.9,1.0)*0.3;   // 平坦=×1.0(等倍)。彩度を落とすスペキュラは控えめ
   Q=vec4(col, 1.0);
@@ -186,6 +223,7 @@ void main(){
   IMG_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uC; uniform vec2 uSim, uOut; out vec4 Q;
+uniform float uBloom, uSharpen;
 #define T(U) texture(uC,(U)/uSim)
 // 明るい部分のみ穏やかにブルーム(色は保持)
 vec4 Fl(vec2 U, vec2 r){ vec3 t=T(U+r).xyz; return vec4(exp(-.018*dot(r,r))*max(t-0.6, 0.0), 0.0); }
@@ -201,7 +239,7 @@ void main(){
   vec3 cN = (T(U+vec2(0,1)).xyz + T(U+vec2(1,0)).xyz + T(U-vec2(0,1)).xyz + T(U-vec2(1,0)).xyz)*0.25;
   float varn = length(c0 - cN);
   float w = smoothstep(0.22, 0.08, varn);              // 1=コヒーレント(シャープ), 0=荒れ(平滑)
-  vec3 col = mix(mix(c0, cN, 0.85), c0 + (c0 - cN)*0.6, w) + 0.05*bloom;
+  vec3 col = mix(mix(c0, cN, 0.85), c0 + (c0 - cN)*0.6*uSharpen, w) + 0.05*uBloom*bloom;
   col = clamp(col, 0.0, 1.0);             // 明度・彩度は等倍(トーンマップ/ガンマなし)
   Q=vec4(col, 1.0);
 }`,
@@ -341,6 +379,8 @@ void main(){
     gl.uniform1f(this._u(this.aProg,'uSeed'), this._seed || 0);
     gl.uniform1f(this._u(this.aProg,'uEnv'), (this._env != null) ? this._env : 0.55);
     gl.uniform1f(this._u(this.aProg,'uSettle'), this._settle || 0);
+    const pv = this._pv || this._unitPV();
+    for(const k of ['force','swirl','centerSpread','swell','swellSize','radial','viscosity']) gl.uniform1f(this._u(this.aProg, 'u' + k[0].toUpperCase() + k.slice(1)), pv[k]);
     gl.drawArrays(gl.TRIANGLES,0,3);
     const t=this.A0; this.A0=this.A1; this.A1=t;
   },
@@ -355,6 +395,7 @@ void main(){
     gl.uniform2f(this._u(this.dProg,'uRes'), this.sw, this.sh);
     gl.uniform1f(this._u(this.dProg,'uInit'), init?1:0);
     gl.uniform1f(this._u(this.dProg,'uSettle'), this._settle || 0);
+    gl.uniform1f(this._u(this.dProg,'uSmear'), (this._pv || this._unitPV()).smear);
     gl.drawArrays(gl.TRIANGLES,0,3);
     const t=this.D0; this.D0=this.D1; this.D1=t;
   },
@@ -372,7 +413,18 @@ void main(){
     gl.uniform1f(this._u(this.bProg,'uHasImg'), this.imgReady ? 1 : 0);
     gl.uniform1f(this._u(this.bProg,'uUseSrc'), srcTex ? 1 : 0);
     gl.uniform2f(this._u(this.bProg,'uRes'), this.sw, this.sh);
+    gl.uniform1f(this._u(this.bProg,'uCrisp'), (this._pv || this._unitPV()).crisp);
     gl.drawArrays(gl.TRIANGLES,0,3);
+  },
+  // すべて 1 (= 従来の動き) の倍率
+  _unitPV(){ const o = {}; for(const k of Object.keys(this.P)) o[k] = 1; return o; },
+  // P (%) → 倍率
+  _paramPV(){
+    const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+    const o = {};
+    for(const k of Object.keys(this.P)) o[k] = dz(this.P[k]) / 100;
+    for(const k of ['swellSize','viscosity','crisp']) o[k] = Math.max(0.05, o[k]);
+    return o;
   },
 
   renderWarp({ srcTex, fbo, w, h, amount, pulse, settle=0 }){
@@ -384,6 +436,7 @@ void main(){
     if(this._dir == null) this._dir = 1;                           // 向きは reseed 時に App 側でランダム抽選 (符号では決めない)
     const drive = Math.pow(Math.max(amt, 0.0001), 0.55);
     this._amp = Math.min(1, 0.07 + drive * 0.76);
+    this._pv = this._unitPV();   // Post FX はパラメータを使わない
     const steps = this._settle > 0 ? Math.max(4, Math.round(5 + drive*9)) : Math.max(2, Math.round(2 + drive*12));
     if(!this.initialized) this.init(gl);
     if(!this.ok){
@@ -437,6 +490,7 @@ void main(){
     this._settle = 0;
     this._amp = (amt != null) ? amt : 0.42;   // プリセットモードは中庸の運動(力≒1.0倍相当)
     this._dir = 0;                            // プリセットモードは渦の向きをシード依存に(従来通り)
+    this._pv = this._paramPV();
     const steps = (amt != null) ? Math.max(1, Math.round(2 + amt*18)) : this.SUBSTEPS;
     if(!this.initialized) this.init(gl);
     if(!this.ok){ // 非対応: ターゲットを黒で残す
@@ -467,6 +521,7 @@ void main(){
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.Bbuf.tex);
     gl.uniform1i(this._u(this.cProg,'uB'),0);
     gl.uniform2f(this._u(this.cProg,'uRes'), this.sw, this.sh);
+    gl.uniform1f(this._u(this.cProg,'uRelief'), this._pv.relief);
     gl.drawArrays(gl.TRIANGLES,0,3);
 
     // Image: レンズフレア → target(スロット解像度)
@@ -476,8 +531,11 @@ void main(){
     gl.uniform1i(this._u(this.imgProg,'uC'),0);
     gl.uniform2f(this._u(this.imgProg,'uSim'), this.sw, this.sh);
     gl.uniform2f(this._u(this.imgProg,'uOut'), w, h);
+    gl.uniform1f(this._u(this.imgProg,'uBloom'), this._pv.bloom);
+    gl.uniform1f(this._u(this.imgProg,'uSharpen'), this._pv.sharpen);
     gl.drawArrays(gl.TRIANGLES,0,3);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
 };
+Boltzmann.PDefaults = JSON.parse(JSON.stringify(Boltzmann.P));   // 既定値はスクリプト読込時に確定 (state 復元より先)

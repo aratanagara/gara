@@ -46,6 +46,30 @@ uniform float uScale; // 立方体全体の大きさ (%)
 uniform float uAngle; // 立方体の向き (度。固定角でずらす)
 uniform float uTilt; // 立方体の傾き (度。固定角)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は当たり扱いで縁が荒れる)
+// @param uBoxW 50..115 = 100
+// @param uBoxH 50..115 = 100
+// @param uBoxD 50..115 = 100
+// @param uTaper -60..60 = 0
+// @param uSkew -100..100 = 0
+// @param uCubeTwist -90..90 = 0
+// @param uSaddle -60..60 = 0
+// @param uSwayXZ 0..200 = 100
+// @param uSwayYZ 0..200 = 100
+// @param uEnvTop 0..300 = 100
+// @param uFaceRefl 20..180 = 100
+// @param uEnvBands 1..6 = 2
+uniform float uBoxW;      // 立方体の幅 (%)
+uniform float uBoxH;      // 立方体の高さ (%)
+uniform float uBoxD;      // 立方体の奥行き (%)
+uniform float uTaper;     // 上すぼまり・下すぼまり (%)。0 = なし / 負で逆
+uniform float uSkew;      // 横ずれ (平行四辺形化) (%)
+uniform float uCubeTwist; // 縦軸まわりのねじれ (度)
+uniform float uSaddle;    // 面の鞍状のたわみ (%)。0 = なし / 負で逆
+uniform float uSwayXZ;    // 水平方向のよじれ量 (%)
+uniform float uSwayYZ;    // 前後方向のよじれ量 (%)
+uniform float uEnvTop;    // 上向きの面に映る天頂の光の強さ (%)
+uniform float uFaceRefl;  // 正面向きの面の反射量 (%)
+uniform float uEnvBands;  // 反射する横帯の数
 
 vec3 bp_verts[8];
 const float BP_ROUND = 0.03;
@@ -112,9 +136,9 @@ vec2 bp_rot(vec2 p, float an){
 vec3 bp_env(vec3 d){
   float up = d.y*0.5 + 0.5;
   vec3 c = mix(vec3(0.06, 0.07, 0.09), vec3(0.93, 0.95, 1.0), smoothstep(0.0, 0.9, up));
-  c += vec3(0.6) * pow(max(d.y, 0.0), 5.0);             // 天頂のソフトライト
+  c += vec3(0.6) * pow(max(d.y, 0.0), 5.0) * (uEnvTop / 100.0);             // 天頂のソフトライト
   float az = atan(d.x, d.z);
-  c += vec3(0.3) * pow(max(cos(az*2.0), 0.0), 8.0);     // 横の反射帯
+  c += vec3(0.3) * pow(max(cos(az*float(int(uEnvBands + 0.5))), 0.0), 8.0);     // 横の反射帯
   return c;
 }
 
@@ -130,8 +154,13 @@ vec3 bg_patchsdf(vec2 fc){
   for(int i=0; i<8; i++){
     vec3 p = vec3((ivec3(i) >> ivec3(0,1,2)) & 1) * 2.0 - 1.0;
     p *= (uScale / 100.0);
-    p.xz = bp_rot(p.xz,  amp*cos(time*3.0*6.2831/15.0 + p.y + 0.0)/2.0);
-    p.yz = bp_rot(p.yz, -amp*cos(time*1.0*6.2831/15.0 + p.x + 2.0)/1.0);
+    p *= vec3(uBoxW, uBoxH, uBoxD) / 100.0;
+    if(uTaper != 0.0){ p.xz *= 1.0 - uTaper / 100.0 * (p.y * 0.5 + 0.5); }
+    if(uSkew != 0.0){ p.x += p.y * uSkew / 100.0; }
+    if(uSaddle != 0.0){ p.y += p.x * p.z * uSaddle / 100.0; }
+    if(uCubeTwist != 0.0){ p.xz = bp_rot(p.xz, p.y * radians(uCubeTwist)); }
+    p.xz = bp_rot(p.xz,  amp*cos(time*3.0*6.2831/15.0 + p.y + 0.0)/2.0 * (uSwayXZ / 100.0));
+    p.yz = bp_rot(p.yz, -amp*cos(time*1.0*6.2831/15.0 + p.x + 2.0)/1.0 * (uSwayYZ / 100.0));
     p.xz = bp_rot(p.xz,  4.0 + radians(uAngle) + time*1.0*6.2831/15.0);
     p.yz = bp_rot(p.yz, radians(uTilt));
     bp_verts[i] = p;
@@ -152,7 +181,7 @@ vec3 bg_patchsdf(vec2 fc){
     float fres = pow(1.0 - max(dot(nor, -rd), 0.0), 4.0);
     vec3 lig = normalize(vec3(6.0, 5.0, -1.0));
     float spe = pow(max(dot(nor, normalize(lig - rd)), 0.0), 60.0);
-    col = mix(env*0.55, env, fres) + spe*vec3(1.0)*1.6;
+    col = mix(env*0.55*(uFaceRefl / 100.0), env, fres) + spe*vec3(1.0)*1.6;
     col *= exp2(-t*0.1);
   }
 

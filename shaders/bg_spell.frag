@@ -54,30 +54,48 @@ uniform float uHole;      // 円盤の中央の穴の大きさ (%)
 uniform float uAngle; // 全体の向き (度。固定角でずらす)
 uniform float uScale; // 魔法陣 (チューブと円盤) 全体の大きさ (%。床・天井は動かない)
 uniform float uSteps; // ボリュームレイマーチのステップ数 (下げると軽く、全体が暗くなる)
+// @param uTubeTwist 0..250 = 100
+// @param uTubeRing 60..140 = 100
+// @param uDiskRadius 50..150 = 100
+// @param uWobble 0..300 = 100
+// @param uWaves 1..12 = 6
+// @param uLobes 3..16 = 10
+// @param uLobeAmp 0..200 = 100
+// @param uCoil 0..300 = 100
+// @param uRoomHeight 60..150 = 100
+uniform float uTubeTwist; // チューブのねじれ (%)
+uniform float uTubeRing;  // チューブの輪の半径 (%)
+uniform float uDiskRadius; // 円盤の外半径 (%)
+uniform float uWobble;    // 円盤のうねりの深さ (%)
+uniform float uWaves;     // 円盤のうねりの山の数
+uniform float uLobes;     // 外側の波打ちの山の数
+uniform float uLobeAmp;   // 外側の波打ちの振れ幅 (%)
+uniform float uCoil;      // 全体の巻きつき (%)
+uniform float uRoomHeight; // 床と天井の間隔 (%)
 
 float sp_tubes(vec3 pos){
   float cylinderRadius = .02 * (uThick / 100.0);
   vec3 p = pos;
-  p.xz *= sp_rot(p.y*.5);
+  p.xz *= sp_rot(p.y*(.5 * (uTubeTwist / 100.0)));
   sp_amod(p.xz, floor(uSpokes + 0.5));
-  p.x -= 2.;
+  p.x -= 2. * (uTubeRing / 100.0);
   float tube = sp_cyl(p.xz, cylinderRadius);
   p = pos;
-  p.xz *= sp_rot(-p.y*.5);
+  p.xz *= sp_rot(-p.y*(.5 * (uTubeTwist / 100.0)));
   sp_amod(p.xz, floor(uSpokes + 0.5) * 2.0);
-  p.x -= 2.;
+  p.x -= 2. * (uTubeRing / 100.0);
   tube = sp_smin(tube, sp_cyl(p.xz, cylinderRadius), .15);
   return tube;
 }
 float sp_disks(vec3 pos){
-  float radius = 1.5;
+  float radius = 1.5 * (uDiskRadius / 100.0);
   float radiusInner = .57 * (uHole / 100.0);
   float thin = .01 * (uDisk / 100.0);
   float repeatY = 2. * (uSpacing / 100.0);
   float cellY = floor(pos.y/repeatY);
   float a = atan(pos.z,pos.x)-time*.3+cellY*.1;
   vec3 p = pos;
-  p.y += sin(a*6.)*.1;
+  p.y += sin(a*float(int(uWaves + 0.5)))*(.1 * (uWobble / 100.0));
   p.y = sp_repeat(p.y, repeatY);
   float disk = max(-sp_cyl(p.xz, radiusInner), sp_cyl(p.xz, radius));
   disk = max(abs(p.y)-thin, disk);
@@ -90,13 +108,13 @@ float sp_map(vec3 pos){
   float scene = 1000.;
   float sSc = uScale / 100.0;
   float bump = sp_noise(pos.xz*0.6);          // テクスチャ→手続きノイズ
-  float ground = 2. - bump*.1;
+  float ground = 2. * (uRoomHeight / 100.0) - bump*.1;
   scene = min(scene, pos.y+ground);
   scene = min(scene, -(pos.y-ground));
 
   vec3 p = pos / sSc;
-  p.y += sin(atan(p.z,p.x)*10.)*3.;
-  p.xz *= sp_rot(p.y*.2-time);
+  p.y += sin(atan(p.z,p.x)*float(int(uLobes + 0.5)))*(3. * (uLobeAmp / 100.0));
+  p.xz *= sp_rot(p.y*(.2 * (uCoil / 100.0))-time);
   p = sp_anim1(p);
   p.x = length(p.xyz)-3.;
   scene = sp_smin(scene, sp_tubes(p) * sSc, .5);
