@@ -20136,7 +20136,6 @@ void mainImage(out vec4 o, in vec2 f){
     for(const spec of [
       ['Metal',     'metal',    0,  100, 1, pct],
       ['Rough',     'rough',    0,  100, 1, pct],
-      ['Gloss',     'gloss',    0,  300, 1, pct],
       ['Light',     'envBri',   0,  300, 1, pct],
       ['Light Rot', 'envRot',   -180, 180, 1, deg],
       ['Sparkle',   'sparkle',  0,  300, 1, pct],
@@ -20177,6 +20176,7 @@ void mainImage(out vec4 o, in vec2 f){
     const P = SurrealFloat.P;
     const pct = v=>String(Math.round(v))+'%';
     const int = v=>String(Math.round(v));
+    const deg = v=>String(Math.round(v))+'°';
     const specs = [
       ['Speed',     'speed',    0, 300, 1, pct],
       ['Depth',     'depth',    0, 300, 1, pct],
@@ -20198,6 +20198,24 @@ void mainImage(out vec4 o, in vec2 f){
       ['Shadow',    'shadow',   0, 200, 1, pct],
       ['Brush',     'brush',    0, 300, 1, pct],
       ['Kick',      'kick',     0, 200, 1, pct],
+      ['Pitch',     'pitch',    -12, 25, 1, deg],
+      ['Roll',      'roll',     -30, 30, 1, deg],
+      ['Eye Height','eyeH',     -15, 120, 1, int],
+      ['Lane',      'lane',     50, 250, 1, pct],
+      ['Float H',   'floatH',   20, 250, 1, pct],
+      ['Sun Az',    'sunAz',    -180, 180, 1, deg],
+      ['Sun Elev',  'sunEl',    -40, 40, 1, deg],
+      ['Key Gain',  'keyGain',  0, 250, 1, pct],
+      ['Ambient',   'ambient',  0, 250, 1, pct],
+      ['Dune Scale','duneScale',40, 300, 1, pct],
+      ['Speckle',   'speckle',  0, 400, 1, pct],
+      ['Shade Floor','shadeFloor',0, 70, 1, pct],
+      ['Cloud Scale','cloudScale',30, 300, 1, pct],
+      ['Cloud Base','cloudBase',0, 60, 1, pct],
+      ['Cloud Soft','cloudSoft',20, 400, 1, pct],
+      ['Gloss',     'gloss',    0, 300, 1, pct],
+      ['Brush Scale','brushScale',30, 300, 1, pct],
+      ['Weave',     'weave',    0, 400, 1, pct],
       ['Seed',      'seed',     0, 100, 1, int],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
