@@ -30,6 +30,12 @@ vec3 og_tetOffset = vec3(-0.1);
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uSteps 40..60 = 60.0
+// @param uMirrorX bool = false
+// @param uMirrorY bool = false
+// @param uOcta  bool = false
+// @param uSpread  20..200 = 100.0
+// @param uOffset  -200..300 = 100.0
+// @param uFoldRot -180..180 = 0.0
 uniform float uDetail; // 折りの反復回数 (下げると軽く、形が粗くなる)
 uniform float uFolds; // 折りの縮み方 (%)
 uniform float uThick; // 紙の厚み (%)
@@ -37,6 +43,12 @@ uniform float uContrast; // コントラスト (%。大きいほど暗く締ま�
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+uniform float uMirrorX; // 左右 (X) の鏡映で対称にする
+uniform float uMirrorY; // 上下 (Y) の鏡映で対称にする
+uniform float uOcta; // 部品を四面体から八面体に
+uniform float uSpread; // 最初の折りの幅 (%)
+uniform float uOffset; // 四面体を折り目からずらす量 (%)
+uniform float uFoldRot; // 折りの回転のずらし (度)
 
 vec3 og_Transform(vec3 p){
   const float phi = 1.61803398875;
@@ -47,8 +59,20 @@ vec3 og_Transform(vec3 p){
   float a1 = 0.05*phi*phi*T;
   float c0 = cos(a0); vec2 s0 = vec2(1,-1)*sin(a0);
   float c1 = cos(a1); vec2 s1 = vec2(1,-1)*sin(a1);
+  // 折りの回転のずらしは a0 に足さず、ループの外で回転を合成する
+  // (a0 の式に触れると既定でも丸めが変わり、折りで増幅される。ループ内に足すと毎回の計算が増えて重い)
+  if(uFoldRot != 0.0){
+    float rr = radians(uFoldRot), sa = sin(a0);
+    float cc = c0*cos(rr) - sa*sin(rr);
+    sa = sa*cos(rr) + c0*sin(rr);
+    c0 = cc; s0 = vec2(1,-1)*sa;
+  }
   const int n = 9;
-  float o = 1.0;
+  float o = uSpread / 100.0;
+  // 鏡映は折りの前に原点の面で 1 回だけ (ループ内で毎回折ると 1 割ほど重くなる)。
+  // Z も足して 3 軸とも折ると、物体が負の側にいる時刻に消える (2 割弱) ので X と Y だけ
+  if(uMirrorX > 0.5) p.x = abs(p.x);
+  if(uMirrorY > 0.5) p.y = abs(p.y);
   for(int i=0; i<n; i++){
     if(i >= int(uDetail + 0.5)) break;
     p.x = abs(p.x + o) - o;
@@ -65,8 +89,11 @@ float og_DistanceField(vec3 pos){
   pos.xz = vec2(ca*pos.x - sa*pos.z, sa*pos.x + ca*pos.z);
   vec3 p = og_Transform(pos / sc);
   // tetrahedra
-  p -= og_tetOffset;
-  return (max(max(p.x+p.y+p.z, -p.x-p.y+p.z), max(p.x-p.y-p.z, -p.x+p.y-p.z))/sqrt(3.0) - 0.2*(uThick / 100.0)) * sc;
+  p -= og_tetOffset * (uOffset / 100.0);
+  float tet = max(max(p.x+p.y+p.z, -p.x-p.y+p.z), max(p.x-p.y-p.z, -p.x+p.y-p.z));
+  // 八面体 = 残り 4 面も足す (|x|+|y|+|z|)
+  if(uOcta > 0.5) tet = max(tet, max(max(-p.x-p.y-p.z, p.x+p.y-p.z), max(-p.x+p.y+p.z, p.x-p.y+p.z)));
+  return (tet/sqrt(3.0) - 0.2*(uThick / 100.0)) * sc;
 }
 
 vec3 og_Sky(vec3 ray){
@@ -103,7 +130,7 @@ vec3 og_Shade(vec3 pos, vec3 ray, vec3 normal, vec3 lightDir, vec3 lightCol, flo
   float fresnel = pow(1.0 + dot(normal, ray), 5.0);
   fresnel = mix(mix(0.0, 0.05, specularity), 0.8, fresnel);
 
-  uv -= og_tetOffset;
+  uv -= og_tetOffset * (uOffset / 100.0);
   vec3 uv2 = uv;
   if(uv2.x + uv2.z < 0.0) uv2.xz = -uv2.zx;
   if(uv2.z < uv2.x) uv2.x = uv2.z;
@@ -199,6 +226,15 @@ vec3 bg_origami(vec2 fc){
   vec3 camDir = og_Rotate(d, ang);
   float dist = 7.0 + 2.0*sin(T*0.026);
   vec3 pos = dist * camDir;
+  // 折り幅・ずらし・全体の大きさを上げると物体がカメラを飲み込むことがある (中から見ると法線が壊れて真っ黒)。
+  // カメラが中か、レイの開始点 (og_traceStart) より表面に近いときだけ外側へ押し出す。
+  // 既定の設定ではカメラと表面の距離は 0.28 以上なので何もしない。
+  // 上限は uniform 依存にする (定数だと ANGLE が距離関数ごと 16 回展開して重くなる)
+  for(int k=0; k<int(min(uSteps, 16.0)); k++){
+    float dc = og_DistanceField(pos);
+    if(dc >= 0.15) break;
+    pos += camDir * max(0.2 - dc, 0.5);
+  }
 
   // 注視点は原点固定(塊を無理に追わない=ガタつき防止)。ズームで画面を満たすため中心ズレは目立たない。
   vec3 target = vec3(0.0);

@@ -13,6 +13,14 @@
 // @param uWarp    0..150  = 100.0
 // @param uCount 0..130 = 100.0
 // @param uAngle -90..90 = 0.0
+// @param uJoints    bool = true
+// @param uJointSize 30..200 = 100.0
+// @param uRibCount  0..300 = 100.0
+// @param uRibLen    30..150 = 100.0
+// @param uRadial    60..200 = 100.0
+// @param uFlare     0..300 = 100.0
+// @param uUndul     0..200 = 100.0
+// @param uBlend     10..300 = 100.0
 uniform float uSteps;       // レイマーチのステップ上限。下げると軽いが遠景の細部が溶ける
 uniform float uRibs;        // 肋骨(尖った湾曲骨)。OFF で SDF 評価が減る (約 -17%)
 uniform float uSize;       // 骨の太さ (%)
@@ -20,6 +28,14 @@ uniform float uSpacing;     // 骨格セルの間隔 (%。大きいほど疎)
 uniform float uWarp;        // アーチ天井の持ち上げ (歪み) (%)
 uniform float uCount;   // 骨幹の本数 (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+uniform float uJoints;    // 関節球 (節) の有無
+uniform float uJointSize; // 関節球の大きさ (%)
+uniform float uRibCount;  // 肋骨の数 (%) (0 = なし)
+uniform float uRibLen;    // 肋骨の長さ (%)
+uniform float uRadial;    // 放射状の波打ち (%)
+uniform float uFlare;     // 外へ開くラッパ状の広がり (%)
+uniform float uUndul;     // 奥へ流れる大きなうねり (%)
+uniform float uBlend;     // 骨どうしの融合の滑らかさ (%)
 
 #define bt_rot(spin) mat2(cos(spin),sin(spin),-sin(spin),cos(spin))
 
@@ -86,8 +102,8 @@ float bt_boneScaffold(vec3 p){
   float arch  = abs(sin(p.x / archL * 3.14159265));
   w.y -= arch * 6.5 * (uWarp / 100.0);                                   // 大きなアーチ
   // z 方向に流れる大きなうねり
-  w.y -= sin(p.z*0.10 + 0.5) * 2.2;
-  w.x += cos(p.z*0.08) * 2.0 + sin(p.y*0.06)*1.2;
+  w.y -= sin(p.z*0.10 + 0.5) * 2.2 * (uUndul / 100.0);
+  w.x += (cos(p.z*0.08) * 2.0 + sin(p.y*0.06)*1.2) * (uUndul / 100.0);
   // 進むほど大きくねじれる(パラメトリックスイープ)
   float tw = p.z*0.05 + sin(p.z*0.022)*0.6 + radians(uAngle);
   float c = cos(tw), s = sin(tw);
@@ -98,6 +114,7 @@ float bt_boneScaffold(vec3 p){
   float cs = 3.4 * (uSpacing / 100.0);                                    // 骨格セルサイズ(疎に = 骨の数を減らす)
   vec3 baseCell = floor(w / cs);
   float d = 1e9;
+  float bk = uBlend / 100.0;
   // {-1,0} の 8 セルを評価(各セルの関節 + 前方 3 方向の骨幹)
   for(int dz = -1; dz <= 0; dz++)
   for(int dy = -1; dy <= 0; dy++)
@@ -106,9 +123,9 @@ float bt_boneScaffold(vec3 p){
     vec3 a       = bt_anchor(cellA, cs);
     // 関節球: ハッシュで大小を強くジャンプ。少し間引いて SDF 評価を軽くする。
     float jh = bt_hash3(cellA + 13.0).x;
-    if(jh > 0.22){
-      float jr = mix(0.10, 0.85, jh*jh*jh);
-      d = bt_smin(d, length(w - a) - jr, 0.10);
+    if(uJoints > 0.5 && jh > 0.22){
+      float jr = mix(0.10, 0.85, jh*jh*jh) * (uJointSize / 100.0);
+      d = bt_smin(d, length(w - a) - jr, 0.10*bk);
     }
     // 前方 2 方向の骨幹(+x/+z のみ)。ゲートを上げて本数を 2/3 に。
     vec2 dirs2[2];
@@ -121,18 +138,18 @@ float bt_boneScaffold(vec3 p){
       if(sh > 0.68 + (1.0 - uCount / 100.0) * 0.32){                                  // ~32% だけ描画
         vec3 b  = bt_anchor(cellA + dir, cs);
         float ts = mix(0.5, 2.2, bt_hash3(seed + 3.0).y);  // 太さの個体差
-        d = bt_smin(d, bt_boneShaft(w, a, b, ts), 0.10);
+        d = bt_smin(d, bt_boneShaft(w, a, b, ts), 0.10*bk);
       }
     }
     // 肋骨: 一部の関節から鋭く尖って湾曲する骨を生やす(~10%)
     float rh = bt_hash3(cellA + 29.0).x;
-    if(uRibs > 0.5 && rh > 0.90){
+    if(uRibs > 0.5 && rh > 0.90 + (1.0 - uRibCount / 100.0) * 0.10){
       vec3 rdir   = normalize(bt_hash3(cellA + 31.0) * 2.0 - 1.0);
       vec3 rcurve = (bt_hash3(cellA + 37.0) * 2.0 - 1.0);
-      float rlen  = mix(1.6, 3.6, bt_hash3(cellA + 41.0).z);
+      float rlen  = mix(1.6, 3.6, bt_hash3(cellA + 41.0).z) * (uRibLen / 100.0);
       vec3 ctrl = a + rdir * rlen * 0.5 + rcurve * 0.9;
       vec3 endp = a + rdir * rlen       + rcurve * 1.8;   // 湾曲スイープ
-      d = bt_smin(d, bt_rib(w, a, ctrl, endp), 0.08);
+      d = bt_smin(d, bt_rib(w, a, ctrl, endp), 0.08*bk);
     }
   }
   return d;
@@ -158,8 +175,8 @@ float bt_sceneSDF(vec3 p){
   float rad = length(p.xy) + 1e-4;
   vec2 rdir = p.xy / rad;
   vec3 pr = p;
-  pr.xy += rdir * sin(rad*2.0 - p.z*0.10) * 0.55;   // 放射リブ
-  pr.xy += rdir * rad * 0.14;                         // フレア(トランペット状に外へ開く)
+  pr.xy += rdir * sin(rad*2.0 - p.z*0.10) * 0.55 * (uRadial / 100.0);   // 放射リブ
+  pr.xy += rdir * rad * 0.14 * (uFlare / 100.0);                         // フレア(トランペット状に外へ開く)
 
   return bt_boneScaffold(pr * BT_ZOOM) / BT_ZOOM * 0.30;
 }

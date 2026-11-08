@@ -10,8 +10,8 @@
 // =====================================================
 
 #define GC_T (sin(time*.6)*16.+time*1e2)
-#define GC_P(z) (vec3(cos((z)*.011)*16.+cos((z) * .012)  *24., \
-                   cos((z)*.01)*4., (z)))
+#define GC_P(z) (vec3((cos((z)*.011)*16.+cos((z) * .012)  *24.)*(uCurve / 100.0), \
+                   cos((z)*.01)*4.*(uCurve / 100.0), (z)))
 #define GC_R(a) mat2(cos(a+vec4(0,33,11,0)))
 #define GC_N normalize
 
@@ -30,6 +30,15 @@ float gc_smin(float a, float b, float k){
 // @param uFog    0..400   = 100.0
 // @param uAngle  -180..180 = 0.0
 // @param uSteps  60..140 = 140.0
+// @param uSpine   bool = true
+// @param uRibCage bool = true
+// @param uTwin    bool = true
+// @param uBundles 2..16 = 8
+// @param uFibers  4..32 = 16
+// @param uRibGap  70..200 = 100.0
+// @param uRibSize 50..140 = 100.0
+// @param uFin     0..200 = 100.0
+// @param uCurve   0..200 = 100.0
 uniform float uRelief;   // 筋繊維の起伏の強さ (%) (0 = 滑らかなトンネル)
 uniform float uWidth;    // トンネルの広さ (%)
 uniform float uRough;    // 鏡面のぼけ (%) (大きいと映り込みが滲む)
@@ -37,17 +46,28 @@ uniform float uRim;      // フレネルの白縁の強さ (%)
 uniform float uAngle;    // カメラのロール角のオフセット (度)
 uniform float uFog;      // 奥へ向かう減衰の強さ (%)
 uniform float uSteps;    // レイマーチの最大ステップ数 (下げると軽く、遠景や縁が欠ける)
+uniform float uSpine;    // 脊椎 (背骨 + 紡錘椎骨 + フィン) の有無
+uniform float uRibCage;  // 肋骨の有無
+uniform float uTwin;     // 2 本目の骨格の有無
+uniform float uBundles;  // 太い筋束の本数 (周方向。整数に丸める)
+uniform float uFibers;   // 中位の繊維の本数 (周方向。整数に丸める)
+uniform float uRibGap;   // 肋骨 (とフィン) の間隔 (%)
+uniform float uRibSize;  // 肋骨の輪の大きさ (%)
+uniform float uFin;      // 背のフィンの高さ (%) (0 = フィンなし)
+uniform float uCurve;    // トンネルの蛇行の大きさ (%) (0 = まっすぐ)
 
 // 壁=クロム/シルバーの筋肉質トンネル: 壁/床/天井の角を smin で大きく丸めて連続化し、
 // 低～中周波の筋繊維束を形状の起伏として持たせる(法線が滑らか=鏡面でも粉らない)。
 float gc_wall(vec3 p){
   vec2 ap = abs(p.xy);
   float base = gc_smin(28.0*(uWidth / 100.0) - ap.x, 18.0*(uWidth / 100.0) - ap.y, 9.0*(uWidth / 100.0));   // 角を半径9で丸める
-  float ang = atan(p.y, p.x);
+  // 軸上 (カメラ位置) では atan(0,0) が NaN になる。骨があると min で隠れるが、骨を全部外すと
+  // 最初の一歩が飛んで真っ黒になるので 0 にする。
+  float ang = (p.x == 0.0 && p.y == 0.0) ? 0.0 : atan(p.y, p.x);
   // 太い筋束(周方向8本、z方向にうねり・強弱)
-  float bundle = sin(ang*8.0 + sin(p.z*0.06)*2.0) * (0.6 + 0.4*sin(p.z*0.09 + ang*2.0));
+  float bundle = sin(ang*floor(uBundles + 0.5) + sin(p.z*0.06)*2.0) * (0.6 + 0.4*sin(p.z*0.09 + ang*2.0));
   // 中位の繊維(周方向16本、z方向へ流れる)
-  float fiber  = sin(ang*16.0 - p.z*0.04) * 0.5;
+  float fiber  = sin(ang*floor(uFibers + 0.5) - p.z*0.04) * 0.5;
   return base - (bundle*1.4 + fiber*0.7) * (uRelief / 100.0);                // 起伏を強めに(繊維を見せる)
 }
 
@@ -65,6 +85,9 @@ float gc_spine(vec3 p, vec2 ctr, float spacing, float spikeSpacing){
   float spind = length(vec2(rad*1.25, zb)) - 0.46;
   spind = max(spind, zb*0.85 - 0.16);
 
+  float res = min(rod, spind);
+  if(uFin <= 0.0) return res;
+
   float sid = floor(p.z/spikeSpacing + 0.5);
   float szc = p.z - sid*spikeSpacing;
   float wYp = max(rc.y, 0.0);
@@ -72,10 +95,10 @@ float gc_spine(vec3 p, vec2 ctr, float spacing, float spikeSpacing){
   float spike = abs(wZ) - 0.08;
   spike = max(spike, abs(rc.x) - 0.11);
   spike = max(spike, -rc.y);
-  spike = max(spike, rc.y - (2.3 + 0.5*h1));
+  spike = max(spike, rc.y - (2.3 + 0.5*h1) * (uFin / 100.0));
   spike = max(spike, wZ - 1.4);
 
-  return min(min(rod, spind), spike);
+  return min(res, spike);
 }
 
 // 恐竜/ティラノ型の肋骨: 深い樽型胸郭、後方へ反り先細る。
@@ -90,7 +113,7 @@ float gc_ribs(vec3 p, vec2 ctr, float spacing){
     float id = baseId + di;
     float zc = p.z - id*spacing;
     float h1 = gc_hash(id*1.7);
-    float ringR = (2.8 + h1*0.7) * (1.0 + 0.55*smoothstep(0.4, 2.6, phi));
+    float ringR = (2.8 + h1*0.7) * (uRibSize / 100.0) * (1.0 + 0.55*smoothstep(0.4, 2.6, phi));
     float sweep = phi*phi*(0.50 + 0.18*h1);
     float thick = (0.40 + h1*0.10) * (1.0 - 0.72*smoothstep(0.6, 2.9, phi));
     float arch = length(vec2(rad - ringR, zc + sweep)) - thick;
@@ -101,11 +124,21 @@ float gc_ribs(vec3 p, vec2 ctr, float spacing){
   return best;
 }
 
+// 骨格 1 本 = 脊椎 + 肋骨 (どちらも uSpine / uRibCage で外せる)
+float gc_skel(vec3 p, vec2 ctr, float spacing, float ribSpacing){
+  float d = 1e9;
+  if(uSpine > 0.5) d = gc_spine(p, ctr, spacing, ribSpacing);
+  if(uRibCage > 0.5) d = min(d, gc_ribs(p, ctr, ribSpacing));
+  return d;
+}
+
 float gc_bones(vec3 p){
   vec2 redCtr  = sin(p.z/12. + vec2(0, 1.3))*12.;
   vec2 blueCtr = sin(p.z/16. + vec2(0, .7))*16.;
-  return min(min(gc_spine(p, redCtr,  1.10, 5.0), gc_ribs(p, redCtr,  5.0)),
-             min(gc_spine(p, blueCtr, 1.25, 5.5), gc_ribs(p, blueCtr, 5.5)));
+  float gap = uRibGap / 100.0;
+  float d = gc_skel(p, redCtr, 1.10, 5.0*gap);
+  if(uTwin > 0.5) d = min(d, gc_skel(p, blueCtr, 1.25, 5.5*gap));
+  return d;
 }
 
 float gc_map(vec3 p){
