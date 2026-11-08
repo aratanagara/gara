@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794161366">
+<link rel="stylesheet" href="style.css?v=1794161658">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -949,6 +949,21 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Curl</label><input type="range" id="slCurl" min="0" max="12" step="0.05" value="0.4"><div class="val" id="slCurlVal">0.40</div></div>
           <div class="row"><label>Warp Amp</label><input type="range" id="slWarpAmp" min="0" max="1.5" step="0.01" value="0" title="空間全体を波打たせる (M006 相当・アニメ)"><div class="val" id="slWarpAmpVal">0.00</div></div>
           <div class="row"><label>Warp Freq</label><input type="range" id="slWarpFreq" min="0.3" max="12" step="0.1" value="2.0"><div class="val" id="slWarpFreqVal">2.0</div></div>
+          <div class="row"><label>Shard Size</label><input type="range" id="slShardScale" min="20" max="300" step="5" value="100" title="断片の大きさ"><div class="val" id="slShardScaleVal">100%</div></div>
+          <div class="row"><label>Small Share</label><input type="range" id="slSmallShare" min="0" max="100" step="1" value="50" title="小さい断片の割合"><div class="val" id="slSmallShareVal">50%</div></div>
+          <div class="row"><label>Large Share</label><input type="range" id="slLargeShare" min="0" max="100" step="1" value="18" title="大きい断片の割合"><div class="val" id="slLargeShareVal">18%</div></div>
+          <div class="row"><label>Scatter W</label><input type="range" id="slScatterX" min="10" max="200" step="5" value="90" title="断片を撒く幅"><div class="val" id="slScatterXVal">90%</div></div>
+          <div class="row"><label>Scatter H</label><input type="range" id="slScatterY" min="10" max="200" step="5" value="90" title="断片を撒く高さ"><div class="val" id="slScatterYVal">90%</div></div>
+          <div class="row"><label>Polygon Boost</label><input type="range" id="slPolyBoost" min="0" max="100" step="1" value="0" title="多角形の断片へ置き換える割合"><div class="val" id="slPolyBoostVal">0%</div></div>
+          <div class="row"><label>Sliver Boost</label><input type="range" id="slSliverBoost" min="0" max="100" step="1" value="0" title="細い針の断片へ置き換える割合"><div class="val" id="slSliverBoostVal">0%</div></div>
+          <div class="row"><label>Align Pull</label><input type="range" id="slAlignPull" min="0" max="100" step="1" value="0" title="断片の向きを揃える"><div class="val" id="slAlignPullVal">0%</div></div>
+          <div class="row"><label>Align Angle</label><input type="range" id="slAlignAngle" min="-90" max="90" step="1" value="0" title="揃える向き"><div class="val" id="slAlignAngleVal">0°</div></div>
+          <div class="row"><label>Tilt</label><input type="range" id="slTiltAmt" min="0" max="300" step="5" value="100" title="断片の傾き"><div class="val" id="slTiltAmtVal">100%</div></div>
+          <div class="row"><label>Depth Spread</label><input type="range" id="slDepthAmt" min="0" max="300" step="5" value="100" title="断片の奥行きの散らばり"><div class="val" id="slDepthAmtVal">100%</div></div>
+          <div class="row"><label>Curl Detail</label><input type="range" id="slCurlFreqAmt" min="30" max="300" step="5" value="100" title="Curl のうねりの細かさ"><div class="val" id="slCurlFreqAmtVal">100%</div></div>
+          <div class="row"><label>Tex Zoom</label><input type="range" id="slTexZoom" min="100" max="400" step="5" value="100" title="断片に写る画像の拡大"><div class="val" id="slTexZoomVal">100%</div></div>
+          <div class="row"><label>Tex Rotate</label><input type="range" id="slTexRotate" min="-45" max="45" step="1" value="0" title="断片に写る画像の回転"><div class="val" id="slTexRotateVal">0°</div></div>
+          <div class="row"><label>Drift</label><input type="range" id="slDrift" min="0" max="2000" step="25" value="100" title="断片の浮遊の振れ幅"><div class="val" id="slDriftVal">100%</div></div>
           <div class="row"><label>Auto</label><input type="checkbox" id="slAutoMode" checked title="パラメータ + カメラを自動変調"><span style="font-size:10px;color:var(--dim);margin-left:6px">params/cam/zoom</span></div>
           <div class="row"><label>Auto Rebuild</label>
             <select id="slAutoBeats" style="flex:1">
@@ -968,12 +983,20 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Auto Zoom</label><input type="range" id="slAutoZoom" min="0" max="0.95" step="0.01" value="0.75"><div class="val" id="slAutoZoomVal">0.75</div></div>
           <div class="row"><label>Auto Elev</label><input type="range" id="slAutoEl" min="0" max="1.5" step="0.01" value="0.65"><div class="val" id="slAutoElVal">0.65</div></div>
           <div class="row"><label>AutoRot</label><input type="range" id="slAutorot" min="0" max="4" step="0.01" value="1.2"><div class="val" id="slAutorotVal">1.20</div></div>
+          <div class="row"><label>Reshuffle</label><input type="range" id="slReshuffle" min="0" max="100" step="1" value="100" title="Auto: 拍ごとに断片配置を組み直す割合"><div class="val" id="slReshuffleVal">100%</div></div>
           <div class="row"><label>Cam Elev</label><input type="range" id="slCamEl" min="-1.2" max="1.2" step="0.01" value="0.3"><div class="val" id="slCamElVal">0.30</div></div>
           <div class="row"><label>FOV</label><input type="range" id="slFov" min="20" max="120" step="1" value="60"><div class="val" id="slFovVal">60</div></div>
+          <div class="row"><label>Cam Roll</label><input type="range" id="slCamRoll" min="-180" max="180" step="1" value="0" title="カメラの回転"><div class="val" id="slCamRollVal">0°</div></div>
+          <div class="row"><label>Cam Azimuth</label><input type="range" id="slCamAz" min="-180" max="180" step="1" value="0" title="カメラの方位のずれ"><div class="val" id="slCamAzVal">0°</div></div>
+          <div class="row"><label>Look X</label><input type="range" id="slLookX" min="-100" max="100" step="1" value="0" title="注視点の X"><div class="val" id="slLookXVal">0%</div></div>
+          <div class="row"><label>Look Y</label><input type="range" id="slLookY" min="-100" max="100" step="1" value="0" title="注視点の Y"><div class="val" id="slLookYVal">0%</div></div>
           <div class="row"><label>Overlap Shadow</label><input type="checkbox" id="slOverlapShadow" checked></div>
           <div class="row"><label>Shadow Str</label><input type="range" id="slShadowStr" min="0" max="1.5" step="0.01" value="0.45"><div class="val" id="slShadowStrVal">0.45</div></div>
           <div class="row"><label>Shadow Length</label><input type="range" id="slShadowRad" min="0.5" max="6" step="0.1" value="2.2"><div class="val" id="slShadowRadVal">2.2</div></div>
           <div class="row"><label>Shadow Depth</label><input type="range" id="slShadowBias" min="0.0005" max="0.03" step="0.0005" value="0.006"><div class="val" id="slShadowBiasVal">0.006</div></div>
+          <div class="row"><label>Piece Tint</label><input type="color" id="slPieceTint" value="#ffffff" title="断片に掛ける色"></div>
+          <div class="row"><label>Piece Sat</label><input type="range" id="slPieceSat" min="0" max="200" step="5" value="100" title="断片の彩度 (背景には掛けない)"><div class="val" id="slPieceSatVal">100%</div></div>
+          <div class="row"><label>Depth Shade</label><input type="range" id="slDepthShade" min="0" max="100" step="1" value="0" title="奥の断片を暗くする"><div class="val" id="slDepthShadeVal">0%</div></div>
           <div class="row"><label>BG</label>
             <select id="slBgMode" style="flex:1">
               <option value="black">Black</option>
@@ -1562,43 +1585,43 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794161366"></script>
-<script src="mode/layer.js?v=1794161366"></script>
-<script src="vendor/iro.min.js?v=1794161366"></script>
-<script src="vendor/mediabunny.min.js?v=1794161366"></script>
-<script src="mode/textdeform.js?v=1794161366"></script>
-<script src="mode/textdeform-comp.js?v=1794161366"></script>
-<script src="mode/ugomeki.js?v=1794161366"></script>
-<script src="mode/slicer.js?v=1794161366"></script>
-<script src="mode/video.js?v=1794161366"></script>
-<script src="mode/aratanagara.js?v=1794161366"></script>
-<script src="vendor/p5.min.js?v=1794161366"></script>
-<script src="mode/cyberui.js?v=1794161366"></script>
-<script src="mode/novel.js?v=1794161366"></script>
-<script src="shaders/inkelly.js?v=1794161366"></script>
-<script src="sketchfx.js?v=1794161366"></script>
-<script src="pixelsortfx.js?v=1794161366"></script>
-<script src="shaders/boltzmann.js?v=1794161366"></script>
-<script src="mode/pen.js?v=1794161366"></script>
-<script src="shaders/caverns.js?v=1794161366"></script>
-<script src="mode/shelf.js?v=1794161366"></script>
-<script src="shaders/ribbon.js?v=1794161366"></script>
-<script src="mode/photoplane.js?v=1794161366"></script>
-<script src="mode/shredder.js?v=1794161366"></script>
-<script src="mode/transflock.js?v=1794161366"></script>
-<script src="mode/liquidpeel.js?v=1794161366"></script>
-<script src="mode/windflock.js?v=1794161366"></script>
-<script src="mode/rhizome.js?v=1794161366"></script>
-<script src="mode/surrealfloat.js?v=1794161366"></script>
-<script src="mode/chrometype.js?v=1794161366"></script>
-<script src="mode/tower4149.js?v=1794161366"></script>
-<script src="mode/fude.js?v=1794161366"></script>
-<script src="mode/image.js?v=1794161366"></script>
-<script src="mode/spacetype.js?v=1794161366"></script>
-<script src="pollockfx.js?v=1794161366"></script>
-<script src="overlay.js?v=1794161366"></script>
-<script src="gif.js?v=1794161366"></script>
-  <script src="app.js?v=1794161366"></script>
-<script src="camroll.js?v=1794161366" defer></script>
+<script src="presets.js?v=1794161658"></script>
+<script src="mode/layer.js?v=1794161658"></script>
+<script src="vendor/iro.min.js?v=1794161658"></script>
+<script src="vendor/mediabunny.min.js?v=1794161658"></script>
+<script src="mode/textdeform.js?v=1794161658"></script>
+<script src="mode/textdeform-comp.js?v=1794161658"></script>
+<script src="mode/ugomeki.js?v=1794161658"></script>
+<script src="mode/slicer.js?v=1794161658"></script>
+<script src="mode/video.js?v=1794161658"></script>
+<script src="mode/aratanagara.js?v=1794161658"></script>
+<script src="vendor/p5.min.js?v=1794161658"></script>
+<script src="mode/cyberui.js?v=1794161658"></script>
+<script src="mode/novel.js?v=1794161658"></script>
+<script src="shaders/inkelly.js?v=1794161658"></script>
+<script src="sketchfx.js?v=1794161658"></script>
+<script src="pixelsortfx.js?v=1794161658"></script>
+<script src="shaders/boltzmann.js?v=1794161658"></script>
+<script src="mode/pen.js?v=1794161658"></script>
+<script src="shaders/caverns.js?v=1794161658"></script>
+<script src="mode/shelf.js?v=1794161658"></script>
+<script src="shaders/ribbon.js?v=1794161658"></script>
+<script src="mode/photoplane.js?v=1794161658"></script>
+<script src="mode/shredder.js?v=1794161658"></script>
+<script src="mode/transflock.js?v=1794161658"></script>
+<script src="mode/liquidpeel.js?v=1794161658"></script>
+<script src="mode/windflock.js?v=1794161658"></script>
+<script src="mode/rhizome.js?v=1794161658"></script>
+<script src="mode/surrealfloat.js?v=1794161658"></script>
+<script src="mode/chrometype.js?v=1794161658"></script>
+<script src="mode/tower4149.js?v=1794161658"></script>
+<script src="mode/fude.js?v=1794161658"></script>
+<script src="mode/image.js?v=1794161658"></script>
+<script src="mode/spacetype.js?v=1794161658"></script>
+<script src="pollockfx.js?v=1794161658"></script>
+<script src="overlay.js?v=1794161658"></script>
+<script src="gif.js?v=1794161658"></script>
+  <script src="app.js?v=1794161658"></script>
+<script src="camroll.js?v=1794161658" defer></script>
 </body>
 </html>
