@@ -14,6 +14,8 @@
 
 float rp_T;
 float rp_lights;
+float rp_orbX;
+float rp_orbZ;
 
 mat2 rp_r2(float a){ float s=sin(a), c=cos(a); return mat2(c,s,-s,c); }
 
@@ -36,6 +38,44 @@ mat2 rp_r2(float a){ float s=sin(a), c=cos(a); return mat2(c,s,-s,c); }
 // @param uTwistPitch 0..300 = 100
 // @param uSideWave 0..300 = 100
 // @param uEdgeGlow 0..160 = 100
+// @param uFov 60..160 = 100
+// @param uCamX -12..12 = 0
+// @param uCamY -10..10 = 0
+// @param uMirror 0..100 = 0
+// @param uOrbSwing 0..300 = 100
+// @param uOrbAhead 40..250 = 100
+// @param uSilver 0..200 = 100
+// @param uHorizon -40..40 = 0
+// @param uFarStart 30..300 = 100
+// @param uVignette 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uDepthGlow 0..300 = 100
+// @param uPathGlow 0..300 = 100
+// @param uHorizonBand 0..300 = 100
+// @param uMosaic 0..100 = 0
+// @param uOrbColor color = #ffffff
+// @param uEdgeColor color = #ffffff
+// @param uMetalColor color = #ffffff
+// @param uFarColor color = #ffffff
+uniform float uFov; // 画角 (%)。大きいと広角
+uniform float uCamX; // カメラの左右位置 (コース内)
+uniform float uCamY; // カメラの高さ (コース内)
+uniform float uMirror; // 右側を左側の鏡像にする度合い (%)。100 で完全な左右対称
+uniform float uOrbSwing; // 光源 orb の左右の揺れ幅 (%)
+uniform float uOrbAhead; // 光源 orb までの距離 (%)
+uniform float uSilver; // 明部のシルバー脱色の強さ (%)
+uniform float uHorizon; // 背景メタリックの地平線の高さ (%)
+uniform float uFarStart; // 奥の群青が効き始める距離 (%)
+uniform float uVignette; // 四隅の暗がり (%)
+uniform float uGrain; // フィルムの粒 (%)
+uniform float uDepthGlow; // 奥ほど光が強まる度合い (%)
+uniform float uPathGlow; // コース全体にかかる青い面光の強さ (%)
+uniform float uHorizonBand; // 背景メタリックの地平線の白い帯の強さ (%)
+uniform float uMosaic; // 画面をモザイク状に粗くする度合い (%)
+uniform vec3 uOrbColor; // 光源 orb の光の色 (ティント)
+uniform vec3 uEdgeColor; // 白いエッジ光の色 (ティント)
+uniform vec3 uMetalColor; // 背景メタリックの色 (ティント)
+uniform vec3 uFarColor; // 奥の群青の色 (ティント)
 uniform float uTwist;     // コースのねじれ (%)
 uniform float uWarp;      // 横縦の潰れ・伸びの強さ (%)
 uniform float uGlow;      // 光源 (orb) の光の強さ (%)
@@ -59,9 +99,9 @@ uniform float uEdgeGlow; // 白いエッジ光の量 (%)
 float rp_map(vec3 p){
   vec3 q = RP_P(p.z);
   // entity (flying light orb): z を時間で前進する球
-  float e = length(p - vec3(q.x + sin(rp_T*.05),
+  float e = length(p - vec3(q.x + rp_orbX,
                             q.y,
-                            48. + rp_T + sin(.005*rp_T)*32.)) - .001;
+                            rp_orbZ)) - .001;
   rp_lights += 1e1/e;            // orb の光を蓄積
 
   p.xy -= q.xy;                  // パスに沿って空間を移動
@@ -84,6 +124,8 @@ float rp_map(vec3 p){
 vec3 bg_ribpillar(vec2 fc){
   vec2 I = (fc - resolution*0.5)/max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 u = (I - resolution*0.5)/resolution.y;
+  if(uMirror != 0.0){ float ax = (resolution.x / resolution.y * 0.5) * (1.0 - uMirror / 100.0); u.x = ax - abs(u.x - ax); }
+  if(uMosaic != 0.0){ float mc = (uMosaic / 100.0) * 0.12; u = (floor(u / mc) + 0.5) * mc; }
 
   // グリッチ: 画素ごとの時間ジッタ(モーションブラー風のレトロノイズ)
   rp_T = time*1e2 + fract(1e4*sin(dot(fc, vec2(137.0, -13.0))))*1.6*(uGlitch / 100.0);
@@ -93,40 +135,49 @@ vec3 bg_ribpillar(vec2 fc){
   vec3 p = RP_P(rp_T), ro = p,
        Z = RP_N(RP_P(rp_T + 2.0) - p),
        X = RP_N(vec3(Z.z, 0.0, -Z.x)),
-       D = vec3(u, 1.0) * mat3(-X, cross(X, Z), Z);
+       D = vec3(u, 100.0 / uFov) * mat3(-X, cross(X, Z), Z);
 
+  if(uCamX != 0.0 || uCamY != 0.0){ ro += X*uCamX + cross(X, Z)*uCamY; }
   rp_lights = 0.0;
+  rp_orbX = sin(rp_T*.05)*(uOrbSwing / 100.0);
+  rp_orbZ = 48.*(uOrbAhead / 100.0) + rp_T + sin(.005*rp_T)*32.;
+  vec4 orbTint = vec4(uOrbColor, 1.0);
+  vec4 edgeTint = vec4(uEdgeColor, 1.0);
   // 64 → 36 段に削減(軽量化)
   for(; i++ < floor(uSteps + 0.5) && d < 2e3;){
     p = ro + D * d;
     d += s = max(rp_map(p) * .65, .001);
-    o += 6.0*(uGlow / 100.0)*vec4(1,2,5,0)*rp_lights + 1.6*(uEdgeGlow / 100.0)/s;   // 白いエッジ光を増やす
+    o += 6.0*(uGlow / 100.0)*(vec4(1,2,5,0)*orbTint)*rp_lights + edgeTint*(1.6*(uEdgeGlow / 100.0)/s);   // 白いエッジ光を増やす
   }
 
   // ライン光源を赤→群青(ウルトラマリン)に
-  o = tanh(o*o / 8e9 * exp(d/9e1)
-     + abs(vec4(1,2,7,0) / dot(cos(p*.03), vec3(4e1))));
+  o = tanh(o*o / 8e9 * exp(d/9e1*(uDepthGlow / 100.0))
+     + abs(vec4(1,2,7,0) / dot(cos(p*.03), vec3(4e1)))*(uPathGlow / 100.0));
 
   vec3 col = o.rgb;
 
   // 白い部分にシルバー感(明部をわずかに脱色・寒色化)
   float lum = dot(col, vec3(0.3333));
-  col = mix(col, vec3(lum)*vec3(0.95, 0.97, 1.02), 0.4*smoothstep(0.4, 1.0, lum));
+  col = mix(col, vec3(lum)*vec3(0.95, 0.97, 1.02), 0.4*(uSilver / 100.0)*smoothstep(0.4, 1.0, lum));
 
   // 背景をメタリック(クローム)グラデに(暗部へ流す)
   float gy = clamp(u.y*0.5 + 0.5, 0.0, 1.0);
+  if(uHorizon != 0.0){ gy = clamp(gy - uHorizon / 100.0, 0.0, 1.0); }
   vec3 metal = mix(vec3(0.12, 0.13, 0.17), vec3(0.52, 0.55, 0.64), smoothstep(0.0, 0.7, gy));
-  metal += smoothstep(0.40, 0.50, gy) * (1.0 - smoothstep(0.50, 0.62, gy)) * vec3(0.40, 0.42, 0.48);
+  metal += smoothstep(0.40, 0.50, gy) * (1.0 - smoothstep(0.50, 0.62, gy)) * vec3(0.40, 0.42, 0.48) * (uHorizonBand / 100.0);
+  metal *= uMetalColor;
   col = mix(metal, col, smoothstep(0.02, 0.30, lum));
 
   // 奥に行くほど濃い群青(ウルトラマリン)
-  float far = clamp(d / 1.1e3, 0.0, 1.0);
-  col = mix(col, vec3(0.05, 0.08, 0.34), far*0.5*(uFog / 100.0));
+  float far = clamp(d / (1.1e3*(uFarStart / 100.0)), 0.0, 1.0);
+  col = mix(col, vec3(0.05, 0.08, 0.34)*uFarColor, far*0.5*(uFog / 100.0));
   // 任意: uCosGrad で色付け
   if(abs(uCosGrad) > 0.0001){
     float tt = d*0.01;
     vec3 cg = cosGradColor(tt);
     col = mix(col, col*cg*1.6, abs(uCosGrad));
   }
+  if(uVignette != 0.0){ col *= 1.0 - (uVignette / 100.0)*smoothstep(0.3, 1.1, length(u)); }
+  if(uGrain != 0.0){ col += (fract(sin(dot(fc + time, vec2(12.9898, 78.233)))*43758.5453) - 0.5)*(uGrain / 100.0)*0.35; }
   return clamp(col, 0.0, 1.0);
 }

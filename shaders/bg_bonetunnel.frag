@@ -21,6 +21,36 @@
 // @param uFlare     0..300 = 100.0
 // @param uUndul     0..200 = 100.0
 // @param uBlend     10..300 = 100.0
+// @param uFov 40..120 = 64
+// @param uCamRoll -45..45 = 0
+// @param uCamX -4..4 = 0
+// @param uCamY -2..3 = 0
+// @param uCamSway 0..300 = 100
+// @param uCamBob 0..300 = 100
+// @param uLookYaw -100..100 = 0
+// @param uLookPitch -100..100 = 0
+// @param uMirror 0..100 = 0
+// @param uLightAz -180..180 = 0
+// @param uLightElev 0..200 = 100
+// @param uEyeLight 0..250 = 100
+// @param uTopLight 0..400 = 100
+// @param uFillLight 0..500 = 100
+// @param uAmbientBone 0..300 = 100
+// @param uSpecAmt 0..800 = 100
+// @param uRimAmt 0..800 = 100
+// @param uStainAmt 0..200 = 100
+// @param uStainScale 40..300 = 100
+// @param uGrainAmt 0..300 = 100
+// @param uSpeckleAmt 0..600 = 100
+// @param uTexScale 40..300 = 100
+// @param uHazeBase 0..80 = 0
+// @param uVignette 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uBoneColor color = #ffffff
+// @param uStainColor color = #ffffff
+// @param uHazeColor color = #ffffff
+// @param uVoidColor color = #ffffff
+// @param uSpecColor color = #ffffff
 uniform float uSteps;       // レイマーチのステップ上限。下げると軽いが遠景の細部が溶ける
 uniform float uRibs;        // 肋骨(尖った湾曲骨)。OFF で SDF 評価が減る (約 -17%)
 uniform float uSize;       // 骨の太さ (%)
@@ -36,6 +66,36 @@ uniform float uRadial;    // 放射状の波打ち (%)
 uniform float uFlare;     // 外へ開くラッパ状の広がり (%)
 uniform float uUndul;     // 奥へ流れる大きなうねり (%)
 uniform float uBlend;     // 骨どうしの融合の滑らかさ (%)
+uniform float uFov; // 画角 (度)。大きいと広角
+uniform float uCamRoll; // カメラのロール (度)
+uniform float uCamX; // カメラの左右位置
+uniform float uCamY; // カメラの高さ
+uniform float uCamSway; // カメラの左右の揺れ幅 (%)
+uniform float uCamBob; // カメラの上下の揺れ幅 (%)
+uniform float uLookYaw; // 視線の左右の振り (%)
+uniform float uLookPitch; // 視線の上下の振り (%)
+uniform float uMirror; // 右側を左側の鏡像にする度合い (%)。100 で完全な左右対称
+uniform float uLightAz; // 上方ライトの方位 (度)
+uniform float uLightElev; // 上方ライトの高さ (%)。下げると横から照らす
+uniform float uEyeLight; // カメラ位置ライトの強さ (%)
+uniform float uTopLight; // 上方ライトの強さ (%)
+uniform float uFillLight; // 下方フィルライトの強さ (%)
+uniform float uAmbientBone; // 骨の環境光 (影側の明るさ) (%)
+uniform float uSpecAmt; // スペキュラの強さ (%)
+uniform float uRimAmt; // 縁の微フレネル光の強さ (%)
+uniform float uStainAmt; // 黄ばみ・シミの濃さ (%)
+uniform float uStainScale; // シミの模様の細かさ (%)
+uniform float uGrainAmt; // 粒状の汚れ・孔の濃さ (%)
+uniform float uSpeckleAmt; // 細かいスペックルの量 (%)
+uniform float uTexScale; // 表面テクスチャ全体の細かさ (%)
+uniform float uHazeBase; // 距離に関係なくかける霞の量 (%)
+uniform float uVignette; // 四隅の暗がり (%)
+uniform float uGrain; // フィルムの粒 (%)
+uniform vec3 uBoneColor; // 骨の地の色 (ティント)
+uniform vec3 uStainColor; // シミの色 (ティント)
+uniform vec3 uHazeColor; // 遠景の霞の色 (ティント)
+uniform vec3 uVoidColor; // 空洞の奥の色 (ティント)
+uniform vec3 uSpecColor; // ハイライトの色 (ティント)
 
 #define bt_rot(spin) mat2(cos(spin),sin(spin),-sin(spin),cos(spin))
 
@@ -184,19 +244,20 @@ float bt_sceneSDF(vec3 p){
 // 石膏/骨のマット表面 — オフホワイトのベース + fbm による汚れ・シミ
 vec3 bt_surface_color(vec3 p){
   // ベース: 石膏のオフホワイト(ごく僅かに暖色)
-  vec3 base = vec3(0.84, 0.82, 0.78);
+  vec3 base = vec3(0.84, 0.82, 0.78) * uBoneColor;
 
   // 大きな汚れムラ(経年の黄ばみ/グレーのシミ)
-  float stain = bt_fbm(p * 0.45);
-  vec3 stainCol = vec3(0.58, 0.54, 0.47);          // くすんだ土色
-  base = mix(base, stainCol, smoothstep(0.45, 0.85, stain) * 0.45);
+  float stain = bt_fbm(p * (0.45 * (uStainScale / 100.0)));
+  vec3 stainCol = vec3(0.58, 0.54, 0.47) * uStainColor;          // くすんだ土色
+  base = mix(base, stainCol, smoothstep(0.45, 0.85, stain) * (0.45 * (uStainAmt / 100.0)));
 
   // 細かな粒状の汚れ/孔(石膏の質感)
   float grain = bt_vnoise(p * 4.0);
-  base *= mix(0.90, 1.04, grain);
+  if(uGrainAmt != 100.0){ float gk = uGrainAmt / 100.0; base *= mix(1.0 - 0.10 * gk, 1.0 + 0.04 * gk, grain); }
+  else base *= mix(0.90, 1.04, grain);
 
   // ごく細かいスペックル
-  base += (bt_vnoise(p * 9.0) - 0.5) * 0.03;
+  base += (bt_vnoise(p * 9.0) - 0.5) * (0.03 * (uSpeckleAmt / 100.0));
 
   return clamp(base, 0.0, 1.0);
 }
@@ -243,6 +304,11 @@ vec3 bt_phongIllumination(vec3 ka, vec3 p, vec3 eye, vec3 rd){
   vec3 L1 = normalize(eye - p);
   // 主光源 2: 上方(エナメル質ハイライト)
   vec3 L2 = normalize(vec3(0.4, 1.0, 0.3));
+  if(uLightAz != 0.0 || uLightElev != 100.0){
+    float la = radians(uLightAz), lc = cos(la), ls = sin(la);
+    vec3 lv = vec3(0.4, 1.0 * (uLightElev / 100.0), 0.3);
+    L2 = normalize(vec3(lc * lv.x - ls * lv.z, lv.y, ls * lv.x + lc * lv.z));
+  }
   // フィル光源: 下方(柔らかい裏側)
   vec3 Lf = normalize(vec3(-0.3, -0.5, 0.2));
 
@@ -265,14 +331,14 @@ vec3 bt_phongIllumination(vec3 ka, vec3 p, vec3 eye, vec3 rd){
   float fres = pow(1.0 - max(dot(n, V), 0.0), 3.0);
 
   // 光量を正規化して白飛びを防ぐ(diffuse 寄与の合計を ~1 に収める)
-  vec3 ambient = ka * 0.20;
-  vec3 diff = ka * (ndl1 * 0.52
-                  + ndl2 * 0.26
-                  + ndlf * 0.14);
+  vec3 ambient = ka * (0.20 * (uAmbientBone / 100.0));
+  vec3 diff = ka * (ndl1 * (0.52 * (uEyeLight / 100.0))
+                  + ndl2 * (0.26 * (uTopLight / 100.0))
+                  + ndlf * (0.14 * (uFillLight / 100.0)));
   vec3 col = ambient + diff
-           + spec1 * vec3(1.0) * 0.05
-           + spec2 * vec3(1.0) * 0.06
-           + fres  * vec3(0.90) * 0.06
+           + spec1 * uSpecColor * (0.05 * (uSpecAmt / 100.0))
+           + spec2 * uSpecColor * (0.06 * (uSpecAmt / 100.0))
+           + fres  * vec3(0.90) * (0.06 * (uRimAmt / 100.0))
            + sssCol * 0.6;
   return col;
 }
@@ -289,15 +355,19 @@ vec3 bg_bonetunnel(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom * BT_VIEWZOOM, 0.001) + resolution*0.5 + bgCamPx;
 
   // 引きの広い構図(FOV 広め)で、骨アーチ群が奥へ連なるのを見る
-  vec3 viewDir = bt_rayDirection(64.0, resolution.xy, I);
+  if(uMirror != 0.0){ float axp = resolution.x * 0.5 * (2.0 - uMirror / 100.0); I.x = axp - abs(I.x - axp); }
+  vec3 viewDir;
+  if(uFov != 64.0) viewDir = bt_rayDirection(uFov, resolution.xy, I);
+  else viewDir = bt_rayDirection(64.0, resolution.xy, I);
+  if(uCamRoll != 0.0){ float rr = radians(uCamRoll), rc = cos(rr), rs = sin(rr); viewDir.xy = mat2(rc, rs, -rs, rc) * viewDir.xy; }
 
   // カメラは BT_ZOOM から自動導出(速度・振幅は 1/BT_ZOOM 比例)
   float zs = 1.0 / BT_ZOOM;
   float t1 = time * 1.7 * zs;
-  vec3 eye = vec3(sin(t1*0.10)*3.2*zs, (1.6 + sin(t1*0.07)*2.4)*zs, t1);
+  vec3 eye = vec3(sin(t1*0.10)*3.2*zs*(uCamSway / 100.0), (1.6 + sin(t1*0.07)*2.4*(uCamBob / 100.0))*zs, t1) + vec3(uCamX, uCamY, 0.0) * zs;
 
   // 進行方向(+z)を見る + 微小ドリフト
-  vec3 target = eye + vec3(sin(t1*0.06)*2.1*zs, 0.0, 1.0);
+  vec3 target = eye + vec3(sin(t1*0.06)*2.1*zs, 0.0, 1.0) + vec3(uLookYaw, uLookPitch, 0.0) / 200.0;
   mat3 viewToWorld = bt_viewMatrix(eye, target, vec3(0.0, 1.0, 0.0));
   vec3 worldDir = viewToWorld * viewDir;
 
@@ -305,12 +375,17 @@ vec3 bg_bonetunnel(vec2 fc){
 
   // 背景(非ヒット=空洞の奥)= グレーの霞。真っ黒の空洞を避け奥行きを出す。
   if(dist > BT_MAX_DIST - BT_EPSILON){
-    return vec3(0.22);
+    return vec3(0.22) * uVoidColor;
   }
   vec3 p = eye + dist * worldDir;
-  vec3 ka = bt_surface_color(p * 1.48 * BT_ZOOM);   // テクスチャ周波数も BT_ZOOM 連動
+  vec3 ka;
+  if(uTexScale != 100.0) ka = bt_surface_color(p * 1.48 * BT_ZOOM * (uTexScale / 100.0));
+  else ka = bt_surface_color(p * 1.48 * BT_ZOOM);   // テクスチャ周波数も BT_ZOOM 連動
   vec3 col = bt_phongIllumination(ka, p, eye, worldDir);
   // 大気遠近(短視程): 近距離から霞ませ中景を明るいグレーへ。フェードは短視程に合わせる。
-  col = mix(col, vec3(0.62), smoothstep(1.0, 8.0, dist));
+  col = mix(col, vec3(0.62) * uHazeColor, smoothstep(1.0, 8.0, dist));
+  if(uHazeBase != 0.0){ col = mix(col, vec3(0.62) * uHazeColor, uHazeBase / 100.0); }
+  if(uVignette != 0.0){ col *= 1.0 - (uVignette / 100.0) * smoothstep(0.3, 1.1, length((fc - resolution * 0.5) / resolution.y * 2.0)); }
+  if(uGrain != 0.0){ col += (fract(sin(dot(fc + time, vec2(12.9898, 78.233)))*43758.5453) - 0.5)*(uGrain / 100.0)*0.35; }
   return clamp(col, 0.0, 1.0);
 }

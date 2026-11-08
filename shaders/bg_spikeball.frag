@@ -34,6 +34,27 @@ vec3 sb_hash3(vec3 p){
 // @param uCoreSpiral 0..100 = 0
 // @param uCoreWaist -50..50 = 0
 // @param uCoreEgg -50..50 = 0
+// @param uCamDist 70..150 = 100
+// @param uFocal 60..150 = 100
+// @param uCamElev -60..60 = 0
+// @param uCamTiltSwing 0..300 = 100
+// @param uCamRoll -180..180 = 0
+// @param uMirror 0..100 = 0
+// @param uLightAz -180..180 = 0
+// @param uChromeBase 40..160 = 100
+// @param uFresAmt 0..800 = 100
+// @param uEnvRot -180..180 = 0
+// @param uEnvBand 0..300 = 100
+// @param uEnvBandWidth 40..250 = 100
+// @param uEnvSides 0..400 = 100
+// @param uEnvSideCount 1..9 = 3
+// @param uEdgeDark 0..100 = 0
+// @param uIdleSpike 0..20 = 0
+// @param uSkyColor color = #ffffff
+// @param uFloorColor color = #ffffff
+// @param uBandColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uRimColor color = #ffffff
 uniform float uDensity;   // 棘 (結晶) の数の密度 (%)
 uniform float uSharp;   // 棘の鋭さ (%。大きいほど細く尖る)
 uniform float uSpike;   // 棘の伸びる量 (%)
@@ -49,6 +70,27 @@ uniform float uCoreRibs;   // 核に刻む横縞の溝 (%)
 uniform float uCoreSpiral;   // 核に刻む螺旋の溝 (%)
 uniform float uCoreWaist;   // 核のくびれ (負) / 腹の膨らみ (正) (%)
 uniform float uCoreEgg;   // 核を卵形にする量 (%)。正で上が尖り、負で下が尖る
+uniform float uCamDist;   // カメラまでの距離 (%)。小さいと寄り
+uniform float uFocal;   // 画角の絞り (%)。大きいと望遠
+uniform float uCamElev;   // カメラの俯角・仰角のずらし (度)
+uniform float uCamTiltSwing;   // カメラの上下の振れ幅 (%)
+uniform float uCamRoll;   // 画面のロール (度)
+uniform float uMirror;   // 右側を左側の鏡像にする度合い (%)。100 で完全な左右対称
+uniform float uLightAz;   // 光源の方位 (度)
+uniform float uChromeBase;   // クロームが環境を映す強さ (%)
+uniform float uFresAmt;   // 縁の反射 (フレネル) の強さ (%)
+uniform float uEnvRot;   // 映り込む環境の向き (度)
+uniform float uEnvBand;   // 環境の水平な白い帯の強さ (%)
+uniform float uEnvBandWidth;   // 環境の白い帯の細さ (%)。大きいと細い
+uniform float uEnvSides;   // 環境の横の反射帯の強さ (%)
+uniform float uEnvSideCount;   // 環境の横の反射帯の本数
+uniform float uEdgeDark;   // 輪郭を暗く落とす度合い (%)
+uniform float uIdleSpike;   // 無音でも伸ばしておく棘の量 (%)
+uniform vec3 uSkyColor;   // 環境の空の色 (ティント)
+uniform vec3 uFloorColor;   // 環境の暗い床の色 (ティント)
+uniform vec3 uBandColor;   // 環境の白い帯の色 (ティント)
+uniform vec3 uSpecColor;   // ハイライトの色 (ティント)
+uniform vec3 uRimColor;   // 縁の反射の色 (ティント)
 
 // 方向 n に対する突起(棘)高さ。各セルに円錐状の鋭い棘を立て、位置/高さ/有無をランダム化(非一様)。
 float sb_disp(vec3 n){
@@ -121,15 +163,23 @@ float sb_trace(vec3 ro, vec3 rd, float t, float tmax){
 
 // クロームが映す疑似環境(銀)。高コントラストなスタジオ鏡像で強烈クロームに。
 vec3 sb_env(vec3 d){
+  if(uEnvRot != 0.0){ float er = radians(uEnvRot), ec = cos(er), es = sin(er); d.xz = mat2(ec, -es, es, ec) * d.xz; }
   float up = d.y*0.5 + 0.5;
+  float az = atan(d.x, d.z);
+  if(uEnvBand != 100.0 || uEnvBandWidth != 100.0 || uEnvSides != 100.0 || uEnvSideCount != 3.0){
+    vec3 c = mix(vec3(0.015,0.02,0.03) * uFloorColor, vec3(0.50,0.55,0.68) * uSkyColor, smoothstep(0.0, 0.6, up));
+    c += uBandColor * pow(max(1.0 - abs(d.y)*(3.5 * (uEnvBandWidth / 100.0)), 0.0), 3.0) * (uEnvBand / 100.0);
+    c += vec3(0.75) * pow(max(d.y, 0.0), 6.0);
+    c += vec3(0.5) * (uEnvSides / 100.0) * pow(max(cos(az*uEnvSideCount), 0.0), 16.0);
+    return c;
+  }
   // 暗い床 → 中明の空 の高コントラスト基調
-  vec3 c = mix(vec3(0.015,0.02,0.03), vec3(0.50,0.55,0.68), smoothstep(0.0, 0.6, up));
+  vec3 c = mix(vec3(0.015,0.02,0.03) * uFloorColor, vec3(0.50,0.55,0.68) * uSkyColor, smoothstep(0.0, 0.6, up));
   // 水平線の鋭い白帯(鏡面の芯)
-  c += vec3(1.0) * pow(max(1.0 - abs(d.y)*3.5, 0.0), 3.0) * 1.0;
+  c += uBandColor * pow(max(1.0 - abs(d.y)*3.5, 0.0), 3.0) * 1.0;
   // 天頂のソフトライト
   c += vec3(0.75) * pow(max(d.y, 0.0), 6.0);
   // 横の鋭い反射帯(複数本)
-  float az = atan(d.x, d.z);
   c += vec3(0.5) * pow(max(cos(az*3.0), 0.0), 16.0);
   return c;
 }
@@ -148,17 +198,21 @@ vec3 sb_cosgrad(vec3 grey){
 vec3 bg_spikeball(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = (2.0*I - resolution.xy) / resolution.y;
+  if(uMirror != 0.0){ float ax = (resolution.x / resolution.y) * (1.0 - uMirror / 100.0); uv.x = ax - abs(uv.x - ax); }
+  if(uCamRoll != 0.0){ float rr = radians(uCamRoll), rc = cos(rr), rs = sin(rr); uv = mat2(rc, rs, -rs, rc) * uv; }
 
   // 音声で棘の高さを駆動。iAudio は音域(Band)+アタック(Attack)で整形済み。
   // デッドゾーン(0.02)以下=完全に棘ゼロ → ほぼ無音時は滑らかなクローム球で休憩。
   float lvl = max(clamp(iAudio, 0.0, 1.0) - 0.02, 0.0);
+  if(uIdleSpike != 0.0){ lvl = max(lvl, (uIdleSpike / 100.0) * 0.3); }
   sb_amp = 3.2 * lvl * (uSpike / 100.0);                          // もっと伸縮(H44超えの長い棘)
   sb_core = (0.45 - 0.30 * clamp(lvl*1.6, 0.0, 1.0)) * (uCore / 100.0);  // 大音量で核が縮む → 滑らかな球が見えず棘の塊に
 
   // 自動回転カメラ
-  float ca = time*0.25, cb = 0.5 + 0.25*sin(time*0.13);
-  vec3 ro = vec3(0.0, 0.0, -3.2);
-  vec3 rd = normalize(vec3(uv, 1.7));
+  float ca = time*0.25, cb = 0.5 + 0.25*sin(time*0.13)*(uCamTiltSwing / 100.0);
+  if(uCamElev != 0.0){ cb += radians(uCamElev); }
+  vec3 ro = vec3(0.0, 0.0, -3.2 * (uCamDist / 100.0));
+  vec3 rd = normalize(vec3(uv, 1.7 * (uFocal / 100.0)));
   mat2 rx = mat2(cos(cb), -sin(cb), sin(cb), cos(cb));
   mat2 ry = mat2(cos(ca), -sin(ca), sin(ca), cos(ca));
   ro.yz = rx*ro.yz; rd.yz = rx*rd.yz;
@@ -191,8 +245,14 @@ vec3 bg_spikeball(vec2 fc){
       vec3 env = sb_env(rr);                          // 完全鏡面(クローム=環境をそのまま映す)
       float fres = pow(1.0 - max(dot(nor, -rd), 0.0), 5.0);
       vec3 lig = normalize(vec3(1.0, 0.85, -0.6));
+      if(uLightAz != 0.0){
+        float la = radians(uLightAz), lc = cos(la), ls = sin(la);
+        vec3 lv = vec3(1.0, 0.85, -0.6);
+        lig = normalize(vec3(lc * lv.x - ls * lv.z, lv.y, ls * lv.x + lc * lv.z));
+      }
       float spe = pow(max(dot(nor, normalize(lig - rd)), 0.0), 120.0);
-      col = env * (0.85 + 0.6*fres) + spe*vec3(1.0)*2.2;   // 強烈クローム + 鋭いハイライト
+      col = env * ((0.85 * (uChromeBase / 100.0)) + (0.6 * (uFresAmt / 100.0))*fres * uRimColor) + spe*uSpecColor*2.2;   // 強烈クローム + 鋭いハイライト
+      if(uEdgeDark != 0.0){ col *= 1.0 - (uEdgeDark / 100.0) * pow(1.0 - max(dot(nor, -rd), 0.0), 2.0); }
       col = sb_cosgrad(col);
     }
   }
