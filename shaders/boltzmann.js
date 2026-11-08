@@ -31,6 +31,19 @@ const Boltzmann = {
     relief:100,      // 色の凹凸 (陰影の深さ, %)
     sharpen:100,     // まとまった輪郭のシャープさ (%)
     bloom:100,       // 明るい所のにじみ光 (%)
+    drift:0,         // 一方向へ流す力 (%)
+    driftAngle:0,    // 流す向き (°)
+    ripple:0,        // 細かい波の揺らぎ (%)。流れの筋が細かく波打つ
+    imgZoom:100,     // 溶かす元画像の拡大率 (%)
+    imgRot:0,        // 元画像の回転 (°)
+    chroma:0,        // 色のずれ (%)。周辺ほど RGB がずれる
+    bloomCut:100,    // にじみ光が出る明るさのしきい値 (%)。下げると暗い所も光る
+    lightAngle:0,    // 光の向きの回し (°)。Side Light の向きが変わる
+    sideLight:0,     // 光の向きから当たる陰影 (%)
+    inkEdge:0,       // 色の境目の暗い縁取り (%)
+    vignette:0,      // 周辺減光 (%)
+    grain:0,         // フィルムのざらつき (%)
+    posterize:0,     // 色の階調数 (0 で滑らか)
   },
   PDefaults:null,
   SPECS:[
@@ -46,7 +59,22 @@ const Boltzmann = {
     ['Relief',        'relief',       0,   400, 1, 'pct'],
     ['Sharpen',       'sharpen',      0,   400, 1, 'pct'],
     ['Bloom',         'bloom',        0,   600, 1, 'pct'],
+    ['Drift',         'drift',        0,   300, 1, 'pct'],
+    ['Drift Angle',   'driftAngle',   0,   360, 1, 'deg'],
+    ['Ripple',        'ripple',       0,   300, 1, 'pct'],
+    ['Image Zoom',    'imgZoom',      30,  220, 1, 'pct'],
+    ['Image Rotate',  'imgRot',       -180, 180, 1, 'deg'],
+    ['Chroma',        'chroma',       0,   300, 1, 'pct'],
+    ['Bloom Cut',     'bloomCut',     20,  160, 1, 'pct'],
+    ['Light Angle',   'lightAngle',   -180, 180, 1, 'deg'],
+    ['Side Light',    'sideLight',    0,   200, 1, 'pct'],
+    ['Ink Edge',      'inkEdge',      0,   300, 1, 'pct'],
+    ['Vignette',      'vignette',     0,   120, 1, 'pct'],
+    ['Grain',         'grain',        0,   300, 1, 'pct'],
+    ['Posterize',     'posterize',    0,   16,  1, 'int'],
   ],
+  _DEG:['driftAngle','imgRot','lightAngle'],   // ° → rad
+  _RAW:['posterize'],                                          // 倍率にせずそのまま
   _pv:null,   // 今回の描画で使う倍率 (render = P から / renderWarp = すべて 1)
 
   VS:`#version 300 es
@@ -55,7 +83,8 @@ in vec2 a_xy; void main(){ gl_Position=vec4(a_xy,0.,1.); }`,
   A_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uA, uD, uB; uniform vec2 uRes; uniform float uInit, uT, uAmp, uSeed, uEnv, uDir, uSettle; out vec4 Q;
-uniform float uForce, uSwirl, uCenterSpread, uSwell, uSwellSize, uRadial, uViscosity;
+uniform float uForce, uSwirl, uCenterSpread, uSwell, uSwellSize, uRadial, uViscosity, uRipple;
+uniform vec2 uDrift;
 #define R uRes
 #define T(U) texture(uA,(U)/R)
 #define Bp(U) texture(uB,(U)/R)
@@ -85,8 +114,10 @@ void main(){
   vec2 fd = normalize(vec2(sin(fa), -cos(fa)) + vdir*mix(0.35, 3.6, uAmp)*uSwirl*normalize(vec2(-ctr.y, ctr.x) + 1e-4));
   // 大きなうねり: 低周波(画面半分スケール)の揺らぎで全体をぐわんと動かす(細かい乱流ではなく)
   fd = normalize(fd + a2*2.2*uSwell*vec2(sin(U.y*0.03/uSwellSize + uT*1.3 + uSeed*13.7), cos(U.x*0.025/uSwellSize - uT*1.1 + uSeed*31.4)));
+  if(uRipple != 0.0) fd = normalize(fd + uRipple*vec2(sin(U.y*0.2 + uT*2.1 + uSeed*9.1), cos(U.x*0.17 - uT*1.7 + uSeed*5.3)));
   float fz = mix(0.4, z, 0.6);
   vec2 fv = fd*mix(0.25, 28.0, a2)*uForce;
+  if(uDrift.x != 0.0 || uDrift.y != 0.0) fv += 5.0*uDrift;
   fv += a2*24.0*uRadial*sin(uT*1.6 + uSeed*6.2831)*normalize(ctr + 1e-4);                   // 膨張⇔収縮の放射スウェル(ぐわん)
   fv *= mix(0.3, 1.9, uEnv);   // 拍頭バースト → easeOutQuint 減衰の混色リズム(BPM同期)
   Q += (st > 0.0 ? 0.0 : 0.0008)*fz*vec4(fv.x, -fv.x, fv.y, -fv.y);
@@ -122,7 +153,7 @@ void main(){
   B_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uD, uImg, uSrc; uniform vec2 uRes; uniform float uHasImg, uUseSrc; out vec4 Q;
-uniform float uCrisp;
+uniform float uCrisp, uImgZoom, uImgRot;
 #define R uRes
 #define D(U) texture(uD,(U)/R)
 // 画像未ロード時のフォールバック(滑らかなカラー場)
@@ -136,6 +167,12 @@ vec3 img(vec2 uv){
 void main(){
   vec2 U=gl_FragCoord.xy;
   vec2 loc=D(U).xy/R;                          // 流された位置で画像をルックアップ(原典どおり)
+  if(uImgZoom != 1.0 || uImgRot != 0.0){
+    float asp = R.x/R.y, cr = cos(uImgRot), sr = sin(uImgRot);
+    vec2 c = (loc - 0.5)*vec2(asp, 1.0);
+    c = mat2(cr, -sr, sr, cr)*c;
+    loc = c/vec2(asp, 1.0)/uImgZoom + 0.5;
+  }
   // 位置場の局所勾配から mip を自動選択(かき混ぜられた所ほどぼかす → 点状のゴミをグラデに)
   vec2 gx=(D(U+vec2(1,0)).xy - D(U-vec2(1,0)).xy)*0.5/R;
   vec2 gy=(D(U+vec2(0,1)).xy - D(U-vec2(0,1)).xy)*0.5/R;
@@ -149,6 +186,7 @@ void main(){
   float t = 0.02*uCrisp;                                 // ~10倍ストレッチまでシャープ
   float g2 = (gm <= t) ? gm : t + (gm - t)*3.0;          // 閾値超はぼかしを3倍勾配で強化
   g2 = min(g2, 0.18);
+  gx /= uImgZoom; gy /= uImgZoom;
   float base = max(length(gx), length(gy));
   if(base < 1e-6){ gx = vec2(g2, 0.0); gy = vec2(0.0, g2); }
   else { float sc = g2/base; gx *= sc; gy *= sc; }
@@ -161,7 +199,8 @@ void main(){
   C_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uB; uniform vec2 uRes; out vec4 Q;
-uniform float uRelief;
+uniform float uRelief, uSide;
+uniform vec3 uLight;
 #define R uRes
 #define T(U) texture(uB,(U)/R)
 void main(){
@@ -170,8 +209,9 @@ void main(){
   // 高さ場(輝度)から法線 → 柔らかな陰影 + ハイライト(色は保持)
   float n=length(T(U+vec2(0,1))), e=length(T(U+vec2(1,0))), s=length(T(U-vec2(0,1))), w=length(T(U-vec2(1,0)));
   vec3 no=normalize(vec3((e-w)*3.0*uRelief, (n-s)*3.0*uRelief, 1.0));
-  float spec=pow(max(dot(reflect(no, vec3(0,0,1)), normalize(vec3(1))), 0.0), 12.0);
-  vec3 col = base*(0.5 + 0.5*no.z) + spec*vec3(0.85,0.9,1.0)*0.3;   // 平坦=×1.0(等倍)。彩度を落とすスペキュラは控えめ
+  float spec=pow(max(dot(reflect(no, vec3(0,0,1)), normalize(uLight)), 0.0), 12.0);
+  vec3 col = base*(0.5 + 0.5*no.z) + spec*vec3(0.85,0.9,1.0)*0.3;
+  if(uSide != 0.0) col *= clamp(1.0 + 10.0*uSide*dot(no.xy, normalize(uLight.xy)), 0.25, 2.0);   // 平坦=×1.0(等倍)。彩度を落とすスペキュラは控えめ
   Q=vec4(col, 1.0);
 }`,
 
@@ -223,10 +263,10 @@ void main(){
   IMG_FS:`#version 300 es
 precision highp float;
 uniform sampler2D uC; uniform vec2 uSim, uOut; out vec4 Q;
-uniform float uBloom, uSharpen;
+uniform float uBloom, uSharpen, uCut, uChroma, uInk, uVig, uGrain, uPost, uT;
 #define T(U) texture(uC,(U)/uSim)
 // 明るい部分のみ穏やかにブルーム(色は保持)
-vec4 Fl(vec2 U, vec2 r){ vec3 t=T(U+r).xyz; return vec4(exp(-.018*dot(r,r))*max(t-0.6, 0.0), 0.0); }
+vec4 Fl(vec2 U, vec2 r){ vec3 t=T(U+r).xyz; return vec4(exp(-.018*dot(r,r))*max(t-0.6*uCut, 0.0), 0.0); }
 void main(){
   vec2 U=gl_FragCoord.xy * uSim / uOut;   // 出力座標 → シム座標
   vec3 bloom=vec3(0);
@@ -240,7 +280,12 @@ void main(){
   float varn = length(c0 - cN);
   float w = smoothstep(0.22, 0.08, varn);              // 1=コヒーレント(シャープ), 0=荒れ(平滑)
   vec3 col = mix(mix(c0, cN, 0.85), c0 + (c0 - cN)*0.6*uSharpen, w) + 0.05*uBloom*bloom;
+  if(uInk != 0.0) col *= 1.0 - clamp(uInk*clamp(varn*40.0, 0.0, 1.0)*0.8, 0.0, 1.0);
+  if(uChroma != 0.0){ vec2 co = (U - 0.5*uSim)*uChroma*0.06; col += vec3(T(U+co).r - c0.r, 0.0, T(U-co).b - c0.b); }
+  if(uVig != 0.0) col *= max(0.0, 1.0 - uVig*smoothstep(0.3, 1.0, length((gl_FragCoord.xy/uOut - 0.5)*vec2(uOut.x/uOut.y, 1.0))));
+  if(uGrain != 0.0) col += uGrain*0.12*(fract(sin(dot(gl_FragCoord.xy + fract(uT)*61.0, vec2(12.9898, 78.233)))*43758.5453) - 0.5);
   col = clamp(col, 0.0, 1.0);             // 明度・彩度は等倍(トーンマップ/ガンマなし)
+  if(uPost > 0.0){ float pn = max(uPost, 2.0); col = floor(col*pn + 0.5)/pn; }
   Q=vec4(col, 1.0);
 }`,
 
@@ -380,7 +425,8 @@ void main(){
     gl.uniform1f(this._u(this.aProg,'uEnv'), (this._env != null) ? this._env : 0.55);
     gl.uniform1f(this._u(this.aProg,'uSettle'), this._settle || 0);
     const pv = this._pv || this._unitPV();
-    for(const k of ['force','swirl','centerSpread','swell','swellSize','radial','viscosity']) gl.uniform1f(this._u(this.aProg, 'u' + k[0].toUpperCase() + k.slice(1)), pv[k]);
+    gl.uniform2f(this._u(this.aProg,'uDrift'), pv.drift * Math.cos(pv.driftAngle), pv.drift * Math.sin(pv.driftAngle));
+    for(const k of ['force','swirl','centerSpread','swell','swellSize','radial','viscosity','ripple']) gl.uniform1f(this._u(this.aProg, 'u' + k[0].toUpperCase() + k.slice(1)), pv[k]);
     gl.drawArrays(gl.TRIANGLES,0,3);
     const t=this.A0; this.A0=this.A1; this.A1=t;
   },
@@ -413,17 +459,29 @@ void main(){
     gl.uniform1f(this._u(this.bProg,'uHasImg'), this.imgReady ? 1 : 0);
     gl.uniform1f(this._u(this.bProg,'uUseSrc'), srcTex ? 1 : 0);
     gl.uniform2f(this._u(this.bProg,'uRes'), this.sw, this.sh);
-    gl.uniform1f(this._u(this.bProg,'uCrisp'), (this._pv || this._unitPV()).crisp);
+    const pvB = this._pv || this._unitPV();
+    gl.uniform1f(this._u(this.bProg,'uCrisp'), pvB.crisp);
+    gl.uniform1f(this._u(this.bProg,'uImgZoom'), pvB.imgZoom);
+    gl.uniform1f(this._u(this.bProg,'uImgRot'), pvB.imgRot);
     gl.drawArrays(gl.TRIANGLES,0,3);
   },
-  // すべて 1 (= 従来の動き) の倍率
-  _unitPV(){ const o = {}; for(const k of Object.keys(this.P)) o[k] = 1; return o; },
+  // 既定値 (= 従来の動き) の倍率
+  _unitPV(){ return this._pvFrom(this.PDefaults); },
   // P (%) → 倍率
-  _paramPV(){
+  _paramPV(){ return this._pvFrom(this.P); },
+  _pvFrom(src){
     const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
     const o = {};
-    for(const k of Object.keys(this.P)) o[k] = dz(this.P[k]) / 100;
-    for(const k of ['swellSize','viscosity','crisp']) o[k] = Math.max(0.05, o[k]);
+    for(const k of Object.keys(this.P)) o[k] = dz(src[k]) / 100;
+    for(const k of this._DEG) o[k] = dz(src[k]) * Math.PI / 180;
+    for(const k of this._RAW) o[k] = dz(src[k]);
+    for(const k of ['swellSize','viscosity','crisp','imgZoom','bloomCut']) o[k] = Math.max(0.05, o[k]);
+    // 光の向き: 既定は (1,1,1)。lightAngle は既定の向きからの回し
+    if(o.lightAngle === 0) o.light = [1, 1, 1];
+    else {
+      const az = Math.PI / 4 + o.lightAngle, el = Math.asin(1 / Math.sqrt(3));
+      o.light = [Math.cos(el) * Math.cos(az), Math.cos(el) * Math.sin(az), Math.sin(el)];
+    }
     return o;
   },
 
@@ -522,6 +580,8 @@ void main(){
     gl.uniform1i(this._u(this.cProg,'uB'),0);
     gl.uniform2f(this._u(this.cProg,'uRes'), this.sw, this.sh);
     gl.uniform1f(this._u(this.cProg,'uRelief'), this._pv.relief);
+    gl.uniform1f(this._u(this.cProg,'uSide'), this._pv.sideLight);
+    gl.uniform3f(this._u(this.cProg,'uLight'), ...this._pv.light);
     gl.drawArrays(gl.TRIANGLES,0,3);
 
     // Image: レンズフレア → target(スロット解像度)
@@ -533,6 +593,13 @@ void main(){
     gl.uniform2f(this._u(this.imgProg,'uOut'), w, h);
     gl.uniform1f(this._u(this.imgProg,'uBloom'), this._pv.bloom);
     gl.uniform1f(this._u(this.imgProg,'uSharpen'), this._pv.sharpen);
+    gl.uniform1f(this._u(this.imgProg,'uCut'), this._pv.bloomCut);
+    gl.uniform1f(this._u(this.imgProg,'uChroma'), this._pv.chroma);
+    gl.uniform1f(this._u(this.imgProg,'uInk'), this._pv.inkEdge);
+    gl.uniform1f(this._u(this.imgProg,'uVig'), this._pv.vignette);
+    gl.uniform1f(this._u(this.imgProg,'uGrain'), this._pv.grain);
+    gl.uniform1f(this._u(this.imgProg,'uPost'), this._pv.posterize);
+    gl.uniform1f(this._u(this.imgProg,'uT'), performance.now()*0.001);
     gl.drawArrays(gl.TRIANGLES,0,3);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
