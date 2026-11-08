@@ -19156,6 +19156,36 @@ void mainImage(out vec4 o, in vec2 f){
       toast('保存設定を削除: ' + (f ? f.name : m.P.folder));
       this.refreshImageMode();
     });
+    // 画像の見た目 (Look)
+    const slid = (id, key, fmt)=>{
+      const el = $('#'+id), val = $('#'+id+'Val'); if(!el) return;
+      el.addEventListener('input', ()=>{ const m = ensure(); if(!m) return; m.P[key] = parseFloat(el.value); if(val) val.textContent = fmt(m.P[key]); });
+    };
+    slid('imgRotate', 'rotate', v=>String(Math.round(v)));
+    slid('imgSway', 'sway', v=>String(Math.round(v)));
+    slid('imgSkewX', 'skewX', v=>String(Math.round(v)));
+    slid('imgSkewY', 'skewY', v=>String(Math.round(v)));
+    slid('imgKeystone', 'keystone', v=>String(Math.round(v)));
+    slid('imgStretch', 'stretch', v=>String(Math.round(v)));
+    slid('imgTiles', 'tiles', v=>String(Math.round(v)));
+    slid('imgKaleido', 'kaleido', v=>String(Math.round(v)));
+    slid('imgBulge', 'bulge', v=>String(Math.round(v)));
+    slid('imgTwirl', 'twirl', v=>String(Math.round(v)));
+    slid('imgWaveAmp', 'waveAmp', v=>String(Math.round(v)));
+    slid('imgWaveCount', 'waveCount', v=>String(Math.round(v)));
+    slid('imgPixelate', 'pixelate', v=>String(Math.round(v)));
+    slid('imgChroma', 'chroma', v=>String(Math.round(v)));
+    slid('imgChromaAngle', 'chromaAngle', v=>String(Math.round(v)));
+    slid('imgCorner', 'corner', v=>String(Math.round(v)));
+    slid('imgEdgeFade', 'edgeFade', v=>String(Math.round(v)));
+    slid('imgDroneBase', 'droneBase', v=>String(Math.round(v)));
+    slid('imgDroneDepth', 'droneDepth', v=>String(Math.round(v)));
+    slid('imgDroneDrift', 'droneDrift', v=>String(Math.round(v)));
+    slid('imgFadeMs', 'fadeMs', v=>String(Math.round(v)));
+    const mir = $('#imgMirror');
+    if(mir) mir.addEventListener('change', ()=>{ const m = ensure(); if(m) m.P.mirror = parseInt(mir.value, 10); });
+    const tmir = $('#imgTileMirror');
+    if(tmir) tmir.addEventListener('change', ()=>{ const m = ensure(); if(m) m.P.tileMirror = tmir.checked; });
     const prev = $('#imgPrev');
     if(prev) prev.addEventListener('click', ()=>{ const m = ensure(); if(m) m.advance(-1); });
     const next = $('#imgNext');
@@ -19185,7 +19215,7 @@ void mainImage(out vec4 o, in vec2 f){
   saveImageDefault(){
     if(typeof ImageMode === 'undefined') return;
     const P = ImageMode.P;
-    const d = { folder: P.folder, order: P.order, everyBeats: P.everyBeats, fit: P.fit, image: P.image, transBeats: P.transBeats, transStyle: P.transStyle };
+    const d = { folder: P.folder, image: P.image, ...Object.fromEntries(ImageMode.FOLDER_KEYS.map(k => [k, P[k]])) };
     try{ localStorage.setItem(this._imageDefKey, JSON.stringify(d)); }catch(e){}
     toast('デフォルト保存: image' + (P.folder ? ' (' + P.folder.split('/').pop() + ')' : ''));
   },
@@ -19201,6 +19231,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(typeof d.image === 'string') P.image = d.image;
     if(typeof d.transBeats === 'number') P.transBeats = d.transBeats;
     if(typeof d.transStyle === 'number') P.transStyle = d.transStyle;
+    for(const k of ImageMode.FOLDER_KEYS) if(d[k] !== undefined && typeof d[k] === typeof ImageMode.PDefaults[k]) P[k] = d[k];
     if(typeof d.folder === 'string' && d.folder && ImageMode._folderByDir(d.folder)) ImageMode.setFolder(d.folder);
     this.refreshImageMode();
   },
@@ -19253,6 +19284,30 @@ void mainImage(out vec4 o, in vec2 f){
     const fit = $('#imgFit'); if(fit) fit.value = P.fit;
     const trans = $('#imgTrans'); if(trans) trans.value = String(typeof P.transBeats === 'number' ? P.transBeats : -1);
     const tstyle = $('#imgTransStyle'); if(tstyle) tstyle.value = String(typeof P.transStyle === 'number' ? P.transStyle : -1);
+    const set = (id, v, fmt)=>{ const el = $('#'+id), val = $('#'+id+'Val'); if(el) el.value = v; if(val) val.textContent = fmt(v); };
+    set('imgRotate', P.rotate, v=>String(Math.round(v)));
+    set('imgSway', P.sway, v=>String(Math.round(v)));
+    set('imgSkewX', P.skewX, v=>String(Math.round(v)));
+    set('imgSkewY', P.skewY, v=>String(Math.round(v)));
+    set('imgKeystone', P.keystone, v=>String(Math.round(v)));
+    set('imgStretch', P.stretch, v=>String(Math.round(v)));
+    set('imgTiles', P.tiles, v=>String(Math.round(v)));
+    set('imgKaleido', P.kaleido, v=>String(Math.round(v)));
+    set('imgBulge', P.bulge, v=>String(Math.round(v)));
+    set('imgTwirl', P.twirl, v=>String(Math.round(v)));
+    set('imgWaveAmp', P.waveAmp, v=>String(Math.round(v)));
+    set('imgWaveCount', P.waveCount, v=>String(Math.round(v)));
+    set('imgPixelate', P.pixelate, v=>String(Math.round(v)));
+    set('imgChroma', P.chroma, v=>String(Math.round(v)));
+    set('imgChromaAngle', P.chromaAngle, v=>String(Math.round(v)));
+    set('imgCorner', P.corner, v=>String(Math.round(v)));
+    set('imgEdgeFade', P.edgeFade, v=>String(Math.round(v)));
+    set('imgDroneBase', P.droneBase, v=>String(Math.round(v)));
+    set('imgDroneDepth', P.droneDepth, v=>String(Math.round(v)));
+    set('imgDroneDrift', P.droneDrift, v=>String(Math.round(v)));
+    set('imgFadeMs', P.fadeMs, v=>String(Math.round(v)));
+    const mir = $('#imgMirror'); if(mir) mir.value = String(P.mirror);
+    const tmir = $('#imgTileMirror'); if(tmir) tmir.checked = !!P.tileMirror;
     { const fsave = $('#imgFolderSave'), fclear = $('#imgFolderClear');
       const f = P.folder ? m._folderByDir(P.folder) : null;
       const saved = m.hasFolderParams ? m.hasFolderParams(P.folder) : false;
@@ -20847,6 +20902,34 @@ void mainImage(out vec4 o, in vec2 f){
     const ah = $('#ikAutoHue');
     if(ah){ ah.checked = !!P.autoHue; ah.addEventListener('change', ()=>{ P.autoHue = ah.checked; }); }
     slid('ikBgHue', 'bgHue', v=>v.toFixed(3));
+    slid('ikRingX', 'ringX', v=>String(Math.round(v)));
+    slid('ikRingY', 'ringY', v=>String(Math.round(v)));
+    slid('ikRingStretch', 'ringStretch', v=>String(Math.round(v)));
+    slid('ikRingAngle', 'ringAngle', v=>String(Math.round(v)));
+    slid('ikRingLobes', 'ringLobes', v=>String(Math.round(v)));
+    slid('ikLobeDepth', 'lobeDepth', v=>String(Math.round(v)));
+    slid('ikRingEdge', 'ringEdge', v=>String(Math.round(v)));
+    slid('ikSwell', 'swell', v=>String(Math.round(v)));
+    slid('ikBandDensity', 'bandDensity', v=>String(Math.round(v)));
+    slid('ikBandShear', 'bandShear', v=>String(Math.round(v)));
+    slid('ikBandAngle', 'bandAngle', v=>String(Math.round(v)));
+    slid('ikCurlDetail', 'curlDetail', v=>v.toFixed(1));
+    slid('ikFlowAngle', 'flowAngle', v=>String(Math.round(v)));
+    slid('ikFbZoom', 'fbZoom', v=>String(Math.round(v)));
+    slid('ikFbSpin', 'fbSpin', v=>String(Math.round(v)));
+    slid('ikChromeScale', 'chromeScale', v=>String(Math.round(v)));
+    slid('ikChromeRefresh', 'chromeRefresh', v=>String(Math.round(v)));
+    slid('ikBreathFloor', 'breathFloor', v=>String(Math.round(v)));
+    slid('ikReflBend', 'reflBend', v=>String(Math.round(v)));
+    slid('ikReflDetail', 'reflDetail', v=>String(Math.round(v)));
+    slid('ikReflSky', 'reflSky', v=>String(Math.round(v)));
+    slid('ikEdgeShade', 'edgeShade', v=>String(Math.round(v)));
+    slid('ikEdgeSense', 'edgeSense', v=>String(Math.round(v)));
+    slid('ikTintStrength', 'tintStrength', v=>String(Math.round(v)));
+    slid('ikInkFill', 'inkFill', v=>String(Math.round(v)));
+    slid('ikWetShine', 'wetShine', v=>String(Math.round(v)));
+    const et = $('#ikEdgeTint');
+    if(et){ et.value = P.edgeTint || '#ffffff'; et.addEventListener('input', ()=>{ P.edgeTint = et.value; }); }
   },
   refreshInkelly(){
     if(typeof Inkelly === 'undefined') return;
@@ -20869,6 +20952,33 @@ void mainImage(out vec4 o, in vec2 f){
     const bk=$('#ikBlack'); if(bk) bk.checked=!!P.black;
     const ah=$('#ikAutoHue'); if(ah) ah.checked=!!P.autoHue;
     set('ikBgHue', P.bgHue||0, v=>v.toFixed(3));
+    set('ikRingX', P.ringX, v=>String(Math.round(v)));
+    set('ikRingY', P.ringY, v=>String(Math.round(v)));
+    set('ikRingStretch', P.ringStretch, v=>String(Math.round(v)));
+    set('ikRingAngle', P.ringAngle, v=>String(Math.round(v)));
+    set('ikRingLobes', P.ringLobes, v=>String(Math.round(v)));
+    set('ikLobeDepth', P.lobeDepth, v=>String(Math.round(v)));
+    set('ikRingEdge', P.ringEdge, v=>String(Math.round(v)));
+    set('ikSwell', P.swell, v=>String(Math.round(v)));
+    set('ikBandDensity', P.bandDensity, v=>String(Math.round(v)));
+    set('ikBandShear', P.bandShear, v=>String(Math.round(v)));
+    set('ikBandAngle', P.bandAngle, v=>String(Math.round(v)));
+    set('ikCurlDetail', P.curlDetail, v=>v.toFixed(1));
+    set('ikFlowAngle', P.flowAngle, v=>String(Math.round(v)));
+    set('ikFbZoom', P.fbZoom, v=>String(Math.round(v)));
+    set('ikFbSpin', P.fbSpin, v=>String(Math.round(v)));
+    set('ikChromeScale', P.chromeScale, v=>String(Math.round(v)));
+    set('ikChromeRefresh', P.chromeRefresh, v=>String(Math.round(v)));
+    set('ikBreathFloor', P.breathFloor, v=>String(Math.round(v)));
+    set('ikReflBend', P.reflBend, v=>String(Math.round(v)));
+    set('ikReflDetail', P.reflDetail, v=>String(Math.round(v)));
+    set('ikReflSky', P.reflSky, v=>String(Math.round(v)));
+    set('ikEdgeShade', P.edgeShade, v=>String(Math.round(v)));
+    set('ikEdgeSense', P.edgeSense, v=>String(Math.round(v)));
+    set('ikTintStrength', P.tintStrength, v=>String(Math.round(v)));
+    set('ikInkFill', P.inkFill, v=>String(Math.round(v)));
+    set('ikWetShine', P.wetShine, v=>String(Math.round(v)));
+    const et=$('#ikEdgeTint'); if(et) et.value=P.edgeTint||'#ffffff';
   },
   bindSlicer(){
     if(typeof Slicer === 'undefined') return;

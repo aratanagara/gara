@@ -29,6 +29,33 @@ const Inkelly = {
     black: false,        // 濃い黒い絵の具版(ほぼ黒のボディ + 鈍いウェット反射)
     autoHue: false,      // ON: Slot A の最も鮮やかで支配的な色相を自動で bgHue に適用
     bgHue: 0.0,          // 色味: 0=白(Silver)/黒(Black) / >0=色相環(hue)で着色。Slot A クローム & Slot B ライン共通
+    ringX: 0,            // インク発生リングの中心 X (%)
+    ringY: 0,            // インク発生リングの中心 Y (%)
+    ringStretch: 100,    // リングの横幅比 (%)。100=真円 / 大きいほど横長の楕円
+    ringAngle: 0,        // 楕円リングの回転 (度)
+    ringLobes: 0,        // リングの花弁数 (0=真円)
+    lobeDepth: 30,       // 花弁の深さ (%) (Lobes が 1 以上のとき)
+    ringEdge: 100,       // リング断面の鋭さ (%)。大きいほど芯だけが残る
+    swell: 100,          // 場全体の大きなうねりの振れ幅 (%)
+    bandDensity: 100,    // 帯の数 (%)
+    bandShear: 100,      // 帯の位相の傾き量 (%)
+    bandAngle: 0,        // 帯の位相の傾きの向き (度)
+    curlDetail: 4,       // 渦を拾う間隔 (px)。小さいほど細かい渦
+    flowAngle: 0,        // 流れの向き (度)。0=等高線に沿う渦 / 90=外へ広がる流れ
+    fbZoom: 0,           // フィードバックの拡大縮小 (%)。+ で内側へ吸い込み / - で外へ広がる
+    fbSpin: 0,           // フィードバックの回転 (%)
+    chromeScale: 100,    // クロームの流れ場の大きさ (%)
+    chromeRefresh: 100,  // クロームの流れ場の入れ替わる速さ (%)
+    breathFloor: 40,     // ブリージングで密度が下がる下限 (%)。100=ブリージングなし
+    reflBend: 100,       // 反射の曲がり量 (%)
+    reflDetail: 100,     // 反射の滑らかさの幅 (%)
+    reflSky: 100,        // 反射の上下グラデの強さ (%)
+    edgeShade: 100,      // 暗い境目の濃さ (%)
+    edgeSense: 100,      // 境目を拾う感度 (%)
+    edgeTint: '#ffffff', // 暗い境目の色の掛け算ティント
+    tintStrength: 100,   // Hue の色の濃さ (%)
+    inkFill: 0,          // Slot B: インクの塊を塗りつぶす濃さ (%)
+    wetShine: 100,       // Black のウェット反射の強さ (%)
   },
   PDefaults:null,
 
@@ -44,6 +71,10 @@ uniform float uStep, uDt, uFlow;
 uniform float uSpawnR, uSpawnW, uCurl, uDisplace, uFade;
 uniform float uScale, uSharp;   // 形の大きさ / 尖り具合(smooth-abs の eps)
 uniform float uBreath;          // 0..1 ブリージング(密度を増減。透明度は変えない)
+uniform vec2  uRingC;           // リング中心
+uniform float uRingStretch, uRingRot, uLobes, uLobeDepth, uRingEdge;
+uniform float uSwell, uBandDens, uBreathFloor, uCurlE, uFlowRot, uZoomD, uSpinD, uChromeScale, uChromeRefresh;
+uniform vec2  uBandDir;         // 帯の位相の傾き (長さ=量 / 向き)
 out vec4 o;
 float gyroid(vec3 s){ return dot(sin(s), cos(s.yzx)); }
 float fbm(vec2 pos){
@@ -56,8 +87,8 @@ float fbm(vec2 pos){
   // 折り目の鋭さは uSharp(smooth-abs の eps)で可変。小さいほど尖る。
   for(int i=0;i<3;i++, a/=2.){ float g = gyroid(p/a)*a; r += sqrt(g*g + uSharp); }
   // 帯の数=密度。極端に密 + ブリージングで密度が増減(次第に弱まって強くなるのくり返し)
-  float dens = 7.0 * mix(0.4, 1.0, uBreath);
-  r = sin(r*6.283185*dens + t2 - pos.x);
+  float dens = (7.0 * uBandDens) * mix(uBreathFloor, 1.0, uBreath);
+  r = sin(r*6.283185*dens + t2 - dot(pos, uBandDir));
   return r;
 }
 void main(){
@@ -65,20 +96,41 @@ void main(){
   vec2 uv = fc / uRes;
   vec2 pp = (2.*fc - uRes) / uRes.y;
   // 大きいグルーヴ: 低周波の波で場全体をゆっくり大きくうねらせる
-  pp += 0.55 * vec2(sin(pp.y*0.8 + uFlow*1.2), sin(pp.x*0.7 - uFlow*1.0));
-  vec2 e = vec2(4./uRes.y, 0.);
+  pp += (0.55 * uSwell) * vec2(sin(pp.y*0.8 + uFlow*1.2), sin(pp.x*0.7 - uFlow*1.0));
+  vec2 e = vec2(uCurlE/uRes.y, 0.);
   vec2 curl = vec2(fbm(pp+e.xy)-fbm(pp-e.xy), fbm(pp+e.yx)-fbm(pp-e.yx)) / (2.*e.x);
   curl = vec2(curl.y, -curl.x);
+  if(uFlowRot != 0.0){
+    float fc = cos(uFlowRot), fs = sin(uFlowRot);
+    curl = vec2(fc*curl.x - fs*curl.y, fs*curl.x + fc*curl.y);
+  }
   pp += curl * uCurl;
-  float dist = abs(length(pp) - uSpawnR);
+  vec2 q = pp - uRingC;
+  if(uRingStretch != 1.0 || uRingRot != 0.0){
+    float rc = cos(uRingRot), rs = sin(uRingRot);
+    q = vec2(rc*q.x + rs*q.y, -rs*q.x + rc*q.y);
+    q.x /= uRingStretch;
+  }
+  float rl = length(q);
+  if(uLobes > 0.5) rl *= 1.0 + uLobeDepth * sin(uLobes * atan(q.y, q.x));
+  float dist = abs(rl - uSpawnR);
   float mask = smoothstep(uSpawnW, 0., dist);
+  if(uRingEdge != 1.0) mask = pow(mask, uRingEdge);
   curl *= uDisplace;
-  vec4 frame = texture(uPrev, uv + curl);
+  vec2 fuv = uv + curl;
+  if(uZoomD != 0.0 || uSpinD != 0.0){
+    vec2 asp = vec2(uRes.x / uRes.y, 1.0);
+    vec2 c0 = (uv - 0.5) * asp;
+    float sc = cos(uSpinD), sn = sin(uSpinD);
+    c0 = vec2(sc*c0.x - sn*c0.y, sn*c0.x + sc*c0.y) * (1.0 + uZoomD);
+    fuv = c0 / asp + 0.5 + curl;
+  }
+  vec4 frame = texture(uPrev, fuv);
   mask = max(mask, frame.r - uDt*uFade);
   // .a = クローム用の流れる場: 前フレームを curl で移流 + 全面に低周波の源(fbm)を注入。
   // 源を低周波(滑らか)にして、密になってもノイズにならないようにする。
-  float inject = fbm(pp*0.6 + 11.0)*0.5 + 0.5;
-  float aField = mix(frame.a, inject, 0.045);
+  float inject = fbm(pp*(0.6 * uChromeScale) + 11.0)*0.5 + 0.5;
+  float aField = mix(frame.a, inject, 0.045 * uChromeRefresh);
   o = vec4(mask, curl, aField);
 }`,
 
@@ -95,6 +147,8 @@ uniform float uBgHue;           // 0=白(Silver)/黒(Black) / >0=色相環(hue)�
 uniform float uLineBW;          // 無彩色時の線: 1=白(黒支配) / 0=黒(白支配)
 uniform float uLineW;           // 輪郭線の半幅 (px) = エッジ差分を取るサンプル間隔
 uniform float uLineK;           // 線の濃さ (線幅が 0.2px 未満で薄くなる)
+uniform float uReflBend, uReflDetail, uReflSky, uEdgeShade, uEdgeSense, uHueSat, uInkFill, uWetShine;
+uniform vec3  uEdgeTint;
 out vec4 o;
 
 vec3 hsv2rgb(vec3 c){
@@ -130,15 +184,17 @@ void main(){
     vec3 richBlackLine = vec3(0.018, 0.023, 0.036);
     richBlackLine = mix(richBlackLine, vec3(dot(richBlackLine, vec3(0.299,0.587,0.114))), 0.30);
     // 無彩色時は白支配→黒線 / 黒支配→白線(uLineBW)。色相があればその原色。
-    vec3 lineCol = (uBgHue > 0.0) ? hsv2rgb(vec3(uBgHue, 1.0, 1.0))
+    vec3 lineCol = (uBgHue > 0.0) ? hsv2rgb(vec3(uBgHue, uHueSat, 1.0))
                                   : ((uLineBW > 0.5) ? vec3(1.0) : richBlackLine);
-    o = vec4(lineCol, e * uLineK); return;
+    float la = e * uLineK;
+    if(uInkFill > 0.0) la = max(la, mr * uInkFill);
+    o = vec4(lineCol, la); return;
   }
 
   // Slot A: H4風の水銀クローム。2パスで全面を流れる滑らかな場(.a)の傾きだけで反射を曲げる
   // → なめらかなグラデが流れて動く(ジャギなし)。線は白で上に乗せる。
   // .a を広めの 3x3 でぼかして滑らかに(密でもノイズにしない)
-  float dd = 9.0/uRes.x;
+  float dd = (9.0 * uReflDetail)/uRes.x;
   float c  = texture(uBuf, uv).a;
   float rX = texture(uBuf, uv + vec2(dd,0.)).a;
   float lX = texture(uBuf, uv - vec2(dd,0.)).a;
@@ -147,15 +203,15 @@ void main(){
   float c1 = texture(uBuf, uv + vec2(dd,dd)).a + texture(uBuf, uv + vec2(-dd,dd)).a
            + texture(uBuf, uv + vec2(dd,-dd)).a + texture(uBuf, uv + vec2(-dd,-dd)).a;
   float fA = (c*0.28 + (rX+lX+uY+dY)*0.12 + c1*0.06);   // 3x3 加重平均
-  vec2 grad = vec2(rX-lX, uY-dY) * 20.0;                // 弱い傾き(なめらかなグラデ)
-  float refl = clamp(uv.y + grad.y - grad.x*0.5 + (fA-0.5)*0.3, 0.0, 1.0);
+  vec2 grad = vec2(rX-lX, uY-dY) * (20.0 * uReflBend);                // 弱い傾き(なめらかなグラデ)
+  float refl = clamp(uv.y * uReflSky + grad.y - grad.x*0.5 + (fA-0.5)*0.3, 0.0, 1.0);
   // 明るい銀の連続グラデ(階調を広く・滑らか)
   vec3 silver = mix(vec3(0.55,0.58,0.66), vec3(0.99,1.0,1.06), smoothstep(0.0, 1.0, refl));
   // ディープグレーは強い境界だけ(密でも埋め尽くさないようしきい値高め・控えめ)
   float gmag = length(vec2(rX-lX, uY-dY));
-  float boundary = smoothstep(0.006, 0.05, gmag);
-  silver = mix(silver, vec3(0.26,0.29,0.38), boundary*0.65);
-  vec3 bgTint = (uBgHue <= 0.0) ? vec3(1.0) : hsv2rgb(vec3(uBgHue, 1.0, 1.0));  // 0=白 / >0=色相環の原色
+  float boundary = smoothstep(0.006 / uEdgeSense, 0.05 / uEdgeSense, gmag);
+  silver = mix(silver, vec3(0.26,0.29,0.38) * uEdgeTint, boundary*0.65*uEdgeShade);
+  vec3 bgTint = (uBgHue <= 0.0) ? vec3(1.0) : hsv2rgb(vec3(uBgHue, uHueSat, 1.0));  // 0=白 / >0=色相環の原色
   silver *= bgTint;                                // BG = クローム色味(色相環をドラッグで回す)
   if(uBlack > 0.5){                                // 黒い絵の具版: 低明度の塊に、粘度を感じる鈍い濡れハイライトだけを残す
     float g = dot(silver, vec3(0.299,0.587,0.114));
@@ -170,7 +226,7 @@ void main(){
     float flowTone = pow(clamp(fA, 0.0, 1.0), 1.18) * (0.45 + 0.75*mass);
     silver = mix(body, deep, pooled * (0.58 + 0.16*mass));
     silver += body * flowTone * 0.78;
-    silver += wet * sheen * 0.50;
+    silver += wet * sheen * (0.50 * uWetShine);
     silver += cool * ridge * (0.62 + 0.40*mass);
     silver *= 0.72 + 0.58*mass;
     silver = mix(silver, vec3(dot(silver, vec3(0.299,0.587,0.114))), 0.30);
@@ -299,6 +355,17 @@ void main(){
     if(lab) lab.textContent = cur.toFixed(3);
   },
 
+  _ul(prog, n){
+    const c = prog._ul || (prog._ul = {});
+    return (n in c) ? c[n] : (c[n] = this.gl.getUniformLocation(prog, n));
+  },
+  _tint(hex){
+    const m = /^#?([0-9a-f]{6})$/i.exec(hex || '');
+    if(!m) return [1, 1, 1];
+    const v = parseInt(m[1], 16);
+    return [(v >> 16 & 255) / 255, (v >> 8 & 255) / 255, (v & 255) / 255];
+  },
+
   _drawQuad(prog){
     const gl = this.gl;
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
@@ -351,6 +418,28 @@ void main(){
     var _breath = 0.5 + 0.5 * Math.sin(6.2831853 * (this._beat || 0) / (_bars * 4.0));
     _breath = Math.max(_breath, _drive);
     gl.uniform1f(ub('uBreath'), _breath);
+    {
+      const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+      const u1 = (n, v)=> gl.uniform1f(this._ul(this.bufProg, n), v);
+      const RAD = Math.PI / 180;
+      gl.uniform2f(this._ul(this.bufProg, 'uRingC'), dz(P.ringX) / 100, dz(P.ringY) / 100);
+      u1('uRingStretch', dz(P.ringStretch) / 100);
+      u1('uRingRot', dz(P.ringAngle) * RAD);
+      u1('uLobes', Math.round(dz(P.ringLobes)));
+      u1('uLobeDepth', dz(P.lobeDepth) / 100);
+      u1('uRingEdge', dz(P.ringEdge) / 100);
+      u1('uSwell', dz(P.swell) / 100);
+      u1('uBandDens', dz(P.bandDensity) / 100);
+      u1('uBreathFloor', dz(P.breathFloor) / 100);
+      const shear = dz(P.bandShear) / 100, ba = dz(P.bandAngle) * RAD;
+      gl.uniform2f(this._ul(this.bufProg, 'uBandDir'), shear * Math.cos(ba), shear * Math.sin(ba));
+      u1('uCurlE', dz(P.curlDetail));
+      u1('uFlowRot', dz(P.flowAngle) * RAD);
+      u1('uZoomD', dz(P.fbZoom) * 0.0003);
+      u1('uSpinD', dz(P.fbSpin) * 0.0004);
+      u1('uChromeScale', dz(P.chromeScale) / 100);
+      u1('uChromeRefresh', dz(P.chromeRefresh) / 100);
+    }
     this._drawQuad(this.bufProg);
 
     // --- pass 2: edge render → target fbo (reading fboB) ---
@@ -367,6 +456,20 @@ void main(){
     gl.uniform1f(ui('uBgHue'), P.bgHue || 0.0);
     gl.uniform1f(ui('uLineBW'), (this._grayLineWhite != null ? this._grayLineWhite : (P.black ? 0.0 : 1.0)));
     gl.uniform1f(ui('uTime'), flowT);
+    {
+      const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+      const u1 = (n, v)=> gl.uniform1f(this._ul(this.imgProg, n), v);
+      u1('uReflBend', dz(P.reflBend) / 100);
+      u1('uReflDetail', dz(P.reflDetail) / 100);
+      u1('uReflSky', dz(P.reflSky) / 100);
+      u1('uEdgeShade', dz(P.edgeShade) / 100);
+      u1('uEdgeSense', dz(P.edgeSense) / 100);
+      u1('uHueSat', dz(P.tintStrength) / 100);
+      u1('uInkFill', dz(P.inkFill) / 100);
+      u1('uWetShine', dz(P.wetShine) / 100);
+      const tc = this._tint(P.edgeTint);
+      gl.uniform3f(this._ul(this.imgProg, 'uEdgeTint'), tc[0], tc[1], tc[2]);
+    }
     { const lineW = (P.line != null) ? P.line : 2.0;
       const t = Math.max(0, Math.min(1, (lineW - 0.1) / 0.1));
       gl.uniform1f(ui('uLineW'), Math.max(lineW, 1.0) * 0.5);   // 1px 未満は極細線 (0.5px 間隔) のまま、濃さは uLineK で落とす
