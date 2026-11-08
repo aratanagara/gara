@@ -38,6 +38,19 @@
 // @param uWarm     0..200  = 100.0
 // @param uKick     0..200  = 60.0
 // @param uSeed     0..100  = 0.0
+// @param uBevel 25..300 = 100
+// @param uRimGlow 0..300 = 100
+// @param uRimWidth 40..300 = 100
+// @param uTexLight 0..300 = 100
+// @param uTexLightAngle -180..180 = 0
+// @param uStrokeLanes 40..300 = 100
+// @param uDotPitch 40..300 = 100
+// @param uVignette 0..100 = 0
+// @param uFilmGrain 0..100 = 0
+// @param uGlassColor color = #ffffff
+// @param uFrostColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uPaperTint color = #ffffff
 uniform float uSpeed;    // 輪郭のゆらぎ・セルの漂いの速さ (%)
 uniform float uCells;    // 分割のレイヤー: 現れるセルの割合 (%)。0 でレイヤーごと消える
 uniform float uCellSize; // 分割のレイヤー: セルの大きさ (%)
@@ -56,6 +69,19 @@ uniform float uShadow;   // 重ねるレイヤーの面の下の影 (%)
 uniform float uWarm;     // Slot A のときの地の桃色の光 (%)
 uniform float uKick;     // 拍 / 音で屈折が強まる量 (%)
 uniform float uSeed;     // 配置のシード
+uniform float uBevel;    // 面の縁と表面の傾きの強さ (%)。屈折と光沢の両方に効く
+uniform float uRimGlow;  // 縁の白い光の強さ (%)
+uniform float uRimWidth; // 縁の光の細さ・太さ (%)
+uniform float uTexLight; // 筋と粒の光と陰のコントラスト (%)
+uniform float uTexLightAngle; // 筋と粒に当たる光の向き (度)
+uniform float uStrokeLanes; // ストロークの筋の細かさ (%)
+uniform float uDotPitch; // 粒々の間隔の細かさ (%)
+uniform float uVignette; // 周辺の暗がり (%)
+uniform float uFilmGrain; // 画面全体のざらつき (%)
+uniform vec3 uGlassColor; // ガラス越しの色味 (掛け算)
+uniform vec3 uFrostColor; // 乳白の色味 (掛け算)
+uniform vec3 uRimColor; // 縁の光の色味 (掛け算)
+uniform vec3 uPaperTint; // Slot A の地の色味 (掛け算)
 
 // ─── 乱数 / ノイズ ────────────────────────────────────────
 float gf_h1(float n){
@@ -89,7 +115,7 @@ vec3 gf_paper(vec2 p){
   float gx = gfAsp * 0.30;
   float glow = exp(-pow((p.x - gx) / 0.30, 2.0)) * smoothstep(0.7, -0.5, p.y);
   col = mix(col, vec3(0.97, 0.67, 0.58), clamp(glow * 0.85 * max(uWarm, 0.0) * 0.01, 0.0, 1.0));
-  return mix(col, vec3(0.58, 0.48, 0.64), smoothstep(gx + 0.20, gx + 0.55, p.x) * 0.45);
+  return mix(col, vec3(0.58, 0.48, 0.64), smoothstep(gx + 0.20, gx + 0.55, p.x) * 0.45) * uPaperTint;
 }
 // ガラス越しの奥の色: off だけずらし、半径 r のすりガラスでぼかす (Slot B は Slot A の絵、Slot A は地)。
 // 8 点を画素ごとに回して読む (細かい粒のあるぼけ)。点ごとにずれの倍率と色の重みを変え、色の分かれも同じ 8 点で出す
@@ -140,7 +166,7 @@ float gf_island(vec2 q, float sd, float mat, float sizeK){
 // pri = 表面の筋と粒を描く優先度 (重ねるレイヤーの面はセルより上)
 void gf_add(float d, float dc, vec2 q, float sd, float sizeK, float px, float T, bool pane, float pri){
   float ins = smoothstep(0.0, 1.5 * px, -dc);
-  float w0 = 0.0018 * sizeK;
+  float w0 = 0.0018 * sizeK * (uRimWidth / 100.0);
   float rim = exp(-pow((-d - (pane ? w0 : 0.0)) / w0, 2.0));
   float inner = smoothstep(0.0, 0.05 * sizeK, -d);
   gfH += ins * (0.14 * inner + 0.40 * rim);
@@ -153,19 +179,21 @@ void gf_add(float d, float dc, vec2 q, float sd, float sizeK, float px, float T,
     // ストロークの筋 (uStroke): 面の向きに走る刷毛の跡。少し扇形に曲がり、筋ごとに強さが違い、途中で途切れる
     float bend = (gf_h1(sd + 8.0) - 0.5) * 3.0;
     float v = uq.y + bend * 0.12 * sin(uq.x * 3.0) + (gf_vn(vec2(uq.x * 6.0, uq.y * 40.0) + sd) - 0.5) * 0.012;   // 傾きは最大 ±28°
-    float lane = v * 170.0;                                                   // 筋の間隔 (約 6 画素)
+    float nL = 170.0 * (uStrokeLanes / 100.0);
+    float lane = v * nL;                                                   // 筋の間隔 (約 6 画素)
     float fl = fract(lane) - 0.5;
     float tri = 1.0 - abs(fl) * 2.0;
-    vec2 gRidge = 3.0 * tri * tri * (-2.0 * sign(fl)) * 170.0 * sc * vec2(bend * 0.36 * cos(uq.x * 3.0), 1.0);
+    vec2 gRidge = 3.0 * tri * tri * (-2.0 * sign(fl)) * nL * sc * vec2(bend * 0.36 * cos(uq.x * 3.0), 1.0);
     float bristle = smoothstep(0.25, 0.80, gf_vn(vec2(floor(lane) * 0.37 + sd, uq.x * 2.5)));
     // 粒々 (uDots): 盛り上がった小さな玉が蜂の巣状に並ぶ (約 8 画素)
-    vec2 hq = uq * vec2(130.0, 130.0 / 0.866);
+    float nD = 130.0 * (uDotPitch / 100.0);
+    vec2 hq = uq * vec2(nD, nD / 0.866);
     float row = floor(hq.y);
     vec2 hc = floor(hq + vec2(0.5 * mod(row, 2.0), 0.0));
     vec2 hf = (fract(hq + vec2(0.5 * mod(row, 2.0), 0.0)) - 0.5) * vec2(1.0, 0.866);
     float br = 0.36 * (0.8 + 0.35 * gf_h2(hc + sd));
     float bk = max(1.0 - dot(hf, hf) / (br * br), 0.0);
-    vec2 gBead = 1.5 * sqrt(bk) * (-2.0 * hf / (br * br)) * 130.0 * sc;
+    vec2 gBead = 1.5 * sqrt(bk) * (-2.0 * hf / (br * br)) * nD * sc;
     // 筋の帯と粒の帯が、面の向きに沿って交互に並ぶ
     float band = smoothstep(0.42, 0.58, gf_vn(uq * vec2(2.2, 10.0) + sd * 1.3));
     float sK = max(uStroke, 0.0) * 0.01 * 0.22 * band, dK = max(uDots, 0.0) * 0.01 * 0.26 * (1.0 - band);
@@ -318,7 +346,7 @@ vec3 bg_glass_frost(vec2 fc){
   // ── 法線: 足し合わせた高さの画面微分 (下の面の縁も上の面越しに光と屈折に出る) ──
   vec2 dh = vec2(dFdx(gfH), dFdy(gfH));
   vec2 dt = gfTG;                                         // 筋と粒の傾き (画素あたり)
-  vec3 nrm = normalize(vec3(-(dh + dt) * 1.6, 1.0));
+  vec3 nrm = normalize(vec3(-(dh + dt) * 1.6 * (uBevel / 100.0), 1.0));
   float inside = gfCov;
   float rim = min(gfRim, 1.5);
   float inner = min(gfInner, 1.0);
@@ -350,21 +378,26 @@ vec3 bg_glass_frost(vec2 fc){
     float spec = pow(max(dot(reflect(-Ld, nrm), vec3(0.0, 0.0, 1.0)), 0.0), 36.0);
     g *= 1.0 + 0.05 * diff;
     // 乳白: 重なるほど濃く、曇りのむらで濃淡がつく。粒の明るさのばらつきも乗せる
-    g = mix(g, vec3(0.95, 0.94, 0.97), clamp(gfLay * 0.16 * frK * (0.5 + 0.5 * inner) * (1.0 + grK * (mot - 0.4) * 0.8), 0.0, 0.55));
+    g = mix(g, vec3(0.95, 0.94, 0.97) * uFrostColor, clamp(gfLay * 0.16 * frK * (0.5 + 0.5 * inner) * (1.0 + grK * (mot - 0.4) * 0.8), 0.0, 0.55));
     g += ((gf_h2(gc + 3.1) - 0.5) * 0.06 + gm.x * 0.05) * grK;
     // 縁: 細く白く光り、薄い虹色 (暗く沈めない)
     vec3 film = 0.5 + 0.5 * cos(6.2831 * (vec3(0.0, 0.33, 0.67) + gfH * 1.6 + dot(nrm.xy, vec2(2.0, 1.3)) + T * 0.05));
-    g += (vec3(0.10) + (film - 0.3) * 0.22 * max(uIris, 0.0) * 0.01) * rim * clamp(0.55 + 0.6 * diff, 0.2, 1.0);
+    g += (vec3(0.10) * (uRimGlow / 100.0) + (film - 0.3) * 0.22 * max(uIris, 0.0) * 0.01) * rim * clamp(0.55 + 0.6 * diff, 0.2, 1.0) * uRimColor;
     g += vec3(1.0) * spec * 0.12;
     // 筋と粒の表面の光と陰 (すりガラスのぼけの後に乗せるので、ぼけずにくっきり見える)。左上から光が当たる
-    float tl = -dot(dt, vec2(-0.6, 0.8)) * 5.0;
+    vec2 tld = vec2(-0.6, 0.8);
+    if(uTexLightAngle != 0.0){ float ta = radians(uTexLightAngle); float tc = cos(ta), ts = sin(ta); tld = vec2(tc * tld.x - ts * tld.y, ts * tld.x + tc * tld.y); }
+    float tl = -dot(dt, tld) * 5.0 * (uTexLight / 100.0);
     g *= 1.0 + clamp(tl, -0.30, 0.0);
     g += vec3(0.98, 0.97, 1.0) * pow(clamp(tl, 0.0, 1.0), 1.5) * 0.45;
     g *= 1.0 - sh;                                        // 面の影はセルの上にも落ちる
-    col = clamp(g, 0.0, 1.0) * inside;
+    col = clamp(g * uGlassColor, 0.0, 1.0) * inside;
     cov = inside + sh * (1.0 - inside);
   }
   bgAlpha = cov;
   // Slot A のときは、ガラスの外に地 (影で少し暗く) を敷く
-  return col + gf_paper(p) * gfPaperOn * uSlotIsA * (1.0 - cov);
+  col = col + gf_paper(p) * gfPaperOn * uSlotIsA * (1.0 - cov);
+  if(uVignette != 0.0){ col *= 1.0 - (uVignette / 100.0) * 0.7 * smoothstep(0.3, 1.0, length((fc - 0.5 * resolution) / max(resolution.y, 1.0))); }
+  if(uFilmGrain != 0.0){ col += (gf_h2(fc + 0.37) - 0.5) * (uFilmGrain / 100.0) * 0.12 * max(cov, uSlotIsA); }
+  return col;
 }

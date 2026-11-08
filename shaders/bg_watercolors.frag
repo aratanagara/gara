@@ -35,6 +35,19 @@ vec3 wc_gradient(in float t,in vec3 a,in vec3 b,in vec3 c,in vec3 d){ return a+b
 // @param uLayerHue 25..300 = 100
 // @param uCenterX -100..100 = 0
 // @param uCenterY -100..100 = 0
+// @param uRotate -180..180 = 0
+// @param uStretchX 40..250 = 100
+// @param uMirror -100..100 = 0
+// @param uTwirl -100..100 = 0
+// @param uPaletteShift -50..50 = 0
+// @param uPaletteBody 25..250 = 100
+// @param uChannelSplit 0..100 = 0
+// @param uLayerTilt -80..80 = 0
+// @param uPosterize 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uFilmGrain 0..100 = 0
+// @param uWashColor color = #ffffff
+// @param uDeepColor color = #ffffff
 uniform float uDetail;   // 折り重ねの回数 (下げると模様が単純になる)
 uniform float uWarp;   // 回転のゆらぎ (歪み) の強さ (%)
 uniform float uDensity;   // 模様の密度 (%)
@@ -51,6 +64,19 @@ uniform float uAccum;   // 層の積み重なりが回転に戻る量 (%)
 uniform float uLayerHue;   // 層ごとの色の進み (%)
 uniform float uCenterX;   // 模様の中心の横位置 (%)
 uniform float uCenterY;   // 模様の中心の縦位置 (%)
+uniform float uRotate;   // 模様全体の回転角 (度)
+uniform float uStretchX;   // 模様の横の伸び縮み (%)
+uniform float uMirror;   // 左右対称の折り返し位置 (%)。+ で左側を、- で右側を折り返す。0 で無効
+uniform float uTwirl;   // 中心から外へ向かうねじれ (%)
+uniform float uPaletteShift;   // パレットの位相のずれ (%)。色の組み合わせが変わる
+uniform float uPaletteBody;   // パレットの振れ幅 (%)。色の濃淡の差
+uniform float uChannelSplit;   // RGB ごとの色の巡りのずれ (%)。色が分離して虹がかる
+uniform float uLayerTilt;   // 浅い層と深い層の重み配分 (%)。+ で深い層、- で浅い層が強い
+uniform float uPosterize;   // 色の段階を粗くする (%)。100 でほぼ数色
+uniform float uVignette;   // 周辺の暗がり (%)
+uniform float uFilmGrain;   // 紙のようなざらつき (%)
+uniform vec3 uWashColor;   // 全体にかける色味 (掛け算)
+uniform vec3 uDeepColor;   // 深い層ほど強くかかる色味 (掛け算)
 
 vec3 bg_watercolors(vec2 fc){
   vec2 I = (fc - resolution*0.5)/max(bgZoom,0.001) + resolution*0.5 + bgCamPx;
@@ -60,12 +86,21 @@ vec3 bg_watercolors(vec2 fc){
   vec3 c1=vec3(.1), c2=vec3(.15), c3=vec3(2.6)*(uBands/100.0), c4=vec3(.1,.5,.6);
   float t=time*WC_SPEED;
   t += wc_cosine(t*.25, 2.);
+  vec2 uvScr = uv;
   uv*=5.*(uDensity/100.0);
+  if(uStretchX != 100.0){ uv.x *= uStretchX / 100.0; }
+  if(uMirror != 0.0){ float mc = uMirror * 0.006 * 5.0; uv.x = (uMirror > 0.0 ? 1.0 : -1.0) * abs(uv.x - mc) + mc; }
+  if(uTwirl != 0.0){ float tw = uTwirl / 100.0 * length(uv) * 0.35; float tc = cos(tw), ts = sin(tw); uv = vec2(tc*uv.x - ts*uv.y, ts*uv.x + tc*uv.y); }
+  if(uRotate != 0.0){ float ra = radians(uRotate); float rc = cos(ra), rs = sin(ra); uv = vec2(rc*uv.x - rs*uv.y, rs*uv.x + rc*uv.y); }
   if(uCenterX != 0.0 || uCenterY != 0.0){ uv += vec2(uCenterX, uCenterY) / 100.0 * 5.0; }
   vec2 p=uv;
   vec2 q=1.-uv;
   float a=.5;
   if(uStartAngle != 0.0){ a += uStartAngle / 100.0; }
+  if(uPaletteShift != 0.0){ c4 += uPaletteShift / 100.0; }
+  if(uPaletteBody != 100.0){ c2 *= uPaletteBody / 100.0; }
+  if(uChannelSplit != 0.0){ c3 += vec3(-1.0, 0.0, 1.0) * (uChannelSplit / 100.0); }
+  bool tinted = (uDeepColor != vec3(1.0));
   vec3 col=vec3(0);
   for(float i=1.;i<9.;i++){
     if(i > uDetail + 0.5) break;
@@ -80,8 +115,15 @@ vec3 bg_watercolors(vec2 fc){
     vec2 tmp=q; q=p; p=tmp;
     q*=2.*(uZoomStep/100.0);
     float w=a;
-    col+=wc_gradient(a*.5+t*.3+i*(uLayerHue/100.0), c1,c2,c3,c4)*w;
+    if(uLayerTilt != 0.0){ w *= 1.0 + (i - 4.5) * (uLayerTilt / 100.0) * 0.5; }
+    vec3 lc = wc_gradient(a*.5+t*.3+i*(uLayerHue/100.0), c1,c2,c3,c4);
+    if(tinted){ lc *= mix(vec3(1.0), uDeepColor, (i - 1.0) / 7.0); }
+    col+=lc*w;
   }
   col=wc_cosine(col,1.5*(uContrast/100.0));
+  if(uPosterize != 0.0){ float lv = mix(24.0, 4.0, uPosterize / 100.0); col = floor(col * lv + 0.5) / lv; }
+  if(uWashColor != vec3(1.0)){ col *= uWashColor; }
+  if(uVignette != 0.0){ col *= 1.0 - (uVignette / 100.0) * 0.85 * smoothstep(0.6, 2.0, length(uvScr)); }
+  if(uFilmGrain != 0.0){ col += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * (uFilmGrain / 100.0) * 0.35; }
   return col;
 }
