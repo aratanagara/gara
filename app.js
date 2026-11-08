@@ -16340,6 +16340,30 @@ void mainImage(out vec4 o, in vec2 f){
     bindTdNumber('tdMdGridCols', 'gridCols');
     bindTdNumber('tdMdGridCell', 'gridCell');
     bindTdNumber('tdMdGridGap', 'gridGap');
+    bindTdNumber('tdMdShowPct', 'showPct');
+    bindTdNumber('tdMdSizeVar', 'sizeVar');
+    bindTdNumber('tdMdScatter', 'scatter');
+    bindTdNumber('tdMdTremor', 'tremor');
+    bindTdNumber('tdMdWaveAmp', 'waveAmp');
+    bindTdNumber('tdMdWaveLen', 'waveLen');
+    bindTdNumber('tdMdLineStagger', 'lineStagger');
+    bindTdNumber('tdMdSlant', 'slant');
+    bindTdNumber('tdMdSwirl', 'swirl');
+    bindTdNumber('tdMdBulge', 'bulge');
+    bindTdNumber('tdMdViewAngle', 'viewAngle');
+    bindTdNumber('tdMdPivotX', 'pivotX');
+    bindTdNumber('tdMdPivotY', 'pivotY');
+    bindTdNumber('tdMdStepSize', 'stepSize');
+    bindTdNumber('tdMdMisregAlpha', 'misregAlpha');
+    bindTdNumber('tdMdMisregRatio', 'misregRatio');
+    bindTdNumber('tdMdTrailPct', 'trailPct');
+    bindTdNumber('tdMdAccentOnMove', 'accentOnMove');
+    bindTdNumber('tdMdRainbow', 'rainbow');
+    bindTdNumber('tdMdRainbowSpan', 'rainbowSpan');
+    bindTdNumber('tdMdVignette', 'vignette');
+    bindTdNumber('tdMdGrain', 'grain');
+    bindTdNumber('tdMdGrainSize', 'grainSize');
+    bindTdColor('tdMdVignetteColor', 'vignetteColor');
     const tdGrid = $('#tdMdGrid');
     if(tdGrid){
       tdGrid.addEventListener('change', ()=>{
@@ -21714,6 +21738,27 @@ void mainImage(out vec4 o, in vec2 f){
       confuseDepth: chance(0.3) ? +R(0.1, 0.8).toFixed(2) : 0,
       opChance: +R(0.3, 1).toFixed(2),
     };
+    // 見た目の追加 param (控えめな範囲。使わないものは既定へ戻す)
+    Object.assign(over, {
+      showPct: chance(0.15) ? Math.round(R(55, 95)) : 100,
+      sizeVar: chance(0.3) ? Math.round(R(10, 50)) : 0,
+      scatter: chance(0.2) ? Math.round(R(5, 40)) : 0,
+      tremor: chance(0.1) ? Math.round(R(2, 12)) : 0,
+      waveAmp: chance(0.2) ? Math.round(R(10, 60)) : 0, waveLen: Math.round(R(4, 24)),
+      lineStagger: chance(0.2) ? Math.round(R(-60, 60)) : 0,
+      slant: chance(0.2) ? Math.round(R(-20, 20)) : 0,
+      swirl: chance(0.12) ? Math.round(R(-50, 50)) : 0,
+      bulge: chance(0.12) ? Math.round(R(-25, 25)) : 0,
+      viewAngle: chance(0.1) ? Math.round(R(-20, 20)) : 0,
+      pivotX: chance(0.25) ? Math.round(R(20, 80)) : 50, pivotY: chance(0.25) ? Math.round(R(20, 100)) : 75,
+      stepSize: chance(0.3) ? Math.round(R(50, 200)) : 100,
+      misregAlpha: chance(0.3) ? Math.round(R(40, 100)) : 72, misregRatio: chance(0.3) ? Math.round(R(0, 120)) : 65,
+      trailPct: chance(0.1) ? Math.round(R(30, 80)) : 0,
+      accentOnMove: chance(0.2) ? Math.round(R(40, 150)) : 0,
+      rainbow: chance(0.1) ? Math.round(R(30, 100)) : 0, rainbowSpan: Math.round(R(90, 540)/10)*10,
+      vignette: chance(0.2) ? Math.round(R(20, 70)) : 0, vignetteColor: '#000000',
+      grain: chance(0.2) ? Math.round(R(10, 50)) : 0, grainSize: Math.round(R(100, 300)/25)*25,
+    });
     if(chance(0.3)) over.misregColorA = hex((accH+180)%360, R(0.6,0.9), R(0.45,0.6));
     if(chance(0.3)) over.misregColorB = hex((accH+300)%360, R(0.6,0.9), R(0.45,0.6));
     // 書体: UI の選択肢から
@@ -21798,6 +21843,30 @@ void mainImage(out vec4 o, in vec2 f){
     addNum('tdMdGridCols', 'gridCols');
     addNum('tdMdGridCell', 'gridCell');
     addNum('tdMdGridGap', 'gridGap');
+    addNum('tdMdShowPct', 'showPct');
+    addNum('tdMdSizeVar', 'sizeVar');
+    addNum('tdMdScatter', 'scatter');
+    addNum('tdMdTremor', 'tremor');
+    addNum('tdMdWaveAmp', 'waveAmp');
+    addNum('tdMdWaveLen', 'waveLen');
+    addNum('tdMdLineStagger', 'lineStagger');
+    addNum('tdMdSlant', 'slant');
+    addNum('tdMdSwirl', 'swirl');
+    addNum('tdMdBulge', 'bulge');
+    addNum('tdMdViewAngle', 'viewAngle');
+    addNum('tdMdPivotX', 'pivotX');
+    addNum('tdMdPivotY', 'pivotY');
+    addNum('tdMdStepSize', 'stepSize');
+    addNum('tdMdMisregAlpha', 'misregAlpha');
+    addNum('tdMdMisregRatio', 'misregRatio');
+    addNum('tdMdTrailPct', 'trailPct');
+    addNum('tdMdAccentOnMove', 'accentOnMove');
+    addNum('tdMdRainbow', 'rainbow');
+    addNum('tdMdRainbowSpan', 'rainbowSpan');
+    addNum('tdMdVignette', 'vignette');
+    addNum('tdMdGrain', 'grain');
+    addNum('tdMdGrainSize', 'grainSize');
+    addColor('tdMdVignetteColor', 'vignetteColor');
     const gridSel = $('#tdMdGrid');
     if(gridSel) over.gridEnabled = gridSel.value === 'on';
     if(typeof TDComp !== 'undefined') over.comp = TDComp.snapshot();
@@ -21916,6 +21985,30 @@ void mainImage(out vec4 o, in vec2 f){
     setRange('tdMdGridCols', 'tdMdGridColsVal', 'gridCols', 12, v=>String(Math.round(v)));
     setRange('tdMdGridCell', 'tdMdGridCellVal', 'gridCell', 0, v=>v > 0 ? String(Math.round(v)) : 'Auto');
     setRange('tdMdGridGap', 'tdMdGridGapVal', 'gridGap', 0, v=>String(Math.round(v)));
+    setRange('tdMdShowPct', 'tdMdShowPctVal', 'showPct', 100, v=>Math.round(v) + '%');
+    setRange('tdMdSizeVar', 'tdMdSizeVarVal', 'sizeVar', 0, v=>Math.round(v) + '%');
+    setRange('tdMdScatter', 'tdMdScatterVal', 'scatter', 0, v=>Math.round(v) + '%');
+    setRange('tdMdTremor', 'tdMdTremorVal', 'tremor', 0, v=>Math.round(v) + '%');
+    setRange('tdMdWaveAmp', 'tdMdWaveAmpVal', 'waveAmp', 0, v=>Math.round(v) + '%');
+    setRange('tdMdWaveLen', 'tdMdWaveLenVal', 'waveLen', 10, v=>Math.round(v) + 'em');
+    setRange('tdMdLineStagger', 'tdMdLineStaggerVal', 'lineStagger', 0, v=>Math.round(v) + '%');
+    setRange('tdMdSlant', 'tdMdSlantVal', 'slant', 0, v=>Math.round(v) + 'deg');
+    setRange('tdMdSwirl', 'tdMdSwirlVal', 'swirl', 0, v=>Math.round(v) + 'deg');
+    setRange('tdMdBulge', 'tdMdBulgeVal', 'bulge', 0, v=>Math.round(v) + '%');
+    setRange('tdMdViewAngle', 'tdMdViewAngleVal', 'viewAngle', 0, v=>Math.round(v) + 'deg');
+    setRange('tdMdPivotX', 'tdMdPivotXVal', 'pivotX', 50, v=>Math.round(v) + '%');
+    setRange('tdMdPivotY', 'tdMdPivotYVal', 'pivotY', 75, v=>Math.round(v) + '%');
+    setRange('tdMdStepSize', 'tdMdStepSizeVal', 'stepSize', 100, v=>Math.round(v) + '%');
+    setRange('tdMdMisregAlpha', 'tdMdMisregAlphaVal', 'misregAlpha', 72, v=>Math.round(v) + '%');
+    setRange('tdMdMisregRatio', 'tdMdMisregRatioVal', 'misregRatio', 65, v=>Math.round(v) + '%');
+    setRange('tdMdTrailPct', 'tdMdTrailPctVal', 'trailPct', 0, v=>Math.round(v) + '%');
+    setRange('tdMdAccentOnMove', 'tdMdAccentOnMoveVal', 'accentOnMove', 0, v=>Math.round(v) + '%');
+    setRange('tdMdRainbow', 'tdMdRainbowVal', 'rainbow', 0, v=>Math.round(v) + '%');
+    setRange('tdMdRainbowSpan', 'tdMdRainbowSpanVal', 'rainbowSpan', 360, v=>Math.round(v) + 'deg');
+    setRange('tdMdVignette', 'tdMdVignetteVal', 'vignette', 0, v=>Math.round(v) + '%');
+    setColor('tdMdVignetteColor', 'tdMdVignetteColorVal', 'vignetteColor', '#000000');
+    setRange('tdMdGrain', 'tdMdGrainVal', 'grain', 0, v=>Math.round(v) + '%');
+    setRange('tdMdGrainSize', 'tdMdGrainSizeVal', 'grainSize', 100, v=>Math.round(v) + '%');
     const lawSel = $('#tdMdRandomLaw');
     if(lawSel){
       const law = String(valFor('randomLaw', 'scatter'));

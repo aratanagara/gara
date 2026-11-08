@@ -15,7 +15,8 @@ const TD_FONT_MINCHO = '"yu-mincho-pr6n","dnp-shuei-nmincho-std","Zen Old Mincho
 const TD_FONT_GOTHIC = '"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Zen Kaku Gothic New","Noto Sans JP",' + TD_UNICODE_FALLBACK + ',sans-serif';
 const TD_FONT_MONO = '"dnp-shuei-gothic-gin-std","Space Mono",' + TD_UNICODE_FALLBACK + ',"Noto Sans JP",monospace';
 const TD_MD_STYLE_KEYS = ['paper','ink','accent','accentRatio','fontFamily','fontSize','lineHeight','letterSpacing','vertical','stageW','marginPct','fitMode','zoom','panX','panY','randomLaw','rotation','randomness','geoRatio','stretchX','stretchY','flipRate',
-  'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap','comp'];
+  'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap','comp',
+  'showPct','sizeVar','scatter','tremor','waveAmp','waveLen','lineStagger','slant','swirl','bulge','viewAngle','pivotX','pivotY','stepSize','misregAlpha','misregRatio','trailPct','accentOnMove','rainbow','rainbowSpan','vignette','vignetteColor','grain','grainSize'];
 
 /* ---- Confuse operator: 類字置換の Core 辞書 (元アプリの graded lookalike dictionary 移植) ----
  * Tier 1: 同一文字の形態バリエーション (全角・濁点・小書き・旧字体)
@@ -130,6 +131,25 @@ const TextDeform = {
     gridCols: 12,        // 横組=1行のマス数 / 縦組=1列のマス数
     gridCell: 0,         // マスの px (0 = fontSize から自動)
     gridGap: 0,          // マス間 px
+    // 見た目の追加 param (第 2 弾)。既定で従来と同じ絵 (0 / 100 / 元の定数)
+    showPct: 100,        // 文字を描く割合 % (低いほど抜ける。添字ハッシュで固定)
+    sizeVar: 0,          // 文字ごとの大きさのばらつき % (一様拡縮)
+    scatter: 0,          // 文字ごとの固定オフセット (文字サイズ比 %)
+    tremor: 0,           // 12Hz で震える量 (文字サイズ比 %)
+    waveAmp: 0, waveLen: 10,   // 字送り方向に沿ったうねり: 振れ幅 (文字サイズ比 %) / 波長 (em)
+    lineStagger: 0,      // 行ごとの字送り方向のずれ (文字サイズ比 %、sin(行) で揺らす)
+    slant: 0,            // 全文字の斜体 deg (Operator の skewX とは別に常時)
+    swirl: 0,            // 版面中心からの渦 deg (外周ほど回る)
+    bulge: 0,            // 版面中心からの膨らみ/すぼみ % (外周ほど大きく動く + 文字も拡縮)
+    viewAngle: 0,        // 版面全体の回転 deg
+    pivotX: 50, pivotY: 75,   // 変形 (伸び・回転・鏡映) の支点 (文字枠内 %)
+    stepSize: 100,       // 段階的な伸びの刻み幅 % (geo の文字)
+    misregAlpha: 72, misregRatio: 65,   // 版ずれ: 刷りの濃さ % / B 版の戻り量 % (A のオフセット比)
+    trailPct: 0,         // 残像 % (紙の塗りを薄くして前フレームを残す)
+    accentOnMove: 0,     // 動いている文字を accent 色に寄せる量 %
+    rainbow: 0, rainbowSpan: 360,   // 文字ごとの虹色 %: 混ぜる量 / 版面全体で回す色相 deg
+    vignette: 0, vignetteColor: '#000000',   // 周辺減光 % / 色
+    grain: 0, grainSize: 100,        // フィルムグレイン % / 粒の大きさ %
     // レイアウト(スロットに合わせる)
     marginPct: 8, transparentBg: false, fitMode: 'fit', zoom: 1, panX: 0, panY: 0,
     // VJ 駆動
@@ -1077,7 +1097,8 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const directional = seedX*0.5;
     let sX = 1 + info.intensity*(1.48 + seedX*0.85 + directional*0.42)*P.stretchX;
     let sY = 1 + info.intensity*(1.82 + seedY*1.05 - directional*0.36)*P.stretchY;
-    const stepX = info.stepX>0?info.stepX:0.28, stepY = info.stepY>0?info.stepY:0.34, baseBlend = info.blend;
+    const ss = (P.stepSize > 0 ? P.stepSize : 100) / 100;   // 段階の刻み幅 (既定 100 = 1.0)
+    const stepX = (info.stepX>0?info.stepX:0.28)*ss, stepY = (info.stepY>0?info.stepY:0.34)*ss, baseBlend = info.blend;
     if(info.geo){
       const blend = Math.min(0.94, Math.max(0.42, baseBlend + info.intensity*0.35));
       const qx = 1 + Math.round((sX-1)/stepX)*stepX, qy = 1 + Math.round((sY-1)/stepY)*stepY;
@@ -1290,26 +1311,141 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
   },
 
   // ---- glyph スナップショット(インライン style + キャッシュ計測から) ----
-  _snapshotGlyphs(){
+  _snapshotGlyphs(fx){
     const P = this.P, ms = this._metrics || [], out = [];
-    const fs = P.fontSize;
+    const fs = P.fontSize, vert = !!P.vertical, ctr = this._ctr, tt = this._t || 0;
+    const tstep = Math.floor(tt*12);
     for(let i=0; i<ms.length; i++){
       const m = ms[i], st = m.el.style;
       const sx = parseFloat(st.getPropertyValue('--sx')) || 1;
       const sy = parseFloat(st.getPropertyValue('--sy')) || 1;
       const ix = parseFloat(st.getPropertyValue('--ix')) || 1;
       const iy = parseFloat(st.getPropertyValue('--iy')) || 1;
-      const tx = (parseFloat(st.getPropertyValue('--tx')) || 0) * fs;
-      const ty = (parseFloat(st.getPropertyValue('--ty')) || 0) * fs;
-      const rot = parseFloat(st.getPropertyValue('--rot')) || 0;
+      let tx = (parseFloat(st.getPropertyValue('--tx')) || 0) * fs;
+      let ty = (parseFloat(st.getPropertyValue('--ty')) || 0) * fs;
+      let rot = parseFloat(st.getPropertyValue('--rot')) || 0;
       const x = m.relX - m.w/2, y = m.relY - m.h/2, w = m.w, hh = m.h;
+      let scaleX = sx*ix, scaleY = sy*iy, skx = m.opSkXV || 0;
+      if(fx.glyph){
+        if(fx.show < 100 && this._h(i, 907.31) > fx.show/100) continue;
+        if(fx.sizeVar){
+          const f = Math.max(0.2, 1 + (this._h(i, 31.7)*2 - 1)*fx.sizeVar/100);
+          scaleX *= f; scaleY *= f;
+        }
+        if(fx.scatter){
+          const a = this._h(i, 41.3)*6.2832, r = this._h(i, 53.9)*fx.scatter/100*fs;
+          tx += Math.cos(a)*r; ty += Math.sin(a)*r;
+        }
+        if(fx.tremor){
+          const q = fx.tremor/100*fs;
+          tx += (this._h(i + tstep*0.7131, 61.9)*2 - 1)*q; ty += (this._h(i + tstep*0.7131, 73.3)*2 - 1)*q;
+        }
+        if(fx.waveAmp){
+          const pos = vert ? y + hh/2 : x + w/2;
+          const o = Math.sin(pos/(fs*fx.waveLen)*6.2832 + tt*1.6)*fx.waveAmp/100*fs;
+          if(vert) tx += o; else ty += o;
+        }
+        if(fx.stagger){
+          const o = Math.sin((m.line || 0)*1.1)*fx.stagger/100*fs;
+          if(vert) ty += o; else tx += o;
+        }
+        if((fx.swirl || fx.bulge) && ctr){
+          const gx = x + w/2 - ctr.x, gy = y + hh/2 - ctr.y;
+          const u = Math.min(1, Math.sqrt(gx*gx + gy*gy)/ctr.R);
+          let px = gx, py = gy;
+          if(fx.swirl){
+            const a = fx.swirl*u*Math.PI/180, c = Math.cos(a), sn = Math.sin(a);
+            px = gx*c - gy*sn; py = gx*sn + gy*c;
+            rot += fx.swirl*u;
+          }
+          if(fx.bulge){
+            const k = Math.max(0.3, 1 + fx.bulge/100*u*u);
+            px *= k; py *= k; scaleX *= k; scaleY *= k;
+          }
+          tx += px - gx; ty += py - gy;
+        }
+        if(fx.slant) skx += fx.slant;
+      }
       out.push({ ch: m.dispCh || m.el.textContent, upright: m.el._info.upright, accent: m.el._accent,
-        x, y, w, h: hh, ox: x + w/2, oy: y + hh*0.75, tx, ty, rot, scaleX: sx*ix, scaleY: sy*iy,
-        opRot: m.opRotV || 0, skx: m.opSkXV || 0, sky: m.opSkYV || 0, bl: m.opBlV || 0,
+        x, y, w, h: hh, ox: x + w*fx.pivX, oy: y + hh*fx.pivY, tx, ty, rot, scaleX, scaleY,
+        opRot: m.opRotV || 0, skx, sky: m.opSkYV || 0, bl: m.opBlV || 0,
         mirX: m.opMirXV == null ? 1 : m.opMirXV, mirY: m.opMirYV == null ? 1 : m.opMirYV,
-        misX: m.opMisXV || 0, misY: m.opMisYV || 0 });
+        misX: m.opMisXV || 0, misY: m.opMisYV || 0, i, n: ms.length, inten: m.intensity || 0 });
     }
     return out;
+  },
+
+  // 毎フレームの追加 param (第 2 弾) を deadParam を通して読む。glyph = 文字ごとの加工が要るか
+  _dp(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
+  _h(i, k){ const v = Math.sin(i*12.9898 + k*78.233)*43758.5453; return v - Math.floor(v); },
+  _hexRGB(hex){
+    const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
+    return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
+  },
+  _readFx(){
+    const P = this.P, n = (v, d)=>{ v = +v; return Number.isFinite(v) ? v : d; };
+    const dp = v=>this._dp(v);
+    const fx = {
+      show: n(P.showPct, 100), sizeVar: dp(n(P.sizeVar, 0)), scatter: dp(n(P.scatter, 0)), tremor: dp(n(P.tremor, 0)),
+      waveAmp: dp(n(P.waveAmp, 0)), waveLen: Math.max(1, n(P.waveLen, 10)), stagger: dp(n(P.lineStagger, 0)),
+      slant: dp(n(P.slant, 0)), swirl: dp(n(P.swirl, 0)), bulge: dp(n(P.bulge, 0)), viewAngle: dp(n(P.viewAngle, 0)),
+      pivX: n(P.pivotX, 50)/100, pivY: n(P.pivotY, 75)/100,
+      misA: n(P.misregAlpha, 72)/100, misR: n(P.misregRatio, 65)/100,
+      trail: Math.min(90, dp(n(P.trailPct, 0))), aom: dp(n(P.accentOnMove, 0)),
+      rb: Math.min(100, dp(n(P.rainbow, 0))), rbSpan: n(P.rainbowSpan, 360),
+      vig: Math.min(100, dp(n(P.vignette, 0))), grain: Math.min(100, dp(n(P.grain, 0))), grainSize: Math.max(1, n(P.grainSize, 100)/100)
+    };
+    fx.glyph = fx.show < 100 || !!(fx.sizeVar || fx.scatter || fx.tremor || fx.waveAmp || fx.stagger || fx.swirl || fx.bulge || fx.slant);
+    return fx;
+  },
+  // 文字色: 虹色 (accent 以外) → accent への寄せ (動いている文字ほど)
+  _glyphColor(g, col, fx){
+    const c = this._hexRGB(col);
+    if(!c) return col;
+    let r = c[0], gg = c[1], b = c[2];
+    if(fx.rb && !g.accent){
+      const hue = (g.n > 1 ? g.i/(g.n - 1) : 0)*fx.rbSpan;
+      const a = 0.85*Math.min(0.58, 1 - 0.58);   // 彩度 0.85 / 明度 0.58 の HSL
+      const f = k=>{ const q = (k + hue/30) % 12; return 0.58 - a*Math.max(-1, Math.min(Math.min(q - 3, 9 - q), 1)); };
+      const k = fx.rb/100;
+      r += (f(0)*255 - r)*k; gg += (f(8)*255 - gg)*k; b += (f(4)*255 - b)*k;
+    }
+    if(fx.aom){
+      const k = Math.min(1, g.inten*fx.aom/100), ac = this._hexRGB(this.P.accent);
+      if(k > 0 && ac){ r += (ac[0] - r)*k; gg += (ac[1] - gg)*k; b += (ac[2] - b)*k; }
+    }
+    return 'rgb(' + Math.round(r) + ',' + Math.round(gg) + ',' + Math.round(b) + ')';
+  },
+  // 周辺減光 / フィルムグレイン (全面。Composition 有効時にも掛かる)
+  _overlayFx(ctx, w, h, fx){
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.globalCompositeOperation = 'source-over';
+    if(fx.vig){
+      const c = this._hexRGB(this.P.vignetteColor) || [0, 0, 0], R = Math.sqrt(w*w + h*h)/2;
+      const gr = ctx.createRadialGradient(w/2, h/2, R*0.3, w/2, h/2, R), rgb = c[0] + ',' + c[1] + ',' + c[2];
+      gr.addColorStop(0, 'rgba(' + rgb + ',0)'); gr.addColorStop(1, 'rgba(' + rgb + ',' + (fx.vig/100*0.9).toFixed(3) + ')');
+      ctx.globalAlpha = 1; ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
+    }
+    if(fx.grain){
+      if(!this._grainPat){
+        const tc = document.createElement('canvas'); tc.width = tc.height = 128;
+        const tx = tc.getContext('2d'), id = tx.createImageData(128, 128), d = id.data;
+        for(let k=0; k<16384; k++){
+          const v = this._h(k, 5.5);
+          d[k*4] = d[k*4+1] = d[k*4+2] = v > 0.5 ? 255 : 0;
+          d[k*4+3] = Math.round(Math.abs(v - 0.5)*2*255);
+        }
+        tx.putImageData(id, 0, 0);
+        this._grainPat = ctx.createPattern(tc, 'repeat');
+      }
+      const gs = fx.grainSize, f = Math.floor((this._t || 0)*24);
+      const ox = Math.floor(this._h(f, 9.1)*128), oy = Math.floor(this._h(f, 19.7)*128);
+      ctx.setTransform(gs, 0, 0, gs, 0, 0); ctx.translate(-ox, -oy);
+      ctx.globalAlpha = fx.grain/100*0.3; ctx.fillStyle = this._grainPat;
+      ctx.fillRect(ox, oy, w/gs + 1, h/gs + 1);
+      ctx.setTransform(1,0,0,1,0,0);
+    }
+    ctx.globalAlpha = 1;
   },
 
   _fontMetrics(ctx){
@@ -1342,6 +1478,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const dx = mg + (availW - bw*s)*0.5 - bx*s + (parseFloat(P.panX) || 0) * w;
     const dy = mg + (availH - bh*s)*0.5 - by*s + (parseFloat(P.panY) || 0) * h;
     this._fit = { s, dx, dy, w, h };
+    this._ctr = { x: bx + bw/2, y: by + bh/2, R: Math.max(1, Math.sqrt(bw*bw + bh*bh)/2) };
   },
 
   // 2D canvas に (w×h の artboard として) 中央フィットで描画
@@ -1349,26 +1486,35 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const P = this.P;
     const cv = this.canvas, ctx = this.ctx;
     if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
-    if(!P.transparentBg){ ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = P.paper; ctx.fillRect(0,0,w,h); }
+    const fx = this._readFx();
+    const comp = (typeof TDComp !== 'undefined' && TDComp.enabled());
+    if(!P.transparentBg){
+      ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = P.paper;
+      if(fx.trail && !comp){ ctx.globalAlpha = 1 - fx.trail/100; ctx.fillRect(0,0,w,h); ctx.globalAlpha = 1; }   // 残像: 紙を薄く塗り重ねる
+      else ctx.fillRect(0,0,w,h);
+    }
     else { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); }
     // Composition Engine v6 有効時は生成シーン描画に切替 (文字の直接描画は行わない)
-    if(typeof TDComp !== 'undefined' && TDComp.enabled()){
+    if(comp){
       TDComp.render(ctx, w, h);
+      this._overlayFx(ctx, w, h, fx);
       ctx.setTransform(1,0,0,1,0,0);
       return;
     }
-    const glyphs = this._snapshotGlyphs();
     // 固定フィット(版面ベース)。テキスト/サイズ変更 or 解像度変更時のみ再計算。
     const f = this._fit;
     if(!f || f.w !== w || f.h !== h || this._fitDirty){ this._fitDirty = false; this._computeFit(w, h); }
+    const glyphs = this._snapshotGlyphs(fx);
     const s = this._fit.s, dx = this._fit.dx, dy = this._fit.dy;
     const fm = this._fontMetrics(ctx);
     const font = P.fontWeight + ' ' + P.fontSize + 'px ' + this._fontStack(P.fontFamily);
     const grid = !!P.gridEnabled;
     const fs = P.fontSize;
+    const va = fx.viewAngle*Math.PI/180;
     // Operator を含む1パス描画。misreg のオフセットはフィット前のステージ座標系 (元アプリの page 座標に相当)
     const drawPass = (g, blX, blY, offX, offY, fill, alpha, blend)=>{
       ctx.setTransform(1,0,0,1,0,0);
+      if(va){ ctx.translate(w/2, h/2); ctx.rotate(va); ctx.translate(-w/2, -h/2); }
       ctx.translate(dx, dy); ctx.scale(s, s);
       ctx.translate(offX, offY);
       ctx.translate(g.ox+g.tx+blX, g.oy+g.ty+blY);
@@ -1382,15 +1528,16 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       ctx.fillStyle = fill;
       ctx.globalAlpha = alpha;
       ctx.globalCompositeOperation = blend;
+      const put = (px, py)=>{ ctx.fillText(g.ch, px, py); };
       if(P.vertical || grid){
         const cx = g.x+g.w/2, cy = g.y+g.h/2;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        if(P.vertical && !g.upright){ ctx.translate(cx,cy); ctx.rotate(Math.PI/2); ctx.fillText(g.ch,0,0); }
-        else ctx.fillText(g.ch, cx, cy);
+        if(P.vertical && !g.upright){ ctx.translate(cx,cy); ctx.rotate(Math.PI/2); put(0,0); }
+        else put(cx, cy);
       } else {
         ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
         const leading = g.h - (fm.ascent + fm.descent);
-        ctx.fillText(g.ch, g.x, g.y + leading/2 + fm.ascent);
+        put(g.x, g.y + leading/2 + fm.ascent);
       }
     };
     for(let i=0; i<glyphs.length; i++){
@@ -1398,14 +1545,17 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       const blX = P.vertical ? g.bl*fs : 0;    // baseline shift: 縦組=左右 / 横組=上下
       const blY = P.vertical ? 0 : -g.bl*fs;
       if(g.misX || g.misY){
-        // 版ずれ2色刷り: A=+offset / B=-0.65×offset を multiply で敷き、上に本来のインク
-        drawPass(g, blX, blY, g.misX, g.misY, P.misregColorA, 0.72, 'multiply');
-        drawPass(g, blX, blY, -g.misX*0.65, -g.misY*0.65, P.misregColorB, 0.72, 'multiply');
+        // 版ずれ2色刷り: A=+offset / B=-ratio×offset を multiply で敷き、上に本来のインク
+        drawPass(g, blX, blY, g.misX, g.misY, P.misregColorA, fx.misA, 'multiply');
+        drawPass(g, blX, blY, -g.misX*fx.misR, -g.misY*fx.misR, P.misregColorB, fx.misA, 'multiply');
       }
-      drawPass(g, blX, blY, 0, 0, g.accent ? P.accent : P.ink, 1, 'source-over');
+      let ink = g.accent ? P.accent : P.ink;
+      if(fx.rb || fx.aom) ink = this._glyphColor(g, ink, fx);
+      drawPass(g, blX, blY, 0, 0, ink, 1, 'source-over');
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    this._overlayFx(ctx, w, h, fx);
     ctx.setTransform(1,0,0,1,0,0);
   },
 
