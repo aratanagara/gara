@@ -31,6 +31,30 @@
 // @param uFtIrreg   0..200  = 100.0
 // @param uFtDith    0..100  = 35.0
 // @param uFtPal     0..5    = 0.0
+// @param uFtCenterX -100..100 = 0
+// @param uFtCenterY -100..100 = 0
+// @param uFtTurn    -180..180 = 0
+// @param uFtMirrorAxis -100..100 = 0
+// @param uFtSwirl   -100..100 = 0
+// @param uFtCircleAspect 50..200 = 100
+// @param uFtCenterSpread 30..200 = 100
+// @param uFtBandRange 50..200 = 100
+// @param uFtOffcenter 0..300 = 100
+// @param uFtPigments 3..7 = 7
+// @param uFtEdgeWidth 40..250 = 100
+// @param uFtPool 0..300 = 100
+// @param uFtGradReach 40..200 = 100
+// @param uFtColorSeed 0..50 = 0
+// @param uFtWhiteCells 0..60 = 0
+// @param uFtNodeThreshold 50..150 = 100
+// @param uFtSpeck 50..300 = 100
+// @param uFtPaperFiber 0..400 = 100
+// @param uFtVignette 0..200 = 100
+// @param uFtPaperColor color = #ffffff
+// @param uFtInkColor color = #ffffff
+// @param uFtWhiteColor color = #ffffff
+// @param uFtWarmColor color = #ffffff
+// @param uFtCoolColor color = #ffffff
 uniform float uFtShards;   // 全体ワープの周波数 (小=大きくたわむ / 大=細かく歪む)
 uniform float uFtRings;    // リング密度 (単位半径あたりの本数)
 uniform float uFtCenters;  // 同心円システムの数
@@ -47,6 +71,30 @@ uniform float uFtDry;      // かすれ: ディザ状の抜け (グランジ)。
 uniform float uFtIrreg;    // リング間隔のムラ: 0=等間隔 / 大きいほど太い輪と細い輪が混ざる
 uniform float uFtDith;     // ディザ強度: 0=滑らかな合成 / 100=完全な二値点描
 uniform float uFtPal;      // 配色 0=Balla / 1=Boccioni / 2=Severini / 3=Depero / 4=Mono / 5=Aurora
+uniform float uFtCenterX;  // 構図全体の横ずらし (%)
+uniform float uFtCenterY;  // 構図全体の縦ずらし (%)
+uniform float uFtTurn;     // 構図全体の回転 (度)
+uniform float uFtMirrorAxis; // 左右の鏡像の折り返し位置 (%)。0 でなし
+uniform float uFtSwirl;    // 中心からの距離に応じた渦のねじれ (%)。負で逆向き
+uniform float uFtCircleAspect; // 同心円の縦横比 (%)。下げると横長の楕円、上げると縦長
+uniform float uFtCenterSpread; // 同心円の中心の散らばり (%)。下げると中央に集まる
+uniform float uFtBandRange; // システムごとのリング密度の差 (%)。下げると全部同じ細かさ
+uniform float uFtOffcenter; // リングごとの中心ズレ (%)。0 で完全な同心円
+uniform float uFtPigments; // セルに使う顔料の種類数
+uniform float uFtEdgeWidth; // 円弧の縁の太さ (%)。縁の顔料溜まりと結節の広がり
+uniform float uFtPool;     // 縁に溜まる顔料の濃さ (%)
+uniform float uFtGradReach; // フチのグラデが内側へ届く距離 (%)
+uniform float uFtColorSeed; // 色の割り振りの振り直し (形は変わらず、どのセルが何色かだけ入れ替わる)
+uniform float uFtWhiteCells; // 紙白に抜けるセルの割合 (%)
+uniform float uFtNodeThreshold; // 結節が現れる交差の濃さ (%)。上げると結節が減る
+uniform float uFtSpeck;    // 粒状・斑点の粗さ (%)。上げると大きな点
+uniform float uFtPaperFiber; // 紙目の繊維の強さ (%)
+uniform float uFtVignette; // 周辺減光の強さ (%)
+uniform vec3 uFtPaperColor; // 紙の色の掛け合わせ
+uniform vec3 uFtInkColor;   // 墨の色の掛け合わせ
+uniform vec3 uFtWhiteColor; // 白絵具の色の掛け合わせ
+uniform vec3 uFtWarmColor;  // 暖色の顔料 (朱・黄土・煉瓦) の掛け合わせ
+uniform vec3 uFtCoolColor;  // 寒色の顔料 (コバルト・オリーブ) の掛け合わせ
 
 float ft_h11(float n){ return fract(sin(n*127.1)*43758.5453); }
 float ft_h21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
@@ -93,9 +141,14 @@ vec3 ft_setPalette(int id){
     FT_P[3]=vec3(0.16,0.28,0.55); FT_P[4]=vec3(0.86,0.64,0.19); FT_P[5]=vec3(0.42,0.42,0.23);
     FT_P[6]=vec3(0.47,0.22,0.15);
   }
+  if(uFtInkColor != vec3(1.0)) FT_P[0] *= uFtInkColor;
+  if(uFtWhiteColor != vec3(1.0)) FT_P[1] *= uFtWhiteColor;
+  if(uFtWarmColor != vec3(1.0)){ FT_P[2] *= uFtWarmColor; FT_P[4] *= uFtWarmColor; FT_P[6] *= uFtWarmColor; }
+  if(uFtCoolColor != vec3(1.0)){ FT_P[3] *= uFtCoolColor; FT_P[5] *= uFtCoolColor; }
+  if(uFtPaperColor != vec3(1.0)) paper *= uFtPaperColor;
   return paper;
 }
-vec3 ft_pig(float h){ return FT_P[int(clamp(floor(h*7.0), 0.0, 6.0))]; }
+vec3 ft_pig(float h){ return FT_P[int(clamp(floor(h*floor(uFtPigments + 0.5)), 0.0, 6.0))]; }
 
 // 全塗り共通のディザ閾値。main で画素ごとに確定し、salt で用途ごとに位相を
 // ずらす (同じ画素が常に同じ側へ落ちて模様が固着するのを避ける)
@@ -115,12 +168,13 @@ void ft_phase(int i, vec2 pos, vec2 ctr, float t, float spd, float irr, float ro
               out float oIdx, out float oFrf){
   float seed = float(i) * 19.7 + 5.3;
   vec2 p = pos - ctr;
+  if(uFtCircleAspect != 100.0) p.x *= 100.0 / uFtCircleAspect;
   float r = length(p);
   // サイズの層別: 系ごとに帯域を分け、帯内でシード揺らぎ。
   //   系 0 が最も粗い (大きなリング) 〜 最後の系が最も細かい。被らない
   float ncF = clamp(uFtCenters, 1.0, 5.0);
   float band = (float(i) + 0.25 + 0.5 * ft_h11(seed*1.7)) / max(ncF, 1.0);
-  float dens = uFtRings * mix(0.40, 2.3, band);
+  float dens = uFtRings * mix(0.40, 2.3, (uFtBandRange == 100.0) ? band : mix(0.5, band, uFtBandRange / 100.0));
   float travel = t * spd * mix(0.10, 0.55, ft_h11(seed*3.3)) * ((mod(float(i),2.0)<1.0)?1.0:-1.0);
   float phase0 = r * dens + travel + ft_h11(seed*7.7)*8.0;
 
@@ -129,7 +183,7 @@ void ft_phase(int i, vec2 pos, vec2 ctr, float t, float spd, float irr, float ro
   float kProv = floor(phase0);
   float oa = ft_h11(kProv*3.1 + seed) * 6.2831853
            + t * spd * 0.10 * (ft_h11(kProv + seed*1.3) - 0.5) * 2.0;
-  float oAmp = 0.05 * min(irr, 2.0) * ft_h11(kProv*1.7 + seed*2.9);
+  float oAmp = 0.05 * (uFtOffcenter / 100.0) * min(irr, 2.0) * ft_h11(kProv*1.7 + seed*2.9);
   p -= oAmp * vec2(cos(oa), sin(oa));
   r = length(p);
   float phase = r * dens + travel + ft_h11(seed*7.7)*8.0;
@@ -156,6 +210,13 @@ void ft_phase(int i, vec2 pos, vec2 ctr, float t, float spd, float irr, float ro
 vec3 bg_futurist(vec2 fc){
   vec2 sc = (fc - 0.5*resolution) / resolution.y;
   sc = sc / max(bgZoom, 0.001) + bgCamPx / resolution.y;
+  if(uFtMirrorAxis != 0.0){ float mx = uFtMirrorAxis / 100.0 * 0.5; sc.x = mx + abs(sc.x - mx); }
+  if(uFtSwirl != 0.0){
+    float sw = (uFtSwirl / 100.0) * 3.0 * length(sc);
+    sc = mat2(cos(sw), -sin(sw), sin(sw), cos(sw)) * sc;
+  }
+  if(uFtTurn != 0.0){ float ta = radians(uFtTurn); sc = mat2(cos(ta), -sin(ta), sin(ta), cos(ta)) * sc; }
+  if(uFtCenterX != 0.0 || uFtCenterY != 0.0) sc += vec2(uFtCenterX, uFtCenterY) / 100.0;
 
   float t     = time;
   float spd   = uFtSpin * 0.01;
@@ -203,7 +264,7 @@ vec3 bg_futurist(vec2 fc){
     vec2 wa = ft_h22(vec2(seed, floor(wsp)));
     vec2 wb = ft_h22(vec2(seed, floor(wsp) + 1.0));
     // 分布の広がりも系ごとに変える (中央に留まる系 / 広く漂う系)
-    float wamp = mix(0.55, 1.25, ft_h11(seed*6.3));
+    float wamp = mix(0.55, 1.25, ft_h11(seed*6.3)) * (uFtCenterSpread / 100.0);
     ctrs[i] = (mix(wa, wb, smoothstep(0.0, 1.0, fract(wsp))) - 0.5) * vec2(1.6, 1.0) * wamp;
   }
 
@@ -215,17 +276,19 @@ vec3 bg_futurist(vec2 fc){
   for(int i = 0; i < 5; i++){ idx[i] = 0.0; frf[i] = 0.5; g0[i] = 0.0; }
   for(int i = 0; i < nc; i++){
     ft_phase(i, sc, ctrs[i], t, spd, irr, rough, idx[i], frf[i]);
-    g0[i]  = 1.0 - smoothstep(0.0, 0.30, min(frf[i], 1.0 - frf[i]));   // 円弧境界への近さ
+    g0[i]  = 1.0 - smoothstep(0.0, 0.30 * (uFtEdgeWidth / 100.0), min(frf[i], 1.0 - frf[i]));   // 円弧境界への近さ
   }
 
   // ── セル = 全システムのリング番号の組み合わせ ───────────────
   //   境界はすべて円弧。重なった円環格子の干渉でレンズ状セルが生まれる
   vec2 key = vec2(idx[0]*7.3 + idx[1]*13.1 + idx[2]*3.7,
                   idx[3]*5.9 + idx[4]*2.3 + idx[1]*1.7 + idx[2]*11.3);
+  if(uFtColorSeed != 0.0) key += vec2(uFtColorSeed * 7.31, uFtColorSeed * 3.17);
   float ch = ft_h21(key);
   vec3 pig = ft_pig(ft_h21(key + 31.0));
   // 黒セル: uFtDepth で割合を制御 (未来派版の黒い破片)
   if(ch < blackRate) pig = FT_P[0];
+  else if(uFtWhiteCells != 0.0 && ch < blackRate + uFtWhiteCells / 100.0) pig = FT_P[1];
   // セルごとの濃淡 (厚塗り/薄塗り)
   pig *= mix(0.78, 1.18, ft_h21(key + 57.0));
 
@@ -236,7 +299,7 @@ vec3 bg_futurist(vec2 fc){
     for(int i = 0; i < nc; i++){
       float dirn = step(0.5, ft_h21(vec2(idx[i], float(i)*3.7 + 8.1)));
       float f = mix(frf[i], 1.0 - frf[i], dirn);        // 0 = フチ側
-      float e = 1.0 - smoothstep(0.0, 0.75, f);
+      float e = 1.0 - smoothstep(0.0, 0.75 * (uFtGradReach / 100.0), f);
       if(e > gsh){ gsh = e; gDom = idx[i] + float(i)*37.0; }
     }
     // フチから落ちる色: 墨だけでなく白や顔料も (Balla の白い稜/色の縁)
@@ -250,7 +313,7 @@ vec3 bg_futurist(vec2 fc){
   for(int i = 0; i < nc; i++) edge = max(edge, g0[i]);
   float ph2 = ft_h21(key + 83.0);
   vec3 poolCol = (ph2 < 0.55) ? FT_P[0]*0.75 : (ph2 < 0.8) ? FT_P[1] : ft_pig(fract(ph2*7.3));
-  pig = mix(pig, poolCol, ft_dith(smoothstep(0.55, 1.0, edge) * g * 0.5, 2.0));
+  pig = mix(pig, poolCol, ft_dith(smoothstep(0.55, 1.0, edge) * g * 0.5 * (uFtPool / 100.0), 2.0));
 
   // かすれ: ディザ (二値の斑点) で顔料が抜けて紙が透ける。
   //   刷毛ストリーク (中周波) が抜けの密度を決め、実際の抜けは画素ハッシュで
@@ -262,8 +325,8 @@ vec3 bg_futurist(vec2 fc){
     float streak = ft_vn(sc*vec2(26.0, 7.0) + key*0.13 + ndrift*8.0)*0.7
                  + ft_vn(sc*vec2(61.0, 13.0) - key*0.07 - ndrift*5.0)*0.3;
     float density = dry * smoothstep(0.55, 0.95, streak);   // 山にだけ集中させ、全面の均一な塩にならないように
-    float dth = ft_h21(floor(fc * 0.7) + flick*vec2(1.3, 7.7));   // 細かい斑点
-    float chunk = ft_h21(floor(fc * 0.21) + 3.7 + flick*0.31);    // 大きめの塊
+    float dth = ft_h21(floor(fc * (0.7 / (uFtSpeck / 100.0))) + flick*vec2(1.3, 7.7));   // 細かい斑点
+    float chunk = ft_h21(floor(fc * (0.21 / (uFtSpeck / 100.0))) + 3.7 + flick*0.31);    // 大きめの塊
     float speck = step(1.0 - clamp(density, 0.0, 0.95), dth*0.65 + chunk*0.35);
     coverage = 1.0 - speck * 0.85;
   }
@@ -304,7 +367,7 @@ vec3 bg_futurist(vec2 fc){
     // 結節の色も 墨/白/顔料 を場所ごとに振る
     float nh = ft_h21(vec2(idx[0] + idx[1]*3.0, idx[2] + idx[3]*3.0) + 91.0);
     vec3 nodeCol = (nh < 0.6) ? FT_P[0]*0.75 : (nh < 0.85) ? FT_P[1] : ft_pig(fract(nh*6.3));
-    col = mix(col, nodeCol, ft_dith(smoothstep(0.55, 1.5, cross) * force * 0.85, 4.0));
+    col = mix(col, nodeCol, ft_dith(smoothstep(0.55 * (uFtNodeThreshold / 100.0), 1.5 * (uFtNodeThreshold / 100.0), cross) * force * 0.85, 4.0));
   }
 
   // ── 水彩マチエール ────────────────────────────────────
@@ -313,8 +376,8 @@ vec3 bg_futurist(vec2 fc){
     float mflick = floor(t * spd * 5.0);                        // 点描の再抽選
     // 粒状化: ディザの点描 (暗点/明点の二値スペック)。油彩のグランジ感
     float vn = ft_vn(sc*26.0 + mdrift*6.0)*0.6 + ft_vn(sc*57.0 - mdrift*4.0)*0.4;   // 密度場
-    float dark = step(1.0 - clamp(g * 0.45 * vn, 0.0, 0.9), ft_h21(floor(fc*0.9) + 11.0 + mflick*vec2(3.1, 1.7)));
-    float lite = step(1.0 - clamp(g * 0.30 * (1.0 - vn), 0.0, 0.9), ft_h21(floor(fc*0.9) + 23.0 + mflick*vec2(1.9, 5.3)));
+    float dark = step(1.0 - clamp(g * 0.45 * vn, 0.0, 0.9), ft_h21(floor(fc*(0.9 / (uFtSpeck / 100.0))) + 11.0 + mflick*vec2(3.1, 1.7)));
+    float lite = step(1.0 - clamp(g * 0.30 * (1.0 - vn), 0.0, 0.9), ft_h21(floor(fc*(0.9 / (uFtSpeck / 100.0))) + 23.0 + mflick*vec2(1.9, 5.3)));
     col *= 1.0 - dark * 0.22;
     col = mix(col, paper, lite * 0.14);
     // 大きな滲みムラ (wash): 濃度場をディザの点描で落とす
@@ -322,14 +385,15 @@ vec3 bg_futurist(vec2 fc){
     col *= 1.0 - ft_dith((0.5 - w1) * g * 0.5, 6.0) * 0.12;
     col = mix(col, paper, ft_dith((w1 - 0.62) * g * 0.6, 7.0) * 0.10);
     // 紙目 (繊維 + 微細粒): 紙自体もわずかに揺れる
-    float n1 = ft_h21(floor(fc * 0.9) + mflick*vec2(0.7, 2.3));
-    float fib = sin(fc.y * 0.7 + n1 * 6.28) * 0.012;
+    float n1 = ft_h21(floor(fc * (0.9 / (uFtSpeck / 100.0))) + mflick*vec2(0.7, 2.3));
+    float fib = sin(fc.y * 0.7 + n1 * 6.28) * 0.012 * (uFtPaperFiber / 100.0);
     col *= 1.0 + ((n1 - 0.5) * 0.09 + fib) * g;
   }
 
   // 周辺減光
   float vig = smoothstep(1.45, 0.3, length(scRaw));
-  col *= mix(0.84, 1.0, vig);
+  if(uFtVignette == 100.0) col *= mix(0.84, 1.0, vig);
+  else col *= mix(1.0 - 0.16 * (uFtVignette / 100.0), 1.0, vig);
 
   return clamp(col, 0.0, 1.0);
 }

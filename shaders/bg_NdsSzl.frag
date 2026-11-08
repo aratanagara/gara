@@ -29,6 +29,32 @@ uniform float uLayerShift; // 層ごとの平行移動 (%)。0 でなし
 uniform float uBlend; // 層を重ねる際の持ち越し量 (%)
 uniform float uBandX; // 横方向の縞の細かさ (%)
 uniform float uBandY; // 縦方向の縞の細かさ (%)
+// @param uCenterX   -100..100 = 0
+// @param uCenterY   -100..100 = 0
+// @param uMirrorAxis -100..100  = 0
+// @param uSwirl     -100..100 = 0
+// @param uMosaic    0..100    = 0
+// @param uChanSwap  0..100    = 0
+// @param uChanSwapB 0..100    = 0
+// @param uPosterize 0..12     = 0
+// @param uGrain     0..100    = 0
+// @param uVignette  0..100    = 0
+// @param uTint color = #ffffff
+// @param uShadowTint color = #ffffff
+// @param uLightTint color = #ffffff
+uniform float uCenterX; // 模様の見る位置の横ずらし (%)
+uniform float uCenterY; // 模様の見る位置の縦ずらし (%)
+uniform float uMirrorAxis; // 左右の鏡像の折り返し位置 (%)。0 でなし、動かすと左側の絵が右へ写る
+uniform float uSwirl; // 中心からの距離に応じた渦のねじれ (%)。負で逆向き
+uniform float uMosaic; // 座標のモザイク化 (%)。大きいほど粗いブロック
+uniform float uChanSwap; // 色チャンネルの入れ替え量 R→G→B (%)
+uniform float uChanSwapB; // 色チャンネルの逆回し入れ替え量 (%)
+uniform float uPosterize; // 色の階調数を落とす (0 でなし)
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform float uVignette; // 周辺を暗くする量 (%)
+uniform vec3 uTint; // 全体の色の掛け合わせ
+uniform vec3 uShadowTint; // 暗部の色の掛け合わせ
+uniform vec3 uLightTint; // 明部の色の掛け合わせ
 
 vec3 bg_NdsSzl(vec2 fc){
   float bt = getBeat();
@@ -38,6 +64,19 @@ vec3 bg_NdsSzl(vec2 fc){
 
   vec3 col = vec3(0.0), col_prev = vec3(0.0);
   vec2 uv = (fc * 10.0 - resolution.xy) / resolution.y / 10.0;
+  if(uMirrorAxis != 0.0){
+    float mcx = 0.4 * resolution.x / resolution.y + uMirrorAxis / 100.0 * 0.3;
+    uv.x = mcx + abs(uv.x - mcx);
+  }
+  if(uSwirl != 0.0){
+    float sw = (uSwirl / 100.0) * 3.0 * length(uv - vec2(0.4 * resolution.x / resolution.y, 0.4));
+    uv = vec2(0.4 * resolution.x / resolution.y, 0.4) + mat2(cos(sw), -sin(sw), sin(sw), cos(sw)) * (uv - vec2(0.4 * resolution.x / resolution.y, 0.4));
+  }
+  if(uMosaic != 0.0){
+    float mn = 120.0 / (1.0 + uMosaic * 0.1);
+    uv = (floor(uv * mn) + 0.5) / mn;
+  }
+  if(uCenterX != 0.0 || uCenterY != 0.0) uv += vec2(uCenterX, uCenterY) / 100.0;
   float aN = radians(uAngle);
   uv = mat2(cos(aN), -sin(aN), sin(aN), cos(aN)) * uv;
   uv.x += tx * 0.20;
@@ -91,5 +130,25 @@ vec3 bg_NdsSzl(vec2 fc){
   }
   }
 
-  return clamp(col * 3.0 * (uGlow / 100.0), 0.0, 1.0);
+  col = clamp(col * 3.0 * (uGlow / 100.0), 0.0, 1.0);
+  if(uChanSwap != 0.0) col = mix(col, col.gbr, uChanSwap / 100.0);
+  if(uChanSwapB != 0.0) col = mix(col, col.brg, uChanSwapB / 100.0);
+  if(uShadowTint != vec3(1.0) || uLightTint != vec3(1.0)){
+    float lm2 = dot(col, vec3(0.299, 0.587, 0.114));
+    col *= mix(uShadowTint, uLightTint, lm2);
+  }
+  if(uTint != vec3(1.0)) col *= uTint;
+  if(uPosterize != 0.0){
+    float pn = uPosterize + 1.0;
+    col = floor(clamp(col, 0.0, 1.0) * pn + 0.5) / pn;
+  }
+  if(uGrain != 0.0){
+    float gh = fract(sin(dot(fc, vec2(12.9898, 78.233)) + time * 0.7) * 43758.5453);
+    col += (gh - 0.5) * (uGrain / 100.0) * 0.5;
+  }
+  if(uVignette != 0.0){
+    vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y;
+    col *= 1.0 - (uVignette / 100.0) * smoothstep(0.3, 1.0, length(vq));
+  }
+  return clamp(col, 0.0, 1.0);
 }

@@ -27,6 +27,27 @@ mat2 cpRot(float a){ return mat2(cos(a),-sin(a),sin(a),cos(a)); }
 // @param uInvMin 30..150 = 100.0
 // @param uRimWidth 40..250 = 100.0
 // @param uShade 0..250 = 100.0
+// @param uLightAzimuth -180..180 = 0
+// @param uLightElev -60..60 = 0
+// @param uSpecSharp 20..500 = 100
+// @param uGlareSpread 20..400 = 100
+// @param uAccentAmount 0..600 = 100
+// @param uPalShift -50..50 = 0
+// @param uPalRange 0..200 = 100
+// @param uBlueBand 40..250 = 100
+// @param uMagentaBand 40..250 = 100
+// @param uHitOpacity 40..130 = 100
+// @param uFogStart 20..300 = 100
+// @param uReflectFade 60..130 = 100
+// @param uOrbitRadius 70..130 = 100
+// @param uCamRoll -180..180 = 0
+// @param uCamPitch -40..40 = 0
+// @param uFocalScale 60..160 = 100
+// @param uSilverColor color = #ffffff
+// @param uBlueColor color = #ffffff
+// @param uMagentaColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uReflectColor color = #ffffff
 uniform float uThick;   // 壁厚 (メッシュの線の太さ) (%)
 uniform float uSpacing;   // オブジェクトのセル間隔 (%)
 uniform float uTwist;   // ねじれの強さ (%)
@@ -43,6 +64,27 @@ uniform float uInvScale;   // 反転写像の拡大率 (%)
 uniform float uInvMin;   // 反転写像の最小半径 (%)。下げると中心が強く跳ね返る
 uniform float uRimWidth;   // 縁の光の幅 (%)。下げると縁だけが細く光る
 uniform float uShade;   // 面ごとの陰影の深さ (%)
+uniform float uLightAzimuth; // 光源の方位 (度)
+uniform float uLightElev; // 光源の仰角 (度)。負で下から照らす
+uniform float uSpecSharp; // 鏡面ハイライトの芯の鋭さ (%)
+uniform float uGlareSpread; // 広いグレアの広がり (%)。下げると広く、上げると締まる
+uniform float uAccentAmount; // 縁のマゼンタの差し色の量 (%)
+uniform float uPalShift; // パレット位相のずらし (%)。銀・青・マゼンタの出る面が入れ替わる
+uniform float uPalRange; // 面ごとの色の振れ幅 (%)。下げると単色寄り
+uniform float uBlueBand; // 群青の帯の幅 (%)
+uniform float uMagentaBand; // マゼンタの帯の幅 (%)
+uniform float uHitOpacity; // 面の乗り方 (%)。下げると背景が透け重なりが薄い
+uniform float uFogStart; // 霧が効き始める近さ (%)。上げると手前から霞む
+uniform float uReflectFade; // 反射のたびに暗くなる度合い (%)。下げると写り込みが暗い
+uniform float uOrbitRadius; // カメラ公転半径 (%)
+uniform float uCamRoll; // カメラのロール (度)
+uniform float uCamPitch; // カメラの俯仰 (度)
+uniform float uFocalScale; // 画角の絞り (%)。上げるとズームイン
+uniform vec3 uSilverColor; // 銀の地色の掛け合わせ
+uniform vec3 uBlueColor; // 群青の掛け合わせ
+uniform vec3 uMagentaColor; // マゼンタの掛け合わせ
+uniform vec3 uSpecColor; // ハイライトの色の掛け合わせ
+uniform vec3 uReflectColor; // 反射ごとに乗る色の掛け合わせ
 
 // メッシュ風: 中空のチューブ/リング構造にして粉状の点ではなく線/網に
 //   abs(p)+offset で 8 octant に放射配置、abs(faceDist - r) で壁厚のあるシェルに
@@ -98,15 +140,18 @@ vec3 cp_abnormal(vec3 p, float iters){
 //   ピークは狭く控えめ、見た目の大半がシルバー
 vec3 cpPal(float t){
   t = fract(t);
-  const vec3 GRAY  = vec3(0.90, 0.92, 0.97);    // メタリックシルバー (高明度)
-  const vec3 BLUE  = vec3(0.122, 0.122, 1.0);   // #1f1fff
-  const vec3 MAG   = vec3(1.00, 0.15, 0.75);    // 鮮やかなマゼンタ
+  vec3 GRAY  = vec3(0.90, 0.92, 0.97);    // メタリックシルバー (高明度)
+  vec3 BLUE  = vec3(0.122, 0.122, 1.0);   // #1f1fff
+  vec3 MAG   = vec3(1.00, 0.15, 0.75);    // 鮮やかなマゼンタ
+  if(uSilverColor != vec3(1.0)) GRAY *= uSilverColor;
+  if(uBlueColor != vec3(1.0)) BLUE *= uBlueColor;
+  if(uMagentaColor != vec3(1.0)) MAG *= uMagentaColor;
   vec3 base = GRAY;
   // 群青ピーク: 狭めて純度を上げる (中心 0.55、幅 ±0.10)
-  float wB = smoothstep(0.10, 0.0, abs(t - 0.55));
+  float wB = smoothstep(0.10 * (uBlueBand / 100.0), 0.0, abs(t - 0.55));
   base = mix(base, BLUE, wB * 1.0);
   // マゼンタアクセント (中心 0.25、幅 ±0.05、純度高め)
-  float wM = smoothstep(0.05, 0.0, abs(t - 0.25));
+  float wM = smoothstep(0.05 * (uMagentaBand / 100.0), 0.0, abs(t - 0.25));
   base = mix(base, MAG, wM * 1.0);
   return base;
 }
@@ -127,30 +172,38 @@ void cp_march(vec3 ro, vec3 rd){
     if(d < 1e-5){
       if(numRF > 1.0) break;
       // パレットから色を取得 (cpIfsColor の輝度を位相に使う)
-      float ph = 0.20 + 0.60 * dot(cpIfsColor, vec3(0.299, 0.587, 0.114));
+      float ph = 0.20 + 0.60 * (uPalRange / 100.0) * dot(cpIfsColor, vec3(0.299, 0.587, 0.114));
+      if(uPalShift != 0.0) ph += uPalShift / 100.0;
       vec3 surf = cpPal(ph);
       vec3 nn = cp_abnormal(p, 1.0);
       vec3 ld = normalize(vec3(0.4, 0.7, -0.5));
+      if(uLightAzimuth != 0.0 || uLightElev != 0.0){
+        float la = radians(uLightAzimuth), le = radians(uLightElev);
+        ld.xz = cpRot(la) * ld.xz;
+        ld.yz = cpRot(le) * ld.yz;
+      }
       float dif = 0.6 + 0.4 * (uShade / 100.0)*max(dot(nn, ld), 0.0);
       // メタリック: 金属らしい鋭い鏡面ハイライト (Blinn-Phong)。
       // 鋭いコア + 広いグレアの二段重ねでギラつきを強調。
       vec3 hlf = normalize(ld - rd);
       float ndh = max(dot(nn, hlf), 0.0);
-      float spec  = pow(ndh, 120.0);   // 鋭いコア (ハイライトの芯)
-      float glare = pow(ndh, 20.0);    // 広いグレア (周囲の滲み)
-      surf += spec  * vec3(1.05, 1.08, 1.15) * 1.6 * (uGlow / 100.0);
+      float spec  = (uSpecSharp == 100.0) ? pow(ndh, 120.0) : pow(ndh, 120.0 * (uSpecSharp / 100.0));   // 鋭いコア (ハイライトの芯)
+      float glare = (uGlareSpread == 100.0) ? pow(ndh, 20.0) : pow(ndh, 20.0 * (uGlareSpread / 100.0));    // 広いグレア (周囲の滲み)
+      surf += spec  * ((uSpecColor == vec3(1.0)) ? vec3(1.05, 1.08, 1.15) : vec3(1.05, 1.08, 1.15) * uSpecColor) * 1.6 * (uGlow / 100.0);
       surf += glare * vec3(0.85, 0.90, 1.02) * 0.7 * (uGlow / 100.0);
       // Fresnel: エッジを金属的に強く持ち上げ + マゼンタの差し色
       float fres = pow(1.0 - max(dot(nn, -rd), 0.0), 3.0 * (uRimWidth / 100.0));
       surf = surf * (1.0 + fres * 0.6) + vec3(0.06, 0.07, 0.10) * fres;
-      surf = mix(surf, vec3(1.00, 0.20, 0.78), fres * 0.22);
+      surf = mix(surf, vec3(1.00, 0.20, 0.78), min(fres * 0.22 * (uAccentAmount / 100.0), 1.0));
       // 加算ではなく mix で合成 (チャンネル飽和→白線を防ぐ)
       // 距離フォグで遠方のサブピクセル粉をフェード
-      float fog = smoothstep(8.0 * (uDepth / 100.0), 2.0 * (uDepth / 100.0), t);
+      float fog = smoothstep(8.0 * (uDepth / 100.0), 2.0 * (uFogStart / 100.0) * (uDepth / 100.0), t);
       vec3 contrib = surf * tint * dif * fog;
-      cpColor = mix(cpColor, contrib, 0.75 * fog);
-      cpCov = mix(cpCov, 1.0, 0.75 * fog);   // カバレッジも同係数で蓄積(Slot B 透過用)
-      tint *= vec3(0.85, 0.88, 1.02);
+      float hop = min(0.75 * (uHitOpacity / 100.0), 1.0);
+      cpColor = mix(cpColor, contrib, hop * fog);
+      cpCov = mix(cpCov, 1.0, hop * fog);   // カバレッジも同係数で蓄積(Slot B 透過用)
+      tint *= vec3(0.85, 0.88, 1.02) * (uReflectFade / 100.0);
+      if(uReflectColor != vec3(1.0)) tint *= uReflectColor;
       rd = reflect(rd, nn);
       t -= 0.001;
       numRF++;
@@ -169,7 +222,7 @@ vec3 bg_crystalPath(vec2 fc){
   float bA = getBeat();
   float orbit = bA * 0.22;                       // 円運動の角度 (連続回転)
   float rad = 0.75 + 0.2*sin(bA*0.05);           // 公転半径 (内側を保つ)
-  vec3 fly = vec3(cos(orbit), 0.0, sin(orbit)) * rad;
+  vec3 fly = vec3(cos(orbit), 0.0, sin(orbit)) * rad * (uOrbitRadius / 100.0);
   // 公転面の傾き (軸回転): スムーズ乱数でゆっくり揺らす
   float ax = 0.9*sin(randomMoveTime(bA, 0.03, 17.0));
   float ay = 0.9*sin(randomMoveTime(bA, 0.03, 53.0));
@@ -183,11 +236,13 @@ vec3 bg_crystalPath(vec2 fc){
   //   focal が大きいほどズームイン (狭画角)、小さいほどズームアウト (広角)。
   //   0.30 (大きく引き) 〜 4.00 (大きく寄り) のレンジで周期的に揺れる。
   float Tz = randomMoveTime(getBeat(), 0.08, 137.0);
-  float focal = mix(0.30, 4.00, 0.5 + 0.5*sin(Tz));
+  float focal = mix(0.30, 4.00, 0.5 + 0.5*sin(Tz)) * (uFocalScale / 100.0);
   vec3 rd = normalize(vec3(p, focal));
   rd.xy *= cpRot(0.6*sin(T*0.9) + 0.4*T);
   rd.yz *= cpRot(0.2 + 0.7*sin(T*1.3));
   rd.xz *= cpRot(-0.5 + 1.1*sin(T*0.95));
+  if(uCamRoll != 0.0) rd.xy *= cpRot(radians(uCamRoll));
+  if(uCamPitch != 0.0) rd.yz *= cpRot(radians(uCamPitch));
 
   cp_march(cpRo, rd);
   // 彩度を保ったまま 1.0 上限へ正規化 (どこか 1.0 を超えるときに全チャンネルを按分縮小)
