@@ -183,7 +183,10 @@ ec_Model ec_map0(vec3 p){
   ec_pR(p.xz, ec_time*EC_PI);
   ec_Model model = ec_bloom(p, t);
 
-  if(abs(p.y) < .34){
+  // 反対側のロゼットは赤道付近だけ評価する。外側の花弁を大きくした (1.30 × uSize) ぶん赤道を越えて
+  // 伸びるので、元の .34 では越えた部分が切れて花弁に穴が空いていた (4 秒周期の位相 0.93〜0.2 付近)。
+  // uSize 110 / uThick 250 でも切れない .6 にする。
+  if(abs(p.y) < .6){
     p = pp;
     side *= -1.;
     p.yz *= side;

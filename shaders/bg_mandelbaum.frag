@@ -26,12 +26,30 @@ vec4 mb_getMaterial(float id, float tm){
 // @param uGloss  60..300  = 100.0
 // @param uVignette 0..300 = 100.0
 // @param uAngle -180..180 = 0.0
+// @param uCross  bool = true
+// @param uSlant  bool = true
+// @param uTri    bool = true
+// @param uSingle bool = true
+// @param uFill   bool = true
+// @param uWaveAmp  0..300 = 100.0
+// @param uWaveFreq 25..300 = 100.0
+// @param uTriSize  30..200 = 100.0
+// @param uReach    30..300 = 100.0
 uniform float uDetail;    // 反復回数 (下げると軽く、縁の描き込みが減る)
 uniform float uThick;     // 曲線の太さ (%)
 uniform float uGlow;      // ライトの強さ (%)
 uniform float uGloss;     // ハイライトの鋭さ (%。上げるほど小さく鋭い)
 uniform float uVignette;  // 周辺減光 (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
+uniform float uCross;    // 十字に交わる波線の有無
+uniform float uSlant;    // 斜めに交わる波線の有無
+uniform float uTri;      // 三角の有無
+uniform float uSingle;   // 1 本の波線の有無
+uniform float uFill;     // 発散しない内部 (ミニ・マンデルブロ) を単色で埋める (OFF = 内部にも模様)
+uniform float uWaveAmp;  // 波線の揺れ幅 (%) (0 = 直線)
+uniform float uWaveFreq; // 波線の細かさ (%)
+uniform float uTriSize;  // 三角の大きさ (%)
+uniform float uReach;    // 線が伸びる範囲 (%)
 
 vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
   vec2 c = targetC + p*zoom;
@@ -50,26 +68,35 @@ vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
       localZ *= mat2(cos(ang), sin(ang), -sin(ang), cos(ang));
       float d = 1e10, h = 0.0, m = 0.0;
       float type = fract(sin(fi*37.7)*437.5);
+      float wa = uWaveAmp / 100.0, wf = uWaveFreq / 100.0, rr = uReach / 100.0;
       if(type < 0.6){
-        float c1 = localZ.y - 0.18*sin(localZ.x*3.5 + fi*2.1);
-        float c2 = localZ.x - 0.18*sin(localZ.y*3.5 + fi*1.3);
-        float curve = min(abs(c1), abs(c2));
-        float taper = 0.030 * (uThick / 100.0) * smoothstep(0.30, 0.05, length(localZ));
-        d = curve - taper; h = 1.0; m = fi*0.3;
+        if(uCross > 0.5){
+          float c1 = localZ.y - 0.18*wa*sin(localZ.x*3.5*wf + fi*2.1);
+          float c2 = localZ.x - 0.18*wa*sin(localZ.y*3.5*wf + fi*1.3);
+          float curve = min(abs(c1), abs(c2));
+          float taper = 0.030 * (uThick / 100.0) * smoothstep(0.30*rr, 0.05*rr, length(localZ));
+          d = curve - taper; h = 1.0; m = fi*0.3;
+        }
       } else if(type < 0.8){
-        float c1 = localZ.y*0.9 + localZ.x*0.3 - 0.16*sin(localZ.x*4.2 + fi*1.9);
-        float c2 = localZ.x*0.9 - localZ.y*0.3 - 0.16*sin(localZ.y*4.2 - fi*1.1);
-        float curve = min(abs(c1), abs(c2));
-        float taper = 0.028 * (uThick / 100.0) * smoothstep(0.28, 0.05, length(localZ));
-        d = curve - taper; h = 0.9; m = fi*0.2;
+        if(uSlant > 0.5){
+          float c1 = localZ.y*0.9 + localZ.x*0.3 - 0.16*wa*sin(localZ.x*4.2*wf + fi*1.9);
+          float c2 = localZ.x*0.9 - localZ.y*0.3 - 0.16*wa*sin(localZ.y*4.2*wf - fi*1.1);
+          float curve = min(abs(c1), abs(c2));
+          float taper = 0.028 * (uThick / 100.0) * smoothstep(0.28*rr, 0.05*rr, length(localZ));
+          d = curve - taper; h = 0.9; m = fi*0.2;
+        }
       } else if(type < 0.92){
-        localZ.y = -localZ.y;
-        d = max(abs(localZ.x)*0.866 - localZ.y*0.5, localZ.y) - 0.15; h = 0.4; m = fi*0.5;
+        if(uTri > 0.5){
+          localZ.y = -localZ.y;
+          d = max(abs(localZ.x)*0.866 - localZ.y*0.5, localZ.y) - 0.15*(uTriSize / 100.0); h = 0.4; m = fi*0.5;
+        }
       } else {
-        float c1 = localZ.y - 0.18*sin(localZ.x*3.0 + fi*1.7);
-        float curve = abs(c1);
-        float taper = 0.030 * (uThick / 100.0) * smoothstep(0.30, 0.05, length(localZ));
-        d = curve - taper; h = 0.8; m = fi*0.4;
+        if(uSingle > 0.5){
+          float c1 = localZ.y - 0.18*wa*sin(localZ.x*3.0*wf + fi*1.7);
+          float curve = abs(c1);
+          float taper = 0.030 * (uThick / 100.0) * smoothstep(0.30*rr, 0.05*rr, length(localZ));
+          d = curve - taper; h = 0.8; m = fi*0.4;
+        }
       }
       if(d < minDist){ minDist = d; shapeHeight = h; matID = m; }
     }
@@ -77,7 +104,7 @@ vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
   float bevel = clamp(0.015*(zoom*30.0), 0.002, 0.05);
   float physicalHeight = shapeHeight * smoothstep(bevel, 0.0, minDist);
   // 発散しなかった点(ミニ・マンデルブロ内部)はトラップを無視して単色で塗り、穴=レンコンを消す
-  if(!escaped) return vec2(float(MB_MAX_ITER)*0.015, 0.0);
+  if(!escaped && uFill > 0.5) return vec2(float(MB_MAX_ITER)*0.015, 0.0);
   float bgHeight = smoothIter * 0.015;
   if(physicalHeight < 0.01){ physicalHeight = bgHeight; matID = 0.0; }
   return vec2(physicalHeight, matID);
