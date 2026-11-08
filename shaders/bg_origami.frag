@@ -36,6 +36,24 @@ vec3 og_tetOffset = vec3(-0.1);
 // @param uSpread  20..200 = 100.0
 // @param uOffset  -200..300 = 100.0
 // @param uFoldRot -180..180 = 0.0
+// @param uLightYaw -180..180 = 0
+// @param uLightElev -20..85 = 32
+// @param uShadowFill 0..100 = 0
+// @param uGrainAmt 0..300 = 100
+// @param uGrainScale 20..400 = 100
+// @param uReflect 0..250 = 100
+// @param uAmbientAmt 0..250 = 100
+// @param uCreaseDark 0..300 = 100
+// @param uAoReach 40..300 = 100
+// @param uVignette 0..100 = 0
+// @param uLensZoom 60..200 = 100
+// @param uCamAzim -180..180 = 0
+// @param uCamElev -70..70 = 0
+// @param uRoll -180..180 = 0
+// @param uLightTint color = #ffffff
+// @param uFrontTint color = #ffffff
+// @param uBackSideTint color = #ffffff
+// @param uSkyTint color = #ffffff
 uniform float uDetail; // 折りの反復回数 (下げると軽く、形が粗くなる)
 uniform float uFolds; // 折りの縮み方 (%)
 uniform float uThick; // 紙の厚み (%)
@@ -49,6 +67,24 @@ uniform float uOcta; // 部品を四面体から八面体に
 uniform float uSpread; // 最初の折りの幅 (%)
 uniform float uOffset; // 四面体を折り目からずらす量 (%)
 uniform float uFoldRot; // 折りの回転のずらし (度)
+uniform float uLightYaw; // 光源の方位 (度)
+uniform float uLightElev; // 光源の仰角 (度)。既定 32 が従来の向き
+uniform float uShadowFill; // 影の部分へ回り込む光の量 (%)。0 で濃い影
+uniform float uGrainAmt; // 紙のざらつき (繊維ムラ) の強さ (%)
+uniform float uGrainScale; // ざらつきの細かさ (%)
+uniform float uReflect; // 空の映り込み (フレネル反射) の強さ (%)
+uniform float uAmbientAmt; // 環境光 (影の底上げ) の量 (%)
+uniform float uCreaseDark; // 折り目・凹みの陰の濃さ (%)
+uniform float uAoReach; // 陰が届く距離 (%)
+uniform float uVignette; // 周辺減光 (%)
+uniform float uLensZoom; // 画角 (%)。大きいほど拡大
+uniform float uCamAzim; // カメラの公転位置のずらし (度)
+uniform float uCamElev; // カメラの高さ角のずらし (度)
+uniform float uRoll; // 画面のロール角 (度)
+uniform vec3 uLightTint; // 光源に掛ける色
+uniform vec3 uFrontTint; // 紙の表側に掛ける色
+uniform vec3 uBackSideTint; // 紙の裏側に掛ける色
+uniform vec3 uSkyTint; // 映り込む空に掛ける色
 
 vec3 og_Transform(vec3 p){
   const float phi = 1.61803398875;
@@ -97,18 +133,18 @@ float og_DistanceField(vec3 pos){
 }
 
 vec3 og_Sky(vec3 ray){
-  return mix(vec3(0.8), vec3(0.0), exp2(-(1.0/max(ray.y, 0.01))*vec3(0.4, 0.6, 1.0)));
+  return mix(vec3(0.8) * uSkyTint, vec3(0.0), exp2(-(1.0/max(ray.y, 0.01))*vec3(0.4, 0.6, 1.0)));
 }
 
 vec3 og_Shade(vec3 pos, vec3 ray, vec3 normal, vec3 lightDir, vec3 lightCol, float distance){
   vec3 uv = og_Transform(pos);
-  float grain = og_fbm(uv.xy*5.0);
+  float grain = og_fbm(uv.xy*5.0*(uGrainScale / 100.0));
 
-  vec3 ambient = mix(vec3(0.54,0.56,0.59), vec3(0.68), (-normal.y*0.5+0.5));   // さらに明るく中立に(白い紙: 影が暗い青にならない)
-  float aoRange = distance/10.0;
+  vec3 ambient = (uAmbientAmt / 100.0) * mix(vec3(0.54,0.56,0.59), vec3(0.68), (-normal.y*0.5+0.5));   // さらに明るく中立に(白い紙: 影が暗い青にならない)
+  float aoRange = distance/(10.0 * (uAoReach / 100.0));
   float occlusion = max(0.0, 1.0 - og_DistanceField(pos + normal*aoRange)/aoRange);
-  occlusion = exp2(-2.0*pow(occlusion, 2.0));
-  occlusion *= mix(0.5, 1.0, pow(grain, 0.2));
+  occlusion = exp2(-2.0 * (uCreaseDark / 100.0)*pow(occlusion, 2.0));
+  occlusion *= mix(1.0 - 0.5 * (uGrainAmt / 100.0), 1.0, pow(grain, 0.2));
   ambient *= occlusion;
 
   float ndotl = max(0.0, dot(normal, lightDir));
@@ -129,6 +165,7 @@ vec3 og_Shade(vec3 pos, vec3 ray, vec3 normal, vec3 lightDir, vec3 lightCol, flo
 
   float fresnel = pow(1.0 + dot(normal, ray), 5.0);
   fresnel = mix(mix(0.0, 0.05, specularity), 0.8, fresnel);
+  fresnel = min(fresnel * (uReflect / 100.0), 1.0);
 
   uv -= og_tetOffset * (uOffset / 100.0);
   vec3 uv2 = uv;
@@ -137,7 +174,7 @@ vec3 og_Shade(vec3 pos, vec3 ray, vec3 normal, vec3 lightDir, vec3 lightCol, flo
   float side = uv2.x + uv2.y;
 
   // 無地の白い折り紙(裏表で僅かな濃淡のみ、印刷模様なし)
-  vec3 albedo = mix(vec3(0.97), vec3(1.0), step(0.0, side));   // 白い紙(裏表の濃淡を最小に)
+  vec3 albedo = mix(vec3(0.97) * uBackSideTint, vec3(1.0) * uFrontTint, step(0.0, side));   // 白い紙(裏表の濃淡を最小に)
 
   vec3 result = light*albedo;
   result = mix(result, reflection, fresnel);
@@ -212,7 +249,12 @@ vec3 bg_origami(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
 
   // カメラ空間レイ(バレル歪み込み)。zoom を上げて折り紙で画面を満たす(中心ズレを目立たなくする)
-  vec3 cray = og_Ray(4.5, I);
+  if(uRoll != 0.0){
+    float rl = radians(uRoll);
+    vec2 Ic = I - resolution * 0.5;
+    I = resolution * 0.5 + mat2(cos(rl), sin(rl), -sin(rl), cos(rl)) * Ic;
+  }
+  vec3 cray = og_Ray(4.5 * (uLensZoom / 100.0), I);
   og_BarrelDistortion(cray, 0.5);
   cray = normalize(cray);
   vec3 localRay = cray;
@@ -221,6 +263,8 @@ vec3 bg_origami(vec2 fc){
   float T = time;
   float az = T*0.12 + sin(T*0.047)*1.10 + sin(T*0.0193)*0.70;
   float el = -0.20 + sin(T*0.031)*0.55 + sin(T*0.017)*0.35;
+  if(uCamAzim != 0.0) az += radians(uCamAzim);
+  if(uCamElev != 0.0) el += radians(uCamElev);
   vec2 ang = vec2(el, az);
   vec3 d = vec3(0.0, 0.0, 1.0);
   vec3 camDir = og_Rotate(d, ang);
@@ -247,13 +291,20 @@ vec3 bg_origami(vec2 fc){
 
   vec3 col;
   vec3 lightDir = normalize(vec3(3,2,-1));
+  if(uLightElev != 32.0 || uLightYaw != 0.0){
+    float lyaw = radians(uLightYaw) + atan(3.0, -1.0);
+    float lel = radians(uLightElev);
+    lightDir = vec3(cos(lel) * sin(lyaw), sin(lel), cos(lel) * cos(lyaw));
+  }
 
   float t = og_Trace(pos, ray, int(uSteps + 0.5));
   if(t > 0.0){
     vec3 p = pos + ray*t;
     float s = og_Trace(p, lightDir, 60);          // shadow
     vec3 n = og_Normal(p, ray, t);
-    col = og_Shade(p, ray, n, lightDir, (s>0.0)?vec3(0):vec3(1.1,1.0,0.9), t);
+    vec3 lcol = (s>0.0)?vec3(0):vec3(1.1,1.0,0.9) * uLightTint;
+    if(s > 0.0 && uShadowFill != 0.0) lcol = vec3(1.1,1.0,0.9) * uLightTint * (uShadowFill / 100.0) * 0.7;
+    col = og_Shade(p, ray, n, lightDir, lcol, t);
     float f = 1000.0;
     col = mix(vec3(0.8), col, exp2(-t*vec3(0.4,0.6,1.0)/f));
   } else {
@@ -266,6 +317,10 @@ vec3 bg_origami(vec2 fc){
   col += og_LensFlare(ray, lightDir, smoothstep(-0.04, 0.1, sun), step(t, 0.0), I);
   // ビネット
   col *= smoothstep(0.5, 0.0, dot(localRay.xy, localRay.xy));
+  if(uVignette != 0.0){
+    vec2 vq = fc / resolution.xy - 0.5;
+    col *= 1.0 - (uVignette / 100.0) * smoothstep(0.25, 0.8, length(vq));
+  }
   // 明部圧縮(ブルーム代替)
   vec3 c = (col - 1.0);
   c = sqrt(c*c + 0.05);
