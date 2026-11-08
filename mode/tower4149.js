@@ -49,6 +49,28 @@ const Tower4149 = {
     light:100,      // 鏡面に走るライトの帯の強さ (%)
     warm:40,        // 反射に映る茶の帯 (%)
     seed:0,         // トゲの配置と形の乱数シード
+    shardLen:100,   // 短い破片の長さ (%)
+    shardWidth:100, // 短い破片の根元の幅 (%)
+    megaLen:240,    // Mega で伸びるトゲの倍率 (%)
+    tail:100,       // 長さの分布の裾 (% 。高い = 短いトゲが多く長いのは数本 / 低い = 長さが揃う)
+    bladeAlign:0,   // 刃の向きを揃える (% 。0 = ばらばら / 100 = 全部同じ向きのひれ)
+    bendAlign:0,    // 曲がる向きを揃える (% 。100 = 全部同じ側へ流れる)
+    bendVar:100,    // 曲がりのばらつき (% 。0 = 曲がりが揃う)
+    bendBias:0,     // 全体の曲がりの偏り (% 。± で逆に曲がる)
+    lump:100,       // 核のデコボコ (%)
+    wrinkle:100,    // しわの細かさ (%)
+    pitch:0,        // 塊の前後の傾き (度。基準の傾きに足す)
+    roll:0,         // 塊の横倒し (度)
+    nod:0,          // ゆっくり前後に首を振る幅 (度)
+    rock:0,         // ゆっくり左右に揺れる幅 (度)
+    tumbleYaw:0,    // 姿勢の切り替えを縦軸まわりだけにする (%)
+    persp:100,      // 遠近感 (% 。大きいほど望遠 = 平ら / 小さいほど広角 = 誇張。見かけの大きさは保つ)
+    horizon:0,      // 反射に映る地平線の高さ (% 。正 = 上)
+    ground:100,     // 地面 (反射の下半分と背景の下側) の明るさ (%)
+    skyGlow:100,    // 背景の左上の淡い光 (%)
+    reflect:74,     // 正面の反射の強さ (%)
+    rimPow:5,       // 縁の反射の立ち上がり (指数。小さい = 縁が広く明るい)
+    tint:100,       // 鏡面の青みがかった色味 (%)
     bgColor:[0.78, 0.83, 0.94],   // 背景 (空) の上側の色。反射にも映る。Slot B は透過
   },
 
@@ -80,6 +102,28 @@ const Tower4149 = {
     ['Light',       'light',      0,   300, 1,   'pct'],
     ['Warm',        'warm',       0,   100, 1,   'pct'],
     ['Seed',        'seed',       0,   99,  1,   'int'],
+    ['Shard Len',   'shardLen',   20,  300, 1,   'pct'],
+    ['Shard Width', 'shardWidth', 20,  300, 1,   'pct'],
+    ['Mega Len',    'megaLen',    100, 600, 1,   'pct'],
+    ['Len Tail',    'tail',       30,  300, 1,   'pct'],
+    ['Blade Align', 'bladeAlign', 0,   100, 1,   'pct'],
+    ['Bend Align',  'bendAlign',  0,   100, 1,   'pct'],
+    ['Bend Var',    'bendVar',    0,   300, 1,   'pct'],
+    ['Bend Bias',   'bendBias',   -100, 100, 1,  'pct'],
+    ['Core Lump',   'lump',       0,   400, 1,   'pct'],
+    ['Wrinkle Size','wrinkle',    30,  300, 1,   'pct'],
+    ['Pitch',       'pitch',      -60, 60,  1,   'deg'],
+    ['Roll',        'roll',       -180, 180, 1,  'deg'],
+    ['Nod',         'nod',        0,   45,  1,   'deg'],
+    ['Rock',        'rock',       0,   45,  1,   'deg'],
+    ['Tumble Yaw',  'tumbleYaw',  0,   100, 1,   'pct'],
+    ['Perspective', 'persp',      50,  250, 1,   'pct'],
+    ['Horizon',     'horizon',    -40, 40,  1,   'pct'],
+    ['Ground',      'ground',     0,   250, 1,   'pct'],
+    ['Sky Glow',    'skyGlow',    0,   300, 1,   'pct'],
+    ['Reflect',     'reflect',    20,  100, 1,   'pct'],
+    ['Rim Power',   'rimPow',     1.5, 12,  0.5, 'f2'],
+    ['Mirror Tint', 'tint',       0,   300, 1,   'pct'],
   ],
 
   _compile(type, src){
@@ -108,10 +152,12 @@ const Tower4149 = {
 uniform vec3 uTop;
 uniform float uWarm;
 uniform float uLight;
+uniform float uGround;
+uniform float uHoriz;
 // 空: 上 = 背景色 / 地平線の少し上が最も明るい / 下 = 暗いスレート (近くに茶の帯)
-vec3 groundCol(){ return vec3(0.16,0.19,0.19)*(dot(uTop,vec3(0.3333))/0.85); }
+vec3 groundCol(){ return vec3(0.16,0.19,0.19)*(dot(uTop,vec3(0.3333))/0.85)*uGround; }
 vec3 env(vec3 r){
-  float y = r.y;
+  float y = r.y + uHoriz;
   vec3 zen = uTop*vec3(0.62,0.68,0.8);
   vec3 sky = mix(vec3(1.0), uTop, smoothstep(-0.12, 0.25, y));
   sky = mix(sky, zen, smoothstep(0.35, 0.95, y));
@@ -145,6 +191,8 @@ uniform float uSeed;
 uniform float uFlow;      // しわの流れ (Morph の時間)
 uniform float uCore;      // 核の半径
 uniform float uTaper;     // 先細りの指数
+uniform float uLump;      // 核のデコボコ
+uniform float uWrink;     // しわの空間周波数
 out vec3 vW;
 out vec3 vN;
 float h31(vec3 p){ p = fract(p*0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y)*p.z); }
@@ -155,7 +203,7 @@ float vnoise(vec3 p){
              mix(mix(h31(i+vec3(0,0,1)), h31(i+vec3(1,0,1)), f.x), mix(h31(i+vec3(0,1,1)), h31(i+vec3(1,1,1)), f.x), f.y), f.z);
 }
 vec3 deform(vec3 n){
-  vec3 p = n*uCore*(1.0 + (vnoise(n*2.3 + uSeed) - 0.5)*0.3);
+  vec3 p = n*uCore*(1.0 + (vnoise(n*2.3 + uSeed) - 0.5)*uLump);
   for(int k = 0; k < uK; k++){
     vec3 d = uSpkA[k].xyz;
     if(dot(n, d) <= 0.0) continue;
@@ -169,7 +217,7 @@ vec3 deform(vec3 n){
     float L = uSpkA[k].w;
     p += d*(L*f) + uSpkC[k].xyz*(uSpkC[k].w*L*f*f);
     // 刃の面のくしゃっとした凹凸 (引き伸ばした箔のしわ。面ごとに映り込みが変わる)
-    vec3 q = n*5.0 + float(k)*3.1 + uSeed + vec3(0.0, uFlow, uFlow*0.6);
+    vec3 q = n*uWrink + float(k)*3.1 + uSeed + vec3(0.0, uFlow, uFlow*0.6);
     p += (vec3(vnoise(q), vnoise(q + 17.0), vnoise(q + 41.0)) - 0.5)*(max(L - 0.8, 0.0)*f*(1.0 - f)*0.45*uCrumple);
   }
   return p;
@@ -185,14 +233,17 @@ in vec3 vW;
 in vec3 vN;
 out vec4 frag;
 uniform vec3 uCam;
+uniform float uRefl;
+uniform float uRimPow;
+uniform float uTint;
 ${ENV}
 void main(){
   vec3 N = normalize(vN);
   vec3 V = normalize(vW - uCam);
   if(dot(N, V) > 0.0) N = -N;
   vec3 R = reflect(V, N);
-  float fr = pow(1.0 - max(dot(-V, N), 0.0), 5.0);
-  vec3 col = env(R)*mix(0.74, 1.0, fr)*vec3(0.93,0.96,1.0);
+  float fr = pow(1.0 - max(dot(-V, N), 0.0), uRimPow);
+  vec3 col = env(R)*mix(uRefl, 1.0, fr)*mix(vec3(1.0), vec3(0.93,0.96,1.0), uTint);
   col += vec3(1.0)*pow(max(dot(R, normalize(vec3(-0.4, 0.8, 0.45))), 0.0), 120.0)*1.2;
   frag = vec4(col, 1.0);
 }`);
@@ -208,10 +259,11 @@ void main(){
 precision highp float;
 in vec2 vUv;
 out vec4 frag;
+uniform float uBgGlow;
 ${ENV}
 void main(){
   // 背景: 左上が淡く、下へ暗いスレートへ落ちる (Nomad のビューポートの空)
-  vec3 top = mix(uTop, vec3(1.0), 0.25*smoothstep(0.6, -0.8, vUv.x - 0.0));
+  vec3 top = mix(uTop, vec3(1.0), uBgGlow*smoothstep(0.6, -0.8, vUv.x - 0.0));
   vec3 c = mix(groundCol(), top, smoothstep(-0.95, 0.55, vUv.y + 0.12*vUv.x));
   frag = vec4(c, 1.0);
 }`);
@@ -269,8 +321,8 @@ void main(){
   _h(n){ const s = Math.sin(n*127.1 + 311.7)*43758.5453; return s - Math.floor(s); },
 
   // トゲごとの固定の乱数 (Seed で作り直す)
-  _spikes(seed, NC, spread, shardP){
-    const key = seed + '/' + NC + '/' + spread + '/' + shardP;
+  _spikes(seed, NC, spread, shardP, tail, bAl, nAl){
+    const key = seed + '/' + NC + '/' + spread + '/' + shardP + '/' + tail + '/' + bAl + '/' + nAl;
     if(this._spkSeed === key) return this._spk;
     const h = (i, j)=> this._h(seed*1013.0 + i*17.13 + j*3.71);
     const nrm = (v)=>{ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
@@ -289,10 +341,10 @@ void main(){
       }
       const tmp = Math.abs(d[1]) < 0.9 ? [0,1,0] : [1,0,0];
       const t0 = nrm(cross(d, tmp)), t1 = cross(d, t0);
-      const ta = h(k,3)*6.2832, ba = h(k,4)*6.2832;
+      const ta = h(k,3)*6.2832*(1 - bAl), ba = h(k,4)*6.2832*(1 - nAl);
       const T = nrm([t0[0]*Math.cos(ta)+t1[0]*Math.sin(ta), t0[1]*Math.cos(ta)+t1[1]*Math.sin(ta), t0[2]*Math.cos(ta)+t1[2]*Math.sin(ta)]);
       const Bd = nrm([t0[0]*Math.cos(ba)+t1[0]*Math.sin(ba), t0[1]*Math.cos(ba)+t1[1]*Math.sin(ba), t0[2]*Math.cos(ba)+t1[2]*Math.sin(ba)]);
-      const L0 = shard ? 0.2 + 0.4*h(k,5) : 0.6 + 3.8*Math.pow(h(k,5), 2.2);   // 刃は裾の重い分布: 大半は中くらい、数本だけ巨大
+      const L0 = shard ? 0.2 + 0.4*h(k,5) : 0.6 + 3.8*Math.pow(h(k,5), 2.2*tail);   // 刃は裾の重い分布: 大半は中くらい、数本だけ巨大
       out.push({ d, T, Bd, L0, shard, cap: shard ? 0.42 + 0.25*h(k,6) : 0.21 + 0.04*L0 + 0.16*h(k,6), bend: h(k,7) });
     }
     this._spkSeed = key; this._spk = out;
@@ -344,16 +396,20 @@ void main(){
     // ── トゲの長さ: Rate 回/秒 (beat は 2 拍で Rate 回) ごとに引き直す ──
     const seed = Math.round(dz(P.seed) || 0);
     const NC = Math.max(1, Math.min(8, Math.round(dz(P.bundles))));
-    const SPK = this._spikes(seed, NC, Math.max(0, dz(P.spread)*0.01), Math.max(0, Math.min(1, dz(P.shards)*0.01)));
+    const SPK = this._spikes(seed, NC, Math.max(0, dz(P.spread)*0.01), Math.max(0, Math.min(1, dz(P.shards)*0.01)),
+      Math.max(0.1, dz(P.tail)*0.01), Math.max(0, Math.min(1, dz(P.bladeAlign)*0.01)), Math.max(0, Math.min(1, dz(P.bendAlign)*0.01)));
     const K = Math.max(1, Math.min(this.MAXK, Math.round(dz(P.count))));
     const bt = beatMode ? opts.beat*0.5*Math.max(0, dz(P.speed)*0.01) : t;   // beat: 2 拍で 1 単位
     const st = bt*Math.max(0.1, P.rate);
     const sk = Math.floor(st), e = ease(st - sk);
     const mega = Math.max(0, Math.min(1, dz(P.mega)*0.01));
     const lenK = dz(P.length)*0.01, strK = dz(P.stretch)*0.01;
+    const megaLenK = dz(P.megaLen)/100;
+    const shardLenK = Math.max(0, dz(P.shardLen)*0.01), shardWK = Math.max(0, dz(P.shardWidth)*0.01);
+    const bendVarK = Math.max(0, dz(P.bendVar)*0.01), bendBias = dz(P.bendBias)*0.01;
     const g = (k, s)=>{
       const r1 = this._h(k*7.3 + s*1.91 + seed*0.37), r2 = this._h(k*3.1 + s*5.17 + 9.0), r3 = this._h(k*11.7 + s*2.33 + 4.0);
-      const v = (r1 < 0.22 ? 0.25 : 0.55 + 0.9*r2)*(r3 < mega*0.35 ? 2.4 : 1.0);
+      const v = (r1 < 0.22 ? 0.25 : 0.55 + 0.9*r2)*(r3 < mega*0.35 ? megaLenK : 1.0);
       return 1 + (v - 1)*strK;
     };
     const A = new Float32Array(this.MAXK*4), B = new Float32Array(this.MAXK*4), C = new Float32Array(this.MAXK*4);
@@ -369,11 +425,11 @@ void main(){
       { const l = Math.hypot(d[0],d[1],d[2]); d = [d[0]/l, d[1]/l, d[2]/l]; }
       const T = ortho(s.T, d), Bd = ortho(s.Bd, d);
       const breathe = 1 + 0.35*mo*Math.sin(mt*1.3 + ph*0.7);
-      const L = s.L0*lenK*breathe*Math.max(0, g(k, sk - 1) + (g(k, sk) - g(k, sk - 1))*e);
+      const L = s.L0*lenK*breathe*(s.shard ? shardLenK : 1)*Math.max(0, g(k, sk - 1) + (g(k, sk) - g(k, sk - 1))*e);
       A.set([d[0], d[1], d[2], L], k*4);
       const fl = s.shard ? 1 : 1 + bladeK*4;   // 破片は潰さない (幅広の角錐で核を覆う)、長い刃だけ薄くする
-      B.set([T[0]*fl, T[1]*fl, T[2]*fl, s.cap*widthK], k*4);
-      C.set([Bd[0], Bd[1], Bd[2], ((s.bend - 0.3)*0.9 + 0.5*mo*w3)*bendK], k*4);
+      B.set([T[0]*fl, T[1]*fl, T[2]*fl, s.cap*widthK*(s.shard ? shardWK : 1)], k*4);
+      C.set([Bd[0], Bd[1], Bd[2], ((s.bend - 0.3)*0.9*bendVarK + bendBias + 0.5*mo*w3)*bendK], k*4);
     }
 
     // ── 姿勢: 固定の傾き + 縦軸の回転 + Tumble Rate ごとに急峻に切り替わるランダム姿勢 ──
@@ -382,15 +438,22 @@ void main(){
     const tum = Math.max(0, dz(P.tumble)*0.01)*6.2832;
     const ang = (i)=>{ const a = this._h(tk*3.7 + i*19.1 + seed), b = this._h((tk + 1)*3.7 + i*19.1 + seed); return (a + (b - a)*te)*tum; };
     const spin = t*dz(P.spin)*0.012;
-    const R = this._rot(0.22 + ang(0), spin + ang(1), ang(2));
+    const tyK = 1 - Math.max(0, Math.min(1, dz(P.tumbleYaw)*0.01));
+    const D2R = Math.PI/180, nodA = dz(P.nod), rockA = dz(P.rock);
+    let ax = 0.22 + ang(0)*tyK + dz(P.pitch)*D2R, az = ang(2)*tyK + dz(P.roll)*D2R;
+    if(nodA !== 0) ax += nodA*D2R*Math.sin(t*0.5);
+    if(rockA !== 0) az += rockA*D2R*Math.sin(t*0.37 + 1.3);
+    const R = this._rot(ax, spin + ang(1), az);
 
     // ── カメラ: 塊を右上へ寄せ、トゲが左下へ画面の外まで抜ける構図 ──
-    const aspect = w/h, F = 2.4, near = 0.05, far = 60;
-    const camZ = 2.7/Math.max(0.3, dz(P.zoom)*0.01);
+    const persK = Math.max(0.3, dz(P.persp)*0.01);
+    const aspect = w/h, F = 2.4*persK, near = 0.05, far = 60;
+    const camZ = 2.7/Math.max(0.3, dz(P.zoom)*0.01)*persK;   // 遠近感を変えても見かけの大きさは同じ (F/camZ 一定)
     const proj = [F/aspect,0,0,0, 0,F,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
     const VP = new Float32Array(proj);
     VP[14] += proj[10]*(-camZ); VP[15] += proj[11]*(-camZ);   // view = translate(0,0,-camZ)
 
+    const groundK = Math.max(0, dz(P.ground)*0.01);
     const bc = Array.isArray(P.bgColor) ? P.bgColor : this.PDefaults.bgColor;
     const opaque = opts.opaque !== false;
     const M = this._ensureMSAA(w, h);
@@ -406,6 +469,8 @@ void main(){
       gl.useProgram(this.progBg);
       gl.uniform3f(gl.getUniformLocation(this.progBg, 'uTop'), bc[0], bc[1], bc[2]);
       gl.uniform1f(gl.getUniformLocation(this.progBg, 'uWarm'), 0);
+      gl.uniform1f(gl.getUniformLocation(this.progBg, 'uGround'), groundK);
+      gl.uniform1f(gl.getUniformLocation(this.progBg, 'uBgGlow'), 0.25*Math.max(0, dz(P.skyGlow)*0.01));
       gl.bindVertexArray(this.vaoBg);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
     }
@@ -427,6 +492,13 @@ void main(){
     gl.uniform3f(U('uCam'), 0, 0, camZ);
     gl.uniform3f(U('uTop'), bc[0], bc[1], bc[2]);
     gl.uniform1f(U('uWarm'), Math.max(0, dz(P.warm)*0.01));
+    gl.uniform1f(U('uGround'), groundK);
+    gl.uniform1f(U('uHoriz'), dz(P.horizon)*0.01);
+    gl.uniform1f(U('uLump'), 0.3*Math.max(0, dz(P.lump)*0.01));
+    gl.uniform1f(U('uWrink'), 5.0*Math.max(0.1, dz(P.wrinkle)*0.01));
+    gl.uniform1f(U('uRefl'), dz(P.reflect)/100);
+    gl.uniform1f(U('uRimPow'), Math.max(0.5, dz(P.rimPow)));
+    gl.uniform1f(U('uTint'), Math.max(0, dz(P.tint)*0.01));
     gl.bindVertexArray(this.vaoMesh);
     gl.drawArrays(gl.TRIANGLES, 0, this.nVert);
     gl.bindVertexArray(null);

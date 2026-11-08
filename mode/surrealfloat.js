@@ -42,6 +42,23 @@ const SurrealFloat = {
     brush:100,     // 油彩の筆ムラ・キャンバス目 (%)
     kick:100,      // 拍 / 音の効き (%)
     seed:0,        // 配置と形の乱数シード
+    pitch:0,       // カメラの上下の向き (度。基準の仰角に足す。+ = 見上げて地平線が下がる)
+    roll:0,        // カメラの傾き (度。水平線ごと傾く)
+    eyeH:0,        // カメラの高さ (10 = 世界の 1 単位。砂漠から離れる / 近づく)
+    lane:100,      // 物が通る進路の左右の広がり (%)
+    floatH:100,    // 物が浮かぶ高さ (%)
+    sunAz:0,       // 光の向き (度。雰囲気の向きに足す。物の光と砂丘の影が同じく回る)
+    sunEl:0,       // 光の高さ (度)
+    keyGain:100,   // 主光の強さ (%)
+    ambient:100,   // 環境光 (空からの回り込み, %)
+    duneScale:100, // 砂丘の大きさ (波長, %。高さは Dunes)
+    speckle:100,   // 砂のざらつきと白黒の粒 (%)
+    shadeFloor:30, // 砂の影側の明るさ (%。高い = 影が浅い)
+    cloudScale:100,// 雲の大きさ (%。大きいほど細かい)
+    cloudBase:10,  // 雲が出始める高さ (地平線から, %)
+    cloudSoft:100, // 雲の縁のやわらかさ (%)
+    brushScale:100,// 筆ムラの大きさ (%。大きいほど細かい)
+    weave:100,     // キャンバス目の濃さ (%)
     mood:0,        // 雰囲気 (MOODS の番号。選ぶと空・砂の色もその雰囲気の色に入れ替わる)
     skyTop:[0x75/255, 0x70/255, 0x7a/255],
     skyLow:[0xdc/255, 0xc3/255, 0xc6/255],
@@ -166,6 +183,8 @@ float sf_fbmc(vec2 p){
 }
 uniform vec3 uSkyTop, uSkyLow;
 uniform float uCloud, uCloudSpd, uYaw, uHz, uT, uBrush, uF;
+uniform float uCloudScale, uCloudSoft, uBrushScale, uWeave;
+uniform vec2 uCloudBand, uRollCS;
 uniform vec2 uRes;
 vec3 sf_skyGrad(float hy){ return mix(uSkyLow, uSkyTop, pow(smoothstep(0.0, 1.75, hy), 0.7)); }
 vec3 sf_sky(vec2 uv){
@@ -182,11 +201,11 @@ vec3 sf_sky(vec2 uv){
     float cy = cos(uYaw), sy = sin(uYaw);
     vec2 dxz = vec2(cy*d0.x + sy*d0.z, -sy*d0.x + cy*d0.z);              // yaw で水平に回す (物・砂漠と同じ向き)
     float pers = 1.0/(max(d0.y/cpi, -0.3) + 0.35);                       // 地平線からの高さ (yaw に依らない)
-    vec2 cp = dxz*pers*vec2(0.72, 1.0) + vec2(ct*1.2, 0.0);
+    vec2 cp = dxz*pers*vec2(0.72, 1.0)*uCloudScale + vec2(ct*1.2, 0.0);
     float n  = sf_fbmc(cp);
-    float band = smoothstep(0.10, 0.45, hy);
+    float band = smoothstep(uCloudBand.x, uCloudBand.y, hy);
     float th = 0.71 - 0.10*clamp(uCloud, 0.0, 2.0);
-    float dens = smoothstep(th, th + 0.10, n)*band*clamp(uCloud, 0.0, 1.0);
+    float dens = smoothstep(th, th + uCloudSoft, n)*band*clamp(uCloud, 0.0, 1.0);
     float n2 = sf_fbmc(cp + vec2(0.0, 0.035));
     vec3 cc = mix(uCloudA, uCloudB, clamp((n - n2)*6.0 + 0.4, 0.0, 1.0));
     col = mix(col, cc, dens*0.8);
@@ -207,22 +226,27 @@ vec3 sf_sky(vec2 uv){
   }
   return col;
 }
-vec2 sf_uv(){ return (gl_FragCoord.xy - 0.5*uRes)/uRes.y*2.0; }
+vec2 sf_uv(){
+  vec2 u = (gl_FragCoord.xy - 0.5*uRes)/uRes.y*2.0;
+  if(uRollCS.y != 0.0) u = vec2(uRollCS.x*u.x - uRollCS.y*u.y, uRollCS.y*u.x + uRollCS.x*u.y);   // カメラの傾きを戻した座標
+  return u;
+}
 vec3 sf_brush(vec3 col){
   if(uBrush <= 0.0) return col;
   vec2 px = gl_FragCoord.xy;
   float a = 0.6 + (sf_vn(px*0.0015) - 0.5)*2.2;
   vec2 dr = vec2(cos(a), sin(a));
   vec2 q = vec2(dot(px, dr), dot(px, vec2(-dr.y, dr.x)));
-  float st = sf_vn(q*vec2(0.035, 0.30))*0.6 + sf_vn(q*vec2(0.08, 0.7) + 7.0)*0.4;
+  float st = sf_vn(q*vec2(0.035, 0.30)*uBrushScale)*0.6 + sf_vn(q*vec2(0.08, 0.7)*uBrushScale + 7.0)*0.4;
   col *= 1.0 + (st - 0.5)*0.045*uBrush;
-  col *= 1.0 + sin(px.x*1.9)*sin(px.y*1.9)*0.012*uBrush;
+  col *= 1.0 + sin(px.x*1.9)*sin(px.y*1.9)*0.012*uBrush*uWeave;
   col += (sf_h2(px) - 0.5)*0.018*uBrush;
   return col;
 }`; },
   // 砂丘の高さ (シェーダ版と同じ式)
   _glslDune(){ return `
 uniform float uDunes;
+uniform float uDuneScale;
 const float SF_GY = -4.2;
 vec2 sf_dwarp(vec2 x){
   vec2 q = x + 30.0*(vec2(sf_vn(x*0.008), sf_vn(x*0.008 + 5.3)) - 0.5);
@@ -245,6 +269,7 @@ float sf_dprof(float ph){
 }
 float sf_smax(float a, float b, float k){ float h = clamp(0.5 + 0.5*(a - b)/k, 0.0, 1.0); return mix(b, a, h) + k*h*(1.0 - h); }
 float sf_dune(vec2 x){
+  x *= uDuneScale;
   float du = clamp(uDunes, 0.0, 2.0);
   vec2  q  = sf_dwarp(x);
   float a  = sf_ridge(q, vec2(0.94, 0.34), 0.045, 0.72)*(0.30 + 0.70*sf_fbm(x*0.015 + 3.0));
@@ -296,6 +321,7 @@ void main(){
 in vec3 vW; in vec3 vN;
 uniform vec3 uSand;
 uniform float uHaze, uShadow;
+uniform float uSpeckle, uShadeLo;
 uniform int uNS;
 uniform vec4 uSP[24];          // 構造物: 位置 xyz + 大きさ
 out vec4 o;
@@ -307,7 +333,7 @@ void main(){
   float h0 = sf_dune(x);
   vec3 n = normalize(vec3(h0 - sf_dune(x + vec2(e, 0.0)), e, h0 - sf_dune(x + vec2(0.0, e))));
   // 風紋: 主に尾根の風下側の斜面
-  vec2 qw = sf_dwarp(x);
+  vec2 qw = sf_dwarp(x*uDuneScale);
   float lee = step(0.72, fract(dot(qw, vec2(0.94, 0.34))*0.045));
   float rip = sin(dot(x, vec2(2.6, 6.0)) + sf_vn(x*0.8)*6.0);
   float rf  = exp(-t*0.08)*clamp(uDunes, 0.0, 2.0);
@@ -327,13 +353,13 @@ void main(){
     }
     dsh = mix(1.0, dsh, clamp(uShadow, 0.0, 1.0));
   }
-  float v = lum*mix(0.30, 1.06, dif*mix(0.15, 1.0, dsh));
+  float v = lum*mix(uShadeLo, 1.06, dif*mix(0.15, 1.0, dsh));
   float near = exp(-t*0.12);
   v *= 0.94 + 0.08*sf_vn(x*7.0)*near + 0.04*sf_vn(x*1.3);
   v *= 1.0 + (sf_vn(x*38.0) - 0.5)*0.16*near;
-  v += (sf_h2(gl_FragCoord.xy) - 0.5)*0.10;
-  v -= step(0.985, sf_h2(gl_FragCoord.xy + 31.7))*0.14;
-  v += step(0.992, sf_h2(gl_FragCoord.xy + 77.1))*0.10;
+  v += (sf_h2(gl_FragCoord.xy) - 0.5)*0.10*uSpeckle;
+  v -= step(0.985, sf_h2(gl_FragCoord.xy + 31.7))*0.14*uSpeckle;
+  v += step(0.992, sf_h2(gl_FragCoord.xy + 77.1))*0.10*uSpeckle;
   // 構造物が落とす柔らかい影
   if(uShadow > 0.0){
     float sh = 0.0;
@@ -1131,8 +1157,8 @@ void main(){
     const id = i*13.17 + 1.0, h1 = (k)=>this._h1(id + k);
     const az  = h1(0.6)*Math.PI*2;
     // 特性はすべて指数分布 (大半は控えめ、ごく一部が極端): 高さ・横ずれ・速さ
-    let   hy  = this._expd(h1(0.7), 0.6, 8.0, 1.5);
-    let   off = (h1(0.8) < 0.5 ? -1 : 1)*(2.6 + this._expd(h1(0.9), 0.5, 9.0, 1.2));
+    let   hy  = this._expd(h1(0.7), 0.6, 8.0, 1.5)*this._fh;
+    let   off = (h1(0.8) < 0.5 ? -1 : 1)*(2.6 + this._expd(h1(0.9), 0.5, 9.0, 1.2))*this._ln;
     const dir = h1(0.4) < 0.5 ? -1 : 1;
     const spd = this._expd(h1(0.3), 0.12, 7.0, 1.8)*dz(P.depth)*0.01;
     const span = this.FAR - this.BACK;
@@ -1183,7 +1209,7 @@ void main(){
     st.c += dT; st.a6 += dT*(1 + 0.6*audio); st.a10 += dT*(1 + audio); st.b += dB;
     return st;
   },
-  _cur:null,
+  _cur:null, _fh:1, _ln:1,
   _trv(k, T){ const st = this._cur; if(!st) return T; return k < 0.8 ? st.a6 : st.a10; },
   _push(type, M, mat, tint, fade, b){
     this._gid[type].push(this._g); const L = this._inst[type]; L.push(...M, mat, tint, fade, this.PRIM[type] || 7, ...(b || [0,0,0,0]));
@@ -1250,7 +1276,7 @@ void main(){
     const P = this.P, dz = this._dz;
     const id = j*5.77 + 301.0, h = (k)=>this._h1(id + k);
     const az  = h(1)*Math.PI*2;
-    const hy  = this._expd(h(2), 0.6, 9.0, 1.6) - 0.2;
+    const hy  = (this._expd(h(2), 0.6, 9.0, 1.6) - 0.2)*this._fh;
     const dir = h(14) < 0.5 ? -1 : 1;
     const spd = this._expd(h(11), 0.15, 7.0, 1.8)*dz(P.depth)*0.01;
     const span = this.FAR - this.BACK;
@@ -1262,7 +1288,7 @@ void main(){
     const isRock = j < 2;                                          // 岩はごく少なく (2 つだけ)
     // 岩は巨大に (指数分布: 大きな岩が多く、まれに途方もなく巨大)。帽子と林檎は小さめから
     const size = (isRock ? this._szd(h(3), 2.5, 22.0, 1.3) : this._szd(h(3), 0.18, 3.0, 2.0))*dz(P.size)*0.01;
-    const off = (h(12) < 0.5 ? -1 : 1)*(1.5 + this._expd(h(13), 1.0, 10.0, 1.0) + 1.8*size);
+    const off = (h(12) < 0.5 ? -1 : 1)*(1.5 + this._expd(h(13), 1.0, 10.0, 1.0) + 1.8*size)*this._ln;
     const Ra = this._rot(az, 0, 0);
     const c = this._add(this._m3v(Ra, [off, 0, -dep]), [0, hy + (isRock ? 0.6*size : 0) + 0.25*dz(P.drift)*0.01*Math.sin(T*this._expd(h(15), 0.03, 0.6) + id), 0]);
     const isHat = !isRock && kd < 0.6;
@@ -1288,7 +1314,7 @@ void main(){
     const P = this.P, dz = this._dz;
     const id = j*3.91 + 501.0, h = (k)=>this._h1(id + k);
     const az  = h(1)*Math.PI*2;
-    const hy  = this._expd(h(2), 0.4, 7.0, 1.4);
+    const hy  = this._expd(h(2), 0.4, 7.0, 1.4)*this._fh;
     const dir = h(14) < 0.5 ? -1 : 1;
     const spd = this._expd(h(11), 0.12, 5.0, 1.8)*dz(P.depth)*0.01;
     const span = this.FAR - this.BACK;
@@ -1297,7 +1323,7 @@ void main(){
     const fade = 1 - this._sstep(this.FAR - 30, this.FAR - 2, Math.abs(dep));
     if(fade <= 0) return;
     const size = this._szd(h(3), 0.25, 1.6, 2.0)*dz(P.size)*0.01;   // 控えめに (大半は小ぶり、まれに 1.6 倍)
-    const off = (h(12) < 0.5 ? -1 : 1)*(1.5 + this._expd(h(13), 0.8, 9.0, 1.0) + 1.6*size);
+    const off = (h(12) < 0.5 ? -1 : 1)*(1.5 + this._expd(h(13), 0.8, 9.0, 1.0) + 1.6*size)*this._ln;
     const Ra = this._rot(az, 0, 0);
     const c = this._add(this._m3v(Ra, [off, 0, -dep]), [0, hy + 0.3*size + 0.3*dz(P.drift)*0.01*Math.sin(T*this._expd(h(15), 0.03, 0.4) + id), 0]);
     const wd = dz(P.weird)*0.01*(Math.exp(4.0*Math.pow(h(16), 1.4)) - 1)/(Math.exp(4.0) - 1)*0.9;
@@ -1312,8 +1338,8 @@ void main(){
     const P = this.P, dz = this._dz;
     const id = j*7.31 + 101.0, h = (k)=>this._h1(id + k);
     const az  = h(1)*Math.PI*2;
-    let   hy  = this._expd(h(2), 0.6, 8.0, 1.4);
-    const off = (h(12) < 0.5 ? -1 : 1)*(1.2 + this._expd(h(13), 0.3, 8.0, 1.2));
+    let   hy  = this._expd(h(2), 0.6, 8.0, 1.4)*this._fh;
+    const off = (h(12) < 0.5 ? -1 : 1)*(1.2 + this._expd(h(13), 0.3, 8.0, 1.2))*this._ln;
     const dir = h(14) < 0.5 ? -1 : 1;
     const spd = this._expd(h(11), 0.15, 8.0, 1.8)*dz(P.depth)*0.01;
     const span = this.FAR - this.BACK;
@@ -1406,16 +1432,29 @@ void main(){
       this._cur = st; T = st.c; burst = st.b;
     }
     const yaw = T*(6.2832/60.0)*dz(P.pan)*0.01;   // Pan 100% でおよそ 1 分に 1 周
-    const hz = -this.F*Math.tan(this.PIT);
+    const D2R = Math.PI/180;
+    const PIT = this.PIT + dz(P.pitch)*D2R;
+    const hz = -this.F*Math.tan(PIT);
+    const rollA = dz(P.roll)*D2R;
+    this._fh = Math.max(0, dz(P.floatH)*0.01); this._ln = Math.max(0, dz(P.lane)*0.01);
 
     // ── カメラ ──
     const aspect = w/h, F = this.F, near = 0.05, far = 700;
     const proj = [F/aspect,0,0,0, 0,F,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
     // ビュー: 世界 → カメラ。カメラ基底 = Ry(yaw)·{right, up(pitch), back}
-    const cp = Math.cos(this.PIT), sp = Math.sin(this.PIT);
+    const cp = Math.cos(PIT), sp = Math.sin(PIT);
     const Ry = this._rot(yaw, 0, 0);
-    const right = this._m3v(Ry, [1,0,0]), up = this._m3v(Ry, [0,cp,sp]), back = this._m3v(Ry, [0,-sp,cp]);
+    let right = this._m3v(Ry, [1,0,0]), up = this._m3v(Ry, [0,cp,sp]);
+    const back = this._m3v(Ry, [0,-sp,cp]);
+    if(rollA !== 0){   // 視線まわりに傾ける
+      const rc = Math.cos(rollA), rs = Math.sin(rollA);
+      const r0 = right, u0 = up;
+      right = [rc*r0[0] + rs*u0[0], rc*r0[1] + rs*u0[1], rc*r0[2] + rs*u0[2]];
+      up = [-rs*r0[0] + rc*u0[0], -rs*r0[1] + rc*u0[1], -rs*r0[2] + rc*u0[2]];
+    }
+    const eyeH = dz(P.eyeH)*0.1;
     const view = [right[0],up[0],back[0],0, right[1],up[1],back[1],0, right[2],up[2],back[2],0, 0,0,0,1];
+    if(eyeH !== 0){ view[12] = -eyeH*right[1]; view[13] = -eyeH*up[1]; view[14] = -eyeH*back[1]; }   // カメラを持ち上げる (世界を下げる)
     const VP = new Float32Array(this._affMul(proj, view));
 
     // ── インスタンスを組み立てる ──
@@ -1450,6 +1489,23 @@ void main(){
     gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
     gl.clearColor(0, 0, 0, 1); gl.clearDepth(1.0);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    // 光: 雰囲気の値に向き・強さを足した配列を別に作る (MS は追従の状態なので書き換えない)
+    let Lv = MS.L, Ldv = MS.Ld, keyV = MS.key;
+    {
+      const sa = dz(P.sunAz), se = dz(P.sunEl);
+      if(sa !== 0 || se !== 0){
+        const turn = (v)=>{
+          const l = Math.hypot(v[0], v[1], v[2]) || 1;
+          const az0 = Math.atan2(v[2], v[0]) + sa*D2R;
+          const el0 = Math.max(-1.45, Math.min(1.45, Math.asin(v[1]/l) + se*D2R));
+          return [Math.cos(el0)*Math.cos(az0), Math.sin(el0), Math.cos(el0)*Math.sin(az0)];
+        };
+        Lv = turn(MS.L); Ldv = turn(MS.Ld);
+      }
+      const kg = Math.max(0, dz(P.keyGain)*0.01);
+      if(kg !== 1) keyV = MS.key.map(v=>v*kg);
+    }
+    const ambK = Math.max(0, dz(P.ambient)*0.01);
     const common = (p)=>{
       gl.uniform1f(p.U('uSeed'), this._seed);
       gl.uniform2f(p.U('uRes'), w, h);
@@ -1463,11 +1519,20 @@ void main(){
       gl.uniform1f(p.U('uHaze'), dz(P.haze)*0.01*MS.haze[0]);
       gl.uniform1f(p.U('uDunes'), dz(P.dunes)*0.01);
       gl.uniform1f(p.U('uShadow'), dz(P.shadow)*0.01);
+      gl.uniform1f(p.U('uDuneScale'), Math.max(0.1, dz(P.duneScale)*0.01));
+      gl.uniform1f(p.U('uSpeckle'), Math.max(0, dz(P.speckle)*0.01));
+      gl.uniform1f(p.U('uShadeLo'), dz(P.shadeFloor)*0.01);
+      gl.uniform1f(p.U('uCloudScale'), Math.max(0.1, dz(P.cloudScale)*0.01));
+      gl.uniform2f(p.U('uCloudBand'), dz(P.cloudBase)*0.01, dz(P.cloudBase)*0.01 + 0.35);
+      gl.uniform1f(p.U('uCloudSoft'), 0.10*Math.max(0.1, dz(P.cloudSoft)*0.01));
+      gl.uniform1f(p.U('uBrushScale'), Math.max(0.1, dz(P.brushScale)*0.01));
+      gl.uniform1f(p.U('uWeave'), Math.max(0, dz(P.weave)*0.01));
+      gl.uniform2f(p.U('uRollCS'), Math.cos(rollA), Math.sin(rollA));
       gl.uniform3fv(p.U('uSkyTop'), MS.sky); gl.uniform3fv(p.U('uSkyLow'), MS.low); gl.uniform3fv(p.U('uSand'), MS.sand);
       gl.uniform3fv(p.U('uCloudA'), MS.cA); gl.uniform3fv(p.U('uCloudB'), MS.cB); gl.uniform3fv(p.U('uGlow'), MS.glow);
-      gl.uniform3fv(p.U('uKeyCol'), MS.key); gl.uniform3fv(p.U('uGroundTint'), MS.gt);
-      gl.uniform3fv(p.U('uAmbCol'), [0,1,2].map(q=>0.5*MS.sky[q] + 0.5*MS.amb[q]));
-      gl.uniform3fv(p.U('uL'), MS.L); gl.uniform3fv(p.U('uLd'), MS.Ld); gl.uniform4fv(p.U('uGrade'), MS.gr);
+      gl.uniform3fv(p.U('uKeyCol'), keyV); gl.uniform3fv(p.U('uGroundTint'), MS.gt);
+      gl.uniform3fv(p.U('uAmbCol'), [0,1,2].map(q=>(0.5*MS.sky[q] + 0.5*MS.amb[q])*ambK));
+      gl.uniform3fv(p.U('uL'), Lv); gl.uniform3fv(p.U('uLd'), Ldv); gl.uniform4fv(p.U('uGrade'), MS.gr);
       gl.uniformMatrix4fv(p.U('uVP'), false, VP);
     };
     // 1) 空
