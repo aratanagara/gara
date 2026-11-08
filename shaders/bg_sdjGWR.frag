@@ -17,6 +17,20 @@
 // @param uColFeed 0..200 = 100.0
 // @param uFoldBias 85..125 = 100.0
 // @param uCellInvert 0..100 = 0.0
+// @param uCenterX -100..100 = 0.0
+// @param uCenterY -100..100 = 0.0
+// @param uFoldRotate -180..180 = 0.0
+// @param uFoldMirror 0..100 = 0.0
+// @param uFoldSwirl -100..100 = 0.0
+// @param uLevels 0..8 = 0.0
+// @param uTint color = #ffffff
+// @param uCellTint color = #ffffff
+// @param uCellBorder 0..100 = 0.0
+// @param uCellVary 0..100 = 0.0
+// @param uCellEmpty 0..90 = 0.0
+// @param uCellHalo 0..100 = 0.0
+// @param uVignette 0..200 = 0.0
+// @param uGrainAmt 0..100 = 0.0
 uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、模様が単純になる)
 uniform float uFoldScale;    // 折り畳みの基準スケール (%)
 uniform float uSize;      // 円形セルひとつの大きさ (%)
@@ -33,6 +47,20 @@ uniform float uFoldSkew; // 横方向の反転・圧縮の度合い (%)
 uniform float uColFeed; // 前の色が畳み込みへ戻る量 (%)
 uniform float uFoldBias; // 畳み込みの波長のずれ (%)
 uniform float uCellInvert; // 円の内側の色を反転する量 (%)
+uniform float uCenterX; // 折り畳みの中心の X 位置 (%)。0 で元の位置
+uniform float uCenterY; // 折り畳みの中心の Y 位置 (%)。0 で元の位置
+uniform float uFoldRotate; // 折り畳みへ入れる前の画面の回転 (度)
+uniform float uFoldMirror; // 折り畳み前の左右鏡像。0 = なし、値で鏡の軸が右へずれる (%)
+uniform float uFoldSwirl; // 折り畳み前の渦巻きのねじれ (%)。正負で逆向き
+uniform float uLevels; // 色の階調数 (ポスタリゼーション)。0 = 滑らか
+uniform vec3 uTint; // 全体のティント色
+uniform vec3 uCellTint; // 円の内側のティント色
+uniform float uCellBorder; // 円の縁の暗い線の濃さ (%)
+uniform float uCellVary; // 円の大きさのばらつき (%)
+uniform float uCellEmpty; // 円が現れないセルの割合 (%)
+uniform float uCellHalo; // 円の外側ににじむ明るいハロ (%)
+uniform float uVignette; // 周辺減光 (%)
+uniform float uGrainAmt; // 細かいざらつき (%)
 
 vec3 bg_sdjGWR(vec2 fc){
   float bt = getBeat();
@@ -43,6 +71,10 @@ vec3 bg_sdjGWR(vec2 fc){
   vec2 panUV = bgCamPx / resolution.y * 5.0;
   uv = uv + panUV;
   uv += vec2(tx * 0.5, ty * 0.33) / 4.0;
+  if(uCenterX != 0.0 || uCenterY != 0.0) uv += vec2(uCenterX, uCenterY) * 0.01;
+  if(uFoldMirror != 0.0) uv.x = abs(uv.x - uFoldMirror * 0.003);
+  if(uFoldRotate != 0.0){ float fa = radians(uFoldRotate); uv = mat2(cos(fa), -sin(fa), sin(fa), cos(fa)) * uv; }
+  if(uFoldSwirl != 0.0){ float sa = uFoldSwirl * 0.01 * length(uv) * 3.0; uv = mat2(cos(sa), -sin(sa), sin(sa), cos(sa)) * uv; }
   for(int c=0;c<3;c++){
     float scale = 5.6 * (uFoldScale / 100.0);
     float scale1 = 1.5 * (uFoldRatio / 100.0);
@@ -64,13 +96,18 @@ vec3 bg_sdjGWR(vec2 fc){
   vec2 cell = floor(cuv);
   vec2 lc = fract(cuv) - 0.5;
   float ph = fract(sin(dot(cell, vec2(27.13, 61.97))) * 9123.7);
+  float emptyMask = 1.0;
+  if(uCellEmpty != 0.0) emptyMask = step(uCellEmpty * 0.01, fract(ph * 7.31 + 0.17));
   float grow = easeOutQuint(fract(fract(bt) + ph));
   float radius = grow * 0.72 * (uReveal / 100.0);
+  if(uCellVary != 0.0) radius *= 1.0 - (uCellVary / 100.0) * 0.8 * fract(ph * 13.7);
   float dl = length(lc);
   if(uCellShape > 0.0) dl = mix(dl, max(abs(lc.x), abs(lc.y)), uCellShape / 100.0);
   if(uCellShape < 0.0) dl = mix(dl, (abs(lc.x) + abs(lc.y)) * 0.70710678, -uCellShape / 100.0);
   float reveal = smoothstep(radius + 0.06 * (uRevealSoft / 100.0), radius - 0.12 * (uRevealSoft / 100.0), dl);
+  if(uCellEmpty != 0.0) reveal *= emptyMask;
   vec3 grey = clamp(col, 0.0, 1.0);
+  if(uLevels != 0.0){ float nl = max(uLevels, 2.0); grey = floor(grey * nl + 0.5) / nl; }
   vec3 outCol = grey;
   if(abs(uCosGrad) > 0.0001){
     float cgInv = uCosGrad < 0.0 ? 0.5 : 0.0;
@@ -85,8 +122,14 @@ vec3 bg_sdjGWR(vec2 fc){
     outCol = mix(grey, cosCol, abs(uCosGrad));
   }
   if(uCellInvert != 0.0) outCol = mix(outCol, 1.0 - outCol, reveal * (uCellInvert / 100.0));
+  if(uCellTint != vec3(1.0)) outCol *= mix(vec3(1.0), uCellTint, reveal);
+  if(uCellHalo != 0.0) outCol += (uCellHalo / 100.0) * 0.6 * smoothstep(radius + 0.35, radius, dl) * (1.0 - reveal) * emptyMask;
+  if(uCellBorder != 0.0) outCol *= 1.0 - (uCellBorder / 100.0) * (1.0 - smoothstep(0.0, 0.07, abs(dl - radius))) * emptyMask;
   float ctK = uContrast / 100.0;
   outCol *= mix(mix(1.0, 0.92, ctK), mix(1.0, 1.06, ctK), reveal);
+  if(uTint != vec3(1.0)) outCol *= uTint;
+  if(uVignette != 0.0){ vec2 vv = (fc - 0.5 * resolution) / resolution.y; outCol *= max(1.0 - (uVignette / 100.0) * 0.6 * dot(vv, vv) * 2.0, 0.0); }
+  if(uGrainAmt != 0.0) outCol += (fract(sin(dot(fc, vec2(12.9898, 78.233)) + time) * 43758.5453) - 0.5) * 0.25 * (uGrainAmt / 100.0);
   return outCol;
 }
 

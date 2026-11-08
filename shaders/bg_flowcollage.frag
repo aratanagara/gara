@@ -41,6 +41,36 @@
 // @param uMixCol   0..100    = 0.0
 // @param uPaperCol color     = #c9ad8e
 // @param uWhiteLines 0..200  = 100.0
+// @param uFieldRotate -180..180 = 0.0
+// @param uFieldMirror 0..100 = 0.0
+// @param uBandSlope 0..300 = 100.0
+// @param uBandGap 0..150 = 100.0
+// @param uPlainShare 0..300 = 100.0
+// @param uStripeShare 0..300 = 100.0
+// @param uCheckShare 0..300 = 100.0
+// @param uStripeDuty 40..160 = 100.0
+// @param uCheckWidth 30..300 = 100.0
+// @param uCheckLength 30..300 = 100.0
+// @param uDotPitch 40..300 = 100.0
+// @param uDotSize 40..160 = 100.0
+// @param uRingFreq 30..300 = 100.0
+// @param uRingTwist 0..300 = 100.0
+// @param uSunSize 40..200 = 100.0
+// @param uSunRays 4..24 = 11.0
+// @param uSunRayLen 40..250 = 100.0
+// @param uSunRayWidth 30..250 = 100.0
+// @param uEdgeWidth 30..400 = 100.0
+// @param uLineWidth 40..300 = 100.0
+// @param uLineCover -100..100 = 0.0
+// @param uFiber 0..400 = 100.0
+// @param uScratchAmt 0..300 = 100.0
+// @param uSpeckAmt 0..300 = 100.0
+// @param uVignette 0..200 = 0.0
+// @param uInkTint color = #ffffff
+// @param uCreamTint color = #ffffff
+// @param uSunTint color = #ffffff
+// @param uLowerTint color = #ffffff
+// @param uUpperTint color = #ffffff
 uniform float uSpeed;    // 流れの速さ (%)
 uniform float uScale;    // 柄の大きさ (%)
 uniform float uWarp;     // うねり (ドメインワーピングの強さ, %)
@@ -66,6 +96,36 @@ float FC_ROLL = 0.0;     // 振り直しの拍番号 (beat のみ。drone は 0 
 float FC_FADE = 1.0;     // 振り直しの溶け具合 (拍の最初の 1/4 で前の拍の柄から溶ける。1 = 溶け終わり)
 uniform vec3  uPaperCol; // 紙の色
 uniform float uWhiteLines; // 暗い帯の上の白抜きの等高線 (%。0 = 出さない / 〜100 = 濃さ / 100〜 = 太さ)
+uniform float uFieldRotate; // 場全体の回転 (度)
+uniform float uFieldMirror; // 場の左右鏡像。0 = なし、値で鏡の軸が右へずれる (%)
+uniform float uBandSlope; // 帯が斜めに流れる方向性の強さ (%)
+uniform float uBandGap; // 帯と帯のすき間の大きさ (%)
+uniform float uPlainShare; // 無地の帯の出やすさ (%)
+uniform float uStripeShare; // ストライプの帯の出やすさ (%)
+uniform float uCheckShare; // 市松の帯の出やすさ (%)。残りは渦
+uniform float uStripeDuty; // ストライプの線の太さ (%)
+uniform float uCheckWidth; // 市松の幅方向の細かさ (%)
+uniform float uCheckLength; // 市松の流れ方向の細かさ (%)
+uniform float uDotPitch; // 網点のピッチ (%)
+uniform float uDotSize; // 網点ひとつの大きさ (%)
+uniform float uRingFreq; // 渦の同心円の細かさ (%)
+uniform float uRingTwist; // 渦の角度によるねじれ (%)
+uniform float uSunSize; // 太陽の半円の大きさ (%)
+uniform float uSunRays; // 太陽の放射線の本数
+uniform float uSunRayLen; // 太陽の放射線の長さ (%)
+uniform float uSunRayWidth; // 太陽の放射線の太さ (%)
+uniform float uEdgeWidth; // 帯の縁の黒線の太さ (%)
+uniform float uLineWidth; // 等高線の太さ (%)
+uniform float uLineCover; // 等高線が出る領域の広さ (%)
+uniform float uFiber; // 紙の繊維の低周波ムラ (%)
+uniform float uScratchAmt; // スクラッチの量 (%)
+uniform float uSpeckAmt; // 黒い粒の量 (%)
+uniform float uVignette; // 周辺減光 (%)
+uniform vec3 uInkTint; // 墨 (縁・等高線・輪郭) のティント色
+uniform vec3 uCreamTint; // オフホワイト (網点・白抜き・スクラッチ) のティント色
+uniform vec3 uSunTint; // 太陽の塗りのティント色
+uniform vec3 uLowerTint; // 下のレイヤーの帯の色のティント
+uniform vec3 uUpperTint; // 上のレイヤーの帯の色のティント
 
 // ─── 乱数 / ノイズ ────────────────────────────────────────
 float fc_h1(float n){ return fract(sin(n*127.1 + uSeed*17.37)*43758.5453); }
@@ -130,8 +190,9 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
   float hA  = fc_h1(id);
   float hB  = fc_h1(id + 13.7);
   float hC  = fc_h1(id + 29.3);
-  vec3  c1  = fc_pal(hB);
-  vec3  c2  = fc_pal(hB + 0.3 + 0.4*hC);
+  vec3  tintL = layer > 0.5 ? uUpperTint : uLowerTint;
+  vec3  c1  = fc_pal(hB) * tintL;
+  vec3  c2  = fc_pal(hB + 0.3 + 0.4*hC) * tintL;
   float aa  = fwidth(band) + 1e-4;
 
   // 上のレイヤーは帯の一部だけを不透明にする (残りは下が透ける)
@@ -148,7 +209,7 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
   if(paperBand && mixc > 0.0) alpha = 1.0;
 
   // 帯ごとの太さムラ: 帯の端を少し削って隙間 (紙地) を作る。混色では隙間を閉じ、上のレイヤーの縁をぼかす
-  float gap = (layer > 0.5 ? 0.22 + 0.30*fc_h1(id + 7.7) : 0.06 + 0.10*hC) * (layer > 0.5 ? 1.0 : 1.0 - mixc);
+  float gap = (layer > 0.5 ? 0.22 + 0.30*fc_h1(id + 7.7) : 0.06 + 0.10*hC) * (layer > 0.5 ? 1.0 : 1.0 - mixc) * (uBandGap / 100.0);
   float soft = aa*1.5 + (layer > 0.5 ? mixc*0.3 : 0.0);
   alpha *= smoothstep(0.0, soft, tb - gap*0.5) * smoothstep(0.0, soft, 1.0 - gap*0.5 - tb);
   if(layer > 0.5) alpha *= 1.0 - 0.45*mixc;   // 上のレイヤーは半透明にして、重なりの色も混ぜる
@@ -156,40 +217,44 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
   vec3 col;
   float kind = hA;
   float dotP = 0.12*clamp(uDots*0.01, 0.0, 2.0);
+  float t1 = dotP + 0.20 * (uPlainShare / 100.0);
+  float t2 = t1 + 0.32 * (uStripeShare / 100.0);
+  float t3 = t2 + 0.16 * (uCheckShare / 100.0);
   if(kind < dotP){
     // 網点: 帯の中で濃度が流れに沿って変わるハーフトーン
-    float pitch = 7.0;
+    float pitch = 7.0 * (uDotPitch / 100.0);
     mat2  rt  = mat2(0.7071, 0.7071, -0.7071, 0.7071);
     vec2  g   = rt*px / pitch;
     vec2  cel = fract(g) - 0.5;
     float tone = 0.25 + 0.6*(0.5 + 0.5*sin(al*1.7 + hB*6.28));
-    float rad  = sqrt(tone)*0.5;
+    float rad  = sqrt(tone)*0.5*(uDotSize / 100.0);
     float pw   = fwidth(g.x) + 1e-4;
     float dotm = 1.0 - smoothstep(rad - pw, rad + pw, length(cel));
-    col = mix(vec3(0.91, 0.87, 0.78), c1, dotm);
-  } else if(kind < dotP + 0.20){
+    col = mix(vec3(0.91, 0.87, 0.78) * uCreamTint, c1, dotm);
+  } else if(kind < t1){
     col = c1;                                                    // 無地
-  } else if(kind < dotP + 0.52){
+  } else if(kind < t2){
     // 平行ストライプ (帯の縁に平行)
     float k  = floor(2.0 + 5.0*hC) * dens;
     float s  = tb*k;
     float sw = fwidth(s) + 1e-4;
-    float m  = smoothstep(0.5 - sw, 0.5 + sw, abs(fract(s) - 0.5)*2.0);
-    vec3  c3 = hC > 0.6 ? vec3(0.09, 0.09, 0.11) : vec3(0.91, 0.87, 0.78);
+    float duty = 0.5 * (uStripeDuty / 100.0);
+    float m  = smoothstep(duty - sw, duty + sw, abs(fract(s) - 0.5)*2.0);
+    vec3  c3 = hC > 0.6 ? vec3(0.09, 0.09, 0.11) : vec3(0.91, 0.87, 0.78) * uCreamTint;
     col = mix(c1, (fract(floor(s)*0.5) > 0.25 && hC > 0.35) ? c2 : c3, m);
-  } else if(kind < dotP + 0.68){
+  } else if(kind < t3){
     // 市松: 帯の幅方向 × 帯に沿う方向
-    vec2  q  = vec2(tb*2.0, al*2.5*dens);
+    vec2  q  = vec2(tb*2.0*(uCheckWidth / 100.0), al*2.5*dens*(uCheckLength / 100.0));
     vec2  qw = fwidth(q) + 1e-4;
     vec2  sq = smoothstep(0.5 - qw, 0.5 + qw, fract(q));
     float m  = abs(sq.x - sq.y);
-    col = mix(c1, hB > 0.5 ? vec3(0.09, 0.09, 0.11) : vec3(0.91, 0.87, 0.78), m);
+    col = mix(c1, hB > 0.5 ? vec3(0.09, 0.09, 0.11) : vec3(0.91, 0.87, 0.78) * uCreamTint, m);
   } else {
     // 同心円の渦: 帯ごとの中心から、角度でねじれたリング
     vec2  cen = vec2(fc_h1(id + 3.1), fc_h1(id + 5.9))*8.0 - 4.0;
     vec2  d   = r - cen;
     float ang = atan(d.y, d.x);
-    float s   = (length(d)*3.0 + ang*0.35*(hB - 0.5)*4.0) * dens;
+    float s   = (length(d)*3.0*(uRingFreq / 100.0) + ang*0.35*(uRingTwist / 100.0)*(hB - 0.5)*4.0) * dens;
     float sw  = fwidth(s) + 1e-4;
     float m   = smoothstep(0.5 - sw, 0.5 + sw, abs(fract(s) - 0.5)*2.0);
     col = mix(c1, c2, m);
@@ -208,8 +273,8 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
   // 縁の黒線 (一部の帯。混色では消えていく)
   float edgeOn = step(fc_h1(id + 41.0), 0.55*clamp(uEdge*0.01, 0.0, 2.0)) * (1.0 - mixc);
   float e = min(tb - gap*0.5, 1.0 - gap*0.5 - tb);
-  float ew = aa*(0.9 + 0.8*hA);
-  col = mix(col, vec3(0.08, 0.08, 0.10), edgeOn*(1.0 - smoothstep(ew*0.6, ew*1.6, e)));
+  float ew = aa*(0.9 + 0.8*hA)*(uEdgeWidth / 100.0);
+  col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, edgeOn*(1.0 - smoothstep(ew*0.6, ew*1.6, e)));
   return vec4(col, alpha);
 }
 
@@ -232,6 +297,8 @@ vec3 bg_flowcollage(vec2 fc){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   float sc = 100.0 / max(uScale, 5.0);
   vec2 p  = (I - 0.5*resolution) / resolution.y * 3.0 * sc;
+  if(uFieldRotate != 0.0){ float fa = radians(uFieldRotate); p = mat2(cos(fa), -sin(fa), sin(fa), cos(fa)) * p; }
+  if(uFieldMirror != 0.0) p.x = abs(p.x - uFieldMirror * 0.02);
   // drone: 場がゆっくり漂う
   // beat : 水をかき混ぜる。拍頭ごとに場所・大きさ・向きが違う渦を入れ、一気にねじる。
   //        渦は 1/4 拍で立ち上がり、そのあとも少し回り続け、2〜4 拍かけて収まる (直近 4 拍分を重ねる)
@@ -274,10 +341,10 @@ vec3 bg_flowcollage(vec2 fc){
 
   // 帯座標: 等値線 + ゆるい方向性 (帯が塊ではなくリボンになる)
   float f1 = fc_fbm(r*0.45 + vec2(t*0.3, 0.0));
-  float b1 = (f1*3.5 + 0.22*r.y + 0.06*r.x) * nb;
+  float b1 = (f1*3.5 + (0.22*r.y + 0.06*r.x) * (uBandSlope / 100.0)) * nb;
   float a1 = dot(r, vec2(0.86, -0.50)) + w2.x*2.0;
   float f2 = fc_fbm(r*0.38 + vec2(11.0, 4.0) - t*0.25);
-  float b2 = (f2*3.2 - 0.20*r.x + 0.08*r.y) * nb * 1.1 + 40.0;
+  float b2 = (f2*3.2 + (-0.20*r.x + 0.08*r.y) * (uBandSlope / 100.0)) * nb * 1.1 + 40.0;
   float a2 = dot(r, vec2(0.50, 0.86)) + w2.y*2.0;
 
   // ─── 合成 ───
@@ -305,8 +372,8 @@ vec3 bg_flowcollage(vec2 fc){
   if(lineAmt > 0.0){
     float h    = fc_fbm(r*0.6 + vec2(2.0, 7.0) + t*0.2) * 9.0 * nb/3.2 + r.y*0.4;
     float hw   = fwidth(h) + 1e-4;
-    float dd   = abs(fract(h + 0.5) - 0.5) / hw;                 // 画素単位の線からの距離
-    float gate = smoothstep(0.52, 0.64, fc_vn(r*0.35 + vec2(t*0.2, 3.0)) + 0.12*(lineAmt - 1.0));
+    float dd   = abs(fract(h + 0.5) - 0.5) / hw / (uLineWidth / 100.0);                 // 画素単位の線からの距離
+    float gate = smoothstep(0.52, 0.64, fc_vn(r*0.35 + vec2(t*0.2, 3.0)) + 0.12*(lineAmt - 1.0) + uLineCover * 0.003);
     float ln   = (1.0 - smoothstep(0.5, 1.3, dd)) * gate * clamp(lineAmt, 0.0, 1.0);
     // 暗い帯の上では白抜きの線にする
     float lum  = dot(col, vec3(0.299, 0.587, 0.114));
@@ -314,9 +381,9 @@ vec3 bg_flowcollage(vec2 fc){
       // 白抜きの線: uWhiteLines 〜100% は濃さ、100% を超えると線が太くなる
       float wl = uWhiteLines*0.01;
       float lw = (1.0 - smoothstep(0.5, 1.3, dd/max(1.0, wl))) * gate * clamp(lineAmt, 0.0, 1.0);
-      col = mix(col, vec3(0.90, 0.86, 0.77), lw*min(wl, 1.0));
+      col = mix(col, vec3(0.90, 0.86, 0.77) * uCreamTint, lw*min(wl, 1.0));
     }
-    else           col = mix(col, vec3(0.08, 0.08, 0.10), ln);
+    else           col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, ln);
   }
 
   // ─── 太陽モチーフ: 放射線つきの半円 ───
@@ -334,23 +401,23 @@ vec3 bg_flowcollage(vec2 fc){
       vec2  d   = (sp - ctr) * cs;
       float an  = fc_h2(cc + 9.9) * 6.2832;
       vec2  dir = vec2(cos(an), sin(an));
-      float R   = 0.12 + 0.09*fc_h2(cc + 6.6);
+      float R   = (0.12 + 0.09*fc_h2(cc + 6.6)) * (uSunSize / 100.0);
       float dl  = length(d);
       float pw  = fwidth(dl) + 1e-4;
       float half_ = smoothstep(-pw, pw, dot(d, dir));
       float disk = (1.0 - smoothstep(R - pw, R + pw, dl)) * half_;
       // 放射線: 半円の外側、半周に短い線
       float th   = atan(dot(d, vec2(-dir.y, dir.x)), dot(d, dir));     // -π..π, 0 = 半円の向き
-      float nr   = 11.0;
+      float nr   = uSunRays;
       float rs   = (th / 3.1416 * 0.5 + 0.5) * nr * 2.0;
       float rw   = fwidth(rs) + 1e-4;
-      float ray  = 1.0 - smoothstep(0.18 - rw, 0.18 + rw, abs(fract(rs) - 0.5));
-      ray *= smoothstep(R*1.12 - pw, R*1.12 + pw, dl) * (1.0 - smoothstep(R*1.75 - pw, R*1.75 + pw, dl));
+      float ray  = 1.0 - smoothstep(0.18*(uSunRayWidth / 100.0) - rw, 0.18*(uSunRayWidth / 100.0) + rw, abs(fract(rs) - 0.5));
+      ray *= smoothstep(R*1.12 - pw, R*1.12 + pw, dl) * (1.0 - smoothstep(R*(1.75*(uSunRayLen / 100.0)) - pw, R*(1.75*(uSunRayLen / 100.0)) + pw, dl));
       ray *= step(abs(th), 1.5708);
-      vec3 sunC = fc_pal(0.2 + 0.1*floor(fc_h2(cc + 8.8)*2.0) + 0.05);  // オレンジ / マスタード
+      vec3 sunC = fc_pal(0.2 + 0.1*floor(fc_h2(cc + 8.8)*2.0) + 0.05) * uSunTint;  // オレンジ / マスタード
       col = mix(col, sunC, disk);
       float rim = (1.0 - smoothstep(pw*0.8, pw*2.0, abs(dl - R))) * half_;          // 半円の輪郭
-      col = mix(col, vec3(0.08, 0.08, 0.10), clamp(rim + ray, 0.0, 1.0));
+      col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, clamp(rim + ray, 0.0, 1.0));
       ink = max(ink, disk);
     }
   }
@@ -363,13 +430,14 @@ vec3 bg_flowcollage(vec2 fc){
   col = mix(col, uPaperCol * 1.05, clamp(drop, 0.0, 1.0));
   // スクラッチ: 細長い異方性ノイズ
   float scr  = fc_vn(vec2(px.x*0.012 + px.y*0.004, px.y*0.45));
-  col = mix(col, vec3(0.93, 0.89, 0.80), smoothstep(0.965, 0.995, scr) * clamp(worn, 0.0, 1.5) * 0.7);
+  col = mix(col, vec3(0.93, 0.89, 0.80) * uCreamTint, smoothstep(0.965, 0.995, scr) * clamp(worn, 0.0, 1.5) * 0.7 * (uScratchAmt / 100.0));
   // 黒い粒
   float spec = fc_h2(floor(px*0.5) + floor(T*2.0)*0.0);
-  col *= 1.0 - step(0.9985 - 0.0010*worn, spec) * 0.6 * clamp(worn, 0.0, 1.5);
+  col *= 1.0 - step(0.9985 - 0.0010*worn, spec) * 0.6 * clamp(worn, 0.0, 1.5) * (uSpeckAmt / 100.0);
   // 紙のグレイン (画素ノイズ + 繊維の低周波ムラ)
-  float gr  = (fc_h2(px) - 0.5) * 0.10 + (fc_vn(px*0.03) - 0.5) * 0.08;
+  float gr  = (fc_h2(px) - 0.5) * 0.10 + (fc_vn(px*0.03) - 0.5) * 0.08 * (uFiber / 100.0);
   col *= 1.0 + gr * uGrain * 0.01;
 
+  if(uVignette != 0.0){ vec2 vv = (fc - 0.5 * resolution) / resolution.y; col *= max(1.0 - (uVignette / 100.0) * 0.6 * dot(vv, vv) * 2.0, 0.0); }
   return clamp(col, 0.0, 1.0);
 }
