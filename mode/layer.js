@@ -29,6 +29,12 @@ const Layer = {
     showGround:false, groundMult:-1.0, groundBrt:0.25,
     camEl:0.30, camAz:0,
     pngAlpha:false,
+    aspect:100, corner:0, frame:0, frameColor:[1,1,1],
+    texZoom:100, opacity:100, tintColor:[1,1,1], shadeVar:0, backDim:100,
+    gloss:100, glossPow:48, lightH:100, rimColor:[0.4,0.6,1.0], bend2:100,
+    layoutX:100, layoutY:100, layoutZ:100, hollow:0,
+    sizeGrad:0, pulse:0, drift:0, swirl:0,
+    axisLock:0, tilt:0, faceCam:0, camRoll:0, camAzOff:0,
   },
   textures:[], texAspects:[], texKeyColors:[],
   planes:[], // 各 plane のスロット情報
@@ -206,6 +212,17 @@ uniform float u_shadowStr;
 uniform float u_shadowSoft;
 uniform float u_shadowSize;
 uniform float u_shadowOn;
+uniform float u_ar;
+uniform float u_corner;
+uniform float u_frame;
+uniform vec3  u_frameC;
+uniform float u_texZoom;
+uniform float u_opacity;
+uniform vec3  u_tint;
+uniform float u_backDim;
+uniform float u_gloss;
+uniform float u_glossPow;
+uniform vec3  u_rimC;
 varying vec2 v_uv; varying vec3 v_nrm; varying vec3 v_wpos;
 float unpack(vec4 r){return dot(r, vec4(1., 1./255., 1./65025., 1./16581375.));}
 float getShadow(vec3 wp, float bias){
@@ -221,22 +238,36 @@ float getShadow(vec3 wp, float bias){
   return sh/25.;
 }
 void main(){
-  vec4 tex=texture2D(u_tex, v_uv);
+  if(u_corner>0.){
+    vec2 b=vec2(u_ar, 1.);
+    vec2 q=abs((v_uv-.5)*2.*b)-b+u_corner*min(b.x, b.y);
+    if(length(max(q, 0.))>u_corner*min(b.x, b.y)) discard;
+  }
+  vec2 tuv=v_uv;
+  if(u_texZoom!=1.) tuv=(v_uv-.5)/u_texZoom+.5;
+  vec4 tex=texture2D(u_tex, tuv);
+  vec3 albedo=tex.rgb*u_tint;
+  if(u_frame>0.){
+    vec2 ew=min(v_uv, 1.-v_uv)*2.*vec2(u_ar, 1.);
+    if(min(ew.x, ew.y)<u_frame) albedo=u_frameC;
+  }
   vec3 n=normalize(v_nrm);
   vec3 l=normalize(u_lightDir);
   vec3 v=normalize(u_camPos-v_wpos);
   vec3 h=normalize(l+v);
   float nv=max(dot(n,v), 0.);
   float diff=max(dot(n,l), 0.);
-  float spec=pow(max(dot(n,h), 0.), 48.)*.2;
+  float spec=pow(max(dot(n,h), 0.), u_glossPow)*.2*u_gloss;
   float rim=pow(1.-nv, 3.)*u_rim;
   float bias=mix(.002, .010, 1.-diff)*u_shadowOn;
   float shadow=getShadow(v_wpos, bias)*u_shadowOn;
   float light=u_ambient+(1.-u_ambient)*diff*(1.-shadow*u_shadowStr*.7);
-  vec3 col=tex.rgb*light+rim*vec3(.4, .6, 1.)+spec;
+  vec3 col=albedo*light+rim*u_rimC+spec;
+  if(!gl_FrontFacing) col*=u_backDim;
   float fogF=exp(-length(u_camPos-v_wpos)*u_fog);
   float keyDist=length(tex.rgb-u_keyColor);
   float alpha=u_keyAlpha>.5?smoothstep(.05, .12, keyDist)*tex.a:tex.a;
+  alpha*=u_opacity;
   gl_FragColor=vec4(mix(u_fogColor, col, fogF), alpha);
 }`,
 
@@ -325,6 +356,17 @@ void main(){
         ssoft:gl.getUniformLocation(P.pl,'u_shadowSoft'),
         ssize:gl.getUniformLocation(P.pl,'u_shadowSize'),
         son:gl.getUniformLocation(P.pl,'u_shadowOn'),
+        ar:gl.getUniformLocation(P.pl,'u_ar'),
+        corner:gl.getUniformLocation(P.pl,'u_corner'),
+        frame:gl.getUniformLocation(P.pl,'u_frame'),
+        frameC:gl.getUniformLocation(P.pl,'u_frameC'),
+        texZoom:gl.getUniformLocation(P.pl,'u_texZoom'),
+        opacity:gl.getUniformLocation(P.pl,'u_opacity'),
+        tint:gl.getUniformLocation(P.pl,'u_tint'),
+        backDim:gl.getUniformLocation(P.pl,'u_backDim'),
+        gloss:gl.getUniformLocation(P.pl,'u_gloss'),
+        glossPow:gl.getUniformLocation(P.pl,'u_glossPow'),
+        rimC:gl.getUniformLocation(P.pl,'u_rimC'),
       }
     };
 
@@ -583,32 +625,38 @@ void main(){
   _effectiveScale(sp){
     return this.P.size * Math.pow(3, (sp.sizeRandom-.5)*2*this.P.sizeVar);
   },
+  _dz(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
   _planeBendUniform(sp){
     return [
       (sp.curvatureBase||0)*this.P.curvature*2.5,
-      (sp.curvatureSecondary||0)*this.P.curvature*2.5,
+      (sp.curvatureSecondary||0)*(this._dz(this.P.bend2)/100)*this.P.curvature*2.5,
       sp.curvatureAxis||0,
     ];
   },
 
   _camEye(){
     const t=this.cam.target;
+    const az=this.cam.az+this._dz(this.P.camAzOff)*Math.PI/180;
     return [
-      t[0]+this.cam.dist*Math.cos(this.cam.el)*Math.sin(this.cam.az),
+      t[0]+this.cam.dist*Math.cos(this.cam.el)*Math.sin(az),
       t[1]+this.cam.dist*Math.sin(this.cam.el),
-      t[2]+this.cam.dist*Math.cos(this.cam.el)*Math.cos(this.cam.az)
+      t[2]+this.cam.dist*Math.cos(this.cam.el)*Math.cos(az)
     ];
+  },
+  _camUp(){
+    const r=this._dz(this.P.camRoll)*Math.PI/180;
+    return r!==0 ? [Math.sin(r), Math.cos(r), 0] : [0,1,0];
   },
   _camAxes(){
     const eye=this._camEye();
     const z=this.v3.norm(this.v3.sub(eye, this.cam.target));
-    const x=this.v3.norm(this.v3.cross([0,1,0], z));
+    const x=this.v3.norm(this.v3.cross(this._camUp(), z));
     const y=this.v3.cross(z, x);
     return {z, x, y};
   },
   _getLightDir(){
     const az=this.P.lightAz*Math.PI/180;
-    return this.v3.norm([Math.sin(az)*1.7, 2.0, Math.cos(az)*1.7]);
+    return this.v3.norm([Math.sin(az)*1.7, 2.0*(this._dz(this.P.lightH)/100), Math.cos(az)*1.7]);
   },
   _makeLightVP(){
     const ld=this._getLightDir();
@@ -656,13 +704,58 @@ void main(){
       }
     }
 
-    // モデル行列
-    const models=this.planes.map(sp=>{
-      const sc=this._effectiveScale(sp);
-      const rot=this.m4.axisAngle(sp.axis, sp.autoAngle);
-      const ar=sp.imgAspect||1;
+    // モデル行列 (追加 param は既定値では素通し)
+    const Pp=this.P, dz=(v)=>this._dz(v);
+    const kAspect=dz(Pp.aspect)/100, kLX=dz(Pp.layoutX)/100, kLY=dz(Pp.layoutY)/100, kLZ=dz(Pp.layoutZ)/100;
+    const kHollow=dz(Pp.hollow)/100, kGrad=dz(Pp.sizeGrad)/100, kPulse=dz(Pp.pulse)/100, kDrift=dz(Pp.drift);
+    const kSwirl=dz(Pp.swirl)/100, kLock=dz(Pp.axisLock)/100, kTilt=dz(Pp.tilt)/100, kFace=dz(Pp.faceCam)/100;
+    const kShade=dz(Pp.shadeVar)/100;
+    const camAx=kFace!==0 ? this._camAxes() : null;
+    this._ar=[]; this._tintPl=[];
+    const tc=Array.isArray(Pp.tintColor)?Pp.tintColor:[1,1,1];
+    const models=this.planes.map((sp,i)=>{
+      let sc=this._effectiveScale(sp);
+      const rn0=Math.min(1.2, Math.hypot(sp.pos[0],sp.pos[1],sp.pos[2])/Math.max(1e-6,Pp.spread));
+      if(kGrad!==0) sc*=Math.pow(3, -kGrad*(rn0*2-1));
+      if(kPulse!==0){
+        const ps=(beatMode==='beat') ? (Math.sin((beatPhase||0)*Math.PI)*2-1)*(0.5+sp.floatFreq*0.5) : Math.sin(t*(0.5+sp.floatFreq)*1.7+sp.floatOff);
+        sc*=Math.max(0.05, 1+kPulse*ps);
+      }
+      let px=sp.pos[0], py=sp.pos[1], pz=sp.pos[2];
+      if(kHollow!==0){
+        const r=Math.hypot(px,py,pz);
+        if(r>1e-6){ const f=(r*(1-kHollow)+Pp.spread*kHollow)/r; px*=f; py*=f; pz*=f; }
+      }
+      if(kLX!==1) px*=kLX;
+      if(kLY!==1) py*=kLY;
+      if(kLZ!==1) pz*=kLZ;
+      if(kSwirl!==0){
+        const a=kSwirl*motionT*0.3*(1.2-Math.min(1,rn0)), c=Math.cos(a), sn=Math.sin(a);
+        const nx=px*c+pz*sn; pz=-px*sn+pz*c; px=nx;
+      }
+      if(kDrift!==0){
+        px+=Math.sin(motionT*sp.floatFreq*0.8+sp.floatOff+1.7)*kDrift;
+        pz+=Math.cos(motionT*sp.floatFreq*0.6+sp.floatOff*1.3)*kDrift;
+      }
+      let axis=sp.axis;
+      if(kLock!==0) axis=this.v3.norm([axis[0]*(1-kLock), axis[1]*(1-kLock)+kLock, axis[2]*(1-kLock)]);
+      let rot=this.m4.axisAngle(axis, sp.autoAngle + (kTilt!==0 ? sp.floatOff*kTilt : 0));
+      if(kFace!==0){
+        const cx=camAx.x, cy=camAx.y;
+        const bx=[0,1,2].map(j=>rot[j]*(1-kFace)+cx[j]*kFace);
+        const by0=[0,1,2].map(j=>rot[4+j]*(1-kFace)+cy[j]*kFace);
+        const x=this.v3.norm(bx);
+        const d=this.v3.dot(x,by0);
+        const y=this.v3.norm([by0[0]-x[0]*d, by0[1]-x[1]*d, by0[2]-x[2]*d]);
+        const z=this.v3.cross(x,y);
+        rot=new Float32Array([x[0],x[1],x[2],0, y[0],y[1],y[2],0, z[0],z[1],z[2],0, 0,0,0,1]);
+      }
+      const ar=(sp.imgAspect||1)*kAspect;
+      this._ar[i]=ar;
+      const hv=Math.sin((i+1)*78.233)*43758.5453, shade=1-kShade*0.9*(hv-Math.floor(hv));
+      this._tintPl[i]=[tc[0]*shade, tc[1]*shade, tc[2]*shade];
       return this.m4.mul(
-        this.m4.T(sp.pos[0], sp.pos[1]+sp.floatY, sp.pos[2]),
+        this.m4.T(px, py+sp.floatY, pz),
         this.m4.mul(rot, this.m4.Sv(sc*ar, sc, sc))
       );
     });
@@ -672,7 +765,7 @@ void main(){
     const asp=w/Math.max(1,h);
     const proj=this.m4.perspective(this.P.fov*Math.PI/180, asp, .05, 1000);
     const eye=this._camEye();
-    const vp=this.m4.mul(proj, this.m4.lookAt(eye, this.cam.target, [0,1,0]));
+    const vp=this.m4.mul(proj, this.m4.lookAt(eye, this.cam.target, this._camUp()));
     const bgv=(this.P.bg!=null)?this.P.bg:1.0;
     const bgc=Array.isArray(this.P.bgColor)?this.P.bgColor:[1,1,1];
     const bg=[bgc[0]*bgv,bgc[1]*bgv,bgc[2]*bgv];   // BG Color × BG (明るさ)
@@ -752,6 +845,17 @@ void main(){
     gl.uniform1f(L.ssoft, this.P.shadowSoft);
     gl.uniform1f(L.ssize, this.SHADOW_SZ);
     gl.uniform1f(L.son, this.P.shadowOn?1:0);
+    gl.uniform1f(L.corner, dz(Pp.corner)/100);
+    gl.uniform1f(L.frame, dz(Pp.frame)/100);
+    gl.uniform3fv(L.frameC, Array.isArray(Pp.frameColor)?Pp.frameColor:[1,1,1]);
+    gl.uniform1f(L.texZoom, dz(Pp.texZoom)/100);
+    const kOpac=dz(Pp.opacity)/100;
+    gl.uniform1f(L.opacity, kOpac);
+    if(kOpac<1) gl.depthMask(false);
+    gl.uniform1f(L.backDim, dz(Pp.backDim)/100);
+    gl.uniform1f(L.gloss, dz(Pp.gloss)/100);
+    gl.uniform1f(L.glossPow, dz(Pp.glossPow));
+    gl.uniform3fv(L.rimC, Array.isArray(Pp.rimColor)?Pp.rimColor:[0.4,0.6,1.0]);
     gl.uniformMatrix4fv(L.lvp, false, lightVP);
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform1i(L.tex, 0);
@@ -771,6 +875,8 @@ void main(){
       const sp=this.planes[i];
       gl.uniformMatrix4fv(L.mvp, false, this.m4.mul(vp, models[i]));
       gl.uniformMatrix4fv(L.model, false, models[i]);
+      gl.uniform1f(L.ar, this._ar[i]);
+      gl.uniform3fv(L.tint, this._tintPl[i]);
       gl.uniform1f(L.keyA, (this.P.pngAlpha && sp.keyColor)?1:0);
       gl.uniform3fv(L.keyC, sp.keyColor || [0,0,0]);
       gl.uniform3fv(L.bend, this._planeBendUniform(sp));
@@ -780,6 +886,7 @@ void main(){
       gl.drawElements(gl.TRIANGLES, geo.count, gl.UNSIGNED_SHORT, 0);
     }
     gl.disable(gl.BLEND);
+    if(kOpac<1) gl.depthMask(true);
 
     // 後始末: 一部の attribute は VAO に縛られていないため、外側で必要なら再 bind される
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

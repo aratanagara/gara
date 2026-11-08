@@ -17452,6 +17452,30 @@ void mainImage(out vec4 o, in vec2 f){
       ['Shadow Soft',   'shadowSoft', 0,   10,  0.5,   v=>v.toFixed(1)],
       ['Ground Mult',   'groundMult', -3,  0.5, 0.1,   v=>v.toFixed(1)],
       ['Ground Brt',    'groundBrt',  0,   1,   0.05,  v=>v.toFixed(2)],
+      ['Aspect',        'aspect',     20,  300, 1,     v=>Math.round(v)+'%'],
+      ['Corner',        'corner',     0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Frame',         'frame',      0,   30,  0.5,   v=>v.toFixed(1)+'%'],
+      ['Tex Zoom',      'texZoom',    100, 400, 1,     v=>Math.round(v)+'%'],
+      ['Opacity',       'opacity',    10,  100, 1,     v=>Math.round(v)+'%'],
+      ['Shade Var',     'shadeVar',   0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Back Dim',      'backDim',    0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Gloss',         'gloss',      0,   1000, 1,     v=>Math.round(v)+'%'],
+      ['Gloss Sharp',   'glossPow',   4,   200, 1,     v=>String(Math.round(v))],
+      ['Light Height',  'lightH',     0,   300, 1,     v=>Math.round(v)+'%'],
+      ['Bend 2nd',      'bend2',      0,   500, 1,     v=>Math.round(v)+'%'],
+      ['Layout X',      'layoutX',    10,  250, 1,     v=>Math.round(v)+'%'],
+      ['Layout Y',      'layoutY',    10,  250, 1,     v=>Math.round(v)+'%'],
+      ['Layout Z',      'layoutZ',    10,  250, 1,     v=>Math.round(v)+'%'],
+      ['Hollow',        'hollow',     0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Size Grad',     'sizeGrad',  -60, 60, 1,     v=>Math.round(v)+'%'],
+      ['Pulse',         'pulse',      0,   80,  1,     v=>Math.round(v)+'%'],
+      ['Drift',         'drift',      0,   10,  0.1,   v=>v.toFixed(1)],
+      ['Swirl',         'swirl',     -100, 100, 1,     v=>Math.round(v)+'%'],
+      ['Axis Lock',     'axisLock',   0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Tilt',          'tilt',       0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Face Cam',      'faceCam',    0,   100, 1,     v=>Math.round(v)+'%'],
+      ['Cam Roll',      'camRoll',   -90,  90,  1,     v=>Math.round(v)+'°'],
+      ['Cam Az Offset', 'camAzOff',  -180, 180, 1,     v=>Math.round(v)+'°'],
     ];
     for(const [label, key, mi, ma, st, fmt, cb] of specs){
       const row = document.createElement('div'); row.className = 'row';
@@ -17497,6 +17521,20 @@ void mainImage(out vec4 o, in vec2 f){
     });
     bgRow.appendChild(bgLab); bgRow.appendChild(bgInp);
     root.appendChild(bgRow);
+
+    for(const [label, key] of [['Frame Color','frameColor'], ['Tint Color','tintColor'], ['Rim Color','rimColor']]){
+      const cRow = document.createElement('div'); cRow.className='row';
+      const cLab = document.createElement('label'); cLab.textContent = label;
+      const cInp = document.createElement('input'); cInp.type='color';
+      cInp.value = toHex(Layer.P[key]);
+      cInp.dataset.default = (Layer.PDefaults && Layer.PDefaults[key]) ? toHex(Layer.PDefaults[key]) : cInp.value;
+      cInp.addEventListener('input', ()=>{
+        const v = cInp.value;
+        Layer.P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255];
+      });
+      cRow.appendChild(cLab); cRow.appendChild(cInp);
+      root.appendChild(cRow);
+    }
   },
 
   refreshPenParams(){
@@ -19684,6 +19722,36 @@ void mainImage(out vec4 o, in vec2 f){
       ['Warp',       'warp',      0,    1,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
       ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
+      ['Follow',      'follow',     0,    130, 1,    v=>String(Math.round(v))+'%'],
+      ['Center X',    'centerX',   -100,  100, 1,    v=>String(Math.round(v))+'%'],
+      ['Center Y',    'centerY',   -100,  100, 1,    v=>String(Math.round(v))+'%'],
+      ['Roll',        'roll',      -180,  180, 1,    v=>String(Math.round(v))+'°'],
+      ['Eye Dist',    'eyeDist',    2.9,  8,   0.1,  v=>v.toFixed(1)],
+      ['Path Size',   'pathSize',   30,   200, 1,    v=>String(Math.round(v))+'%'],
+      ['Path Depth',  'pathDepth',  20,   200, 1,    v=>String(Math.round(v))+'%'],
+      ['Loop Rate',   'loopRate',   30,   250, 1,    v=>String(Math.round(v))+'%'],
+      ['Flutter',     'flutter',    0,    500, 1,    v=>String(Math.round(v))+'%'],
+      ['Wheel X',     'wheelX',     0,    300, 1,    v=>String(Math.round(v))+'%'],
+      ['Wheel Y',     'wheelY',     0,    300, 1,    v=>String(Math.round(v))+'%'],
+      ['Wheel Z',     'wheelZ',     0,    300, 1,    v=>String(Math.round(v))+'%'],
+      ['Cam Spin',    'camSpin',    0,    300, 1,    v=>String(Math.round(v))+'%'],
+      ['Stamp Len',   'stampLen',   30,   300, 1,    v=>String(Math.round(v))+'%'],
+      ['Stamp Wid',   'stampWid',   30,   300, 1,    v=>String(Math.round(v))+'%'],
+      ['Stamp Round', 'stampRound', 0,    100, 1,    v=>String(Math.round(v))+'%'],
+      ['Twist',       'twist',     -90,   90,  1,    v=>String(Math.round(v))+'°'],
+      ['Press Rate',  'pressRate',  20,   400, 1,    v=>String(Math.round(v))+'%'],
+      ['Press Min',   'pressMin',   0,    100, 1,    v=>String(Math.round(v))+'%'],
+      ['Tail Taper',  'tailTaper',  0,    200, 1,    v=>String(Math.round(v))+'%'],
+      ['Warp Rate',   'warpRate',   20,   400, 1,    v=>String(Math.round(v))+'%'],
+      ['Bird Var',    'birdVar',    0,    100, 1,    v=>String(Math.round(v))+'%'],
+      ['Stray Reach', 'strayReach', 20,   300, 1,    v=>String(Math.round(v))+'%'],
+      ['Cluster R',   'clusterR',   20,   300, 1,    v=>String(Math.round(v))+'%'],
+      ['Depth Slope', 'depthSlope', 0,    200, 1,    v=>String(Math.round(v))+'%'],
+      ['Edge Soft',   'edgeSoft',   70,   800, 5,    v=>(v/100).toFixed(2)+'px'],
+      ['Tail Mix',    'tailMix',    0,    100, 1,    v=>String(Math.round(v))+'%'],
+      ['Tail Fade',   'tailFade',   0,    100, 1,    v=>String(Math.round(v))+'%'],
+      ['Speckle',     'speckle',    0,    100, 1,    v=>String(Math.round(v))+'%'],
+      ['Beat Pulse',  'beatPulse',  0,    150, 1,    v=>String(Math.round(v))+'%'],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
@@ -19697,7 +19765,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
-    for(const [label,key] of [['Ink','ink'],['Paper','paper']]){
+    for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Tail Color','tailColor']]){
       const row = mkRow();
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
@@ -19711,7 +19779,7 @@ void mainImage(out vec4 o, in vec2 f){
       b.title='群れ・筆・破片のパラメータをランダム生成 (色は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const [label,key,mi,ma,step] of specs){
-          if(key === 'audio' || key === 'paperAlpha') continue;
+          if(key === 'audio' || key === 'paperAlpha' || key === 'follow' || key === 'centerX' || key === 'centerY' || key === 'roll' || key === 'eyeDist' || key === 'beatPulse') continue;
           const v = mi + Math.random()*(ma - mi);
           P[key] = +(Math.round(v/step)*step).toFixed(4);
         }
