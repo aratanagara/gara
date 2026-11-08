@@ -537,7 +537,56 @@ const NovelTerminal = {
     holeLayer:true,    // Fluid: 黒抜きレイヤー
     cursor:true,       // Fluid: 走査カーソル
     morph:1.2,         // 旧シーン間の変形トランジション秒数 (0=カット)
+    // ── 第 2 弾 (既定値 = 従来の見た目。% は 100 が従来値) ──
+    leading:100, tracking:100, rowWave:100, colWave:100, waveFreq:100,
+    shapeScale:100, lineWidth:100, rhythmAmt:100,
+    edgeNoise:100,
+    vertSize:100, vertGap:100, vertCut:100, cursorSize:100, flicker:100,
+    meltDepth:100, dripLen:100, meltFade:100, meltGhost:100, meltLeading:100, meltSize:100,
+    colCount:100, colGutter:100, colLeading:100, colMargin:100,
+    vsGap:100, vsPitch:100,
+    typerWidth:100, typerLeading:100,
+    renderCell:100, renderCutoff:100, renderFreq:100,
+    tintColor:[72/255,1,126/255], flashColor:[110/255,220/255,160/255], monoColor:[232/255,234/255,238/255],
   },
+  // 第 2 弾 param の UI 定義 [label,key,min,max,step,fmt,title]。refreshNovelParams が既存行の後ろに並べる
+  SPECS:[
+    ['Leading','leading',50,250,5,v=>v.toFixed(0)+'%','Fluid: 行間'],
+    ['Tracking','tracking',65,250,5,v=>v.toFixed(0)+'%','Fluid: 字送り'],
+    ['Row Wave','rowWave',0,300,5,v=>v.toFixed(0)+'%','Fluid: 行ごとの横うねりの振れ幅'],
+    ['Col Wave','colWave',0,300,5,v=>v.toFixed(0)+'%','Fluid: 列ごとの縦うねりの振れ幅'],
+    ['Wave Freq','waveFreq',0,400,10,v=>v.toFixed(0)+'%','Fluid: うねりの細かさ'],
+    ['Shape Scale','shapeScale',40,200,5,v=>v.toFixed(0)+'%','Fluid: 円・三角・矩形の大きさ'],
+    ['Line Width','lineWidth',30,300,5,v=>v.toFixed(0)+'%','Fluid: 斜線の太さ'],
+    ['Rhythm','rhythmAmt',0,250,5,v=>v.toFixed(0)+'%','Fluid: 格子状の濃淡のリズム'],
+    ['Edge Noise','edgeNoise',0,300,5,v=>v.toFixed(0)+'%','Fluid: 図形の縁のざらつき'],
+    ['Vert Size','vertSize',70,250,5,v=>v.toFixed(0)+'%','Fluid: 縦書きレイヤーの文字サイズ'],
+    ['Vert Gap','vertGap',60,250,5,v=>v.toFixed(0)+'%','Fluid: 縦書きの列間'],
+    ['Vert Cut','vertCut',0,250,5,v=>v.toFixed(0)+'%','Fluid: 縦書きの出現しきい値'],
+    ['Cursor Size','cursorSize',30,400,10,v=>v.toFixed(0)+'%','Fluid: 走査カーソルの大きさ'],
+    ['Flicker','flicker',0,300,5,v=>v.toFixed(0)+'%','Fluid: 行ごとのちらつき'],
+    ['Melt Depth','meltDepth',25,180,5,v=>v.toFixed(0)+'%','Meltdown: 溶け始める位置'],
+    ['Drip Length','dripLen',0,300,5,v=>v.toFixed(0)+'%','Meltdown: 垂れる長さ'],
+    ['Melt Fade','meltFade',0,140,5,v=>v.toFixed(0)+'%','Meltdown: 溶けた文字の暗さ'],
+    ['Melt Ghost','meltGhost',0,200,5,v=>v.toFixed(0)+'%','Meltdown: 溶けた残像の濃さ'],
+    ['Melt Leading','meltLeading',70,220,5,v=>v.toFixed(0)+'%','Meltdown: 行間'],
+    ['Melt Size','meltSize',85,220,5,v=>v.toFixed(0)+'%','Meltdown: 文字サイズ'],
+    ['Col Count','colCount',50,200,5,v=>v.toFixed(0)+'%','Columns: 段数'],
+    ['Col Gutter','colGutter',20,200,5,v=>v.toFixed(0)+'%','Columns: 段間'],
+    ['Col Leading','colLeading',70,220,5,v=>v.toFixed(0)+'%','Columns: 行間'],
+    ['Col Margin','colMargin',0,200,5,v=>v.toFixed(0)+'%','Columns: 外側の余白'],
+    ['Vert Col Gap','vsGap',50,250,5,v=>v.toFixed(0)+'%','Vertical: 列間'],
+    ['Vert Pitch','vsPitch',60,220,5,v=>v.toFixed(0)+'%','Vertical: 字送り'],
+    ['Typer Width','typerWidth',40,120,5,v=>v.toFixed(0)+'%','Typer: 行の幅'],
+    ['Typer Leading','typerLeading',70,250,5,v=>v.toFixed(0)+'%','Typer: 行間'],
+    ['Render Cell','renderCell',60,200,5,v=>v.toFixed(0)+'%','ASCII Render: セルの大きさ'],
+    ['Render Cutoff','renderCutoff',30,200,5,v=>v.toFixed(0)+'%','ASCII Render: 描かない薄い部分のしきい値'],
+    ['Render Freq','renderFreq',30,300,5,v=>v.toFixed(0)+'%','ASCII Render: 波の細かさ'],
+  ],
+  // 色 param の UI 定義 [label,key,title]
+  COLORS:[['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono の文字色']],
+  _k(key){ const v=this.P && this.P[key]; if(v==null) return 1; return ((typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v)/100; },
+  _rgb(key,def){ const c=this.P && this.P[key]; return c ? [Math.round(c[0]*255),Math.round(c[1]*255),Math.round(c[2]*255)] : def; },
   novMode: 0, _novT0: 0,
   MORPH: 1.2, MORPH_CAP: 600, _emit: null, _mA: null, _mB: null, _morphKey: -1,   // モード境界の変形トランジション用
   GLITCH: "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ0123456789#$%&*+=<>?/\\|".split(""),
@@ -600,7 +649,7 @@ const NovelTerminal = {
   _wrap(perLine){ const o=(this._off||0), key=perLine+'_'+o; if(this._wrapKey===key) return this._wrapCache; const L=[], N=this.PARAS.length, oo=o%N; for(let k=0;k<N;k++){ const b=this._indent(this.PARAS[(k+oo)%N]); for(let i=0;i<b.length;i+=perLine) L.push(b.slice(i,i+perLine)); } this._wrapCache=L; this._wrapKey=key; return L; },   // 同一(perLine,_off)はキャッシュ(毎フレーム再折返しを回避)
   _dTyper(p, t, cell){
     // 最初は中央の1行、打った行が増えるごとに上下へ展開(縦も横も中央揃え)。タイピンググリッチ付き。
-    const lh = cell*1.5, perLine = Math.max(8, Math.floor((p.width*0.82)/cell));
+    const lh = cell*1.5*this._k('typerLeading'), perLine = Math.max(8, Math.floor((p.width*0.82*this._k('typerWidth'))/cell));
     const maxRows = Math.max(1, Math.floor((p.height - cell)/lh));
     const flat = this._chars().join("");
     const head = this._eased(t)*78, typed = Math.floor(head);
@@ -629,7 +678,7 @@ const NovelTerminal = {
   },
   _dVert(p, t, cell){
     // 縦書き(右→左)。画面に収まる列数だけ描画(全段落を剰余で重ね描きしない=軽量)。列はキャッシュ。
-    const chH=cell*1.08, colW=cell*1.95, top=cell*1.8, perCol=Math.max(4,Math.floor((p.height-top-cell*1.2)/chH));
+    const chH=cell*1.08*this._k('vsPitch'), colW=cell*1.95*this._k('vsGap'), top=cell*1.8, perCol=Math.max(4,Math.floor((p.height-top-cell*1.2)/chH));
     const o=(this._off||0), key='V'+perCol+'_'+o;
     if(this._vcKey!==key){ const vc=[], N=this.PARAS.length, oo=o%N; for(let k=0;k<N;k++){ const b=this._indent(this.PARAS[(k+oo)%N]); for(let i=0;i<b.length;i+=perCol) vc.push(b.slice(i,i+perCol)); } this._vc=vc; this._vcKey=key; }
     const vc=this._vc, tot=Math.max(1,vc.length);
@@ -644,11 +693,11 @@ const NovelTerminal = {
   },
   _dColumns(p, t, cell){
     // 段組(マルチカラム)連続スクロール: 本文を数段に割り、段1→段2→…と連続した読み順で全段を一体に上へ流す。構造的かつ連続的。
-    const margin = Math.round(Math.min(p.width, p.height)*0.065);       // 余白(フレーム内側)
-    const nCol = Math.max(2, Math.round(p.width/(cell*20)));            // 段数
-    const gutter = cell*2.2;                                            // 段間
+    const margin = Math.round(Math.min(p.width, p.height)*0.065*this._k('colMargin'));       // 余白(フレーム内側)
+    const nCol = Math.max(2, Math.round(p.width/(cell*20)*this._k('colCount')));            // 段数
+    const gutter = cell*2.2*this._k('colGutter');                                            // 段間
     const colW = (p.width - margin*2 - gutter*(nCol-1)) / nCol;
-    const lh = cell*1.6, perLine = Math.max(6, Math.floor(colW/cell));
+    const lh = cell*1.6*this._k('colLeading'), perLine = Math.max(6, Math.floor(colW/cell));
     const top = margin, colH = p.height - margin*2;
     const rowsPerCol = Math.max(1, Math.floor(colH/lh));
     const lines = this._wrap(perLine), total = Math.max(1, lines.length);
@@ -672,7 +721,7 @@ const NovelTerminal = {
   },
   _dRender(p, t, cell){
     // ターミナルがアスキーアートを動的に描画: 粗い濃度ランプ(ASCII)で流動する形を、走査ヘッドが上から順に「描いて」いく。等幅・端末風・余白あり・軽量。
-    const big = Math.round(cell*1.5);                       // 粗いセル(=軽量 & いかにもASCII art)
+    const big = Math.round(cell*1.5*this._k('renderCell'));                       // 粗いセル(=軽量 & いかにもASCII art)
     const cols = Math.max(8, Math.floor(p.width/big)), rows = Math.max(6, Math.floor(p.height/big));
     const RAMP = " .,:-=+ito*xczsCXOQ0%#8B@&$";             // 濃度ランプ(暗→明)
     const RL = RAMP.length-1, pa = this._pal();
@@ -680,6 +729,7 @@ const NovelTerminal = {
     const speed = rows*0.85, cyc = rows + Math.floor(rows*0.55);   // 1サイクルで描き切り→少し保持→再描画
     const head = Math.min(rows, (t*speed) % cyc);          // 描画ヘッド(行)
     const ph = t*0.9;
+    const kRCut=this._k('renderCutoff'), kRF=this._k('renderFreq');
     const ax = cols*(0.5+0.30*Math.sin(t*0.43)), ay = rows*(0.5+0.30*Math.cos(t*0.37));
     const bx = cols*(0.5+0.34*Math.cos(t*0.29+1.3)), by = rows*(0.5+0.28*Math.sin(t*0.31+0.7));
     for(let r=0;r<rows;r++){
@@ -687,9 +737,9 @@ const NovelTerminal = {
       const glow = (head-r) < 1.6 ? (1-(head-r)/1.6)*0.6 : 0;   // 描きたて行はにじむ
       for(let c=0;c<cols;c++){
         const da = Math.hypot((c-ax)*0.92, r-ay), db = Math.hypot((c-bx)*0.92, r-by);
-        let f = Math.sin(da*0.55 - ph*2.0) + Math.sin(db*0.50 + ph*1.6) + Math.sin((c+r)*0.18 + ph);
+        let f = Math.sin(da*0.55*kRF - ph*2.0) + Math.sin(db*0.50*kRF + ph*1.6) + Math.sin((c+r)*0.18*kRF + ph);
         f = (f+3)/6;                                          // 0..1
-        if(f < 0.32) continue;                               // 薄い所は描かない(余白)
+        if(f < 0.32*kRCut) continue;                               // 薄い所は描かない(余白)
         const ch = RAMP[(f*RL)|0]; if(ch===' ') continue;
         const g = Math.min(1, f + glow);
         const R=pa[0][0]+(pa[1][0]-pa[0][0])*g, G=pa[0][1]+(pa[1][1]-pa[0][1])*g, B=pa[0][2]+(pa[1][2]-pa[0][2])*g;
@@ -705,11 +755,12 @@ const NovelTerminal = {
     p.noStroke(); p.rectMode(p.CORNER); if(!this._emit){ p.fill(9,9,11); p.rect(0,0,W,H); }
     const pad=Math.round(M*0.05);
     const codeX=pad, codeW=W - pad*2, codeTop=pad, codeH=H - pad*2;   // サイドバー撤去 → 本文を全幅に
-    const tc=Math.max(10, Math.round(M/48)), lh=tc*1.5, gut=tc*3.0, tx0=codeX+gut;
+    const kMS=this._k('meltSize'), kML=this._k('meltLeading'), kMD=this._k('meltDepth'), kDrip=this._k('dripLen'), kMF=this._k('meltFade'), kGh=this._k('meltGhost');
+    const tc=Math.max(kMS===1 ? 10 : 6, Math.round(M/48*kMS)), lh=tc*1.5*kML, gut=tc*3.0, tx0=codeX+gut;
     const perLine=Math.max(8, Math.floor((codeW-gut)/tc));
     const lines=this._wrap(perLine), tot=Math.max(1,lines.length);
     const rows=Math.ceil(codeH/lh)+1, sc=t*0.8, base=Math.floor(sc), fr=sc-base;
-    const meltStart=0.40+0.10*Math.sin(t*0.5);
+    const meltStart=(0.40+0.10*Math.sin(t*0.5))*kMD;
     p.textAlign(p.LEFT, p.TOP);
     const dc=p.drawingContext; dc.save(); dc.beginPath(); dc.rect(codeX, codeTop, codeW, codeH); dc.clip();
     for(let i=0;i<rows;i++){
@@ -720,10 +771,10 @@ const NovelTerminal = {
       for(let c=0;c<ln.length;c++){
         let ch=ln[c]; const col=this._posCol(ch); let y=y0, cr=col[0], cg=col[1], cb=col[2];
         if(melt>0){
-          const ph=this._rng(li*31+c*7), drip=melt*melt*lh*(1.5+7.0*ph); y+=drip;
+          const ph=this._rng(li*31+c*7), drip=melt*melt*lh*(1.5+7.0*ph)*kDrip; y+=drip;
           if(melt>0.7 && this._rng(li*13+c*5+Math.floor(t*3))>0.62) ch=this.GLITCH[(this._rng(c*3+li)*this.GLITCH.length)|0];
-          const fade=1-melt*0.65;
-          if(!this._emit){ p.fill(col[0]*fade*0.45, col[1]*fade*0.45, col[2]*fade*0.45); this._gly(p, ch, tx0+c*tc, y-lh*0.55, tc); }   // 溶けた残像
+          const fade=1-melt*0.65*kMF;
+          if(!this._emit){ p.fill(col[0]*fade*0.45*kGh, col[1]*fade*0.45*kGh, col[2]*fade*0.45*kGh); this._gly(p, ch, tx0+c*tc, y-lh*0.55, tc); }   // 溶けた残像
           cr=col[0]*fade; cg=col[1]*fade; cb=col[2]*fade;
         }
         this._put(p, ch, tx0+c*tc, y, tc, cr, cg, cb);
@@ -1024,7 +1075,13 @@ const NovelTerminal = {
     const src = this._novelStream();
     const vSrc = src.filter(ch => ch !== this.INDENT && ch !== " " && ch !== "　");
     const fs = Math.max(9, Math.round(M/62 * (this.P ? this.P.charSize : 1)));
-    const adv = fs, lh = fs*1.75;
+    const kTrack=this._k('tracking'), kLead=this._k('leading'), kRW=this._k('rowWave'), kCW=this._k('colWave'), kWF=this._k('waveFreq');
+    const kShape=this._k('shapeScale'), kLine=this._k('lineWidth'), kRhythm=this._k('rhythmAmt');
+    const kEN=this._k('edgeNoise');
+    const kVSize=this._k('vertSize'), kVGap=this._k('vertGap'), kVCut=this._k('vertCut');
+    const kCur=this._k('cursorSize'), kFlick=this._k('flicker');
+    const tintRGB=this._rgb('tintColor',[72,255,126]), monoRGB=this._rgb('monoColor',[232,234,238]);
+    const adv = fs*kTrack, lh = fs*1.75*kLead;
     const base = Math.floor(t*17) % src.length;
     const aspect = W/H;
     p.textAlign(p.LEFT,p.TOP);
@@ -1092,24 +1149,24 @@ const NovelTerminal = {
       const triY = cfg[5] + 0.22*Math.cos(local*4.3 + phase);
       const rectX = cfg[6] + (cfg[8]-cfg[6])*sweep + jumpY*0.12;
       const rectY = cfg[7] + (cfg[9]-cfg[7])*sweep + jumpX*0.10;
-      const circleRadius = 0.26 + 0.20*sweep;
+      const circleRadius = (0.26 + 0.20*sweep)*kShape;
       const circleRing = 1 - Math.abs(Math.hypot(nx-circleX, ny-circleY) - circleRadius) / 0.070;
       const circleFill = 1 - Math.hypot(nx-circleX, ny-circleY) / circleRadius;
-      const triSize = 0.58 + 0.30*Math.abs(swing);
+      const triSize = (0.58 + 0.30*Math.abs(swing))*kShape;
       const triAngle = scene*0.50 + local*2.45;
       const triFill = tri(nx, ny, triX, triY, triSize, triAngle);
       const triEdge = triOutline(nx, ny, triX, triY, triSize, triAngle);
-      const rectW = 0.42 + 0.44*(1-sweep);
-      const rectH = 0.34 + 0.26*sweep;
+      const rectW = (0.42 + 0.44*(1-sweep))*kShape;
+      const rectH = (0.34 + 0.26*sweep)*kShape;
       const rectAngle = scene*0.38 + local*1.70;
       const squareFill = rect(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
       const squareEdge = rectOutline(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
-      const mainLine = line(nx, ny, -1.20 + scene*0.42 + local*1.35, -0.52 + scene*0.18 - local*0.55 + jumpX*0.15, 0.060);
-      const subLineA = line(nx, ny, 0.34 + scene*0.21 - local*0.90, 0.36 - scene*0.09 + jumpY*0.10, 0.044);
-      const subLineB = line(nx, ny, 1.38 - scene*0.19 + local*0.62, -0.24 + scene*0.07 - jumpX*0.12, 0.038);
+      const mainLine = line(nx, ny, -1.20 + scene*0.42 + local*1.35, -0.52 + scene*0.18 - local*0.55 + jumpX*0.15, 0.060*kLine);
+      const subLineA = line(nx, ny, 0.34 + scene*0.21 - local*0.90, 0.36 - scene*0.09 + jumpY*0.10, 0.044*kLine);
+      const subLineB = line(nx, ny, 1.38 - scene*0.19 + local*0.62, -0.24 + scene*0.07 - jumpX*0.12, 0.038*kLine);
       const gridX = Math.floor((nx+1.14)*(5 + (scene%3)*2) + Math.floor(local*4));
       const gridY = Math.floor((ny+1.06)*(4 + (scene%2)*3) - Math.floor(local*5));
-      const rhythm = ((gridX*2 + gridY + scene + va) % (3 + scene%2)) === 0 ? 0.13 : -0.10;
+      const rhythm = (((gridX*2 + gridY + scene + va) % (3 + scene%2)) === 0 ? 0.13 : -0.10)*kRhythm;
       const voidShape = Math.max(0, 1 - Math.hypot(nx-(0.22*Math.sin(local*6.283+scene)), ny-(0.18*Math.cos(local*5.1+phase))) / (0.12+0.08*sweep));
       const circleShape = (scene + va) % 2 === 0 ? circleRing : circleFill*0.86;
       const triShape = (scene + Math.floor(local*2)) % 2 === 0 ? triEdge*0.98 : triFill*0.90;
@@ -1182,7 +1239,7 @@ const NovelTerminal = {
       alpha = Math.min(255, alpha * alphaMul);
       let col;
       if(inkMode === 1){ const c = this._posCol(ch); col = [c[0], c[1], c[2], alpha]; }
-      else if(inkMode === 2){ col = [232, 234, 238, alpha]; }
+      else if(inkMode === 2){ col = [monoRGB[0], monoRGB[1], monoRGB[2], alpha]; }
       else if(inkMode === 3){ col = [96, 245, 150, alpha]; }
       else col = this._mixColor(
         this._textColorFor(ch, variant, alpha, prev, next),
@@ -1190,11 +1247,11 @@ const NovelTerminal = {
         mu
       );
       const terminalMix = (0.10 + 0.08*Math.sin(t*0.17)) * (this.P ? this.P.tint : 1);
-      const linePulse = 0.86 + 0.14*Math.sin(t*8.0 + Math.floor(y/lh)*0.7);
+      const linePulse = 0.86 + 0.14*Math.sin(t*8.0 + Math.floor(y/lh)*0.7)*kFlick;
       p.fill(
-        col[0]*(1-terminalMix) + 72*terminalMix,
-        col[1]*(1-terminalMix) + 255*terminalMix,
-        col[2]*(1-terminalMix) + 126*terminalMix,
+        col[0]*(1-terminalMix) + tintRGB[0]*terminalMix,
+        col[1]*(1-terminalMix) + tintRGB[1]*terminalMix,
+        col[2]*(1-terminalMix) + tintRGB[2]*terminalMix,
         col[3]*linePulse
       );
       if(vertical) this._glyV(p, ch, x, y, cs);
@@ -1219,10 +1276,10 @@ const NovelTerminal = {
     const driftX = Math.sin(t*0.12)*adv*2.1*driftAmt;
     const driftY = Math.cos(t*0.10)*lh*1.7*driftAmt;
     for(let r=-6; r<rows; r++){
-      const rowWave = Math.sin(t*0.20+r*0.13)*adv*0.55;
+      const rowWave = Math.sin(t*0.20+r*0.13*kWF)*adv*0.55*kRW;
       for(let c=-6; c<cols; c++){
         const x = c*adv + driftX + rowWave;
-        const y = r*lh + driftY + Math.cos(t*0.16+c*0.09)*lh*0.35;
+        const y = r*lh + driftY + Math.cos(t*0.16+c*0.09*kWF)*lh*0.35*kCW;
         const nx = ((x/W)*2-1)*aspect;
         const ny = (y/H)*2-1;
         const f0 = composedField(nx, ny, variant, 0.0).h;
@@ -1234,7 +1291,7 @@ const NovelTerminal = {
         const splitCut = splitAmt > 0.38 && ((Math.floor((nx+1.1)*4.2) + Math.floor((ny+1.0)*5.1)) % 3) === 0;
         const dens = Math.max(0.3, (this.P && typeof this.P.density === 'number') ? this.P.density : 1);
         const threshold = (hatch || contour ? 0.30 : 0.48 + splitAmt*0.04) / dens;
-        if(field + noise*0.19 < threshold) continue;
+        if(field + noise*0.19*kEN < threshold) continue;
         if(splitCut && noise < splitAmt*0.20) continue;
         let alpha = 58 + Math.max(0, Math.min(1.05, field))*170;
         if(contour) alpha += 34;
@@ -1251,8 +1308,8 @@ const NovelTerminal = {
       }
     }
 
-    const vfs = Math.max(10, Math.round(M/58));
-    const colW = vfs*1.75, chH = vfs;
+    const vfs = Math.max(kVSize===1 ? 10 : 6, Math.round(M/58*kVSize));
+    const colW = vfs*1.75*kVGap, chH = vfs;
     const vCols = (this.P && this.P.vertLayer === false) ? 0 : Math.ceil(W/colW) + 8;
     const vRows = Math.ceil(H/chH) + 10;
     for(let c=-4; c<vCols; c++){
@@ -1264,7 +1321,7 @@ const NovelTerminal = {
         const f0 = composedField(nx, ny, variant, 0.65).v;
         const f1 = composedField(nx, ny, nextVariant, 2.05).v;
         const field = f0 + (f1-f0)*mu;
-        if(field < 0.20 + splitAmt*0.01) continue;
+        if(field < 0.20*kVCut + splitAmt*0.01) continue;
         const idx = (Math.floor(base*0.8) + c*vRows + r + vSrc.length*20) % vSrc.length;
         const ch = vSrc[idx] || "";
         const alpha = 54 + Math.max(0, Math.min(1, field))*132;
@@ -1297,7 +1354,7 @@ const NovelTerminal = {
     const cursorY = H*(0.88 + 0.025*Math.sin(t*0.8));
     if((!this.P || this.P.cursor !== false) && Math.floor(t*3.8)%2 === 0){
       p.fill(96,255,142,78);
-      p.rect(cursorX, cursorY, adv*1.2, lh*0.92);
+      p.rect(cursorX, cursorY, adv*1.2*kCur, lh*0.92*kCur);
     }
 
     this._lastFont = null;
@@ -1357,7 +1414,7 @@ const NovelTerminal = {
       const frac = bc - Math.floor(bc);
       const bp = Math.pow(1.0 - frac, 3.0) * (this.P ? this.P.beatFlash : 1);
       p.noStroke();
-      if(bp > 0.01){ p.fill(110, 220, 160, 26 * bp); p.rect(0, 0, p.width, p.height); }
+      if(bp > 0.01){ const fcl=this._rgb('flashColor',[110,220,160]); p.fill(fcl[0], fcl[1], fcl[2], 26 * bp); p.rect(0, 0, p.width, p.height); }
     }
   },
   update(){ /* state は draw 内で時刻ベース算出 */ },

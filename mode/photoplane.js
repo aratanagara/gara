@@ -33,7 +33,51 @@ const PhotoPlane = {
     beatPulse:0.35,    // 拍での回転/ワープの弱いキック
     seed:7,
     bg:[0.05,0.05,0.06],
+    // ── 第 2 弾 (既定値 = 従来の見た目) ──
+    cornerRound:0, frameW:0, aspectSq:100, twist:0, fold:0, cropZoom:100,
+    clX:100, clY:100, clZ:100, hollow:0, lookY:0, camRoll:0, roamEl:100, roamDist:100,
+    spinVar:0, axisLock:0, swirl:0, floatAmp:0, warpYRatio:80,
+    lightAz:0, lightEl:0, spec:0, specShine:32, rim:0, fog:0, fogStart:8,
+    hueVar:0, brightVar:0, softFocus:0, fringe:0, mosaic:0, edgeFade:0,
+    tint:[1,1,1], frameColor:[1,1,1], rimColor:[1,1,1],
   },
+  // 第 2 弾 param の UI 定義 [label,key,min,max,step,fmt,relayout]。refreshPhotoParams が既存行の後ろに並べる
+  SPECS:[
+    ['Corner Round','cornerRound',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Frame Width','frameW',0,60,1,v=>v.toFixed(0)+'%',false],
+    ['Aspect Squash','aspectSq',0,200,5,v=>v.toFixed(0)+'%',false],
+    ['Twist','twist',-60,60,2,v=>v.toFixed(0)+'\u00b0',false],
+    ['Fold','fold',-0.8,0.8,0.05,v=>v.toFixed(2),false],
+    ['Crop Zoom','cropZoom',60,300,5,v=>v.toFixed(0)+'%',false],
+    ['Cluster X','clX',30,150,5,v=>v.toFixed(0)+'%',false],
+    ['Cluster Y','clY',30,150,5,v=>v.toFixed(0)+'%',false],
+    ['Cluster Z','clZ',30,150,5,v=>v.toFixed(0)+'%',false],
+    ['Hollow','hollow',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Look Height','lookY',-5,5,0.25,v=>v.toFixed(2),false],
+    ['Cam Roll','camRoll',-90,90,1,v=>v.toFixed(0)+'\u00b0',false],
+    ['Roam Elev Range','roamEl',50,200,5,v=>v.toFixed(0)+'%',false],
+    ['Roam Dist Range','roamDist',0,200,5,v=>v.toFixed(0)+'%',false],
+    ['Spin Var','spinVar',0,200,5,v=>v.toFixed(0)+'%',false],
+    ['Axis Lock','axisLock',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Swirl','swirl',-1,1,0.05,v=>v.toFixed(2),false],
+    ['Float','floatAmp',0,1.2,0.1,v=>v.toFixed(1),false],
+    ['Warp Y Ratio','warpYRatio',20,300,5,v=>v.toFixed(0)+'%',false],
+    ['Light Azimuth','lightAz',-180,180,5,v=>v.toFixed(0)+'\u00b0',false],
+    ['Light Elev','lightEl',-60,60,5,v=>v.toFixed(0)+'\u00b0',false],
+    ['Specular','spec',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Spec Shine','specShine',2,128,2,v=>v.toFixed(0),false],
+    ['Rim','rim',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Fog','fog',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Fog Start','fogStart',0,30,0.5,v=>v.toFixed(1),false],
+    ['Hue Var','hueVar',0,180,5,v=>v.toFixed(0)+'\u00b0',false],
+    ['Bright Var','brightVar',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Soft Focus','softFocus',0,6,0.1,v=>v.toFixed(1),false],
+    ['Fringe','fringe',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Mosaic','mosaic',0,30,1,v=>v.toFixed(0)+'%',false],
+    ['Edge Fade','edgeFade',0,100,1,v=>v.toFixed(0)+'%',false],
+  ],
+  // 色 param の UI 定義 [label,key]
+  COLORS:[['Tint','tint'],['Frame Color','frameColor'],['Rim Color','rimColor']],
 
   // ===== math =====
   m4:{
@@ -54,9 +98,13 @@ const PhotoPlane = {
   // カメラ: ランダムな新ターゲット位置を選ぶ (snap=即移動)
   _newCamTarget(snap){
     const el0 = (this.P.camEl==null?0.28:this.P.camEl);
+    const dz=(v)=>(typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v;
+    const rEl = this.P.roamEl==null ? 1 : dz(this.P.roamEl)/100, rDist = this.P.roamDist==null ? 1 : dz(this.P.roamDist)/100;
     this.cam.tAz = Math.random()*Math.PI*2;
-    this.cam.tEl = Math.max(-1.2, Math.min(1.3, el0 + (Math.random()-0.5)*1.5));
-    this.cam.tDist = this.P.dist * (0.72 + Math.random()*0.55);
+    this.cam.tEl = Math.max(-1.2, Math.min(1.3, el0 + (Math.random()-0.5)*1.5*rEl));
+    let dm = 0.72 + Math.random()*0.55;
+    if(rDist !== 1) dm = 1 + (dm-1)*rDist;
+    this.cam.tDist = this.P.dist * dm;
     if(snap){ this.cam.az=this.cam.tAz; this.cam.el=this.cam.tEl; this.cam.dist=this.cam.tDist; }
   },
   _angLerp(a,b,k){ let d=b-a; while(d>Math.PI)d-=Math.PI*2; while(d<-Math.PI)d+=Math.PI*2; return a+d*k; },
@@ -70,17 +118,19 @@ precision highp float;
 in vec2 aPos;   // -0.5..0.5
 in vec2 aUV;    // 0..1
 uniform mat4 uMVP, uModel;
-uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq;
+uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq, uWarpYR, uFold, uTwist;
 uniform vec2 uBend;      // 端の反り x,y
 uniform vec4 uCrop;      // u0,v0,u1,v1
-out vec2 vUv; out vec3 vN; out vec3 vWorld;
+out vec2 vUv; out vec3 vN; out vec3 vWorld; out vec2 vL; out vec2 vQ;
 vec3 displace(vec2 q){
   vec2 p = q; p.x *= uAspect;
   float z = 0.0;
   z += uBend.x*uBendMul * (p.x*p.x - 0.0833);
   z += uBend.y*uBendMul * (p.y*p.y - 0.0833);
   float f = uWarpFreq;
-  z += uWarpAmp * sin(p.x*f + uTime*1.3 + uSeed) * cos(p.y*f*0.8 - uTime*0.9 + uSeed*1.7);
+  z += uWarpAmp * sin(p.x*f + uTime*1.3 + uSeed) * cos(p.y*f*uWarpYR - uTime*0.9 + uSeed*1.7);
+  if(uFold != 0.0) z += uFold*abs(p.x);
+  if(uTwist != 0.0){ float th = uTwist*p.x, c = cos(th), s = sin(th); vec2 yz = vec2(p.y, z); p.y = yz.x*c - yz.y*s; z = yz.x*s + yz.y*c; }
   return vec3(p, z);
 }
 void main(){
@@ -91,23 +141,48 @@ void main(){
   vWorld = wp.xyz;
   vN = mat3(uModel) * n;
   vUv = mix(uCrop.xy, uCrop.zw, aUV);
+  vL = aUV; vQ = aPos;
   gl_Position = uMVP * wp;
 }`;
     const fs = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec3 vN; in vec3 vWorld;
+in vec2 vUv; in vec3 vN; in vec3 vWorld; in vec2 vL; in vec2 vQ;
 uniform sampler2D uTex;
 uniform vec3 uCam;
-uniform float uAmbient;
+uniform float uAmbient, uAspect, uRound, uFrameW, uEdgeFade, uZoom, uBlur, uFringe, uMosaic, uHue, uBright, uSpec, uShine, uRim, uFog, uFogStart;
+uniform vec3 uLight, uTint, uFrameCol, uRimCol, uFogCol;
+uniform vec4 uCrop;
 out vec4 frag;
 void main(){
-  vec3 tex = texture(uTex, vUv).rgb;
+  vec2 uv = vUv;
+  if(uMosaic > 0.0){ float cells = 100.0/uMosaic; uv = mix(uCrop.xy, uCrop.zw, (floor(vL*cells)+0.5)/cells); }
+  if(uZoom != 1.0){ vec2 cc = (uCrop.xy+uCrop.zw)*0.5; uv = cc + (uv-cc)/uZoom; }
+  vec3 tex;
+  if(uFringe > 0.0){ vec2 o = vec2(uFringe*0.012, 0.0); tex = vec3(texture(uTex, uv+o, uBlur).r, texture(uTex, uv, uBlur).g, texture(uTex, uv-o, uBlur).b); }
+  else tex = texture(uTex, uv, uBlur).rgb;
+  if(uHue != 0.0){ float c = cos(uHue), s = sin(uHue); vec3 k = vec3(0.57735027); tex = tex*c + cross(k, tex)*s + k*dot(k, tex)*(1.0-c); }
+  tex *= uBright;
+  if(uRound > 0.0 || uFrameW > 0.0 || uEdgeFade > 0.0){
+    vec2 h = vec2(0.5*uAspect, 0.5);
+    vec2 p = vQ*vec2(uAspect, 1.0);
+    float m = min(h.x, h.y);
+    float r = clamp(uRound, 0.0, 1.0)*m;
+    vec2 dq = abs(p) - (h - r);
+    float d = length(max(dq, 0.0)) + min(max(dq.x, dq.y), 0.0) - r;
+    if(d > 0.0) discard;
+    if(uEdgeFade > 0.0) tex *= mix(1.0-uEdgeFade, 1.0, smoothstep(0.0, m*0.8, -d));
+    if(uFrameW > 0.0 && d > -uFrameW*m) tex = uFrameCol;
+  }
   vec3 N = normalize(vN);
   vec3 V = normalize(uCam - vWorld);
   if(dot(N,V) < 0.0) N = -N;                 // 両面
-  vec3 L = normalize(vec3(0.35, 0.85, 0.55));
+  vec3 L = normalize(uLight);
   float diff = max(dot(N,L), 0.0);
   vec3 col = tex * (uAmbient + (1.0-uAmbient)*diff);
+  col *= uTint;
+  if(uSpec > 0.0){ vec3 H = normalize(L+V); col += uSpec*pow(max(dot(N,H), 0.0), uShine); }
+  if(uRim > 0.0) col += uRimCol*(uRim*pow(1.0 - max(dot(N,V), 0.0), 3.0));
+  if(uFog > 0.0){ float f = 1.0 - exp(-uFog*max(length(uCam - vWorld) - uFogStart, 0.0)); col = mix(col, uFogCol, f); }
   frag = vec4(col, 1.0);
 }`;
     this.prog = this._link(vs, fs);
@@ -127,7 +202,7 @@ void main(){
   _link(vs,fs){ const gl=this.gl; const v=this._compile(gl.VERTEX_SHADER,vs), f=this._compile(gl.FRAGMENT_SHADER,fs); if(!v||!f) return null;
     const p=gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.bindAttribLocation(p,0,'aPos'); gl.bindAttribLocation(p,1,'aUV'); gl.linkProgram(p);
     if(!__glReady(gl, p, true)){ console.error('[PhotoPlane link]', gl.getProgramInfoLog(p)); return null; }
-    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
+    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
 
   // 細分プレーン (N×N グリッド) — bend/warp をなめらかに
   _buildGeo(N){
@@ -266,7 +341,16 @@ void main(){
     const az=this.cam.az, el=this.cam.el, dist=this.cam.dist;
     const eye=[dist*Math.cos(el)*Math.sin(az), dist*Math.sin(el), dist*Math.cos(el)*Math.cos(az)];
     const proj=this.m4.persp(P.fov*Math.PI/180, w/h, 0.05, 200.0);
-    const view=this.m4.lookAt(eye,[0,0,0],[0,1,0]);
+    const dz=(v)=>(typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v;
+    const nv=(k,d)=>P[k]==null ? d : dz(P[k]);
+    const lookY=nv('lookY',0), roll=nv('camRoll',0)*Math.PI/180;
+    const look=[0,lookY,0];
+    let up=[0,1,0];
+    if(roll!==0){
+      const f=this._norm([look[0]-eye[0],look[1]-eye[1],look[2]-eye[2]]), c=Math.cos(roll), sn=Math.sin(roll), fu=f[1], fx=this._cross(f,up);
+      up=[up[0]*c+fx[0]*sn+f[0]*fu*(1-c), up[1]*c+fx[1]*sn+f[1]*fu*(1-c), up[2]*c+fx[2]*sn+f[2]*fu*(1-c)];
+    }
+    const view=this.m4.lookAt(eye,look,up);
     const vp=this.m4.mul(proj,view);
 
     this._ensureDepth(w,h);
@@ -283,18 +367,64 @@ void main(){
     gl.uniform1f(this.loc.uTime,t);
     gl.uniform3f(this.loc.uCam,eye[0],eye[1],eye[2]);
     gl.uniform1f(this.loc.uAmbient,P.ambient);
+    gl.uniform1f(this.loc.uWarpYR,nv('warpYRatio',80)/100);
+    gl.uniform1f(this.loc.uFold,nv('fold',0));
+    gl.uniform1f(this.loc.uTwist,nv('twist',0)*Math.PI/180);
+    gl.uniform1f(this.loc.uRound,nv('cornerRound',0)/100);
+    gl.uniform1f(this.loc.uFrameW,nv('frameW',0)/100);
+    gl.uniform1f(this.loc.uEdgeFade,nv('edgeFade',0)/100);
+    gl.uniform1f(this.loc.uZoom,nv('cropZoom',100)/100);
+    gl.uniform1f(this.loc.uBlur,nv('softFocus',0));
+    gl.uniform1f(this.loc.uFringe,nv('fringe',0)/100);
+    const mosaic=nv('mosaic',0);
+    gl.uniform1f(this.loc.uMosaic,mosaic);
+    gl.uniform1f(this.loc.uSpec,nv('spec',0)/100);
+    gl.uniform1f(this.loc.uShine,nv('specShine',32));
+    gl.uniform1f(this.loc.uRim,nv('rim',0)/100);
+    gl.uniform1f(this.loc.uFog,nv('fog',0)/100*0.4);
+    gl.uniform1f(this.loc.uFogStart,nv('fogStart',8));
+    { let lx=0.35, ly=0.85, lz=0.55;
+      const laz=nv('lightAz',0), lel=nv('lightEl',0);
+      if(laz!==0 || lel!==0){
+        const l0=Math.hypot(lx,ly,lz);
+        const az=Math.atan2(lx,lz)+laz*Math.PI/180;
+        const el=Math.max(-1.4, Math.min(1.4, Math.asin(ly/l0)+lel*Math.PI/180));
+        lx=Math.cos(el)*Math.sin(az); ly=Math.sin(el); lz=Math.cos(el)*Math.cos(az);
+      }
+      gl.uniform3f(this.loc.uLight,lx,ly,lz); }
+    const tc=P.tint||[1,1,1], fc=P.frameColor||[1,1,1], rc=P.rimColor||[1,1,1];
+    gl.uniform3f(this.loc.uTint,tc[0],tc[1],tc[2]);
+    gl.uniform3f(this.loc.uFrameCol,fc[0],fc[1],fc[2]);
+    gl.uniform3f(this.loc.uRimCol,rc[0],rc[1],rc[2]);
+    gl.uniform3f(this.loc.uFogCol,P.bg[0],P.bg[1],P.bg[2]);
+    const aspSq=nv('aspectSq',100)/100, hueVar=nv('hueVar',0), brightVar=nv('brightVar',0);
+    const clX=nv('clX',100)/100, clY=nv('clY',100)/100, clZ=nv('clZ',100)/100;
+    const hollow=nv('hollow',0)/100, swirl=nv('swirl',0), floatAmp=nv('floatAmp',0);
+    const spinVar=nv('spinVar',0)/100, axisLock=nv('axisLock',0)/100;
+    const hv=(i,k)=>{ const x=Math.sin((i+1)*12.9898 + k*78.233 + (P.seed|0)*0.37)*43758.5453; return x-Math.floor(x); };
     gl.uniform1f(this.loc.uWarpAmp,P.warpAmp*(1.0+pulse*0.5));
     gl.uniform1f(this.loc.uWarpFreq,P.warpFreq);
     gl.uniform1f(this.loc.uBendMul,P.bend);
     gl.uniform1i(this.loc.uTex,0);
     gl.activeTexture(gl.TEXTURE0);
 
-    for(const pl of this.planes){
-      const ang = pl.phase + t*P.spin*pl.spinSign + pulse*0.5*pl.spinSign;   // 拍で少し余分に回す(加算kick, ジャンプしない)
-      const model = this.m4.mul(this.m4.trans(pl.pos[0],pl.pos[1],pl.pos[2]), this.m4.rotAxis(pl.axis,ang));
+    for(let pi=0; pi<this.planes.length; pi++){
+      const pl=this.planes[pi];
+      const spinMul = spinVar!==0 ? 1 + spinVar*(hv(pi,1)*2-1) : 1;
+      const ang = pl.phase + t*P.spin*pl.spinSign*spinMul + pulse*0.5*pl.spinSign;   // 拍で少し余分に回す(加算kick, ジャンプしない)
+      let px=pl.pos[0], py=pl.pos[1], pz=pl.pos[2];
+      if(hollow!==0){ const r=Math.hypot(px,py,pz); if(r>1e-6){ const k=(hollow*P.spread + (1-hollow)*r)/r; px*=k; py*=k; pz*=k; } }
+      if(swirl!==0){ const a=swirl*t/(1+0.15*Math.hypot(px,pz)), c=Math.cos(a), sn=Math.sin(a); const nx=px*c+pz*sn; pz=-px*sn+pz*c; px=nx; }
+      px*=clX; py*=clY; pz*=clZ;
+      if(floatAmp!==0) py += floatAmp*Math.sin(t*1.1 + pl.phase);
+      let axis=pl.axis;
+      if(axisLock!==0){ const ty=pl.axis[1]<0?-1:1; axis=this._norm([pl.axis[0]*(1-axisLock), pl.axis[1]*(1-axisLock)+ty*axisLock, pl.axis[2]*(1-axisLock)]); }
+      const model = this.m4.mul(this.m4.trans(px,py,pz), this.m4.rotAxis(axis,ang));
       gl.uniformMatrix4fv(this.loc.uModel,false,model);
       gl.uniform1f(this.loc.uScale,pl.scale);
-      gl.uniform1f(this.loc.uAspect,pl.aspect);
+      gl.uniform1f(this.loc.uAspect,aspSq===1 ? pl.aspect : Math.pow(pl.aspect,aspSq));
+      gl.uniform1f(this.loc.uHue, hueVar!==0 ? hueVar*(hv(pi,2)*2-1)*Math.PI/180 : 0);
+      gl.uniform1f(this.loc.uBright, brightVar!==0 ? 1 + brightVar/100*(hv(pi,3)-0.5)*1.6 : 1);
       gl.uniform1f(this.loc.uSeed,pl.seed);
       gl.uniform2f(this.loc.uBend,pl.bend[0],pl.bend[1]);
       gl.uniform4f(this.loc.uCrop,pl.crop[0],pl.crop[1],pl.crop[2],pl.crop[3]);

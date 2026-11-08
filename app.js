@@ -17702,6 +17702,24 @@ void mainImage(out vec4 o, in vec2 f){
       inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
       row.appendChild(inp); row.appendChild(val);
     }
+    for(const [label, key, mi, ma, st2, fmt, title] of (NovelTerminal.SPECS || [])){
+      const row = mkRow(label);
+      const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st2; inp.value=P[key];
+      if(title) inp.title = title;
+      inp.dataset.default = String(App.resetValueFor('novel', key, NovelTerminal._PDef[key] !== undefined ? NovelTerminal._PDef[key] : P[key]));
+      const val = document.createElement('div'); val.className='val'; val.textContent = fmt(P[key]);
+      inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
+      row.appendChild(inp); row.appendChild(val);
+    }
+    for(const [label, key, title] of (NovelTerminal.COLORS || [])){
+      const row = mkRow(label);
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col = document.createElement('input'); col.type='color'; col.value = toHex(P[key]);
+      if(title) col.title = title;
+      col.dataset.default = toHex(App.resetValueFor('novel', key, NovelTerminal._PDef[key] || P[key]));
+      col.addEventListener('input', ()=>{ const v=col.value; P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(col);
+    }
     // ── Ink / Palette セレクト ──
     {
       const row = mkRow('Ink');
@@ -19495,6 +19513,14 @@ void mainImage(out vec4 o, in vec2 f){
       inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); if(relayout && PhotoPlane.generateLayout) PhotoPlane.generateLayout(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+    for(const [label,key,mi,ma,step,fmt] of (PhotoPlane.SPECS||[])){
+      const row=document.createElement('div'); row.className='row';
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
+    }
     { const row=document.createElement('div'); row.className='row';          // 背景色 (Slot A で敷く / Slot B は透過)
       const lab=document.createElement('label'); lab.textContent='BG Color';
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -19502,6 +19528,15 @@ void mainImage(out vec4 o, in vec2 f){
       col.dataset.default = toHex(App.resetValueFor('photoplane', 'bg', (PhotoPlane.PDefaults && PhotoPlane.PDefaults.bg) || P.bg));
       col.addEventListener('input', ()=>{ const v=col.value; P.bg=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
+    for(const [label,key] of (PhotoPlane.COLORS||[])){
+      const row=document.createElement('div'); row.className='row';
+      const lab=document.createElement('label'); lab.textContent=label;
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key]);
+      col.dataset.default = toHex(App.resetValueFor('photoplane', key, [1,1,1]));
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(lab); row.appendChild(col); root.appendChild(row);
+    }
   },
   // すべてのスライダーに「ダブルクリックで既定値へ戻す」を付ける。
   //   既定値 = そのスライダーが最初に組まれた時点の値 (= Save/Reset が復元する値)。
