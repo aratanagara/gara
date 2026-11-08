@@ -43,6 +43,78 @@ uniform float uKick;    // 拍 / 音での変化 (%)
 uniform float uPalette; // パレット変化の強さ (% 0 で元の配色のまま)
 uniform float uPalTime; // パレットを替える間隔 (秒)
 uniform float uPalFade; // 間隔のうちフェードに使う割合 (% 0 で瞬時に切替)
+// @param uCellsA 3..14 = 7.0
+// @param uCellsB 3..10 = 5.0
+// @param uEdgeWidth 0..250 = 100.0
+// @param uLineWidth 30..300 = 100.0
+// @param uLineBunch 20..80 = 50.0
+// @param uDashGap 0..60 = 20.0
+// @param uContourWidth 20..300 = 100.0
+// @param uChromeFreq 40..250 = 100.0
+// @param uToothFine 30..250 = 100.0
+// @param uTearAmount 0..300 = 100.0
+// @param uInkBars 0..300 = 100.0
+// @param uInkBarLen 30..300 = 100.0
+// @param uWedgeWidth 30..200 = 100.0
+// @param uLavWidth 30..200 = 100.0
+// @param uPeriWidth 30..200 = 100.0
+// @param uStrokeWidth 30..200 = 100.0
+// @param uCoralWidth 30..200 = 100.0
+// @param uOliveWidth 30..200 = 100.0
+// @param uLensX -100..100 = 0.0
+// @param uLensY -100..100 = 0.0
+// @param uLensSize 30..300 = 100.0
+// @param uFlowTurn -180..180 = 0.0
+// @param uCenterX -100..100 = 0.0
+// @param uCenterY -100..100 = 0.0
+// @param uMirror 0..100 = 0.0
+// @param uPaperGrain 0..100 = 0.0
+// @param uWarmTint color = #ffffff
+// @param uInkTint color = #ffffff
+// @param uChromeTint color = #ffffff
+// @param uLavTint color = #ffffff
+// @param uPeriTint color = #ffffff
+// @param uCoralTint color = #ffffff
+// @param uOliveTint color = #ffffff
+// @param uNeonTint color = #ffffff
+// @param uSoftRowTint color = #ffffff
+// @param uPaperTint color = #ffffff
+uniform float uCellsA; // 塗り面の分割数 A (多いほど細かい面)
+uniform float uCellsB; // 塗り面の分割数 B (多いほど細かい面)
+uniform float uEdgeWidth; // 塗り面の輪郭線の太さ (%)
+uniform float uLineWidth; // 紙の上の線の太さ (%)
+uniform float uLineBunch; // 線が束になる範囲 (%。小さいほど多い)
+uniform float uDashGap; // 線の途切れの割合 (%)
+uniform float uContourWidth; // 地形線の太さ (%)
+uniform float uChromeFreq; // クロームの光の縞の細かさ (%)
+uniform float uToothFine; // 櫛歯の細かさ (%)
+uniform float uTearAmount; // 行ずれの裂けの量 (%)
+uniform float uInkBars; // 墨の横長の筋の量 (%)
+uniform float uInkBarLen; // 墨の筋の長さ (%)
+uniform float uWedgeWidth; // 暖色の楔の帯の幅 (%)
+uniform float uLavWidth; // 紫・テラコッタの面の帯の幅 (%)
+uniform float uPeriWidth; // 淡い青の面の帯の幅 (%)
+uniform float uStrokeWidth; // 黒の筆致の帯の幅 (%)
+uniform float uCoralWidth; // 珊瑚の迷路の帯の幅 (%)
+uniform float uOliveWidth; // オリーブの帯の幅 (%)
+uniform float uLensX; // レンズの位置の左右 (%)
+uniform float uLensY; // レンズの位置の上下 (%)
+uniform float uLensSize; // レンズの広がり (%)
+uniform float uFlowTurn; // 流れの向きの回転 (度)
+uniform float uCenterX; // 画面の中心の左右 (%)
+uniform float uCenterY; // 画面の中心の上下 (%)
+uniform float uMirror; // 左右の鏡像の折り返し位置 (%)
+uniform float uPaperGrain; // 紙のざらつき (%)
+uniform vec3 uWarmTint; // 暖色の楔の色
+uniform vec3 uInkTint; // 紙の上の線の色
+uniform vec3 uChromeTint; // 青いクロームの色
+uniform vec3 uLavTint; // 紫・テラコッタの面の色
+uniform vec3 uPeriTint; // 淡い青の面の色
+uniform vec3 uCoralTint; // 珊瑚の迷路の色
+uniform vec3 uOliveTint; // オリーブの帯の色
+uniform vec3 uNeonTint; // 蛍光の縞の色
+uniform vec3 uSoftRowTint; // 淡色の縞の色
+uniform vec3 uPaperTint; // 紙の色
 
 float st_hash(float n){ return fract(sin(n*91.3458)*47453.5453); }
 float st_hash2(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7)))*43758.5453); }
@@ -120,6 +192,7 @@ vec3 st_palette(vec3 c, float i){
   return clamp(mix(vec3(dot(r, vec3(0.299, 0.587, 0.114))), r, sat), 0.0, 1.0);
 }
 float stPalPhase;
+float stGrain;
 // uBgColor が黒のとき、Slot A の紙は灰。Slot B の紙は透過
 vec3 st_out(vec3 col, float cov){
   float pi = floor(stPalPhase);
@@ -127,7 +200,7 @@ vec3 st_out(vec3 col, float cov){
   col = mix(st_palette(col, pi), st_palette(col, pi + 1.0), pf);
   float paperOn = step(max(uBgColor.r, max(uBgColor.g, uBgColor.b)), 0.004);
   bgAlpha = cov;
-  return col*cov + vec3(0.784)*paperOn*uSlotIsA*(1.0 - cov);
+  return col*cov + (vec3(0.784)*uPaperTint + stGrain)*paperOn*uSlotIsA*(1.0 - cov);
 }
 
 vec3 bg_smear_tear(vec2 fc){
@@ -160,17 +233,21 @@ vec3 bg_smear_tear(vec2 fc){
   float rh3 = st_hash(floor(rw/3.0));
 
   // 行ずれの裂け: 帯が縦に走り、その中だけ行が横に飛ぶ
-  float tear = step(0.70 - 0.25*burst, st_noise1(I.y/resolution.y*15.0 + T*0.75));
+  float tear = step(0.70 - 0.003*(uTearAmount - 100.0) - 0.25*burst, st_noise1(I.y/resolution.y*15.0 + T*0.75));
   I.x += tear*(rh - 0.5)*0.06*resolution.x*(1.0 + burst*2.0);
+  stGrain = 0.0;
+  if(uPaperGrain != 0.0) stGrain = (st_hash2(I*0.37 + 0.5) - 0.5)*uPaperGrain*0.003;
 
   vec2  uv = I/resolution;
   vec2  p  = (uv - 0.5)*vec2(1.1, 1.0)/max(uScale*0.01, 0.01);
+  if(uCenterX != 0.0 || uCenterY != 0.0) p += vec2(uCenterX, uCenterY)*0.005;
+  if(uMirror != 0.0) p.x = abs(p.x + (uMirror - 50.0)*0.01) - (uMirror - 50.0)*0.01;
 
   // 淡色の縞: 行の塊が画面を漂い、現れては消える
   float rz = st_noise(vec2(uv.x*2.3 + T*0.13, uv.y*4.2 - T*0.21 + jump*0.07)) + 0.22*(rh3 - 0.5) + 0.08*(rh - 0.5);
   if(amt > 0.01 && rz > 1.0 - 0.24*amt){
     float t = uv.y*3.0 + T*0.04 + 0.20*(rh3 - 0.5) + 0.34*(rh - 0.5);
-    vec3  c = st_rowSoft(t);
+    vec3  c = st_rowSoft(t)*uSoftRowTint;
     c = mix(c, vec3(0.78), step(0.74, rh));
     c = mix(c, vec3(0.05), step(0.96, rh));
     return st_out(c, 1.0);
@@ -178,14 +255,16 @@ vec3 bg_smear_tear(vec2 fc){
 
   // レンズ: 芯が渦にならない強さで流れを曲げる
   vec2  P2 = vec2(0.42*sin(T*0.31 + 1.0), 0.34*sin(T*0.43));
+  if(uLensX != 0.0 || uLensY != 0.0) P2 += vec2(uLensX, uLensY)*0.005;
   vec2  d  = p - P2;
-  float tw = uSwirl*0.01*(0.7 + burst*0.5 + 0.3*sin(T*0.31))*exp(-dot(d, d)/0.05);
+  float tw = uSwirl*0.01*(0.7 + burst*0.5 + 0.3*sin(T*0.31))*exp(-dot(d, d)/(0.05*(uLensSize / 100.0)));
   float cs = cos(tw), sn = sin(tw);
   d = mat2(cs, sn, -sn, cs)*d;
   p = P2 + d;
 
   // 流れの場: 全体が回り、うねりの強さが息をする。拍頭でうねりが跳ねる
   float ra = T*0.13 + 0.5*sin(T*0.29);
+  if(uFlowTurn != 0.0) ra += radians(uFlowTurn);
   vec2  q  = mat2(cos(ra), sin(ra), -sin(ra), cos(ra))*p;
   float k  = uCurl*0.01*(1.0 + 0.5*sin(T*0.33)) + burst*0.4;
   float psi = st_psi(q, T, k);
@@ -200,7 +279,7 @@ vec3 bg_smear_tear(vec2 fc){
   s += 0.75*w;
 
   // 櫛歯: 川筋を横切る高周波で流れ方向にずらす。歯も横へ滑る
-  float tooth = st_noise1(ang*240.0 + T*1.3)*0.65 + st_noise1(ang*730.0 - T*2.1)*0.35;
+  float tooth = st_noise1(ang*(240.0*(uToothFine / 100.0)) + T*1.3)*0.65 + st_noise1(ang*(730.0*(uToothFine / 100.0)) - T*2.1)*0.35;
   float zone  = smoothstep(0.40, 0.66, st_noise(s*0.9 + 3.1));
   float comb  = uComb*0.01*(1.0 + audio*1.5 + burst)*(0.06 + 1.3*zone)*tooth*tooth;
   vec2  sc    = s + vec2(comb, 0.0);
@@ -226,27 +305,28 @@ vec3 bg_smear_tear(vec2 fc){
   float Fn  = F*26.0*lk/pow(2.0, max(ceil(log2(fp*3.0)), 0.0));
   float id  = floor(Fn);
   float h   = st_hash(id);
-  float wd  = max(0.05 + 0.26*pow(h, 9.0), 0.4*fp*Fn/max(F*26.0*lk, 0.001));
-  float bun = step(0.50 + 0.10*smoothstep(0.6, 1.1, rho), st_noise(vec2(F*4.0, s.x*0.55 + 2.0)));
-  float dsh = step(0.20, st_noise(vec2(s.x*18.0, id)));
+  float wd  = max((0.05 + 0.26*pow(h, 9.0))*(uLineWidth / 100.0), 0.4*fp*Fn/max(F*26.0*lk, 0.001));
+  float bun = step(uLineBunch / 100.0 + 0.10*smoothstep(0.6, 1.1, rho), st_noise(vec2(F*4.0, s.x*0.55 + 2.0)));
+  float dsh = step(uDashGap / 100.0, st_noise(vec2(s.x*18.0, id)));
   float ln  = step(abs(fract(Fn) - 0.5), wd)*bun*dsh*on;
-  col = st_ink(st_hash(id + 3.0));
+  col = st_ink(st_hash(id + 3.0))*uInkTint;
   cov = ln;
   // 地形図のような細い線
   float Tn = (w.x*1.4 + w.y + 0.25*(B - 0.5))*16.0*lk;
-  float tp = step(abs(fract(Tn) - 0.5), 0.05)*step(0.46, st_noise(w*5.0))*step(0.5, rho)*on*(1.0 - ln);
+  float tp = step(abs(fract(Tn) - 0.5), 0.05*(uContourWidth / 100.0))*step(0.46, st_noise(w*5.0))*step(0.5, rho)*on*(1.0 - ln);
   if(tp > 0.5){ col = vec3(0.62, 0.65, 0.84); cov = 1.0; }
 
   // ---- 塗り: A/B の 2 次元 LUT ----
-  float na = 7.0, nb = 5.0;
+  float na = uCellsA, nb = uCellsB;
   vec2  cell = floor(vec2(A*na, B*nb));
   float ch   = st_hash2(cell + 11.0);
-  float edge = step(fract(A*na), 0.035) + step(fract(B*nb), 0.035);
+  float edgeW = 0.035*(uEdgeWidth / 100.0);
+  float edge = step(fract(A*na), edgeW) + step(fract(B*nb), edgeW);
 
   // 暖色の楔
-  float wedge = st_band(th, 48.0, 76.0)*step(0.10, rc)*step(rc, 0.85*fan + 0.6*(B - 0.5))*step(0.12, ch + 0.2*fan);
+  float wedge = st_band(th, 48.0, 48.0 + 28.0*(uWedgeWidth / 100.0))*step(0.10, rc)*step(rc, 0.85*fan + 0.6*(B - 0.5))*step(0.12, ch + 0.2*fan);
   if(wedge > 0.5){
-    col = st_warm(fract(ch*0.9 + (th - 48.0)/28.0*0.75 + 0.6*(B - 0.5)));
+    col = st_warm(fract(ch*0.9 + (th - 48.0)/28.0*0.75 + 0.6*(B - 0.5)))*uWarmTint;
     col = mix(col, vec3(0.09, 0.06, 0.03), step(0.5, edge));
     col = mix(col, col*0.55, ln);
     cov = 1.0;
@@ -258,40 +338,41 @@ vec3 bg_smear_tear(vec2 fc){
     cov = 1.0;
   }
   // 紫とテラコッタの面
-  float lav = st_band(th, 84.0, 106.0)*step(0.42/max(fan, 0.01), rc)*step(0.45, B);
+  float lav = st_band(th, 84.0, 84.0 + 22.0*(uLavWidth / 100.0))*step(0.42/max(fan, 0.01), rc)*step(0.45, B);
   if(lav > 0.5){
-    col = (A > 0.50) ? vec3(0.33, 0.24, 0.47) : vec3(0.72, 0.42, 0.30);
+    col = ((A > 0.50) ? vec3(0.33, 0.24, 0.47) : vec3(0.72, 0.42, 0.30))*uLavTint;
     col = mix(col, vec3(0.06), step(0.5, edge));
     cov = 1.0;
   }
   // 淡い青の面
-  float peri = st_band(th, 116.0, 134.0)*step(0.46, B)*step(0.22, rc);
-  if(peri > 0.5){ col = (ch > 0.5) ? vec3(0.56, 0.64, 0.86) : vec3(0.38, 0.50, 0.82); cov = 1.0; }
+  float peri = st_band(th, 116.0, 116.0 + 18.0*(uPeriWidth / 100.0))*step(0.46, B)*step(0.22, rc);
+  if(peri > 0.5){ col = ((ch > 0.5) ? vec3(0.56, 0.64, 0.86) : vec3(0.38, 0.50, 0.82))*uPeriTint; cov = 1.0; }
 
   // 青いクローム: 光の縞が走る
   float chr  = uChrome*0.01;
   float chrm = st_band(th, 34.0 - 12.0*chr, 34.0)*step(0.46, rc)*step(0.42, B);
   if(chrm > 0.5){
-    float g  = sin(F*22.0 + A*18.0 - T*1.6)*0.5 + 0.5;
+    float g  = sin(F*(22.0*(uChromeFreq / 100.0)) + A*18.0 - T*1.6)*0.5 + 0.5;
     float dt = step(0.45, fract(s.x*150.0 + s.y*90.0));
     col = mix(vec3(0.03, 0.15, 0.50), vec3(0.12, 0.42, 0.90), step(0.35, g));
     col = mix(col, vec3(0.55, 0.85, 1.00), step(0.78, g));
     col = mix(col, vec3(1.0), step(0.93, g)*dt);
+    col *= uChromeTint;
     cov = 1.0;
   }
   // 黒の筆致
-  float strk = st_band(th, 17.0, 26.0)*step(0.50 - 0.2*(fan - 1.0), B)*step(0.25, rc)*step(0.30, abs(sin(A*30.0 + B*9.0)));
+  float strk = st_band(th, 17.0, 17.0 + 9.0*(uStrokeWidth / 100.0))*step(0.50 - 0.2*(fan - 1.0), B)*step(0.25, rc)*step(0.30, abs(sin(A*30.0 + B*9.0)));
   if(strk > 0.5){ col = vec3(0.17)*(0.7 + 0.6*step(0.5, ch)); cov = 1.0; }
   // 珊瑚の迷路
-  float coral = st_band(th, 12.0, 17.0)*step(0.30, rc)*step(0.40, B + 0.25*tooth);
+  float coral = st_band(th, 12.0, 12.0 + 5.0*(uCoralWidth / 100.0))*step(0.30, rc)*step(0.40, B + 0.25*tooth);
   if(coral > 0.5){
     float mz = sin(sc.x*90.0 + 9.0*st_noise(sc*vec2(8.0, 30.0)))*sin(sc.y*120.0 + 7.0*st_noise(sc*vec2(14.0, 9.0)));
-    col = mz > 0.1 ? vec3(0.96, 0.44, 0.36) : (mz > -0.25 ? vec3(0.95, 0.74, 0.70) : vec3(0.78));
+    col = (mz > 0.1 ? vec3(0.96, 0.44, 0.36) : (mz > -0.25 ? vec3(0.95, 0.74, 0.70) : vec3(0.78)))*uCoralTint;
     cov = 1.0;
   }
   // オリーブの帯
-  float oliv = st_band(th, 6.0, 11.0)*step(0.34, rc)*step(0.42, A + 0.3*tooth);
-  if(oliv > 0.5){ col = (A > 0.50) ? vec3(0.28, 0.28, 0.03) : vec3(0.20, 0.20, 0.07); cov = 1.0; }
+  float oliv = st_band(th, 6.0, 6.0 + 5.0*(uOliveWidth / 100.0))*step(0.34, rc)*step(0.42, A + 0.3*tooth);
+  if(oliv > 0.5){ col = ((A > 0.50) ? vec3(0.28, 0.28, 0.03) : vec3(0.20, 0.20, 0.07))*uOliveTint; cov = 1.0; }
 
   // 蛍光の縞
   float neonM = st_band(th, 27.0, 42.5)*step(0.50, rc + 0.04*rh)*step(0.44, B)*step(0.01, amt);
@@ -299,6 +380,7 @@ vec3 bg_smear_tear(vec2 fc){
     col = st_rowNeon(uv.y*4.0 + T*0.09 + 0.45*(rh3 - 0.5) + 0.25*(rh - 0.5));
     col = mix(col, vec3(0.78), step(0.88, rh));
     col = mix(col, vec3(0.03), step(0.95, rh));
+    col *= uNeonTint;
     cov = 1.0;
   }
   // クリームのリボン
@@ -308,7 +390,7 @@ vec3 bg_smear_tear(vec2 fc){
   // 墨の裂け: 行ごとに長さが暴れる横長の筋が、上へ抜けていく
   float by = floor(uv.y*26.0 - T*0.7 + rowSeed*0.5);
   float bc = st_hash(by*3.1 + 0.7);
-  float bo = step(0.84, st_hash(by + 2.0))*st_band(uv.x - (0.05 + 0.8*bc), 0.0, (0.02 + 0.22*st_hash(by + 5.0))*rh*rh);
+  float bo = step(0.84 - 0.0016*(uInkBars - 100.0), st_hash(by + 2.0))*st_band(uv.x - (0.05 + 0.8*bc), 0.0, (0.02 + 0.22*st_hash(by + 5.0))*(uInkBarLen / 100.0)*rh*rh);
   if(bo > 0.5){ col = vec3(0.02); cov = 1.0; }
 
   return st_out(col, cov);

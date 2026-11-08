@@ -69,6 +69,32 @@ uniform float uNoiseDepth; // 線の太さのむらの深さ (%)
 uniform float uOrbit; // カメラを物体の周りに回す角度 (度)
 uniform float uDiffuse; // 面の陰影の強さ (%)
 uniform float uIrid; // 反射に乗る虹色の色相の広がり (%)。0 で単色
+// @param uCamDist 60..150 = 100.0
+// @param uCamHeight -100..100 = 0.0
+// @param uFovZoom 60..160 = 100.0
+// @param uRoll -180..180 = 0.0
+// @param uShiftX -100..100 = 0.0
+// @param uShiftY -100..100 = 0.0
+// @param uLightPitch -60..60 = 0.0
+// @param uRim 0..300 = 0.0
+// @param uIridFreq 40..300 = 100.0
+// @param uIridShift -100..100 = 0.0
+// @param uBackGlow 0..100 = 0.0
+// @param uReflTint color = #ffffff
+// @param uRimColor color = #ffffff
+uniform float uCamDist; // カメラの距離 (%)
+uniform float uCamHeight; // カメラの高さ (俯角になる。%)
+uniform float uFovZoom; // 画角の狭さ (%。大きいほど望遠)
+uniform float uRoll; // 画面の回転 (度)
+uniform float uShiftX; // 画面の中心の左右 (%)
+uniform float uShiftY; // 画面の中心の上下 (%)
+uniform float uLightPitch; // 光源の仰角の振り (度。反射する環境光も傾く)
+uniform float uRim; // リムライトの強さ (%)
+uniform float uIridFreq; // 虹色の縞の細かさ (%)
+uniform float uIridShift; // 虹色の位相のずれ (%)
+uniform float uBackGlow; // 背景に敷く環境色の量 (%)
+uniform vec3 uReflTint; // 反射色のティント
+uniform vec3 uRimColor; // リムライトの色
 
 float mfGetDist(vec3 p, float tm){
   float sc = uScale / 100.0;
@@ -135,10 +161,13 @@ vec3 bg_moreFract(vec2 fc){
   vec2 uv = (fc - 0.5*resolution.xy)/resolution.y;
   uv /= bgZoom;
   uv += bgCamPx/resolution.y;
+  if(uRoll != 0.0) uv = mfRot(radians(uRoll)) * uv;
+  if(uShiftX != 0.0 || uShiftY != 0.0) uv += vec2(uShiftX, uShiftY) * 0.005;
 
-  vec3 ro = vec3(5.5, 0.1*T, 0.0);
+  vec3 ro = vec3(5.5 * (uCamDist / 100.0), 0.1*T, 0.0);
+  if(uCamHeight != 0.0) ro.y += uCamHeight * 0.03;
   if(uOrbit != 0.0){ float oa = radians(uOrbit); ro.xz = mfRot(oa) * ro.xz; }
-  vec3 rd = mfRayDir(uv, ro, vec3(0.0, 0.1*T, 0.0), 2.0);
+  vec3 rd = mfRayDir(uv, ro, vec3(0.0, 0.1*T, 0.0), 2.0 * (uFovZoom / 100.0));
   vec3 col = vec3(0.0);
 
   float d = mfRayMarch(ro, rd, tm);
@@ -149,13 +178,31 @@ vec3 bg_moreFract(vec2 fc){
 
     float ambient = 0.3;
     float difPower = 0.4 * (uDiffuse / 100.0);
-    float dif = max(dot(nrm, normalize(vec3(1,2,3))), 0.0);
+    vec3 L = normalize(vec3(1,2,3));
+    if(uLightPitch != 0.0){
+      L.y += tan(radians(uLightPitch)) * length(L.xz);
+      L = normalize(L);
+    }
+    float dif = max(dot(nrm, L), 0.0);
     col = vec3(dif*difPower + ambient);
-    col *= mfEnv(rfl);
+    vec3 renv = rfl;
+    if(uLightPitch != 0.0){
+      renv.y += uLightPitch * 0.03;
+      renv = normalize(renv);
+    }
+    col *= mfEnv(renv);
+    col *= uReflTint;
     col *= 1.0 + rfl.y;
     col = clamp(col, 0.0, 1.0);
     vec3 e = vec3(1.0);
-    col *= mfPal(rfl.y, e, e, e, 0.35*(uIrid / 100.0)*vec3(0.0,0.33,0.66));
+    float pt = rfl.y * (uIridFreq / 100.0);
+    if(uIridShift != 0.0) pt += uIridShift * 0.01;
+    col *= mfPal(pt, e, e, e, 0.35*(uIrid / 100.0)*vec3(0.0,0.33,0.66));
+    if(uRim != 0.0){
+      col += pow(1.0 - max(dot(nrm, -rd), 0.0), 6.0) * (uRim / 100.0) * 0.45 * uRimColor;
+    }
+  } else if(uBackGlow != 0.0){
+    col = mfEnv(rd) * (uBackGlow / 100.0) * 0.5;
   }
   col = pow(col, vec3(0.4545 * (uContrast / 100.0)));
   return col;
