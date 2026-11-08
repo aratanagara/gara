@@ -84,6 +84,44 @@ uniform float uBulgeBase; // 変形の常時ぶんの膨らみ (%)。時間で�
 uniform float uWeightY;  // 2 軸目の変形の効き (%)
 uniform float uRedBand;  // 膨らんだ部分の赤い色づき (%)
 uniform float uRockGrain; // 岩肌の模様の細かさ (%)
+// @param uSunAzim -180..180 = 0
+// @param uSunElev -50..50 = 0
+// @param uSunGain 0..300 = 100
+// @param uSkyLight 0..400 = 100
+// @param uBounce 0..500 = 100
+// @param uShadowSoft 20..200 = 100
+// @param uFogAmount 0..400 = 100
+// @param uSunReflect 0..400 = 100
+// @param uCamPitch -40..40 = 0
+// @param uOrbit -180..180 = 0
+// @param uOffX -60..60 = 0
+// @param uOffY -60..60 = 0
+// @param uRimGain 0..300 = 0
+// @param uGloss 0..300 = 0
+// @param uSunColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uSkyColor color = #ffffff
+// @param uRockColor color = #ffffff
+// @param uFogColor color = #ffffff
+uniform float uSunAzim; // 太陽の方位 (度)
+uniform float uSunElev; // 太陽の仰角の傾け (度)
+uniform float uSunGain; // 太陽光の強さ (%)
+uniform float uSkyLight; // 上からの青い環境光の強さ (%)
+uniform float uBounce; // 下からの白い照り返しの強さ (%)
+uniform float uShadowSoft; // 影の柔らかさ (%)。下げると硬く、上げると淡く広がる
+uniform float uFogAmount; // 遠くが霞む濃さ (%)
+uniform float uSunReflect; // 太陽の映り込みの強さ (%)
+uniform float uCamPitch; // カメラの俯仰の傾け (度)
+uniform float uOrbit; // 周回の開始角 (度)
+uniform float uOffX; // 物体の横位置 (%)
+uniform float uOffY; // 物体の縦位置 (%)
+uniform float uRimGain; // 縁の青白い照り返しの強さ (%)。0 で従来どおり無し
+uniform float uGloss; // 太陽のつやのハイライト (%)
+uniform vec3  uRimColor; // 縁の照り返しの色のティント
+uniform vec3  uSunColor; // 太陽光の色のティント
+uniform vec3  uSkyColor; // 環境光の色のティント
+uniform vec3  uRockColor; // 岩肌の地色のティント
+uniform vec3  uFogColor; // 霞の色のティント
 
 float st_SinRep(float a){
   float h = 0.0, mult = 1.0;
@@ -144,13 +182,13 @@ float st_IntersectSphereAndRay(vec3 pos, float radius, vec3 posA, vec3 posB, out
 
 vec3 bg_stractium(vec2 fc){
   st_localTime = time - 1.6;
-  vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
+  vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + (bgCamPx - vec2(uOffX, uOffY) * (0.01 * resolution.y));
   vec2 uv = I/resolution.xy * 2.0 - 1.0;
 
   vec3 camUp = vec3(0.0, 1.0, 0.0);
   vec3 camLookat = vec3(0.0);
-  float mx = -0.7 + st_localTime*0.123;                        // iMouse=0(自動周回)
-  float my = -sin(st_localTime*0.31)*0.5;
+  float mx = -0.7 + st_localTime*0.123 + radians(uOrbit);                        // iMouse=0(自動周回)
+  float my = -sin(st_localTime*0.31)*0.5 + radians(uCamPitch);
   vec3 camPos = vec3(cos(my)*cos(mx), sin(my), cos(my)*sin(mx)) * 9.2;
   vec3 camVec = normalize(camLookat - camPos);
   vec3 sideNorm = normalize(cross(camUp, camVec));
@@ -181,6 +219,10 @@ vec3 bg_stractium(vec2 fc){
   }
 
   vec3 sunDir = normalize(vec3(0.93, 1.0, -1.5));
+  if(uSunAzim != 0.0 || uSunElev != 0.0){
+    sunDir = st_RotateY(sunDir, radians(uSunAzim));
+    sunDir = normalize(st_RotateZ(sunDir, radians(uSunElev)));
+  }
   vec3 finalColor = vec3(0.0);
   bool hitObj = (abs(distAndMat.x) < 0.75);
 
@@ -200,9 +242,11 @@ vec3 bg_stractium(vec2 fc){
 
     // 太陽シャドウ(反復削減)
     float sunShadow = 1.0, iter = 0.2;
+    float ssoft = 10.0;
+    if(uShadowSoft != 100.0) ssoft = 10.0 * (uShadowSoft / 100.0);
     for(int i=0; i<6; i++){
       float td = st_DistanceToObject(pos + sunDir*iter).x;
-      sunShadow *= st_saturate(td*10.0);
+      sunShadow *= st_saturate(td*ssoft);
       if(td <= 0.0) break;
       iter *= 1.6;
     }
@@ -216,6 +260,7 @@ vec3 bg_stractium(vec2 fc){
     else n = st_noise(rp*(4.0*(uRockGrain / 100.0))) + st_noise(rp*(8.0*(uRockGrain / 100.0))) + st_noise(rp*(16.0*(uRockGrain / 100.0))) + st_noise(rp*(32.0*(uRockGrain / 100.0)));
     n = st_saturate(n*0.25*0.95 + 0.05);
     vec3 texColor = vec3(0.2, 0.3, 0.3)*n;
+    if(uRockColor != vec3(1.0)) texColor *= uRockColor;
     if(uRedBand == 100.0) texColor += vec3(0.99, 0.21, 0.213) * clamp(length(pos)-4.0, 0.0, 0.4);
     else texColor += vec3(0.99, 0.21, 0.213) * clamp(length(pos)-4.0, 0.0, 0.4) * (uRedBand / 100.0);
     texColor += vec3(1.0, 21.0, 26.0)*0.6 * st_saturate(length(normalU)-0.01);
@@ -225,13 +270,25 @@ vec3 bg_stractium(vec2 fc){
     vec3 lightColor = st_sunCol * st_saturate(dot(sunDir, normal)) * sunShadow * 14.0;
     lightColor += vec3(0.1, 0.35, 0.95) * (normal.y*0.5 + 0.5) * ambient * 0.25;
     lightColor += vec3(1.0) * ((-normal.y)*0.5 + 0.5) * ambient * 0.2;
+    if(uSunGain != 100.0 || uSkyLight != 100.0 || uBounce != 100.0 || uSunColor != vec3(1.0) || uSkyColor != vec3(1.0)){
+      lightColor = st_sunCol * uSunColor * st_saturate(dot(sunDir, normal)) * sunShadow * 14.0 * (uSunGain / 100.0);
+      lightColor += vec3(0.1, 0.35, 0.95) * uSkyColor * (normal.y*0.5 + 0.5) * ambient * 0.25 * (uSkyLight / 100.0);
+      lightColor += vec3(1.0) * ((-normal.y)*0.5 + 0.5) * ambient * 0.2 * (uBounce / 100.0);
+    }
     finalColor = texColor * lightColor;
 
     vec3 refColor = st_GetSunColorReflection(ref, sunDir)*0.68;
+    if(uSunReflect != 100.0) refColor *= uSunReflect / 100.0;
     finalColor += refColor * st_sunCol * sunShadow * 9.0 * texColor.g;
 
-    finalColor = mix(vec3(0.98, 0.981, 0.981) + min(vec3(0.25), st_GetSunColorSmall(relVec, sunDir))*2.0,
-                     finalColor, exp(-t*0.007));
+    if(uRimGain != 0.0) finalColor += pow(1.0 - st_saturate(dot(normal, -relVec)), 3.0) * vec3(0.12, 0.2, 0.36) * uRimColor * (uRimGain / 100.0) * ambient;
+    if(uGloss != 0.0) finalColor += st_sunCol * pow(max(dot(ref, sunDir), 0.0), 24.0) * sunShadow * (uGloss / 100.0) * 100.0;
+    if(uFogAmount != 100.0 || uFogColor != vec3(1.0))
+      finalColor = mix(vec3(0.98, 0.981, 0.981) * uFogColor + min(vec3(0.25), st_GetSunColorSmall(relVec, sunDir))*2.0,
+                       finalColor, exp(-t*(0.007 * (uFogAmount / 100.0))));
+    else
+      finalColor = mix(vec3(0.98, 0.981, 0.981) + min(vec3(0.25), st_GetSunColorSmall(relVec, sunDir))*2.0,
+                       finalColor, exp(-t*0.007));
   } else {
     finalColor = vec3(0.0);   // 空(背景)は黒 (entrypoint が uBgColor で塗る)
   }
