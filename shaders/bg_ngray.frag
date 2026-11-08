@@ -49,11 +49,42 @@ uniform float uCamDist;    // カメラの距離 (%)
 uniform float uCamHeight;  // カメラの高さ (%)。0 で真横から、大きいと見下ろし
 uniform float uBoxStretch; // box の奥行き方向の伸び (%)。小さいと平たい板、大きいと棒
 uniform float uRim;        // 輪郭の縁取りの強さ (%)
+// @param uTwist -100..100 = 0
+// @param uFoldX 0..100 = 0
+// @param uSquashY 40..250 = 100
+// @param uCamRoll -90..90 = 0
+// @param uFocal 60..200 = 100
+// @param uLookX -60..60 = 0
+// @param uLookY -60..60 = 0
+// @param uOrbitStart -180..180 = 0
+// @param uLightAz -180..180 = 0
+// @param uLightEl -100..100 = 0
+// @param uDiffAmt 0..300 = 100
+// @param uAmbAmt 0..300 = 100
+// @param uVigAmt 0..300 = 100
+// @param uBodyTint color = #ffffff
+uniform float uTwist;      // 塊の縦軸まわりのねじれ (%)。0 = なし / 負で逆回り
+uniform float uFoldX;      // 左右の鏡像 (%)。0 = なし / 100 で完全な左右対称
+uniform float uSquashY;    // 塊の縦の伸び縮み (%)。小さいと平たく、大きいと縦長
+uniform float uCamRoll;    // カメラのロール (度)。0 = なし
+uniform float uFocal;      // 画角 (%)。大きいほど望遠
+uniform float uLookX;      // 注視点の横ずれ (%)。塊を画面の横へ寄せる
+uniform float uLookY;      // 注視点の縦ずれ (%)。塊を画面の縦へ寄せる
+uniform float uOrbitStart; // カメラの周回の開始角 (度)。見る方向を変える
+uniform float uLightAz;    // 光源の方位 (度)。0 = 既定
+uniform float uLightEl;    // 光源の高さ (%)。0 = 既定
+uniform float uDiffAmt;    // 光源から受ける陰影 (拡散光) の強さ (%)。下げると灰色の立体感が出る
+uniform float uAmbAmt;     // 環境光 (下面の明るさ) の量 (%)
+uniform float uVigAmt;     // 周辺減光の強さ (%)
+uniform vec3  uBodyTint;   // 塊全体の色
 
 // 球 + 10 個の box を回転/スキューしながら smin 合体(刻々と変形)
 vec2 ng_map(vec3 pos){
   float objS = uScale / 100.0;
   pos /= objS;
+  if(uTwist != 0.0){ float tw = pos.y * uTwist / 100.0 * 0.15; float ct = cos(tw), st = sin(tw); pos.xz = mat2(ct, -st, st, ct) * pos.xz; }
+  if(uFoldX > 0.0) pos.x = mix(pos.x, abs(pos.x), uFoldX / 100.0);
+  if(uSquashY != 100.0) pos.y *= uSquashY / 100.0;
   float res = ng_sphere(pos, 0.5 * (uCoreSize / 100.0));
   float t   = time;
   float amp = sin(t*0.5)*0.5*(uPulse / 100.0) + 1.0;
@@ -76,6 +107,7 @@ vec2 ng_map(vec3 pos){
     if(uBoxRound != 0.0){ float br = min(bs, 0.15) * (uBoxRound / 100.0); bx = ng_box(bq, bs - br) - br; }
     res = ng_smin(res, bx, 4.0 * (uSoft / 100.0));
   }
+  if(uSquashY > 100.0) res /= uSquashY / 100.0;
   return vec2(res * objS, 5.0);
 }
 
@@ -121,6 +153,8 @@ vec3 ng_render(vec3 ro, vec3 rd, out float hitOut){
     vec3 ref = reflect(rd, nor);
     float occ = 0.5;
     vec3  lig = normalize(vec3(-0.6, 0.7, -0.5));
+    if(uLightAz != 0.0){ float la = radians(uLightAz); float cl = cos(la), sl = sin(la); lig.xz = mat2(cl, -sl, sl, cl) * lig.xz; }
+    if(uLightEl != 0.0) lig = normalize(lig + vec3(0.0, uLightEl / 100.0, 0.0));
     float amb = clamp(0.5 + 0.5*nor.y, 0.5, 1.0);
     float dif = clamp(dot(nor, lig), 0.5, 1.0);
     float bac = clamp(dot(nor, normalize(vec3(-lig.x, 0.0, -lig.z))), 0.0, 1.0) * clamp(1.0 - pos.y, 0.0, 1.0);
@@ -129,15 +163,17 @@ vec3 ng_render(vec3 ro, vec3 rd, out float hitOut){
     float spe = pow(clamp(dot(ref, lig), 0.5, 1.0), 16.0);
     dom *= ng_softshadow(pos, ref, 0.02, 2.5);
     vec3 brdf = vec3(0.0);
-    brdf += 1.20*dif;
+    brdf += 1.20*dif*(uDiffAmt / 100.0);
     brdf += 1.20*spe*dif;
-    brdf += 0.30*amb*occ;
+    brdf += 0.30*amb*occ*(uAmbAmt / 100.0);
     brdf += 0.40*dom*occ;
     brdf += 0.30*bac*occ;
     brdf += 0.40*fre*occ*(uRim / 100.0);
     col = brdf;
   }
-  return clamp(col, 0.0, 1.0);
+  col = clamp(col, 0.0, 1.0);
+  if(uBodyTint != vec3(1.0)) col *= uBodyTint;
+  return col;
 }
 
 mat3 ng_setCamera(vec3 ro, vec3 ta, float cr){
@@ -154,17 +190,18 @@ vec3 bg_ngray(vec2 fc){
   vec2 p = -1.0 + 2.0*q;
   p.x *= resolution.x / resolution.y;
 
-  float ctime   = 15.0 + time*5.0;                 // カメラ・オービット
+  float ctime   = 15.0 + time*5.0 + (uOrbitStart != 0.0 ? radians(uOrbitStart) * 10.0 : 0.0);                 // カメラ・オービット
   float camDist = 13.0 * (uCamDist / 100.0);
   vec3 ro = vec3(-0.5 + camDist*cos(0.1*ctime), 5.0 * (uCamHeight / 100.0), 0.5 + camDist*sin(0.1*ctime));
   vec3 ta = vec3(-0.001, 0.0, 0.0);
-  mat3 ca = ng_setCamera(ro, ta, 0.0);
-  vec3 rd = ca * normalize(vec3(p.xy, 2.5));
+  mat3 ca = ng_setCamera(ro, ta, radians(uCamRoll));
+  vec3 rd = ca * normalize(vec3(p.xy, 2.5 * (uFocal / 100.0)));
+  if(uLookX != 0.0 || uLookY != 0.0) rd = ca * normalize(vec3(p.xy - vec2(uLookX, uLookY) / 100.0, 2.5 * (uFocal / 100.0)));
 
   float hit;
   vec3 col = ng_render(ro, rd, hit);
   col = pow(col, vec3(0.4545) * (uContrast / 100.0));                    // ガンマ
-  col *= 1.0 - length(q*2.0 - 1.0)*0.3;            // ビネット
+  col *= 1.0 - length(q*2.0 - 1.0)*0.3*(uVigAmt / 100.0);            // ビネット
 
   if(abs(uCosGrad) > 0.0001){
     float lum = dot(col, vec3(0.299, 0.587, 0.114));

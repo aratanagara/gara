@@ -77,6 +77,40 @@ uniform float uCloudScale; // 雲の塊の大きさ (%)。上げると小さな�
 uniform float uCloudThick; // 雲の層の厚み (%)
 uniform float uCloudSoft; // 雲の縁のやわらかさ (%)
 uniform float uCamPitch; // カメラの仰角 (%)。地平線の位置が変わる
+// @param uCamYaw     -180..180 = 0
+// @param uCamRoll    -45..45   = 0
+// @param uFov        60..200   = 100
+// @param uMtnShift   0..100    = 0
+// @param uMtnRamp    40..250   = 100
+// @param uCloudLift  0..300    = 0
+// @param uCloudBright 30..160  = 100
+// @param uTextAmt    0..150    = 100
+// @param uStars      0..100    = 0
+// @param uGridStretch 60..200  = 100
+// @param uVignette   0..100    = 0
+// @param uSkyTint    color = #ffffff
+// @param uCloudTint  color = #ffffff
+// @param uHazeTint   color = #ffffff
+// @param uMtnTint    color = #ffffff
+// @param uFloorTint  color = #ffffff
+// @param uGridTint   color = #ffffff
+uniform float uCamYaw;     // カメラの向きの初期角 (度)。0 = 既定。公転の開始位置を変える
+uniform float uCamRoll;    // カメラのロール (度)。0 = なし
+uniform float uFov;        // 画角 (%)。大きいほど広角
+uniform float uMtnShift;   // 山並みの位置のずれ (%)。0 = 既定
+uniform float uMtnRamp;    // 山の色の変わり方 (%)。大きいと稜線だけ明るい
+uniform float uCloudLift;  // 雲が出始める高さ (%)。上げると地平線付近が晴れる
+uniform float uCloudBright; // 雲の明るさ (%)
+uniform float uTextAmt;    // 空の BSOD 文字の濃さ (%)
+uniform float uStars;      // 空の星の量 (%)。0 = なし。雲に隠れる
+uniform float uGridStretch; // 床グリッドの横方向の間隔 (%)
+uniform float uVignette;   // 周辺の暗さ (%)。0 = なし
+uniform vec3  uSkyTint;    // 空の青の色
+uniform vec3  uCloudTint;  // 雲の色
+uniform vec3  uHazeTint;   // 山の奥の靄の色
+uniform vec3  uMtnTint;    // 山の色
+uniform vec3  uFloorTint;  // 床のマゼンタの色
+uniform vec3  uGridTint;   // グリッド線の色
 
 float hc_density(vec3 pos, vec3 offset){
   vec3 p = pos*0.0212242*(uCloudScale / 100.0) + offset;
@@ -123,13 +157,13 @@ vec4 hc_clouds(vec3 ro, vec3 rd){
 vec3 sc_grid(vec2 xz){
   float speed = time*5.0;
   float gA = radians(uAngle);
-  vec2 coord = mat2(cos(gA), -sin(gA), sin(gA), cos(gA)) * xz + vec2(0.0, speed);
+  vec2 coord = (mat2(cos(gA), -sin(gA), sin(gA), cos(gA)) * xz + vec2(0.0, speed)) * vec2(uGridStretch / 100.0, 1.0);
   vec2 g = abs(fract(coord*(0.5 * (uGrid / 100.0)))-0.5) / fwidth(coord*(0.5 * (uGrid / 100.0)));
   float line = min(g.x, g.y);
   float mask = 1.0 - min(line / (uThick / 100.0), 1.0);
   float fade = exp(-length(xz)*0.04*(uFloorFog / 100.0));
   float center = 1.0 - smoothstep(0.0, 0.1, abs(xz.x));
-  return vec3(1.0, 1.0, 1.0) * (mask + center*0.5) * fade * 1.6 * (uGlow / 100.0);   // 白いグリッド線
+  return vec3(1.0, 1.0, 1.0) * (mask + center*0.5) * fade * 1.6 * (uGlow / 100.0) * uGridTint;   // 白いグリッド線
 }
 
 // ---- BSOD: 実テキストのテクスチャ(uBsodText)を参照。タイプライターで1行ずつ表示 ----
@@ -162,7 +196,9 @@ vec3 bg_tronclouds(vec2 fc){
   // カメラ(ゆるい公転)
   float t = time/2.0;
   vec2 rot = vec2(0.5 * (uCamPitch / 100.0), t);
-  vec3 uvVec = normalize(vec3(uv, 1.0));
+  if(uCamRoll != 0.0){ float cr = radians(uCamRoll); float cc = cos(cr), sc = sin(cr); uv = mat2(cc, -sc, sc, cc) * uv; }
+  if(uCamYaw != 0.0) rot.y += radians(uCamYaw);
+  vec3 uvVec = normalize(vec3(uv, uFov / 100.0));
   uvVec = hc_rotate(uvVec, rot);
 
   float el = uvVec.y;
@@ -171,25 +207,32 @@ vec3 bg_tronclouds(vec2 fc){
   vec3 bsodBlue = mix(vec3(0.0, 0.04, 0.66), vec3(0.0, 0.0, 0.58), horizon);
   // 空にBSODテキストを表示(晴天時に見える。雲が出ると隠れる)
   float txt = hc_bsod(I) * smoothstep(0.0, 0.05, el);   // 地平線付近はフェード
-  vec3 skyCol = mix(bsodBlue, vec3(0.86, 0.90, 1.0), txt);
+  if(uTextAmt != 100.0) txt = clamp(txt * (uTextAmt / 100.0), 0.0, 1.0);
+  vec3 skyCol = mix(bsodBlue * uSkyTint, vec3(0.86, 0.90, 1.0), txt);
+  if(uStars != 0.0 && el > 0.0){
+    vec3 sq = floor(uvVec * 140.0);
+    float sh = fract(sin(dot(sq, vec3(12.9898, 78.233, 37.719))) * 43758.5453);
+    float sb = step(1.0 - uStars / 100.0 * 0.03, sh) * (0.5 + 0.5 * sin(time * 2.0 + sh * 80.0)) * smoothstep(0.0, 0.08, el);
+    skyCol += vec3(0.9, 0.95, 1.0) * sb;
+  }
   vec3 col = skyCol;
 
   // ボリュメトリック雲(上向き光線)。雲が BSOD を覆う=晴天のときだけ文字が見える。
-  if(el > 0.02){
+  if(el > 0.02 + uCloudLift / 1000.0){
     vec4 cld = hc_clouds(vec3(0.0, 1.0, 0.0), uvVec);
-    col = mix(skyCol, cld.rgb/(0.0001 + cld.a), cld.a);
+    col = mix(skyCol, cld.rgb/(0.0001 + cld.a) * (uCloudBright / 100.0) * uCloudTint, cld.a);
   }
 
   // 地平線の奥(山の下)を濃いマゼンタで塗る(青帯を消して床と連続させる)。地平線の下まで覆う。
   {
     float haze = smoothstep(0.18 * (uHazeBand / 100.0), 0.06 * (uHazeBand / 100.0), el);    // el<=0.06 は完全に濃いマゼンタ、0.18で消える
-    col = mix(col, vec3(0.16, 0.0, 0.22), haze);
+    col = mix(col, vec3(0.16, 0.0, 0.22) * uHazeTint, haze);
   }
 
   // 地平線の山 = 三角波で角張った山並み + 音声で隆起。グラデは上(稜線)が濃いマゼンタ。
   if(el > 0.0){
     float az = atan(uvVec.x, uvVec.z);
-    float u  = fract(az / 6.2831853 + 0.5);
+    float u  = fract(az / 6.2831853 + 0.5 + uMtnShift / 100.0);
     // 波形座標を折り返して始点(u=0)と終点(u=1)を一致させる(シーム回避)
     float uw = 1.0 - abs(2.0*u - 1.0);
     float w  = texture(uFFT, vec2(uw, 0.75)).r;       // 波形 0..1, 中心0.5
@@ -200,7 +243,8 @@ vec3 bg_tronclouds(vec2 fc){
     ridge = max(ridge, 0.03);
     if(el < ridge){
       float gg = clamp(el / ridge, 0.0, 1.0);                // 0=ふもと, 1=稜線
-      vec3 mtn = mix(vec3(0.20, 0.0, 0.26), vec3(0.95, 0.0, 0.95), gg);  // 反転: ふもと濃い → 稜線 原色
+      if(uMtnRamp != 100.0) gg = pow(gg, uMtnRamp / 100.0);
+      vec3 mtn = mix(vec3(0.20, 0.0, 0.26), vec3(0.95, 0.0, 0.95), gg) * uMtnTint;  // 反転: ふもと濃い → 稜線 原色
       float edge = smoothstep(ridge, ridge - 0.004 * (uMtnEdge / 100.0), el);     // 稜線をくっきり(角張り)
       col = mix(col, mtn, edge);
     }
@@ -214,11 +258,12 @@ vec3 bg_tronclouds(vec2 fc){
       vec3 hit = vec3(0.0,1.0,0.0) + uvVec*tt;
       // 原色マゼンタの範囲を広く、奥(地平線付近)だけ濃いマゼンタに(pow で遠方寄せ)
       float depth = pow(clamp(tt * 0.045, 0.0, 1.0), 3.0 * (uFloorRamp / 100.0));
-      vec3 floorGrad = mix(vec3(0.95, 0.0, 0.95), vec3(0.16, 0.0, 0.22), depth);
+      vec3 floorGrad = mix(vec3(0.95, 0.0, 0.95), vec3(0.16, 0.0, 0.22), depth) * uFloorTint;
       vec3 floorCol = floorGrad + sc_grid(hit.xz);
       float blend = smoothstep(0.0, -0.06, el);
       col = mix(col, floorCol, blend);
     }
   }
+  if(uVignette != 0.0) col *= 1.0 - clamp(dot(uv, uv) * 0.3, 0.0, 1.0) * uVignette / 100.0;
   return col;
 }

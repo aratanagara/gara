@@ -67,6 +67,38 @@ uniform float uFineGrain; // 細かい雲粒の量 (%)。0 でなめらかな雲
 uniform float uCamPitch;  // カメラの仰角 (度)。正で見下ろし
 uniform float uCamDist;   // カメラの距離 (%)
 uniform float uCamYaw;    // カメラの方位の回し (%)
+// @param uCamRoll -90..90 = 0
+// @param uFov 75..140 = 100
+// @param uLookX -100..100 = 0
+// @param uLookY -100..100 = 0
+// @param uCamSide -300..300 = 0
+// @param uCamHeight -200..200 = 0
+// @param uFlyPos -300..300 = 0
+// @param uFogStart 0..400 = 0
+// @param uScatter 0..400 = 100
+// @param uSunPower 0..300 = 100
+// @param uVigReach 60..180 = 100
+// @param uVigPower 50..300 = 100
+// @param uJitter 0..300 = 100
+// @param uFogTint color = #ffffff
+// @param uSunTint color = #ffffff
+// @param uCloudTint color = #ffffff
+uniform float uCamRoll;   // カメラのロール (度)。0 = なし
+uniform float uFov;       // 画角 (%)。大きいほど広角で遠くまで入る
+uniform float uLookX;     // 注視点の横ずれ (%)。構図を左右に振る
+uniform float uLookY;     // 注視点の縦ずれ (%)。構図を上下に振る
+uniform float uCamSide;   // カメラの横移動 (%)。0 = なし
+uniform float uCamHeight; // カメラの高さ (%)。0 = なし。注視点ごと上下する
+uniform float uFlyPos;    // 雲の中での進行位置 (%)。雲の配置を変える
+uniform float uFogStart;  // フォグが始まる距離 (%)。0 = 手前から
+uniform float uScatter;   // 雲の散乱光 (赤みの陰影) の量 (%)
+uniform float uSunPower;  // 太陽の強さ (%)
+uniform float uVigReach;  // 周辺減光の届く範囲 (%)
+uniform float uVigPower;  // 周辺減光の落ち方の鋭さ (%)
+uniform float uJitter;    // 粗さを隠す粒状ノイズの量 (%)。0 で縞が出る
+uniform vec3  uFogTint;   // 遠景フォグの色
+uniform vec3  uSunTint;   // 太陽の色
+uniform vec3  uCloudTint; // 雲の散乱光の色
 
 // 距離場: 多オクターブ雲ノイズ - 厚み。距離の太陽(マテリアル 6)。
 vec2 nit_dist(vec3 p, vec3 camLookat){
@@ -100,13 +132,19 @@ vec3 bg_nitro(vec2 fc){
   camPos += vec3(cos(mya)*cos(mxa), sin(mya), cos(mya)*sin(mxa)) * 3.2 * (uCamDist / 100.0);
   camPos.z   -= time*0.5;                       // 雲の中を前進
   camLookat.z -= time*0.5;
-  camPos += nit_hash3(u);                       // カメラジッタ(粗い根探しを隠す)
+  if(uFlyPos != 0.0){ camPos.z -= uFlyPos / 100.0 * 4.0; camLookat.z -= uFlyPos / 100.0 * 4.0; }
+  if(uCamHeight != 0.0){ camPos.y += uCamHeight / 100.0; camLookat.y += uCamHeight / 100.0; }
+  if(uCamSide != 0.0){ camPos.x += uCamSide / 100.0; camLookat.x += uCamSide / 100.0; }
+  if(uJitter != 100.0) camPos += nit_hash3(u) * (uJitter / 100.0); else camPos += nit_hash3(u);                       // カメラジッタ(粗い根探しを隠す)
 
   vec3 camVec = normalize(camLookat - camPos);
   vec3 sideNorm = normalize(cross(camUp, camVec));
   vec3 upNorm = cross(camVec, sideNorm);
+  if(uCamRoll != 0.0){ float cr = radians(uCamRoll); float cc = cos(cr), sc = sin(cr); vec3 sn0 = sideNorm; sideNorm = sn0 * cc + upNorm * sc; upNorm = upNorm * cc - sn0 * sc; }
   vec3 worldFacing = camPos + camVec;
+  if(uFov != 100.0) worldFacing = camPos + camVec * (100.0 / uFov);
   vec3 worldPix = worldFacing + u.x*sideNorm*(resolution.x/resolution.y) + u.y*upNorm;
+  if(uLookX != 0.0 || uLookY != 0.0) worldPix += (sideNorm * uLookX + upNorm * uLookY) / 100.0 * 0.5 * 0.588;
   vec3 rayVec = normalize(worldPix - camPos);
 
   vec2 distAndMat = vec2(0.5, 0.0);
@@ -129,13 +167,23 @@ vec3 bg_nitro(vec2 fc){
   vec3 c = vec3(0.0);
   if(abs(distAndMat.x) < 0.0025){
     vec3 e = vec3(0.0);
-    if(distAndMat.y == 6.0) e = vec3(0.5, 0.2, 0.1)*10.0;   // 太陽
+    if(distAndMat.y == 6.0){
+      e = vec3(0.5, 0.2, 0.1)*10.0;   // 太陽
+      if(uSunPower != 100.0) e *= uSunPower / 100.0;
+      e *= uSunTint;
+    }
     c = e;
   }
-  c += marchCount*(1.5 - vec3(4.2, 1.0, 0.41))*0.0001;       // 半直接光の赤み
-  c = mix(1.5 - vec3(0.91, 0.81, 0.99)*1.75, c, exp(-t*0.15 * (uFog / 100.0))); // 距離フォグ
+  if(uScatter != 100.0 || uCloudTint != vec3(1.0)) c += marchCount*(1.5 - vec3(4.2, 1.0, 0.41))*0.0001 * (uScatter / 100.0) * uCloudTint;
+  else c += marchCount*(1.5 - vec3(4.2, 1.0, 0.41))*0.0001;       // 半直接光の赤み
+  float tFog = t;
+  if(uFogStart != 0.0) tFog = max(t - uFogStart / 100.0 * 2.0, 0.0);
+  vec3 fogC = 1.5 - vec3(0.91, 0.81, 0.99)*1.75;
+  if(uFogTint != vec3(1.0)) fogC *= uFogTint;
+  c = mix(fogC, c, exp(-tFog*0.15 * (uFog / 100.0))); // 距離フォグ
   if(t <= nearClip) c = (1.5 - vec3(1.9, 1.1, 0.9))*0.25;
-  c *= pow(nit_sat(1.0 - length(u/2.5)), 2.0);               // 周辺減光
+  if(uVigReach != 100.0 || uVigPower != 100.0) c *= pow(nit_sat(1.0 - length(u/(2.5 * (uVigReach / 100.0)))), 2.0 * (uVigPower / 100.0));
+  else c *= pow(nit_sat(1.0 - length(u/2.5)), 2.0);               // 周辺減光
   c *= 1.2 * (uGlow / 100.0);
   c *= 0.85;
   c = clamp(c, 0.0, 1.0);
