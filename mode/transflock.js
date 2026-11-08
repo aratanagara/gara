@@ -50,6 +50,33 @@ const TransFlock = {
     ink:[0.914, 0.933, 0.949],    // インクの色 (#e9eef2)
     paper:[0, 0, 0],              // 下地 (紙) の色。Slot A では背景にも敷く
     paperAlpha:1.0,   // Slot B での紙の不透明度 (1=板は不透明なカード / 0=インクの線だけ残して板の中は透ける)
+    follow:85,        // 追従カメラが先頭の鳥を追う強さ (%)。0 で群れが画面内を泳ぐ
+    centerX:0, centerY:0,   // 群れ全体を動かす (%。100 = 世界座標 1.0)
+    roll:0,           // 画面の傾き (度)
+    eyeDist:3.6,      // カメラから群れの中心までの距離
+    pathSize:100,     // 群れの軌道の縦横の大きさ (%)
+    pathDepth:100,    // 軌道の奥行きの振れ幅 (%)
+    loopRate:100,     // 軌道を回る細かさ (%。速さは変えず曲がりの周期だけ)
+    flutter:100,      // 鳥ごとの細かい揺れ (%)
+    wheelX:100, wheelY:100, wheelZ:100,   // 群れの旋回の軸ごとの回り方 (%)
+    camSpin:100,      // カメラが群れの周りを回る速さ (%)
+    stampLen:100, stampWid:100,           // 板の長さ (進行方向) / 幅 (%)
+    stampRound:0,     // 板の角の丸み (%)。100 で楕円
+    twist:0,          // 板を進行方向の軸でひねる角度 (度)
+    pressRate:100,    // 筆圧のうねりの細かさ (%)
+    pressMin:45,      // 筆圧が一番弱いときの太さ (%)
+    tailTaper:30,     // ストロークの尾の太さ (%)
+    warpRate:100,     // 反りのうねりの細かさ (%)
+    birdVar:0,        // 鳥ごとの太さのばらつき (%)
+    strayReach:100,   // はぐれ小片の飛び散る距離 (%)
+    clusterR:100,     // 小片が大きなスタンプの周りに散る範囲 (%)
+    depthSlope:60,    // 奥へ行くほど薄くなる傾き (%。Depth が効く量)
+    edgeSoft:70,      // 線の縁のにじみ (px の 100 倍)
+    tailMix:0,        // 尾の方を tailColor に寄せる量 (%)
+    tailColor:[0.914, 0.933, 0.949],
+    tailFade:0,       // 尾の方を紙の色へ薄くする量 (%)
+    speckle:0,        // インクの粒状の抜け (%)
+    beatPulse:0,      // 拍頭で筆が太くなる量 (%)
   },
 
   // ===== init =====
@@ -65,6 +92,10 @@ uniform vec2  uRes;
 uniform float uU, uLu, uDsu, uI0, uStampsMax, uBirds;
 uniform float uGap, uSpread, uWheel, uFcl, uBrush, uAu;
 uniform float uIslK, uIslands, uPressure, uJitter, uCluster, uGrain, uStray, uWarp, uDepth, uLineSkip;
+uniform float uFollow, uEye, uLen, uWid, uTwist, uTailMin, uPressF, uPressMin, uWarpF, uCamSpin, uLoopK;
+uniform float uFlutter, uStrayReach, uClusterR, uDepthSlope, uBirdVar, uBeatW;
+uniform vec2  uCenter, uRoll;
+uniform vec3  uPathK, uSpinK;
 uniform float uMinSS;            // 投影短軸の下限 (画面高=1 の単位)。これ未満は真横なので描かない
 out vec2  vLoc;                  // 板ローカル (-1..1)
 out vec2  vHalfPx;               // 投影した 2 半軸の長さ (px)
@@ -72,8 +103,8 @@ out float vDepthF;               // 奥行き減衰
 out float vTint;                 // 色パラメータ (未使用: Grad Map は合成段で全スロットに掛かる)
 out float vDet;                  // 内側の線を出す板か (0/1)
 out float vLineOn;               // 縁の線を描く板か (0/1。Line Skip で間引く)
+out float vAge;                  // 筆先 (0) から尾 (1) への位置
 
-#define TF_EYE 3.6
 #define TF_F1 0.48
 #define TF_F2 1.18
 #define TF_F3 0.38
@@ -100,9 +131,9 @@ vec3 tf_pathAcc(float u){
                0.80*TF_F5*TF_F5*sin(u*TF_F5 + 4.0) + 0.40*TF_F6*TF_F6*sin(u*TF_F6 + 2.6));
 }
 mat3 tf_frame(float w){
-  float cx = cos(w*0.71 + 0.3), sx = sin(w*0.71 + 0.3);
-  float cy = cos(w*1.13),       sy = sin(w*1.13);
-  float cz = cos(w*0.47 + 1.0), sz = sin(w*0.47 + 1.0);
+  float cx = cos(w*0.71*uSpinK.x + 0.3), sx = sin(w*0.71*uSpinK.x + 0.3);
+  float cy = cos(w*1.13*uSpinK.y),       sy = sin(w*1.13*uSpinK.y);
+  float cz = cos(w*0.47*uSpinK.z + 1.0), sz = sin(w*0.47*uSpinK.z + 1.0);
   mat3 rx = mat3(1.0, 0.0, 0.0,  0.0, cx, sx,  0.0, -sx, cx);
   mat3 ry = mat3(cy, 0.0, -sy,  0.0, 1.0, 0.0,  sy, 0.0, cy);
   mat3 rz = mat3(cz, sz, 0.0,  -sz, cz, 0.0,  0.0, 0.0, 1.0);
@@ -113,13 +144,14 @@ void tf_bird(float t, float k, float gap, float spread, mat3 M, vec3 follow, out
   vec3  hk = tf_h3(k*3.1 + 7.0);
   float fm = 1.0 + (hk.x - 0.5) * 0.16 * spread;
   float tk = (t - k*gap) * fm;
-  vec3  amp = vec3(0.85, 0.75, 1.6) * (1.0 + (hk.y - 0.5) * 0.3 * spread);
+  vec3  amp = vec3(0.85, 0.75, 1.6) * (1.0 + (hk.y - 0.5) * 0.3 * spread) * uPathK;
   float breath = 1.0 + 0.55 * sin(t * 0.21 + 0.7);
   vec3  off = (hk - 0.5) * 0.9 * spread * breath;
-  vec3  flutter = 0.07 * spread * vec3(sin(t*1.9 + k*2.0), sin(t*1.3 + k*4.0), sin(t*1.6 + k*6.0));
-  P = vec3(0.0, 0.0, TF_EYE) + M * (tf_path(tk) * amp + off + flutter) - follow;
-  V = M * (tf_pathVel(tk) * amp * fm);
-  A = M * (tf_pathAcc(tk) * amp * fm * fm);
+  vec3  flutter = 0.07 * spread * uFlutter * vec3(sin(t*1.9 + k*2.0), sin(t*1.3 + k*4.0), sin(t*1.6 + k*6.0));
+  float tl = tk * uLoopK;
+  P = vec3(0.0, 0.0, uEye) + M * (tf_path(tl) * amp + off + flutter) - follow;
+  V = M * (tf_pathVel(tl) * amp * fm * uLoopK);
+  A = M * (tf_pathAcc(tl) * amp * fm * fm * uLoopK * uLoopK);
 }
 const vec4 CULL = vec4(0.0, 0.0, -3.0, 1.0);   // クリップ外 → 描かれない
 
@@ -137,32 +169,33 @@ void main(){
 
   // 群れの座標系 (旋回) と追従カメラ (frag の main 冒頭と同じ)
   mat3 R = tf_frame(uU * uWheel);
-  float cy = uU * uWheel * 0.9, cc = cos(cy), sn = sin(cy);
+  float cy = uU * uWheel * 0.9 * uCamSpin, cc = cos(cy), sn = sin(cy);
   mat3 cam = mat3(cc, 0.0, -sn,  0.0, 1.0, 0.0,  sn, 0.0, cc);
   mat3 M = cam * R;
   vec3 follow;
   { vec3 P0, V0, A0; tf_bird(uU, 0.0, 0.0, 0.0, M, vec3(0.0), P0, V0, A0);
-    follow = vec3(P0.xy * 0.85, (P0.z - TF_EYE) * 0.3); }
+    follow = vec3(P0.xy * uFollow, (P0.z - uEye) * 0.3); }
 
   vec3 P, V, A; tf_bird(ti, k, uGap, uSpread, M, follow, P, V, A);
+  P.xy += uCenter;
   if(P.z < 0.3){ gl_Position = CULL; return; }
   vec2  h2 = tf_h2(i*0.731 + k*19.7);
   vec3  h3 = tf_h3(i*0.413 + k*5.3);
   float isl  = smoothstep(0.2, 0.8, tf_vn(ti * uIslK + k*3.7));
   float dens = mix(1.0, isl, uIslands);
   float keep = step(fract(h3.z*2.7), mix(1.0, 0.06 + 0.94*dens, uIslands));
-  float press = mix(1.0, 0.45 + 0.55*(0.5 + 0.5*sin(ti*2.3 + k*7.0)), uPressure);
-  float tail  = mix(1.0, 0.3, smoothstep(0.45*uLu, 0.95*uLu, s));
+  float press = mix(1.0, uPressMin + (1.0 - uPressMin)*(0.5 + 0.5*sin(ti*uPressF + k*7.0)), uPressure);
+  float tail  = mix(1.0, uTailMin, smoothstep(0.45*uLu, 0.95*uLu, s));
   float jit   = mix(1.0, 0.5 + floor(h2.x*3.0)*0.5, uJitter);
-  float w     = uBrush * press * tail * jit * (1.0 + 0.6*uAu);
-  float depthF = mix(1.0, clamp(1.6 - 0.6*(P.z/TF_EYE), 0.15, 1.0), uDepth);
+  float w     = uBrush * press * tail * jit * (1.0 + 0.6*uAu) * uBeatW * max(1.0 + uBirdVar*(tf_h1(k*5.7 + 1.3) - 0.5)*2.0, 0.15);
+  float depthF = mix(1.0, clamp(1.6 - uDepthSlope*(P.z/uEye), 0.15, 1.0), uDepth);
   vec3  T = normalize(V + vec3(1e-5, 0.0, 0.0));
   vec3  S = normalize(cross(T, vec3(0.13, 1.0, 0.07)));
   vec3  N = cross(S, T);
   vec3  Nc = A - T * dot(A, T);
   float kc = clamp(length(Nc) * 1.5, 0.0, 1.0);
   Nc = normalize(Nc + vec3(1e-6, 0.0, 0.0));
-  float roll = (h2.y - 0.5) * 0.18 * uJitter + uWarp * 0.9 * sin(ti*0.55 + k*1.7);
+  float roll = (h2.y - 0.5) * 0.18 * uJitter + uWarp * 0.9 * sin(ti*uWarpF + k*1.7) + uTwist;
   vec3  Sw = normalize(cos(roll)*S + sin(roll)*N);
   Sw = normalize(mix(Sw, Nc * sign(dot(Nc, Sw) + 1e-6), uWarp * 0.45 * kc));
   { vec3 vd = normalize(P);
@@ -170,8 +203,8 @@ void main(){
     float face = abs(dot(normalize(cross(T, Sw)), vd));
     Sw = normalize(mix(Sb * sign(dot(Sb, Sw) + 1e-6), Sw, smoothstep(0.08, 0.45, face))); }
   float strayOn = step(1.0 - uStray*0.12, h3.x);
-  vec3  C3 = P + Sw * strayOn * (h2.y - 0.5) * 7.0 * w;
-  float w1 = w * (0.9 + 0.7*fract(h2.x*5.17)), w2 = w * (0.5 + 0.4*fract(h3.y*7.31));
+  vec3  C3 = P + Sw * strayOn * (h2.y - 0.5) * 7.0 * uStrayReach * w;
+  float w1 = w * (0.9 + 0.7*fract(h2.x*5.17)) * uLen, w2 = w * (0.5 + 0.4*fract(h3.y*7.31)) * uWid;
   vec3 c, a1, a2; float det;
   if(m < 0.5){
     if(strayOn > 0.5 || keep < 0.5){ gl_Position = CULL; return; }
@@ -185,7 +218,7 @@ void main(){
     vec2  hm = tf_h2(i*0.157 + k*3.9 + fm*11.3);
     float gw = gsz * (0.6 + 0.8*fract(hm.x*6.1 + hm.y*3.3));
     float ph = (hm.y - 0.5) * 2.2, ps = (hm.x - 0.5) * 0.25;
-    c  = C3 + T * (hm.x - 0.5) * w1 * 2.4 + Sw * (hm.y - 0.5) * w2 * 2.6;
+    c  = C3 + T * (hm.x - 0.5) * w1 * 2.4 * uClusterR + Sw * (hm.y - 0.5) * w2 * 2.6 * uClusterR;
     a1 = (cos(ph)*T + sin(ph)*Sw) * w1 * gw;
     a2 = ((-sin(ph)*T + cos(ph)*Sw) * cos(ps) + N * sin(ps)) * w2 * gw;
     det = step(fract(hm.x*9.1), 0.10);
@@ -207,12 +240,14 @@ void main(){
   // 画面高 = 1 の単位 (frag の p) → NDC は ×2。深度は near 0.25 / far 40 の透視
   const float zn = 0.25, zf = 40.0;
   float zc = ((zf + zn) / (zf - zn)) * wp.z - 2.0*zf*zn / (zf - zn);
-  gl_Position = vec4(2.0 * uFcl * wp.x / asp, 2.0 * uFcl * wp.y, zc, wp.z);
+  vec2 wxy = vec2(uRoll.y*wp.x - uRoll.x*wp.y, uRoll.x*wp.x + uRoll.y*wp.y);
+  gl_Position = vec4(2.0 * uFcl * wxy.x / asp, 2.0 * uFcl * wxy.y, zc, wp.z);
   vLoc    = aCorner;
   vHalfPx = vec2(length(f1), length(f2)) * uRes.y;
   vDepthF = depthF;
   vTint   = fract(k*0.17 + ti*0.05);
   vDet    = det;
+  vAge    = s / uLu;
   vLineOn = (tf_h1(i*0.531 + k*7.9 + m*3.3 + 0.37) < uLineSkip) ? 0.0 : 1.0;
 }`;
 
@@ -224,6 +259,9 @@ in float vDepthF;
 in float vTint;
 in float vDet;
 in float vLineOn;
+in float vAge;
+uniform float uShape, uAA, uTailMix, uTailFade, uSpeckle;
+uniform vec3  uTailC;
 uniform float uLine, uLineK, uFill, uDetail, uOpaque, uPaperAlpha;
 uniform float uPass;             // 0 = 被覆マスク書き込み (深度プリパス) / 1 = 本描画
 uniform vec2  uRes;
@@ -231,11 +269,18 @@ uniform sampler2D uMask;         // 全板の被覆 (uPass=0 の結果)
 uniform vec3  uInk, uPaper;
 out vec4 frag;
 void main(){
-  if(uPass < 0.5){ frag = vec4(1.0); return; }   // 被覆マスク: 板の形を 1 で描く
   vec2  e  = (1.0 - abs(vLoc)) * vHalfPx;     // 縁までの距離 (px)
   float d  = min(e.x, e.y);
+  if(uShape > 0.0){                           // 角の丸み (丸角の矩形 SDF。被覆マスクにも反映)
+    float rp = uShape * min(vHalfPx.x, vHalfPx.y);
+    vec2  qp = abs(vLoc) * vHalfPx - (vHalfPx - rp);
+    float sdp = length(max(qp, 0.0)) + min(max(qp.x, qp.y), 0.0) - rp;
+    if(sdp > 0.0) discard;
+    d = -sdp;
+  }
+  if(uPass < 0.5){ frag = vec4(1.0); return; }   // 被覆マスク: 板の形を 1 で描く
   float lw = max(uLine, 0.05) * 0.5;
-  float aa = 0.7;
+  float aa = uAA;
   // 縁の線 (塗りでは重なった板の境のひび割れになる)。Line Skip の板は自板の縁を描かず、
   //   群れ全体の被覆マスクの境界を線にする (線幅の範囲 8 方向 × 2 半径の 16 点に被覆の外があれば線)
   float band;
@@ -259,11 +304,15 @@ void main(){
   float inkOutline = lines;
   float inkFill    = 1.0 - lines;
   float ink = mix(inkOutline, inkFill, uFill) * vDepthF;
-  if(uOpaque > 0.5){ frag = vec4(mix(uPaper, uInk, ink), 1.0); }
+  if(uTailFade > 0.0) ink *= 1.0 - uTailFade * vAge;
+  if(uSpeckle > 0.0) ink *= step(uSpeckle, fract(sin(dot(floor(gl_FragCoord.xy), vec2(12.9898, 78.233))) * 43758.5453));
+  vec3 uInkE = uInk;
+  if(uTailMix > 0.0) uInkE = mix(uInk, uTailC, uTailMix * vAge);
+  if(uOpaque > 0.5){ frag = vec4(mix(uPaper, uInkE, ink), 1.0); }
   else {
     // Slot B: 実 alpha。紙 (板の中・紙色の線) は uPaperAlpha の不透明度、インクは不透明。深度は常に書く (奥の線を隠す)
     float a = ink + uPaperAlpha * (1.0 - ink);
-    vec3  c = (ink * uInk + (1.0 - ink) * uPaperAlpha * uPaper) / max(a, 1e-5);
+    vec3  c = (ink * uInkE + (1.0 - ink) * uPaperAlpha * uPaper) / max(a, 1e-5);
     frag = vec4(c, a);
   }
 }`;
@@ -418,6 +467,35 @@ void main(){
     gl.uniform1f(U('uDetail'), dz(P.detail));
     gl.uniform1f(U('uOpaque'), opaque ? 1 : 0);
     gl.uniform1f(U('uPaperAlpha'), dz(P.paperAlpha));
+    gl.uniform1f(U('uFollow'), dz(P.follow) / 100);
+    gl.uniform2f(U('uCenter'), dz(P.centerX) / 100, dz(P.centerY) / 100);
+    const rollR = dz(P.roll) * Math.PI / 180;
+    gl.uniform2f(U('uRoll'), Math.sin(rollR), Math.cos(rollR));
+    gl.uniform1f(U('uEye'), dz(P.eyeDist));
+    gl.uniform3f(U('uPathK'), dz(P.pathSize) / 100, dz(P.pathSize) / 100, dz(P.pathDepth) / 100);
+    gl.uniform1f(U('uLoopK'), dz(P.loopRate) / 100);
+    gl.uniform1f(U('uFlutter'), dz(P.flutter) / 100);
+    gl.uniform3f(U('uSpinK'), dz(P.wheelX) / 100, dz(P.wheelY) / 100, dz(P.wheelZ) / 100);
+    gl.uniform1f(U('uCamSpin'), dz(P.camSpin) / 100);
+    gl.uniform1f(U('uLen'), dz(P.stampLen) / 100);
+    gl.uniform1f(U('uWid'), dz(P.stampWid) / 100);
+    gl.uniform1f(U('uShape'), dz(P.stampRound) / 100);
+    gl.uniform1f(U('uTwist'), dz(P.twist) * Math.PI / 180);
+    gl.uniform1f(U('uPressF'), 2.3 * dz(P.pressRate) / 100);
+    gl.uniform1f(U('uPressMin'), dz(P.pressMin) / 100);
+    gl.uniform1f(U('uTailMin'), dz(P.tailTaper) / 100);
+    gl.uniform1f(U('uWarpF'), 0.55 * dz(P.warpRate) / 100);
+    gl.uniform1f(U('uBirdVar'), dz(P.birdVar) / 100);
+    gl.uniform1f(U('uStrayReach'), dz(P.strayReach) / 100);
+    gl.uniform1f(U('uClusterR'), dz(P.clusterR) / 100);
+    gl.uniform1f(U('uDepthSlope'), dz(P.depthSlope) / 100);
+    gl.uniform1f(U('uAA'), dz(P.edgeSoft) / 100);
+    gl.uniform1f(U('uTailMix'), dz(P.tailMix) / 100);
+    gl.uniform1f(U('uTailFade'), dz(P.tailFade) / 100);
+    gl.uniform1f(U('uSpeckle'), dz(P.speckle) / 200);
+    const tcol = P.tailColor || [0.914, 0.933, 0.949];
+    gl.uniform3f(U('uTailC'), tcol[0], tcol[1], tcol[2]);
+    gl.uniform1f(U('uBeatW'), 1 + dz(P.beatPulse) / 100 * Math.exp(-4 * (bt - Math.floor(bt))));
     const ink = P.ink || [0.914, 0.933, 0.949];
     gl.uniform3f(U('uInk'), ink[0], ink[1], ink[2]);
     gl.uniform3f(U('uPaper'), paper[0], paper[1], paper[2]);
