@@ -26,7 +26,7 @@ const CyberUI = {
   void main(){ v_uv = a_pos*0.5+0.5; gl_Position = vec4(a_pos,0.,1.); }`,
   FS: `#version 300 es
   precision mediump float;
-  uniform sampler2D u_tex; uniform vec2 u_res; uniform float u_black; in vec2 v_uv; out vec4 o;
+  uniform sampler2D u_tex; uniform vec2 u_res; uniform float u_black; uniform vec3 u_ink; in vec2 v_uv; out vec4 o;
   void main(){
     // プリマルチプライ済み → a=被覆率。色を白/黒に固定したプリマルチ出力。
     // 不透明なグレー線も指定色になり、グレー/黒のフチが出ない。
@@ -36,7 +36,7 @@ const CyberUI = {
     float softA = 1.0 - pow(1.0 - a, 5.0);
     float hardA = step(0.5, a);
     a = mix(softA, hardA, isBlack);
-    vec3 white = vec3(1.0);
+    vec3 white = u_ink;
     vec3 black = vec3(0.018, 0.022, 0.032);
     vec3 ink = mix(white, black, isBlack);
     o = vec4(ink * a, a);
@@ -58,7 +58,8 @@ const CyberUI = {
       pos: gl.getAttribLocation(this.prog,'a_pos'),
       tex: gl.getUniformLocation(this.prog,'u_tex'),
       res: gl.getUniformLocation(this.prog,'u_res'),
-      black: gl.getUniformLocation(this.prog,'u_black')
+      black: gl.getUniformLocation(this.prog,'u_black'),
+      ink: gl.getUniformLocation(this.prog,'u_ink')
     };
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
@@ -111,7 +112,13 @@ const CyberUI = {
   // ===== パラメータ =====
   NBARS: 150,
   // 調整可能オプション (CYBER UI Options パネル / デフォルト保存対応)
-  P: { spin:1.0, speed:1.0, audioSync:1.0, barLen:1.0, bars:1, clock:1, emblem:1, cdBars:1, console:1, black:0 },
+  P: { spin:1.0, speed:1.0, audioSync:1.0, barLen:1.0, bars:1, clock:1, emblem:1, cdBars:1, console:1, black:0,
+       clockScale:100, clockX:0, clockY:0, ringTilt:0, ringR:100, ringGap:30,
+       barCount:100, barFill:55, barMin:4, hillSharp:140, spikeAmt:100, barShuffle:85, barPulse:18, barFall:100, atkPunch:100, innerBars:0,
+       tickCount:60, tickWeight:100, ringWeight:100,
+       handLen:100, handWeight:100, handLabel:100, emblemSize:100, emblemTilt:0,
+       bandLen:100, conLines:11, conSize:100, frameInset:22, frameWeight:100, bracketSize:100, titleSize:100, iconScale:100,
+       inkColor:[1,1,1] },
 
   // 値取得ヘルパ ----------------------------------------------------
   _now(){ return (typeof this._slotClock === 'number') ? this._slotClock : (performance.now()/1000 - this.startTime); },
@@ -152,8 +159,10 @@ const CyberUI = {
   // ===== メイン描画 (p5) =====
   draw(p){
     const P = this.P || {};
+    const pv = (k, d) => { const v = P[k]; if(v == null) return d; return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; };
+    const pct = (k) => pv(k, 100) / 100;
     const t = this._now() * (P.speed != null ? P.speed : 1);
-    const W = p.width, H = p.height, cx = W*0.5, cy = H*0.5;   // 出力解像度に追従(4:3 等にも対応)
+    const W = p.width, H = p.height, cx = W*0.5 + W*pv('clockX', 0)/100, cy = H*0.5 + H*pv('clockY', 0)/100;   // 出力解像度に追従(4:3 等にも対応)
     const S = Math.min(W, H) / 720;                            // 短辺基準のスケール係数
     p.clear();          // 透明背景。ベクター要素は実アルファ、画像素材の黒は表示シェーダでキー
     p.noStroke();
@@ -166,17 +175,20 @@ const CyberUI = {
     const atkTarget = Math.min(1.0, attack * 5.0);
     this._atkEnv += (atkTarget - this._atkEnv) * (atkTarget > this._atkEnv ? 0.5 : 0.08);  // 速く立ち上がり/ゆっくり減衰
     const atk = this._atkEnv;
-    const R0 = 250;                 // リング半径
+    const R0 = 250 * pct('ringR');  // リング半径
     const maxBarLen = 230;          // 最大バー長
 
     // ---- 放射状の長方形バー (時計回り回転) + 目盛り ----
-    const CLOCK_S = 0.80 * S;      // 時計全体のスケール (短辺に追従して 4:3 でも収める)
+    const CLOCK_S = 0.80 * S * pct('clockScale');      // 時計全体のスケール (短辺に追従して 4:3 でも収める)
     p.push();
     p.translate(cx, cy);
     p.scale(CLOCK_S);
-    const rot = t * 0.4 * (P.spin != null ? P.spin : 1);   // 時計回り (canvas は y 下向き = 正回転=時計回り)
+    const rot = t * 0.4 * (P.spin != null ? P.spin : 1) + pv('ringTilt', 0) * Math.PI/180;   // 時計回り (canvas は y 下向き = 正回転=時計回り)
     p.rotate(rot);
-    const N = this.NBARS;
+    const N = Math.max(8, Math.round(this.NBARS * pct('barCount')));
+    if(this.barH.length < N){ const nb = new Float32Array(N); nb.set(this.barH); this.barH = nb; }
+    const hillExp = pv('hillSharp', 140) / 100, spA = pct('spikeAmt'), shv = pv('barShuffle', 85), pulv = pv('barPulse', 18);
+    const fallK = Math.min(1, 0.17 * pct('barFall')), punch = pct('atkPunch'), barMin = pv('barMin', 4);
     // 音量ゲート: audioSync=1 で音量に同期(無音時バーが引っ込む)、0 で常時アニメ
     const aS = (P.audioSync != null) ? P.audioSync : 1;
     const volGate = (1.0 - aS) + aS * (0.05 + 0.95 * Math.min(1.0, Math.pow(energy * 2.4, 0.9)));
@@ -197,51 +209,64 @@ const CyberUI = {
                 + 0.45*Math.sin(ang*4.0 - t*0.42 + 1.3)
                 + 0.40*Math.sin(ang*2.0 + t*0.31 + 2.7)
                 + 0.30*Math.sin(ang*5.0 - t*0.25 + 0.6);
-      const hill = Math.pow(Math.min(1.0, Math.max(0.0, env)/0.85), 1.4);  // 山のピークを天井(1.0)で頭打ち=山同士の高さを揃える
+      const hill = Math.pow(Math.min(1.0, Math.max(0.0, env)/0.85), hillExp);  // 山のピークを天井(1.0)で頭打ち=山同士の高さを揃える
       const fftV = this._fftAt(frac);                       // 音マッピング: 角度=周波数(連続)
       const audio = (fftV >= 0) ? Math.pow(fftV, 1.6) : 0;  // 音による変調(あれば山を高く)
-      const shuffle = 0.15 + 0.85*r1;                              // 山の中で棒の高さをランダムにシャッフル(規則的でない凸凹)
+      const shuffle = (100-shv)/100 + (shv/100)*r1;                              // 山の中で棒の高さをランダムにシャッフル(規則的でない凸凹)
       const base = hill * (0.35 + 1.0*audio) * shuffle;            // 山(音に反応) × シャッフル
       const flick = Math.sin(t*2.6 + r2*6.2831 + i*1.7);           // バーごと位相で時間点滅
       const spike = Math.pow(Math.max(0.0, flick), 5.0) * Math.pow(r1, 1.5);  // ランダムに山並み(天井)まで伸びる棒
-      const spec = base + spike * (0.4 + 0.6*audio) * 1.35;
+      const spec = base + spike * (0.4 + 0.6*audio) * 1.35 * spA;
       // 微小な揺らぎ(生命感)。スペクトラムを主役に、音量はわずかなフロアのみ。
-      const pulse = 0.82 + 0.18*Math.sin(t*2.4 + r2*6.2831);
+      const pulse = (100-pulv)/100 + (pulv/100)*Math.sin(t*2.4 + r2*6.2831);
       const v = (spec*1.5 + 0.025*vol*(0.3+0.7*r1)) * pulse;
       // アタックは山(hill)のあるバーだけ指数関数的に伸ばす。谷(hill≈0)はアタック音があっても反応しない
-      const common = Math.pow(atk, 2.0) * Math.pow(hill, 2.0) * 2.2;
+      const common = Math.pow(atk, 2.0) * Math.pow(hill, 2.0) * 2.2 * punch;
       const vMixed = (v + common) * volGate;                                              // 音量同期
-      const target = 4 + Math.min(maxBarLen*barLen, Math.max(0.0, vMixed) * maxBarLen * 1.3 * barLen);  // バー長さ(barLen)で全体スケール
+      const target = barMin + Math.min(maxBarLen*barLen, Math.max(0.0, vMixed) * maxBarLen * 1.3 * barLen);  // バー長さ(barLen)で全体スケール
       // スペクトラムに素早く追従(立ち上がり速め)、戻りは中庸でガタつき抑制
-      const kUp = 0.34 + 0.16*atk, kDown = 0.17;
+      const kUp = 0.34 + 0.16*atk, kDown = fallK;
       this.barH[i] += (target - this.barH[i]) * ((target > this.barH[i]) ? kUp : kDown);
     }
     // 空間平滑化: 突出したバーを隣接へ散らす(まとまりは common の底上げで確保)
-    const sm = this._barSm || (this._barSm = new Float32Array(N));
+    let sm = this._barSm;
+    if(!sm || sm.length < N) sm = this._barSm = new Float32Array(N);
     for(let i=0;i<N;i++){
       sm[i] = this.barH[i];   // 平滑化オフ(鋭い山を保つ。散らしは周波数3周マッピングで担保)
     }
-    const barW = (R0 * Math.PI*2 / N) * 0.55;     // 一定幅 (純粋長方形)
+    const barW = (R0 * Math.PI*2 / N) * (pv('barFill', 55) / 100);     // 一定幅 (純粋長方形)
     for(let i=0;i<N;i++){
       p.push();
       p.rotate(i / N * Math.PI*2);
       p.rect(-barW*0.5, R0, barW, sm[i]);         // 根元 R0 から外へ
       p.pop();
     }
+    const inB = pv('innerBars', 0);
+    if(inB !== 0){                                // 内リングから中心へ向かう鏡像バー
+      const rIn = R0 - pv('ringGap', 30);
+      for(let i=0;i<N;i++){
+        const len = Math.min(sm[i] * inB / 100, rIn * 0.8);
+        p.push();
+        p.rotate(i / N * Math.PI*2);
+        p.rect(-barW*0.5, rIn - len, barW, len);
+        p.pop();
+      }
+    }
     }   // if(P.bars)
     // 同心リング
-    p.noFill(); p.stroke(255); p.strokeWeight(1.5);
+    const rW = pct('ringWeight'), inner = R0 - pv('ringGap', 30);
+    p.noFill(); p.stroke(255); p.strokeWeight(1.5 * rW);
     p.ellipse(0, 0, R0*2, R0*2);
-    p.strokeWeight(1.0); p.stroke(150);
-    p.ellipse(0, 0, (R0-30)*2, (R0-30)*2);
+    p.strokeWeight(1.0 * rW); p.stroke(150);
+    p.ellipse(0, 0, inner*2, inner*2);
     // 目盛り (60 小 / 12 大) — バーと一緒に回転。
     //   内端を内側リング(R0-30)まで伸ばして隙間を無くす。
     p.stroke(255);
-    const inner = R0 - 30;
-    for(let k=0;k<60;k++){
-      const ang = k/60 * Math.PI*2;
-      const major = (k % 5 === 0);
-      p.strokeWeight(major ? 2.5 : 1.0);
+    const nT = Math.max(12, Math.round(pv('tickCount', 60))), tW = pct('tickWeight'), majorEvery = Math.max(1, Math.round(nT / 12));
+    for(let k=0;k<nT;k++){
+      const ang = k/nT * Math.PI*2;
+      const major = (k % majorEvery === 0);
+      p.strokeWeight((major ? 2.5 : 1.0) * tW);
       p.line(Math.cos(ang)*inner, Math.sin(ang)*inner, Math.cos(ang)*(R0-4), Math.sin(ang)*(R0-4));
     }
     p.pop();
@@ -251,9 +276,9 @@ const CyberUI = {
       p.push();
       p.translate(cx, cy);
       p.scale(CLOCK_S);
-      p.rotate(-this._beatRev() * 0.09);  // beat 同期 (テンポに比例して回転)
+      p.rotate(-this._beatRev() * 0.09 + pv('emblemTilt', 0) * Math.PI/180);  // beat 同期 (テンポに比例して回転)
       p.imageMode(p.CENTER);
-      p.image(this.cdEmblem, 0, 0, 460, 460);
+      p.image(this.cdEmblem, 0, 0, 460 * pct('emblemSize'), 460 * pct('emblemSize'));
       p.pop();
     }
 
@@ -264,7 +289,9 @@ const CyberUI = {
     p.scale(CLOCK_S);
     p.stroke(255);
     // 針 + 先端に平行ラベル
+    const hLen = pct('handLen'), hWt = pct('handWeight'), hLab = pct('handLabel');
     const hand = (deg, len, weight, label) => {
+      len *= hLen; weight *= hWt;
       const a = deg * Math.PI/180;
       p.stroke(255); p.strokeWeight(weight);
       p.line(0, 0, Math.cos(a)*len, Math.sin(a)*len);
@@ -274,9 +301,11 @@ const CyberUI = {
       const up = Math.cos(a) < 0;             // 左向きは上下反転して可読に
       p.rotate(a + (up ? Math.PI : 0));
       p.noStroke(); p.fill(255);
-      p.textFont('Courier New'); p.textSize(10);
+      if(hLab > 0){
+      p.textFont('Courier New'); p.textSize(10 * hLab);
       p.textAlign(up ? p.RIGHT : p.LEFT, p.TOP);
       p.text(label, up ? -7 : 7, 4);
+      }
       p.pop();
     };
     // ミリ秒(秒針): 1 秒で 1 周、easeOutQuint + 着地で約5pxの小バウンド
@@ -292,15 +321,16 @@ const CyberUI = {
     }   // if(P.clock)
 
     // ===== クリーンな外枠 (引き伸ばさず描画) =====
-    p.noFill(); p.stroke(255); p.strokeWeight(1.2);
-    const FM = 22;                       // フレーム余白
+    const fW = pct('frameWeight');
+    p.noFill(); p.stroke(255); p.strokeWeight(1.2 * fW);
+    const FM = pv('frameInset', 22);     // フレーム余白
     p.rect(FM, FM, W-2*FM, H-2*FM);
-    p.strokeWeight(0.8); p.stroke(120);
+    p.strokeWeight(0.8 * fW); p.stroke(120);
     p.rect(FM+5, FM+5, W-2*FM-10, H-2*FM-10);
 
     // ===== 四隅のコーナーブラケット (1枚絵を回転配置 → どのアスペクトでも歪まない) =====
     if(this.cdFrame){
-      const BS = 120 * S;                // ブラケットの表示サイズ(短辺に追従)
+      const BS = 120 * S * pct('bracketSize');                // ブラケットの表示サイズ(短辺に追従)
       const HP = Math.PI/2;
       p.imageMode(p.CORNER);
       const corners = [[FM, FM, 0.0], [W-FM, FM, HP], [W-FM, H-FM, Math.PI], [FM, H-FM, HP*3.0]];
@@ -320,8 +350,8 @@ const CyberUI = {
     const rightX = W - MX;
 
     // ===== 帯: 素材を長軸方向にスクロール(マーキー)して同じ文字列を繰り返す =====
-    const barV = 300 * S;                // 縦帯の窓の長さ(高さ, 短辺に追従)
-    const barH = 300 * S;                // 横帯の窓の長さ(幅)
+    const barV = 300 * S * pct('bandLen');                // 縦帯の窓の長さ(高さ, 短辺に追従)
+    const barH = 300 * S * pct('bandLen');                // 横帯の窓の長さ(幅)
     const SPD = 38 * S;                  // スクロール速度(px/秒)
     if(P.cdBars){
     if(this.cdBarR){                     // 右辺・上寄り(縦, 上へ流す)
@@ -341,20 +371,23 @@ const CyberUI = {
 
     // ---- 左上 "aratanagara" ----
     p.fill(255); p.noStroke();
-    p.textFont('Aratana'); p.textAlign(p.LEFT, p.BASELINE); p.textSize(26);
+    const tS = pct('titleSize');
+    if(tS > 0){
+    p.textFont('Aratana'); p.textAlign(p.LEFT, p.BASELINE); p.textSize(26 * tS);
     p.text('aratanagara', MX, TOP_BL);
-    p.textFont('Courier New'); p.textSize(10); p.fill(170);
+    p.textFont('Courier New'); p.textSize(10 * tS); p.fill(170);
     p.text('audio.reactive.clock // v1', MX, TOP_BL + 16);
+    }
 
     // ---- HUD アイコン (右下, 下帯の右側) ----
-    this._drawIcons(p, t, W - 64, BOT_BL);
+    this._drawIcons(p, t, W - 64, BOT_BL, pct('iconScale'));
 
     // ---- 左下 端末 (左帯の右側, 下端 BOT_BL を共有) ----
-    if(P.console) this._drawConsole(p, t, 66, BOT_BL);
+    if(P.console) this._drawConsole(p, t, 66, BOT_BL, pct('conSize'), Math.max(1, Math.round(pv('conLines', 11))));
 
     // ---- nn.png (GR エンブレムの幅・x に合わせた縦パターン, エンブレムの上に配置) ----
     if(this.clockImg){
-      const eS = 34;                       // _drawIcons のエンブレム幅
+      const eS = 34 * pct('iconScale');    // _drawIcons のエンブレム幅
       const eCx = (W - 64) - eS*0.5;       // エンブレム中心 x
       const eTop = BOT_BL - eS*0.5 - 48;   // エンブレム上端からさらに上 (GRロゴと被らない)
       const iw = eS;
@@ -390,12 +423,11 @@ const CyberUI = {
     ctx.restore();
   },
 
-  _drawConsole(p, t, x, baseY){
+  _drawConsole(p, t, x, baseY, cs, KLINES){
     // 入力とフローを同期: 各行を高速タイプ → 完了で上へスクロール。
     const log = this._log;
     const M = log.length;
-    const lineH = 13;
-    const KLINES = 11;                    // 表示行数
+    const lineH = 13 * cs;
     const tpl = 0.45;                     // 1 行の所要時間 (高速タイピング)
     const gi = Math.floor(t / tpl);       // 現在(最新)行のインデックス
     const frac = (t / tpl) % 1.0;
@@ -406,9 +438,9 @@ const CyberUI = {
     const ctx = p.drawingContext;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(x-4, bandTop, 540, (bottomY - bandTop) + 6);
+    ctx.rect(x-4, bandTop, 540 * cs, (bottomY - bandTop) + 6);
     ctx.clip();
-    p.textFont('Courier New'); p.textSize(10); p.textAlign(p.LEFT, p.BASELINE);
+    p.textFont('Courier New'); p.textSize(10 * cs); p.textAlign(p.LEFT, p.BASELINE);
     for(let row=0; row<=KLINES; row++){
       const idx = gi - row;
       if(idx < 0) continue;
@@ -423,7 +455,7 @@ const CyberUI = {
         // ブロックカーソル
         const cw = p.textWidth(shown);
         p.noStroke(); p.fill(255);
-        p.rect(x + cw + 1, y - 9, 6, 10);
+        p.rect(x + cw + 1, y - 9 * cs, 6 * cs, 10 * cs);
       } else {
         p.fill(line[0] === '$' ? 255 : 150);
         p.text(line, x, y);
@@ -444,8 +476,11 @@ const CyberUI = {
     'video:5.2MB done', '$ npm run dev', 'VITE v5 ready in 312 ms',
   ],
 
-  _drawIcons(p, t, rightX, baseY){
+  _drawIcons(p, t, rightX, baseY, k){
     p.push();
+    p.translate(rightX, baseY);
+    p.scale(k);
+    rightX = 0; baseY = 0;
     let x = rightX;
     // エンブレム (最も右, 底辺を baseY に揃える)
     const eS = 34;
@@ -535,6 +570,8 @@ const CyberUI = {
       gl.uniform1i(this.locs.tex, 0);
       gl.uniform2f(this.locs.res, w, h);
       gl.uniform1f(this.locs.black, blackMode ? 1.0 : 0.0);
+      const ic = (this.P && this.P.inkColor) || [1,1,1];
+      gl.uniform3f(this.locs.ink, ic[0], ic[1], ic[2]);
       gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
       gl.enableVertexAttribArray(this.locs.pos);
       gl.vertexAttribPointer(this.locs.pos, 2, gl.FLOAT, false, 0, 0);

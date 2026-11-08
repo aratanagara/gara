@@ -17484,6 +17484,31 @@ void mainImage(out vec4 o, in vec2 f){
       ['Depth',   'depth',  0,   1.0, 0.05, v=>v.toFixed(2)],
       ['Speed',   'speed',  0.1, 3.0, 0.05, v=>v.toFixed(2)],
       ['Color',   'color',  0,   2,   1,    v=>(['Mono','Random','Shared'][v|0] || String(v|0))],
+      ['Perspective',    'persp',     65, 250, 1, v=>Math.round(v)+'%'],   // 遠近感 (小さいほどカメラが近く歪む。見かけの大きさは保つ)
+      ['Cam Pitch',      'camPitch',  -80, 80, 1, v=>Math.round(v)+'°'],   // カメラの仰角に足す
+      ['Cam Yaw',        'camYaw',    -180, 180, 1, v=>Math.round(v)+'°'],   // カメラの方位に足す
+      ['Cam Roll',       'camRoll',   -180, 180, 1, v=>Math.round(v)+'°'],   // 画面の傾き
+      ['Cam Wander',     'camWander', 0, 150, 1, v=>Math.round(v)+'%'],   // カメラが振れる大きさ (0 で固定)
+      ['Spread',         'spread',    20, 160, 1, v=>Math.round(v)+'%'],   // 線を散らす球の大きさ
+      ['Arc Bow',        'arcBow',    0, 250, 1, v=>Math.round(v)+'%'],   // 弧の膨らみ
+      ['Zigzag Rate',    'zigRate',   0, 100, 1, v=>Math.round(v)+'%'],   // 多段カーブになる線の割合
+      ['Zigzag Amount',  'zigAmp',    20, 250, 1, v=>Math.round(v)+'%'],   // 多段カーブの振れ幅
+      ['Milli Ratio',    'milliRate', 0, 100, 1, v=>Math.round(v)+'%'],   // ミリペン (細線) と G ペンの比率
+      ['Jump Rate',      'jumpRate',  0, 100, 1, v=>Math.round(v)+'%'],   // 線幅が段差で跳ぶ線の割合
+      ['Jump Contrast',  'jumpPow',   0, 250, 1, v=>Math.round(v)+'%'],   // 段差の太細の差 (0 で段差なし)
+      ['Blot Size',      'blotSize',  0, 400, 1, v=>Math.round(v)+'%'],   // ミリペンのダマの大きさ
+      ['Waver',          'waver',     0, 400, 1, v=>Math.round(v)+'%'],   // ミリペンの線幅のうねり
+      ['Taper',          'taper',     20, 250, 1, v=>Math.round(v)+'%'],   // 入り抜きの長さ
+      ['Grain Fineness', 'grain',     25, 400, 1, v=>Math.round(v)+'%'],   // かすれの粒の細かさ
+      ['Edge Fineness',  'edgeF',     30, 300, 1, v=>Math.round(v)+'%'],   // 縁のゆらぎの細かさ
+      ['Edge Soft',      'edgeSoft',  0, 100, 1, v=>Math.round(v)+'%'],   // 縁のぼかし
+      ['Hue Run',        'palRun',    -300, 300, 1, v=>Math.round(v)+'%'],   // 1 本の線の中で色が巡る量 (負で逆向き)
+      ['Edge Shade',     'edgeShade', 0, 250, 1, v=>Math.round(v)+'%'],   // パレット色の縁の暗がり
+      ['Ink Opacity',    'opacity',   10, 100, 1, v=>Math.round(v)+'%'],   // インクの濃さ (重なりが透ける)
+      ['Hold',           'hold',      20, 300, 1, v=>Math.round(v)+'%'],   // 描き終えて残る時間
+      ['Fade',           'fade',      20, 300, 1, v=>Math.round(v)+'%'],   // 消えるまでの時間
+      ['Spawn Divide',   'spawnDiv',  1, 8, 1, v=>String(Math.round(v))],   // 1 拍を何分割して線を入れ替えるか
+      ['Depth Fog',      'depthFog',  0, 100, 1, v=>Math.round(v)+'%'],   // 奥の線ほど薄くする
     ];
     for(const [label, key, mi, ma, st, fmt, cb] of specs){
       const row = document.createElement('div'); row.className = 'row';
@@ -17502,6 +17527,15 @@ void mainImage(out vec4 o, in vec2 f){
       col.dataset.default = toHex(App.resetValueFor('pen', 'bgColor', Pen._PDef.bgColor || Pen.P.bgColor));
       col.addEventListener('input', ()=>{ const v = col.value; Pen.P.bgColor = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
+    for(const [label, key, def] of [['Mono Ink', 'monoInk', [0,0,0]], ['Palette Tint', 'palTint', [1,1,1]]]){   // 線の色 (Mono = 墨に足す / Palette = パレット色に掛ける)
+      const row = document.createElement('div'); row.className = 'row';
+      const lab = document.createElement('label'); lab.textContent = label;
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col = document.createElement('input'); col.type='color'; col.value = toHex(Pen.P[key] || def);
+      col.dataset.default = toHex(App.resetValueFor('pen', key, Pen._PDef[key] || def));
+      col.addEventListener('input', ()=>{ const v = col.value; Pen.P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(lab); row.appendChild(col); root.appendChild(row);
+    }
   },
 
   // MIDI Relative の UI を MIDI の現在値へ同期。
@@ -17647,6 +17681,38 @@ void mainImage(out vec4 o, in vec2 f){
       ['Speed',      'speed',     0.1, 3,   0.05, v=>v.toFixed(2)],   // 全体の時間速度
       ['Audio Sync', 'audioSync', 0,   1,   0.02, v=>v.toFixed(2)],   // 音量同期(0=常時 / 1=無音で引っ込む)
       ['Bar Length', 'barLen',    0.2, 2,   0.05, v=>v.toFixed(2)],   // バーの長さ倍率
+      ['Clock Scale',    'clockScale',  50, 115, 1, v=>Math.round(v)+'%'],   // 時計全体の大きさ
+      ['Clock X',        'clockX',      -40, 40, 1, v=>Math.round(v)+'%'],   // 時計の中心を横へ
+      ['Clock Y',        'clockY',      -40, 40, 1, v=>Math.round(v)+'%'],   // 時計の中心を縦へ
+      ['Ring Tilt',      'ringTilt',    -180, 180, 1, v=>Math.round(v)+'°'],   // リングの向き (回転の起点)
+      ['Ring Radius',    'ringR',       50, 115, 1, v=>Math.round(v)+'%'],   // リング・バー・目盛りの半径 (針とエンブレムは変えない)
+      ['Ring Gap',       'ringGap',     0, 120, 1, v=>Math.round(v)+'px'],   // 外リングと内リングの間隔 (目盛りの長さ)
+      ['Bar Count',      'barCount',    40, 250, 1, v=>Math.round(v)+'%'],   // バーの本数
+      ['Bar Width',      'barFill',     20, 100, 1, v=>Math.round(v)+'%'],   // バーの太さ (ピッチに対する割合)
+      ['Bar Base',       'barMin',      0, 40, 1, v=>Math.round(v)+'px'],   // バーの最短長 (谷の底上げ)
+      ['Hill Sharpness', 'hillSharp',   60, 400, 1, v=>Math.round(v)+'%'],   // 山の鋭さ (指数)
+      ['Spike Amount',   'spikeAmt',    0, 300, 1, v=>Math.round(v)+'%'],   // ランダムに突き出る棒の量
+      ['Bar Shuffle',    'barShuffle',  0, 100, 1, v=>Math.round(v)+'%'],   // 棒ごとの高さのばらつき
+      ['Bar Pulse',      'barPulse',    0, 100, 1, v=>Math.round(v)+'%'],   // 棒の脈動の振れ幅
+      ['Bar Fall',       'barFall',     20, 300, 1, v=>Math.round(v)+'%'],   // 棒の戻りの速さ (小さいほど余韻)
+      ['Attack Punch',   'atkPunch',    0, 300, 1, v=>Math.round(v)+'%'],   // 音の立ち上がりで山が伸びる量
+      ['Inner Bars',     'innerBars',   0, 60, 1, v=>Math.round(v)+'%'],   // 内リングから中心へ向かう鏡像バー
+      ['Tick Count',     'tickCount',   12, 240, 12, v=>String(Math.round(v))],   // 目盛りの本数 (12 の倍数)
+      ['Tick Weight',    'tickWeight',  30, 300, 1, v=>Math.round(v)+'%'],   // 目盛りの太さ
+      ['Ring Weight',    'ringWeight',  30, 500, 1, v=>Math.round(v)+'%'],   // 同心リングの線の太さ
+      ['Hand Length',    'handLen',     30, 180, 1, v=>Math.round(v)+'%'],   // 針の長さ
+      ['Hand Weight',    'handWeight',  30, 400, 1, v=>Math.round(v)+'%'],   // 針の太さ
+      ['Hand Label',     'handLabel',   0, 500, 1, v=>Math.round(v)+'%'],   // 針先ラベルの大きさ (0 で消す)
+      ['Emblem Size',    'emblemSize',  30, 150, 1, v=>Math.round(v)+'%'],   // 中央エンブレムの大きさ
+      ['Emblem Tilt',    'emblemTilt',  -180, 180, 1, v=>Math.round(v)+'°'],   // エンブレムの向き
+      ['Band Length',    'bandLen',     30, 150, 1, v=>Math.round(v)+'%'],   // 縁のマーキー帯の長さ
+      ['Console Lines',  'conLines',    2, 16, 1, v=>String(Math.round(v))],   // 端末の表示行数
+      ['Console Size',   'conSize',     60, 200, 1, v=>Math.round(v)+'%'],   // 端末の文字の大きさ
+      ['Frame Inset',    'frameInset',  0, 80, 1, v=>Math.round(v)+'px'],   // 外枠とコーナーの余白
+      ['Frame Weight',   'frameWeight', 30, 400, 1, v=>Math.round(v)+'%'],   // 外枠の線の太さ
+      ['Bracket Size',   'bracketSize', 30, 250, 1, v=>Math.round(v)+'%'],   // 四隅のコーナーの大きさ
+      ['Title Size',     'titleSize',   0, 200, 1, v=>Math.round(v)+'%'],   // 左上の見出しの大きさ (0 で消す)
+      ['Icon Scale',     'iconScale',   30, 200, 1, v=>Math.round(v)+'%'],   // 右下の HUD アイコンの大きさ
     ];
     for(const [label, key, mi, ma, st, fmt] of sliders){
       const row = document.createElement('div'); row.className = 'row';
@@ -17676,6 +17742,13 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(wrap);
       root.appendChild(row);
     }
+    { const row = document.createElement('div'); row.className = 'row';       // 線の色 (白モードのみ。Black ON のときは黒のまま)
+      const lab = document.createElement('label'); lab.textContent = 'Ink Color';
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col = document.createElement('input'); col.type='color'; col.value = toHex(P.inkColor || [1,1,1]);
+      col.dataset.default = toHex(App.resetValueFor('cyberui', 'inkColor', CyberUI._PDef.inkColor || [1,1,1]));
+      col.addEventListener('input', ()=>{ const v = col.value; P.inkColor = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
   },
 
   // セクション見出し (h3) クリックで折りたたみ。状態は localStorage に保持。
