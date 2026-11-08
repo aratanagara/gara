@@ -99,6 +99,22 @@ const ChromeType = {
     texScale:100,        // テクスチャの大きさ (%)
     texFolder:'',        // images/ のフォルダ (folders.json の dir)
     texImage:'',         // フォルダ内のファイル名 (空 = 先頭)
+    lens:100,            // 画角 (%)。小さいと望遠で平ら、大きいと広角で遠近が強い (見かけの大きさは変わらない)
+    posX:0,              // 左右の位置 (%)
+    taper:0,             // 厚みの傾き (%、符号で向き)。片側が厚く反対側が薄い楔形
+    skew:0,              // 斜めに倒す (%、符号で向き)。イタリック体のように上下を横へずらす
+    waveAmp:0,           // 波打ち (%)。旗のように横方向に進む波で前後に揺らす
+    waveFreq:100,        // 波の細かさ (%)
+    keyRot:0,            // 主光の向き (°)。拡散・つやのハイライトの向き
+    keyEl:0,             // 主光の高さ (°、既定の高さからの差)
+    topBox:100,          // 天井の面光源の強さ (%)。映り込みの大きな白い面
+    sideStrips:100,      // 左右の縦長の光の強さ (%)。映り込みの縦の線
+    rimLight:0,          // 縁の光 (%)。見る角度が浅い所に光色を足す
+    cavity:100,          // 穴の縁・付け根の暗がり (%)
+    depthShade:0,        // 奥行きの陰影 (%)。奥の面を暗く、手前の面を明るく
+    contour:0,           // 等高線 (%)。縁からの距離で同心の線を引く
+    contourDens:100,     // 等高線の細かさ (%)
+    lightCol:[1, 1, 1],  // 光の色 (照明・映り込み・ハイライトにかかる)
     bgColor:[1, 1, 1],   // Slot A の背景色
     aa:2,                // 縁のギザ取り (MSAA のサンプル数: 0 = なし / 2 / 4)。1080p で 2x は約 2ms、4x は約 3ms 重くなる
   },
@@ -225,6 +241,7 @@ uniform vec2 uWorld;             // テクスチャ全体の大きさ (F 単位)
 uniform vec2 uCenter;            // 形の中心 (F 単位)。ここを回転の中心にする
 uniform float uR, uPuff, uThick, uFinThick, uSpread, uSplay;
 uniform float uTwist, uBend, uLiq, uLiqF, uT;
+uniform float uSkew, uWaveA, uWaveF;
 uniform int uDeform;
 uniform int uSide;
 uniform vec3 uLayerOn;
@@ -246,6 +263,8 @@ float ct_vn(vec3 x){
              mix(mix(ct_h3(i + vec3(0,0,1)), ct_h3(i + vec3(1,0,1)), f.x), mix(ct_h3(i + vec3(0,1,1)), ct_h3(i + vec3(1,1,1)), f.x), f.y), f.z);
 }
 vec3 ct_deform(vec3 p){
+  if(uSkew != 0.0) p.x += uSkew*p.y;
+  if(uWaveA > 0.0) p.z += uWaveA*sin(p.x*uWaveF + uT*2.0);
   if(uLiq > 0.0){
     vec3 q = p*uLiqF + vec3(0.0, 0.0, uT*0.6);
     p += uLiq*(vec3(ct_vn(q), ct_vn(q + 31.7), ct_vn(q + 57.3)) - 0.5);
@@ -267,7 +286,7 @@ void main(){
   vec2 uv = (px + 0.5)/uTexSize;
   vec4 S = ct_S(uv);
   float d = layer == 0 ? S.r : (layer == 1 ? S.g : S.b);
-  float th = uThick*(layer == 0 ? 1.0 : uFinThick);
+  float th = uThick*(layer == 0 ? 1.0 : uFinThick)*ct_tap((uv.x - 0.5)*uWorld.x - uCenter.x);
   float h = ct_prof(d, layer, uv, 1.0);
   vH = h;
   vUV = uv;
@@ -310,6 +329,9 @@ uniform vec3 uCam;
 uniform float uMetal, uRough, uGloss, uEnvBri, uEnvRot, uSparkle, uIrid, uGrain;
 uniform float uSurf;
 uniform vec3 uTint;
+uniform vec2 uCenter;
+uniform float uTopK, uStripK, uRim, uCavMin, uDepthSh, uDepthR, uContour, uContF, uKeyRot, uKeyEl;
+uniform vec3 uLightCol;
 uniform float uTexAmt, uTexScale, uTexAspect;
 uniform int uTexMode, uHasTex;
 uniform float uT;
@@ -342,7 +364,7 @@ vec3 ct_env(vec3 r, float rough){
   vec3 c = mix(vec3(0.015), vec3(0.10), smoothstep(-1.0, -0.05, y));
   c = mix(c, vec3(0.40, 0.40, 0.41), smoothstep(-0.08, 0.5, y));
   float top = smoothstep(0.62 - w, 0.80 + w*0.5, y);
-  c += vec3(1.9)*top*(0.75 + 0.25*smoothstep(-0.5, 0.5, cos(az*2.0)));
+  c += vec3(1.9)*uTopK*top*(0.75 + 0.25*smoothstep(-0.5, 0.5, cos(az*2.0)));
   float ring = exp(-pow((y - 0.06)/(0.025 + rough*0.35), 2.0));
   c += vec3(1.25)*ring*(0.55 + 0.45*cos(az*3.0 + 0.7));
   for(int i=0;i<3;i++){
@@ -350,7 +372,7 @@ vec3 ct_env(vec3 r, float rough){
     float da = abs(mod(az - a0 + 3.14159, 6.28318) - 3.14159);
     float strip = 1.0 - smoothstep(0.10, 0.10 + w*1.6, da);
     float vert = smoothstep(-0.35 - w, -0.15, y)*(1.0 - smoothstep(0.55, 0.70 + w, y));
-    c += vec3(1.5, 1.48, 1.45)*strip*vert*(i == 2 ? 0.55 : 1.0);
+    c += vec3(1.5, 1.48, 1.45)*uStripK*strip*vert*(i == 2 ? 0.55 : 1.0);
   }
   c += vec3(0.25)*exp(-pow((y + 0.35)/(0.06 + rough*0.3), 2.0))*smoothstep(-0.2, 0.6, cos(az - 0.4));   // 床の照り返し
   return c*uEnvBri;
@@ -372,7 +394,7 @@ void main(){
   float cover = clamp(vH/max(fwidth(vH), 1e-6) + 1.0, 0.0, 1.0);
   float lpw = uSurf > 0.0 ? length(fwidth(vLP)) : 0.0;   // 1 画素あたりの肌の座標の幅 (細かすぎる粒を消す)
   if(cover <= 0.0) discard;
-  float th = uThick*(vLayer == 0 ? 1.0 : uFinThick);
+  float th = uThick*(vLayer == 0 ? 1.0 : uFinThick)*ct_tap((vUV.x - 0.5)*uWorld.x - uCenter.x);
   vec2 e = 1.0/uTexSize;
   vec2 ux = vec2(e.x, 0.0), uy = vec2(0.0, e.y);
   float hx1 = ct_prof(ct_sd(vUV + ux, vLayer), vLayer, vUV + ux, 0.0), hx0 = ct_prof(ct_sd(vUV - ux, vLayer), vLayer, vUV - ux, 0.0);
@@ -446,15 +468,20 @@ void main(){
     }
   }
   alb *= sAlb;
+  env *= uLightCol;
   // 拡散: 上からの大きな面光源 + 左上の主光
   vec3 L = normalize(vec3(-0.45, 0.75, 0.55));
+  if(uKeyRot != 0.0 || uKeyEl != 0.0){
+    float laz = atan(L.x, L.z) + uKeyRot, lel = clamp(asin(L.y) + uKeyEl, -0.2, 1.5);
+    L = vec3(sin(laz)*cos(lel), sin(lel), cos(laz)*cos(lel));
+  }
   float wr = 0.7*pw;   // 粉っぽさ: 光が回り込んで影が浮く (影は控えめ)
   float dif = max((dot(N, L) + wr)/(1.0 + wr), 0.0);
   float sky = 0.5 + 0.5*N.y;
   vec3 irr = vec3(0.26)*sky + vec3(0.08 + 0.12*pw) + vec3(0.9)*dif;
-  irr *= uEnvBri;
+  irr *= uEnvBri*uLightCol;
   // 縁の暗がり (高さの低い所 = 穴の縁・付け根を少し落とす)
-  float cav = mix(mix(0.72, 1.0, smoothstep(0.0, uR*0.9, vH)), 1.0, 0.45*pw)*sCav;
+  float cav = mix(mix(uCavMin, 1.0, smoothstep(0.0, uR*0.9, vH)), 1.0, 0.45*pw)*sCav;
   vec3 F0 = mix(vec3(0.06), alb, uMetal);
   vec3 Fr = F0 + (1.0 - F0)*pow(1.0 - NV, 5.0)*(1.0 - uRough*0.7);
   vec3 col = alb*irr*(1.0 - uMetal)*cav + env*Fr*uGloss*mix(1.0, cav, 0.5);
@@ -462,7 +489,7 @@ void main(){
   // 主光の鋭いハイライト (非金属のつや)
   vec3 Hh = normalize(L + V);
   float sp = pow(max(dot(N, Hh), 0.0), mix(400.0, 12.0, uRough));
-  col += vec3(1.0)*sp*uGloss*(1.0 - uMetal)*0.6*uEnvBri;
+  col += uLightCol*sp*uGloss*(1.0 - uMetal)*0.6*uEnvBri;
   // 玉虫色 (薄膜): 見る角度で色相が回る
   if(uIrid > 0.0){
     vec3 film = 0.5 + 0.5*cos(6.28318*(vec3(0.0, 0.33, 0.67) + 1.3*(1.0 - NV) + 0.12*vLP.x));
@@ -475,6 +502,16 @@ void main(){
     vec3 fn = normalize(vec3(ct_hash(cell + 1.3), ct_hash(cell + 2.7), ct_hash(cell + 5.1)) - 0.5);
     float g = pow(max(dot(normalize(N + fn*0.6), Hh), 0.0), 60.0)*step(0.55, hsh);
     col += vec3(1.0, 0.97, 0.95)*g*uSparkle*2.5*uEnvBri;
+  }
+  if(uRim > 0.0) col += uLightCol*pow(1.0 - NV, 3.0)*uRim;
+  if(uDepthSh > 0.0){
+    float zt = clamp(0.5 - vWP.z/(2.0*uDepthR), 0.0, 1.0);
+    col *= 1.0 - uDepthSh*0.9*(2.0*zt - 1.0);
+  }
+  if(uContour > 0.0){
+    float ph = ct_sd(vUV, vLayer)*uContF;
+    float ln = 1.0 - clamp(abs(fract(ph - 0.5) - 0.5)/max(fwidth(ph)*1.2, 1e-5), 0.0, 1.0);
+    col *= 1.0 - uContour*ln;
   }
   if(uGrain > 0.0){
     float n = ct_hash(vec3(gl_FragCoord.xy, floor(uT*24.0)));
@@ -517,6 +554,8 @@ void main(){
   // 外側は負に延ばす: 補間した高さが 0 になる線で上下の面が閉じる
   _glslProf(){ return `
 uniform float uLump;
+uniform float uTaper;            // 厚みの傾き (1 / F 単位)
+float ct_tap(float x){ return uTaper == 0.0 ? 1.0 : max(0.12, 1.0 + uTaper*x); }
 uniform float uEdge;             // 縁の線形区間 (F 単位)。格子で補間したときに縁がギザにならないよう、0 の前後は距離に比例させる
 uniform sampler2D uSDFPrev;      // 移り変わり: 前の形 (今の形の座標へ写したもの)
 uniform float uMorph;            // 0 = 前の形 → 1 = 今の形
@@ -1267,7 +1306,8 @@ void main(){
     const R3 = this._mat3(yaw, pitch, dz(P.roll)*deg);
 
     // カメラと大きさ
-    const fov = 30*deg, camZ = 6.0;
+    const lk = Math.max(0.4, Math.min(1.8, dz(P.lens)*0.01));
+    const fov = lk === 1 ? 30*deg : 2*Math.atan(Math.tan(15*deg)*lk), camZ = lk === 1 ? 6.0 : 6.0/lk;
     const B = this.bake;
     this._aspect = aspect;
     const { world, bw, center, fit } = this._fit(B, aspect);
@@ -1328,11 +1368,16 @@ void main(){
       u1('uLiq', 0.18*liq);
       u1('uLiqF', 1.6*Math.max(0.05, dz(P.liqFreq)*0.01));
       u1('uT', T);
-      i1('uDeform', (dz(P.twist) || dz(P.bend) || liq > 0) ? 1 : 0);
+      const waveA = Math.max(0, dz(P.waveAmp)*0.01), skewV = 0.25*dz(P.skew)*0.01;
+      u1('uSkew', skewV);
+      u1('uWaveA', 0.15*waveA);
+      u1('uWaveF', 6.2832/Math.max(1, bw*0.45)*Math.max(0.2, dz(P.waveFreq)*0.01));
+      u1('uTaper', 0.7*dz(P.taper)*0.01/Math.max(0.1, bw*0.5));
+      i1('uDeform', (dz(P.twist) || dz(P.bend) || liq > 0 || waveA > 0 || skewV !== 0) ? 1 : 0);
       if(U.uLayerOn) gl.uniform3f(U.uLayerOn, 1, dz(P.layers) > 0 ? 1 : 0, dz(P.layers) > 0 ? 1 : 0);
       if(U.uRot) gl.uniformMatrix3fv(U.uRot, false, new Float32Array(R3));
       u1('uScale', scale);
-      if(U.uPos) gl.uniform3f(U.uPos, 0, dz(P.posY)*0.01*halfH, 0);
+      if(U.uPos) gl.uniform3f(U.uPos, dz(P.posX)*0.01*halfW, dz(P.posY)*0.01*halfH, 0);
       if(U.uVP) gl.uniformMatrix4fv(U.uVP, false, vp);
       if(U.uCam) gl.uniform3f(U.uCam, 0, 0, camZ);
       u1('uMetal', Math.max(0, Math.min(1, dz(P.metal)*0.01)));
@@ -1344,6 +1389,18 @@ void main(){
       u1('uIrid', Math.max(0, Math.min(1, dz(P.irid)*0.01)));
       u1('uGrain', Math.max(0, dz(P.grain)*0.01)*0.5);
       u1('uSurf', Math.max(0, dz(P.surf)*0.01));
+      u1('uTopK', Math.max(0, dz(P.topBox)*0.01));
+      u1('uStripK', Math.max(0, dz(P.sideStrips)*0.01));
+      u1('uRim', 0.8*Math.max(0, dz(P.rimLight)*0.01));
+      u1('uCavMin', Math.max(0, 1 - 0.28*Math.max(0, Math.min(3, dz(P.cavity)*0.01))));
+      u1('uDepthSh', Math.max(0, Math.min(1, dz(P.depthShade)*0.01)));
+      u1('uDepthR', Math.max(0.5, scale*bw*0.3));
+      u1('uContour', Math.max(0, Math.min(1, dz(P.contour)*0.01)));
+      u1('uContF', 1/(0.1/Math.max(0.2, dz(P.contourDens)*0.01)));
+      u1('uKeyRot', dz(P.keyRot)*deg);
+      u1('uKeyEl', dz(P.keyEl)*deg);
+      const lc = Array.isArray(P.lightCol) ? P.lightCol : [1, 1, 1];
+      if(U.uLightCol) gl.uniform3f(U.uLightCol, lc[0], lc[1], lc[2]);
       const tint = Array.isArray(P.tint) ? P.tint : [0.8, 0.8, 0.8];
       if(U.uTint) gl.uniform3f(U.uTint, tint[0], tint[1], tint[2]);
       u1('uTexAmt', this._texReady ? Math.max(0, Math.min(1, dz(P.texAmt)*0.01)) : 0);

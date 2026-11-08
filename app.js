@@ -20038,7 +20038,7 @@ void mainImage(out vec4 o, in vec2 f){
     const deg = v=>String(Math.round(v))+'°';
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { seed:1 };
-    const NO_RAND = { size:1, posY:1, speed:1 };   // Random で変えない (画面から外れる・止まる)
+    const NO_RAND = { size:1, posY:1, posX:1, lens:1, speed:1 };   // Random で変えない (画面から外れる・止まる)
     root.innerHTML = '';
     const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
     const mkSel = (label, opts, value, onChange, noRand)=>{   // opts: [[value, name], ...]
@@ -20134,6 +20134,8 @@ void mainImage(out vec4 o, in vec2 f){
         ['Web',       'web',      20, 300, 1, pct],
         ['Soft',      'soft',     0,  300, 1, pct],
         ['Seed',      'seed',     0,  999, 1, int],
+        ['Taper',     'taper',    -250, 250, 1, pct],
+        ['Skew',      'skew',     -300, 300, 1, pct],
       ]],
       ['Fins & Roots', [
         ['Fins',      'fins',     0,  300, 1, pct],
@@ -20156,6 +20158,8 @@ void mainImage(out vec4 o, in vec2 f){
         ['Bend',      'bend',     -300, 300, 1, pct],
         ['Liquid',    'liquid',   0,  300, 1, pct],
         ['Liq Freq',  'liqFreq',  10, 400, 1, pct],
+        ['Wave',      'waveAmp',  0,  300, 1, pct],
+        ['Wave Freq', 'waveFreq', 20, 400, 1, pct],
       ]],
       ['Motion', [
         ['Spin',      'spin',     -400, 400, 1, pct],
@@ -20169,6 +20173,8 @@ void mainImage(out vec4 o, in vec2 f){
         ['Sway',      'sway',     0,  300, 1, pct],
         ['Size',      'size',     10, 400, 1, pct],
         ['Pos Y',     'posY',     -100, 100, 1, pct],
+        ['Pos X',     'posX',     -50, 50, 1, pct],
+        ['Lens',      'lens',     40, 180, 1, pct],
         ['Speed',     'speed',    0,  400, 1, pct],
         ['Kick',      'kick',     0,  300, 1, pct],
       ]],
@@ -20192,8 +20198,21 @@ void mainImage(out vec4 o, in vec2 f){
       ['Irid',      'irid',     0,  100, 1, pct],
       ['Grain',     'grain',    0,  200, 1, pct],
       ['Surface',   'surf',     0,  200, 1, pct],
+      ['Contour',   'contour',  0,  100, 1, pct],
+      ['Contour Freq', 'contourDens', 20, 400, 1, pct],
     ]) slider(spec);
     mkColor('Tint', 'tint');
+    head('Light');
+    for(const spec of [
+      ['Top Box',   'topBox',   0,  300, 1, pct],
+      ['Side Strips', 'sideStrips', 0, 300, 1, pct],
+      ['Key Angle', 'keyRot',   -180, 180, 1, deg],
+      ['Key Height', 'keyEl',   -40, 40, 1, deg],
+      ['Rim',       'rimLight', 0,  300, 1, pct],
+      ['Cavity',    'cavity',   0,  300, 1, pct],
+      ['Depth Shade', 'depthShade', 0, 100, 1, pct],
+    ]) slider(spec);
+    mkColor('Light Color', 'lightCol');
     // 画像テクスチャ: images/ のフォルダ (IMAGE モードと同じ一覧。ドロップした画像も選べる)
     head('Texture');
     const IM = (typeof ImageMode !== 'undefined') ? ImageMode : null;
