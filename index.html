@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794167447">
+<link rel="stylesheet" href="style.css?v=1794167599">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -587,6 +587,101 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Grid Gap</label>
             <input type="range" id="tdMdGridGap" min="0" max="80" step="1" value="0" title="マスの間隔 px">
             <div class="val" id="tdMdGridGapVal">0</div>
+          </div>
+          <div class="row"><label>Density</label>
+            <input type="range" id="tdMdShowPct" min="5" max="100" step="1" value="100" title="文字を描く割合 (低いほど抜ける。文字ごとに固定)">
+            <div class="val" id="tdMdShowPctVal">100%</div>
+          </div>
+          <div class="row"><label>Size Var</label>
+            <input type="range" id="tdMdSizeVar" min="0" max="80" step="1" value="0" title="文字ごとの大きさのばらつき (一様な拡縮。0で無効)">
+            <div class="val" id="tdMdSizeVarVal">0%</div>
+          </div>
+          <div class="row"><label>Scatter</label>
+            <input type="range" id="tdMdScatter" min="0" max="150" step="1" value="0" title="文字ごとの固定オフセット (文字サイズ比。0で無効)">
+            <div class="val" id="tdMdScatterVal">0%</div>
+          </div>
+          <div class="row"><label>Tremor</label>
+            <input type="range" id="tdMdTremor" min="0" max="40" step="1" value="0" title="12Hz で震える量 (文字サイズ比。0で無効)">
+            <div class="val" id="tdMdTremorVal">0%</div>
+          </div>
+          <div class="row"><label>Wave Amp</label>
+            <input type="range" id="tdMdWaveAmp" min="0" max="120" step="1" value="0" title="字送り方向に沿ったうねりの振れ幅 (文字サイズ比。0で無効)">
+            <div class="val" id="tdMdWaveAmpVal">0%</div>
+          </div>
+          <div class="row"><label>Wave Len</label>
+            <input type="range" id="tdMdWaveLen" min="2" max="40" step="1" value="10" title="うねりの波長 em (Wave Amp が 0 のときは効かない)">
+            <div class="val" id="tdMdWaveLenVal">10em</div>
+          </div>
+          <div class="row"><label>Line Stagger</label>
+            <input type="range" id="tdMdLineStagger" min="-150" max="150" step="1" value="0" title="行ごとに字送り方向へずらす量 (文字サイズ比。0で無効)">
+            <div class="val" id="tdMdLineStaggerVal">0%</div>
+          </div>
+          <div class="row"><label>Slant</label>
+            <input type="range" id="tdMdSlant" min="-40" max="40" step="1" value="0" title="全文字の斜体 (Operator の Skew とは別に常時。0で無効)">
+            <div class="val" id="tdMdSlantVal">0deg</div>
+          </div>
+          <div class="row"><label>Swirl</label>
+            <input type="range" id="tdMdSwirl" min="-150" max="150" step="1" value="0" title="版面中心からの渦 (外周ほど回る。0で無効)">
+            <div class="val" id="tdMdSwirlVal">0deg</div>
+          </div>
+          <div class="row"><label>Bulge</label>
+            <input type="range" id="tdMdBulge" min="-50" max="50" step="1" value="0" title="版面中心からの膨らみ(+) / すぼみ(-) (外周ほど大きく動く。0で無効)">
+            <div class="val" id="tdMdBulgeVal">0%</div>
+          </div>
+          <div class="row"><label>View Angle</label>
+            <input type="range" id="tdMdViewAngle" min="-45" max="45" step="1" value="0" title="版面全体の回転 (0で無効)">
+            <div class="val" id="tdMdViewAngleVal">0deg</div>
+          </div>
+          <div class="row"><label>Pivot X</label>
+            <input type="range" id="tdMdPivotX" min="0" max="100" step="1" value="50" title="変形 (伸び・回転・鏡映) の支点 横位置 (文字枠内 %)">
+            <div class="val" id="tdMdPivotXVal">50%</div>
+          </div>
+          <div class="row"><label>Pivot Y</label>
+            <input type="range" id="tdMdPivotY" min="0" max="100" step="1" value="75" title="変形 (伸び・回転・鏡映) の支点 縦位置 (文字枠内 %。上0 / 下100)">
+            <div class="val" id="tdMdPivotYVal">75%</div>
+          </div>
+          <div class="row"><label>Step Size</label>
+            <input type="range" id="tdMdStepSize" min="30" max="300" step="1" value="100" title="段階的な伸びの刻み幅 (Geo の文字に効く)">
+            <div class="val" id="tdMdStepSizeVal">100%</div>
+          </div>
+          <div class="row"><label>Misreg Opacity</label>
+            <input type="range" id="tdMdMisregAlpha" min="20" max="100" step="1" value="72" title="版ずれ 2 色刷りの濃さ (Misreg X/Y が 0 のときは効かない)">
+            <div class="val" id="tdMdMisregAlphaVal">72%</div>
+          </div>
+          <div class="row"><label>Misreg B</label>
+            <input type="range" id="tdMdMisregRatio" min="0" max="150" step="1" value="65" title="版ずれ B 版の戻り量 (A のオフセット比。Misreg X/Y が 0 のときは効かない)">
+            <div class="val" id="tdMdMisregRatioVal">65%</div>
+          </div>
+          <div class="row"><label>Trail</label>
+            <input type="range" id="tdMdTrailPct" min="0" max="90" step="1" value="0" title="残像 (前フレームを残す。Composition 中は無効。0で無効)">
+            <div class="val" id="tdMdTrailPctVal">0%</div>
+          </div>
+          <div class="row"><label>Accent Move</label>
+            <input type="range" id="tdMdAccentOnMove" min="0" max="200" step="1" value="0" title="動いている文字を Accent 色へ寄せる量 (0で無効)">
+            <div class="val" id="tdMdAccentOnMoveVal">0%</div>
+          </div>
+          <div class="row"><label>Rainbow</label>
+            <input type="range" id="tdMdRainbow" min="0" max="100" step="1" value="0" title="文字ごとの虹色 (Accent 文字以外。0で無効)">
+            <div class="val" id="tdMdRainbowVal">0%</div>
+          </div>
+          <div class="row"><label>Rainbow Span</label>
+            <input type="range" id="tdMdRainbowSpan" min="30" max="720" step="10" value="360" title="版面全体で回す色相 (Rainbow が 0 のときは効かない)">
+            <div class="val" id="tdMdRainbowSpanVal">360deg</div>
+          </div>
+          <div class="row"><label>Vignette</label>
+            <input type="range" id="tdMdVignette" min="0" max="100" step="1" value="0" title="周辺減光 (0で無効)">
+            <div class="val" id="tdMdVignetteVal">0%</div>
+          </div>
+          <div class="row"><label>Vignette Col</label>
+            <input type="color" id="tdMdVignetteColor" value="#000000" title="周辺減光の色">
+          </div>
+          <div class="row"><label>Grain</label>
+            <input type="range" id="tdMdGrain" min="0" max="100" step="1" value="0" title="フィルムグレイン (0で無効)">
+            <div class="val" id="tdMdGrainVal">0%</div>
+          </div>
+          <div class="row"><label>Grain Size</label>
+            <input type="range" id="tdMdGrainSize" min="100" max="600" step="25" value="100" title="グレインの粒の大きさ (Grain が 0 のときは効かない)">
+            <div class="val" id="tdMdGrainSizeVal">100%</div>
           </div>
           <div class="row"><label>Comp</label>
             <select id="tdCompType" style="flex:1" title="Composition Engine v6: テキストから生成シーンを合成 (md 単位。デフォルト保存で永続化、保存の無い md では Off に戻る)">
@@ -1585,43 +1680,43 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794167447"></script>
-<script src="mode/layer.js?v=1794167447"></script>
-<script src="vendor/iro.min.js?v=1794167447"></script>
-<script src="vendor/mediabunny.min.js?v=1794167447"></script>
-<script src="mode/textdeform.js?v=1794167447"></script>
-<script src="mode/textdeform-comp.js?v=1794167447"></script>
-<script src="mode/ugomeki.js?v=1794167447"></script>
-<script src="mode/slicer.js?v=1794167447"></script>
-<script src="mode/video.js?v=1794167447"></script>
-<script src="mode/aratanagara.js?v=1794167447"></script>
-<script src="vendor/p5.min.js?v=1794167447"></script>
-<script src="mode/cyberui.js?v=1794167447"></script>
-<script src="mode/novel.js?v=1794167447"></script>
-<script src="shaders/inkelly.js?v=1794167447"></script>
-<script src="sketchfx.js?v=1794167447"></script>
-<script src="pixelsortfx.js?v=1794167447"></script>
-<script src="shaders/boltzmann.js?v=1794167447"></script>
-<script src="mode/pen.js?v=1794167447"></script>
-<script src="shaders/caverns.js?v=1794167447"></script>
-<script src="mode/shelf.js?v=1794167447"></script>
-<script src="shaders/ribbon.js?v=1794167447"></script>
-<script src="mode/photoplane.js?v=1794167447"></script>
-<script src="mode/shredder.js?v=1794167447"></script>
-<script src="mode/transflock.js?v=1794167447"></script>
-<script src="mode/liquidpeel.js?v=1794167447"></script>
-<script src="mode/windflock.js?v=1794167447"></script>
-<script src="mode/rhizome.js?v=1794167447"></script>
-<script src="mode/surrealfloat.js?v=1794167447"></script>
-<script src="mode/chrometype.js?v=1794167447"></script>
-<script src="mode/tower4149.js?v=1794167447"></script>
-<script src="mode/fude.js?v=1794167447"></script>
-<script src="mode/image.js?v=1794167447"></script>
-<script src="mode/spacetype.js?v=1794167447"></script>
-<script src="pollockfx.js?v=1794167447"></script>
-<script src="overlay.js?v=1794167447"></script>
-<script src="gif.js?v=1794167447"></script>
-  <script src="app.js?v=1794167447"></script>
-<script src="camroll.js?v=1794167447" defer></script>
+<script src="presets.js?v=1794167599"></script>
+<script src="mode/layer.js?v=1794167599"></script>
+<script src="vendor/iro.min.js?v=1794167599"></script>
+<script src="vendor/mediabunny.min.js?v=1794167599"></script>
+<script src="mode/textdeform.js?v=1794167599"></script>
+<script src="mode/textdeform-comp.js?v=1794167599"></script>
+<script src="mode/ugomeki.js?v=1794167599"></script>
+<script src="mode/slicer.js?v=1794167599"></script>
+<script src="mode/video.js?v=1794167599"></script>
+<script src="mode/aratanagara.js?v=1794167599"></script>
+<script src="vendor/p5.min.js?v=1794167599"></script>
+<script src="mode/cyberui.js?v=1794167599"></script>
+<script src="mode/novel.js?v=1794167599"></script>
+<script src="shaders/inkelly.js?v=1794167599"></script>
+<script src="sketchfx.js?v=1794167599"></script>
+<script src="pixelsortfx.js?v=1794167599"></script>
+<script src="shaders/boltzmann.js?v=1794167599"></script>
+<script src="mode/pen.js?v=1794167599"></script>
+<script src="shaders/caverns.js?v=1794167599"></script>
+<script src="mode/shelf.js?v=1794167599"></script>
+<script src="shaders/ribbon.js?v=1794167599"></script>
+<script src="mode/photoplane.js?v=1794167599"></script>
+<script src="mode/shredder.js?v=1794167599"></script>
+<script src="mode/transflock.js?v=1794167599"></script>
+<script src="mode/liquidpeel.js?v=1794167599"></script>
+<script src="mode/windflock.js?v=1794167599"></script>
+<script src="mode/rhizome.js?v=1794167599"></script>
+<script src="mode/surrealfloat.js?v=1794167599"></script>
+<script src="mode/chrometype.js?v=1794167599"></script>
+<script src="mode/tower4149.js?v=1794167599"></script>
+<script src="mode/fude.js?v=1794167599"></script>
+<script src="mode/image.js?v=1794167599"></script>
+<script src="mode/spacetype.js?v=1794167599"></script>
+<script src="pollockfx.js?v=1794167599"></script>
+<script src="overlay.js?v=1794167599"></script>
+<script src="gif.js?v=1794167599"></script>
+  <script src="app.js?v=1794167599"></script>
+<script src="camroll.js?v=1794167599" defer></script>
 </body>
 </html>
