@@ -28,6 +28,22 @@ int tw_m; // material index
 // @param uAoDepth 0..150 = 100
 // @param uSpecSharp 30..300 = 100
 // @param uShadowSoft 30..300 = 100
+// @param uCamX -100..100 = 0
+// @param uCamBob 0..300 = 100
+// @param uYawSway 0..300 = 100
+// @param uPitchSway 0..300 = 100
+// @param uCamRoll -90..90 = 0
+// @param uFocal 50..200 = 100
+// @param uLightHeight 10..300 = 100
+// @param uLightSide -100..100 = 0
+// @param uEnvBandSharp 30..300 = 100
+// @param uEnvBandAmt 0..300 = 100
+// @param uFresnel 0..200 = 100
+// @param uVignette 0..150 = 0
+// @param uMetalTint color = #ffffff
+// @param uBandTint color = #ffffff
+// @param uZenithTint color = #ffffff
+// @param uHighlightTint color = #ffffff
 uniform float uBarHeight; // 柱の上下方向の長さ (%)
 uniform float uBarSpaceX; // 縦柱の X 方向の間隔 (%)
 uniform float uBarSpaceZ; // 横柱の Z 方向の間隔 (%)
@@ -39,6 +55,22 @@ uniform float uEnvBands; // 映り込む縦帯の本数
 uniform float uAoDepth; // 接触影の濃さ (%)
 uniform float uSpecSharp; // 鏡面ハイライトの鋭さ (%)
 uniform float uShadowSoft; // 影のぼかし幅 (%)
+uniform float uCamX; // カメラの横位置 (%)
+uniform float uCamBob; // カメラの上下の揺れの振れ幅 (%)
+uniform float uYawSway; // カメラの左右の振りの振れ幅 (%)
+uniform float uPitchSway; // カメラの上下の首振りの振れ幅 (%)
+uniform float uCamRoll; // カメラの傾き (度)
+uniform float uFocal; // レンズの焦点距離 (%)。小さいと広角
+uniform float uLightHeight; // 光源の高さ (%)
+uniform float uLightSide; // 光源の横位置 (%)。負で反対側
+uniform float uEnvBandSharp; // 映り込む縦帯の鋭さ (%)
+uniform float uEnvBandAmt; // 映り込む縦帯の明るさ (%)
+uniform float uFresnel; // 縁の反射 (フレネル) の強さ (%)
+uniform float uVignette; // 画面の周辺を暗くする量 (%)
+uniform vec3 uMetalTint; // 金属の映り込み全体にかけるティント。既定は白で変化なし
+uniform vec3 uBandTint; // 映り込む縦帯にかけるティント。既定は白で変化なし
+uniform vec3 uZenithTint; // 映り込む天頂のグローにかけるティント。既定は白で変化なし
+uniform vec3 uHighlightTint; // 鏡面ハイライトにかけるティント。既定は白で変化なし
 
 float tw_cube(vec4 c, vec3 pos){
   c.xyz -= pos;
@@ -116,9 +148,9 @@ float tw_softShadow(vec3 pos, vec3 l, float r, float f, float td){
 vec3 tw_env(vec3 d){
   float up = d.y*0.5 + 0.5;
   vec3 c = mix(vec3(0.06, 0.07, 0.09), vec3(0.93, 0.95, 1.0), smoothstep(0.0, 0.9, up));
-  c += vec3(0.6) * pow(max(d.y, 0.0), 5.0);
+  c += vec3(0.6) * uZenithTint * pow(max(d.y, 0.0), 5.0);
   float az = atan(d.x, d.z);
-  c += vec3(0.3) * pow(max(cos(az*floor(uEnvBands + 0.5)), 0.0), 8.0);
+  c += vec3(0.3) * (uEnvBandAmt / 100.0) * uBandTint * pow(max(cos(az*floor(uEnvBands + 0.5)), 0.0), 8.0 * (uEnvBandSharp / 100.0));
   return c;
 }
 
@@ -129,11 +161,12 @@ vec3 tw_normal(vec3 point, vec2 e){
 vec3 bg_twistors(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
 
-  vec3 camPos = vec3(0.0, sin(time*0.3) + 3.0 * (uCamHeight / 100.0), time);
-  vec3 uv = vec3(I / resolution.xy, 1.0);
+  vec3 camPos = vec3(uCamX / 100.0 * 2.0, sin(time*0.3) * (uCamBob / 100.0) + 3.0 * (uCamHeight / 100.0), time);
+  vec3 uv = vec3(I / resolution.xy, 1.0 * (uFocal / 100.0));
   vec3 rayDir = normalize(uv);
-  TW_R(rayDir.yz, sin(time*0.25)*0.25 + 1.25 * (uCamPitch / 100.0));
-  TW_R(rayDir.xz, sin(time*0.2) + radians(uAngle));
+  if(uCamRoll != 0.0){ TW_R(rayDir.xy, radians(uCamRoll)); }
+  TW_R(rayDir.yz, sin(time*0.25)*0.25*(uPitchSway / 100.0) + 1.25 * (uCamPitch / 100.0));
+  TW_R(rayDir.xz, sin(time*0.2)*(uYawSway / 100.0) + radians(uAngle));
 
   float gd = TW_MAXD;
   vec2 march = tw_rm(camPos, rayDir, TW_THRESH, gd);
@@ -147,18 +180,19 @@ vec3 bg_twistors(vec2 fc){
     vec3 n = tw_normal(point, e);
     // クローム: 環境反射 + フレネル + 鋭いハイライト + AO
     vec3 rr = reflect(rayDir, n);
-    vec3 env = tw_env(rr);
-    float fres = pow(1.0 - max(dot(n, -rayDir), 0.0), 4.0);
-    vec3 lig = normalize(TW_LIGHTPOS - point);
+    vec3 env = tw_env(rr) * uMetalTint;
+    float fres = pow(1.0 - max(dot(n, -rayDir), 0.0), 4.0) * (uFresnel / 100.0);
+    vec3 lig = normalize(vec3(10.0 + uLightSide / 10.0, 10.0 * (uLightHeight / 100.0), 10.0) - point);
     float spe = pow(max(dot(n, normalize(lig - rayDir)), 0.0), 60.0 * (uSpecSharp / 100.0));
     float ao = clamp(tw_softShadow(point, point + n, 2.0, 8.0 * (uShadowSoft / 100.0), gd), 0.0, 1.0);
     float aoW = 0.65, aoB = 0.35;
     if(uAoDepth != 100.0){ aoW = 0.65 * (uAoDepth / 100.0); aoB = 1.0 - aoW; }
-    col = (mix(env*0.55, env, fres) + spe*vec3(1.6)*(uGlow / 100.0)) * (aoB + aoW*ao);
+    col = (mix(env*0.55, env, fres) + spe*vec3(1.6)*(uGlow / 100.0)*uHighlightTint) * (aoB + aoW*ao);
     col *= exp2(-march.y*0.06*(uFog / 100.0));
   }
 
   col = col*2.0/(1.0 + col);                // gain
   col = pow(max(col, 0.0), vec3(0.4545));   // gamma
+  if(uVignette != 0.0){ vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y; col *= 1.0 - clamp(uVignette / 100.0, 0.0, 1.5) * smoothstep(0.25, 0.95, length(vq)); }
   return col;
 }

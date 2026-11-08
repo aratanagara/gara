@@ -36,6 +36,30 @@ uniform float uPhaseRatio; // 縦方向の位相の進み方 (%)。横との比�
 uniform float uEdge;       // 点の縁の硬さ (%)。0 = 従来 / 上げるとシャープ
 uniform float uPowRed;     // 赤チャンネルの鋭さ (%)
 uniform float uPowBlue;    // 青チャンネルの鋭さ (%)
+// @param uPowGreen 40..250 = 100
+// @param uCenterX -100..100 = 0
+// @param uCenterY -100..100 = 0
+// @param uShear -100..100 = 0
+// @param uRipple 0..100 = 0
+// @param uSizeTaper -25..60 = 0
+// @param uDiscScatter 0..60 = 0
+// @param uDropout 0..80 = 0
+// @param uVignette 0..100 = 0
+// @param uGrainAmount 0..100 = 0
+// @param uBoltColor color = #ffffff
+// @param uVoidColor color = #000000
+uniform float uPowGreen;   // 緑チャンネルの鋭さ (%)
+uniform float uCenterX;    // 点が動き回る中心の横位置 (%)
+uniform float uCenterY;    // 点が動き回る中心の縦位置 (%)
+uniform float uShear;      // 画面の横ずれ (斜めに流す) (%)
+uniform float uRipple;     // 画面を波打たせる振れ幅 (%)
+uniform float uSizeTaper;  // 点の大きさの勾配 (%)。正で後ろの点ほど小さく、負で逆
+uniform float uDiscScatter; // 一部の点だけ塗りつぶす円の半径のばらつき (px 相当)
+uniform float uDropout;    // 点を間引く割合 (%)
+uniform float uVignette;   // 四隅の減光 (%)
+uniform float uGrainAmount; // 画面のざらつき (%)
+uniform vec3 uBoltColor;   // 電撃のティント
+uniform vec3 uVoidColor;   // 闇の色 (暗い部分に足す)
 
 float dc_cv0(vec3 c, vec2 uv){
   float size = 640.0 / resolution.x * 0.003 / (uSize / 100.0);
@@ -43,8 +67,8 @@ float dc_cv0(vec3 c, vec2 uv){
   return 1.0 - l;
 }
 
-float dc_cv(vec3 c, vec2 uv){
-  float size = 640.0 / resolution.x * 0.003 / (uSize / 100.0);
+float dc_cv(vec3 c, vec2 uv, float sk){
+  float size = 640.0 / resolution.x * 0.003 / (uSize / 100.0) * sk;
   vec2 dv = c.xy - uv;
   if(uSquash != 0.0) dv.y *= 1.0 + uSquash / 100.0;
   float l = clamp(size * (length(dv) - c.z), 0.0, 1.0);
@@ -55,16 +79,32 @@ float dc_cv(vec3 c, vec2 uv){
 vec3 bg_discharge(vec2 fc){
   float rotA = radians(uAngle);
   vec2 I = mat2(cos(rotA), -sin(rotA), sin(rotA), cos(rotA)) * (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
+  if(uShear != 0.0) I.x += (I.y - 0.5 * resolution.y) * (uShear / 100.0);
+  if(uRipple != 0.0){
+    float rf = 6.2831 * 3.0 / resolution.y;
+    I.x += sin(I.y * rf + time * 0.6) * (uRipple / 100.0) * 0.08 * resolution.y;
+  }
   vec3 O = vec3(0.0);
-  if(uSpanX != 100.0 || uSpanY != 100.0 || uDiscR != 0.0 || uSquash != 0.0 || uPhaseRatioX != 100.0 || uPhaseRatio != 100.0 || uEdge != 0.0){
+  if(uSpanX != 100.0 || uSpanY != 100.0 || uDiscR != 0.0 || uSquash != 0.0 || uPhaseRatioX != 100.0 || uPhaseRatio != 100.0 || uEdge != 0.0 || uCenterX != 0.0 || uCenterY != 0.0 || uSizeTaper != 0.0 || uDiscScatter != 0.0 || uDropout != 0.0){
+    vec2 ctr = vec2(uCenterX, uCenterY) * 0.005 * resolution;
+    float kx = (uSpread / 100.0) * (uPhaseRatioX / 100.0) * 1.35;
+    float ky = (uSpread / 100.0) * (uPhaseRatio / 100.0) * 1.61;
+    float spx = uSpanX / 100.0, spy = uSpanY / 100.0;
+    float skS = uSizeTaper / 100.0;
+    float drs = resolution.y / 1000.0;
+    int nDet = int(uDetail + 0.5);
     for(int k=0; k<200; k++){
-      if(k >= int(uDetail + 0.5)) break;
+      if(k >= nDet) break;
       float i = float(k) * 13.0;
+      if(uDropout != 0.0 && fract(sin(float(k) * 91.7 + 3.1) * 43758.5453) * 100.0 < uDropout) continue;
       vec3 c = vec3(1.0);
+      float sk = 1.0 + skS * (float(k) / 100.0 - 1.0);
+      float dr = uDiscR;
+      if(uDiscScatter != 0.0) dr += uDiscScatter * (0.5 + 0.5 * sin(i * 0.77));
       O = dc_mix(O, c * dc_cv(vec3(
-        resolution.x * (1.0 + sin(time*0.52 + (i-1400.0)*1.35*(uSpread / 100.0)*(uPhaseRatioX / 100.0)) * (uSpanX / 100.0)) * 0.5,
-        resolution.y * (1.0 + sin(time*0.73 + (i-1200.0)*1.61*(uSpread / 100.0)*(uPhaseRatio / 100.0)) * (uSpanY / 100.0)) * 0.5,
-        uDiscR * resolution.y / 1000.0), I));
+        resolution.x * (1.0 + sin(time*0.52 + (i-1400.0)*kx) * spx) * 0.5 + ctr.x,
+        resolution.y * (1.0 + sin(time*0.73 + (i-1200.0)*ky) * spy) * 0.5 + ctr.y,
+        dr * drs), I, sk));
     }
   } else {
     for(int k=0; k<200; k++){
@@ -78,11 +118,18 @@ vec3 bg_discharge(vec2 fc){
     }
   }
   O = (1.0 - O) * 1.01;
-  O = pow(clamp(O, 0.0, 1.0), vec3(42.0 * (uPowRed / 100.0), 32.0, 12.0 * (uPowBlue / 100.0)) * (uContrast / 100.0));
+  O = pow(clamp(O, 0.0, 1.0), vec3(42.0 * (uPowRed / 100.0), 32.0 * (uPowGreen / 100.0), 12.0 * (uPowBlue / 100.0)) * (uContrast / 100.0));
   if(abs(uCosGrad) > 0.0001){
     float lum = dot(O, vec3(0.299, 0.587, 0.114));
     O = mix(O, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
+  O *= uBoltColor;
+  O += uVoidColor;
+  if(uVignette != 0.0){
+    vec2 vq = (fc / resolution - 0.5) * 2.0;
+    O *= 1.0 - uVignette / 100.0 * smoothstep(0.4, 1.6, length(vq));
+  }
+  if(uGrainAmount != 0.0) O = clamp(O + (fract(sin(dot(fc + fract(time), vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrainAmount * 0.01, 0.0, 1.0);
   bgAlpha = 1.0;
   return O;
 }

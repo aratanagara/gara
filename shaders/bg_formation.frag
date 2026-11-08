@@ -65,12 +65,38 @@ uniform float uSteps; // レイマーチのステップ数 (下げると軽く�
 // @param uShine      25..400 = 100.0
 // @param uLightSide  -300..300 = 100.0
 // @param uAmbientTilt -100..200 = 100.0
+// @param uCamX -100..100 = 0
+// @param uCamY -100..100 = 0
+// @param uCamRoll -180..180 = 0
+// @param uFocal 65..200 = 100
+// @param uCamSway 0..300 = 0
+// @param uFogDensity 0..300 = 100
+// @param uLightElev 20..300 = 100
+// @param uRimLight 0..100 = 0
+// @param uVignette 0..150 = 0
+// @param uShadeTopTint color = #ffffff
+// @param uShadeBottomTint color = #ffffff
+// @param uSpecTint color = #ffffff
+// @param uBodyTint color = #ffffff
 uniform float uWaveFreq; // 空間のうねりの細かさ (%)
 uniform float uRowGap; // 縦方向の配置間隔 (%)
 uniform float uDepthGap; // 奥行き方向の配置間隔 (%)
 uniform float uShine; // 機体の鏡面の鋭さ (%)
 uniform float uLightSide; // 光の横からの振れ (%)。負で反対側から
 uniform float uAmbientTilt; // 上面と下面の環境光の差 (%)
+uniform float uCamX; // カメラの横位置 (%)。編隊を見る位置がずれる
+uniform float uCamY; // カメラの縦位置 (%)
+uniform float uCamRoll; // カメラの傾き (度)
+uniform float uFocal; // レンズの焦点距離 (%)。小さいと広角、大きいと望遠
+uniform float uCamSway; // カメラのゆるい横揺れの振れ幅 (%)。0 = なし
+uniform float uFogDensity; // 遠方が透けて消えていく速さ (%)。100 超で色も暗く沈む
+uniform float uLightElev; // 光源の高さ (%)。小さいと横から当たる
+uniform float uRimLight; // 機体の縁の白い光 (%)
+uniform float uVignette; // 画面の周辺を暗くする量 (%)
+uniform vec3 uShadeTopTint; // 上面の環境光にかけるティント。既定は白で変化なし
+uniform vec3 uShadeBottomTint; // 下面の環境光にかけるティント。既定は白で変化なし
+uniform vec3 uSpecTint; // 鏡面ハイライトにかけるティント。既定は白で変化なし
+uniform vec3 uBodyTint; // 機体全体にかけるティント。既定は白で変化なし
 
 float fm_d(vec3 position){
   vec3 warped = position + sin(position.x*2.0*(uWaveFreq / 100.0) + time*2.3) * 0.1 * (uWarp / 100.0);
@@ -97,14 +123,17 @@ vec4 fm_march(vec3 from, vec3 towards, float prec){
 }
 
 vec3 fm_lightSurface(vec3 position, vec3 normal, vec3 toEye){
-  vec3 toLight = normalize(vec3(0.3 * (uLightSide / 100.0), 0.9, 0.9));
+  vec3 toLight = normalize(vec3(0.3 * (uLightSide / 100.0), 0.9 * (uLightElev / 100.0), 0.9));
   float ndotL = max(0.0, dot(normal, toLight));
   float ndotH = max(0.0, dot(normal, normalize(toEye + toLight)));
   float diffuse = 0.8 * (uGlow / 100.0);
-  vec3 ambience = mix(vec3(0.2,0.25,0.3), vec3(0.2,0.4,0.6),
+  vec3 ambience = mix(vec3(0.2,0.25,0.3) * uShadeBottomTint, vec3(0.2,0.4,0.6) * uShadeTopTint,
                       dot(normal, vec3(0.,1.,0.)) * -0.5 * (uAmbientTilt / 100.0) + 0.5);
   float specular = 0.6 * (uGlow / 100.0);
-  return vec3((ndotL*diffuse + pow(ndotH, 2.0 * (uShine / 100.0))*specular) + ambience);
+  vec3 lit = vec3((ndotL*diffuse + pow(ndotH, 2.0 * (uShine / 100.0))*specular) + ambience);
+  if(uSpecTint != vec3(1.0)){ float sp = pow(ndotH, 2.0 * (uShine / 100.0))*specular; lit += sp * (uSpecTint - vec3(1.0)); }
+  if(uRimLight != 0.0){ lit += pow(1.0 - max(0.0, dot(normal, toEye)), 3.0) * uRimLight / 100.0 * 0.8; }
+  return lit * uBodyTint;
 }
 
 vec3 bg_formation(vec2 fc){
@@ -115,11 +144,14 @@ vec3 bg_formation(vec2 fc){
   // 中心(z軸上)から正面を見るカメラ。前進して飛行機が中心からこちらへ来る。
   vec3 cameraLookAt   = vec3(0.0, 0.0, 0.0);
   vec3 cameraPosition = vec3(0.0, 0.0, 6.0);
+  if(uCamX != 0.0 || uCamY != 0.0){ vec3 co = vec3(uCamX, uCamY, 0.0) / 100.0; cameraLookAt += co; cameraPosition += co; }
+  if(uCamSway != 0.0){ vec3 cs = vec3(sin(time * 0.6), sin(time * 0.43 + 1.3) * 0.6, 0.0) * uCamSway / 100.0 * 0.5; cameraLookAt += cs; cameraPosition += cs; }
   vec3 cameraForward = normalize(cameraLookAt - cameraPosition);   // -z 方向
   vec3 cameraRight   = normalize(cross(cameraForward, vec3(0.0, 1.0, 0.0)));
   vec3 cameraUp      = cross(cameraRight, cameraForward);
   // 広角レンズ(焦点距離小=画角広い)。3.0→1.4 で縦画角 約37°→71°。
-  vec3 rayDirection  = normalize(uv.x*cameraRight + uv.y*cameraUp + 1.4*cameraForward);
+  if(uCamRoll != 0.0){ float rl = radians(uCamRoll); float rc = cos(rl), rs = sin(rl); uv = mat2(rc, -rs, rs, rc) * uv; }
+  vec3 rayDirection  = normalize(uv.x*cameraRight + uv.y*cameraUp + (1.4 * (uFocal / 100.0))*cameraForward);
 
   // 前進(-z)。飛行機が画面中心の消失点からこちらへ飛んでくる。
   cameraPosition += time * vec3(0.0, 0.0, -2.0);
@@ -134,6 +166,8 @@ vec3 bg_formation(vec2 fc){
   vec3 position = marchResult.xyz;
   float fogDistance = max(0.0, length(position - cameraPosition) - 4.0);
   vec3 litColor = fm_lightSurface(position, fm_gradient(position, marchResult.w), -rayDirection);
-  bgAlpha = exp(-fogDistance*0.1);                  // 機体=不透明 / 遠方フォグは透明へフェード
+  if(uFogDensity > 100.0){ litColor *= exp(-fogDistance * 0.1 * (uFogDensity - 100.0) / 100.0); }
+  bgAlpha = exp(-fogDistance*0.1 * (uFogDensity / 100.0));                  // 機体=不透明 / 遠方フォグは透明へフェード
+  if(uVignette != 0.0){ litColor *= 1.0 - clamp(uVignette / 100.0, 0.0, 1.5) * smoothstep(0.7, 2.0, length(uv)); }
   return litColor;
 }

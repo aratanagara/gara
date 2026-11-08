@@ -70,6 +70,56 @@ uniform float uSwayYZ;    // 前後方向のよじれ量 (%)
 uniform float uEnvTop;    // 上向きの面に映る天頂の光の強さ (%)
 uniform float uFaceRefl;  // 正面向きの面の反射量 (%)
 uniform float uEnvBands;  // 反射する横帯の数
+// @param uWedge -60..60 = 0
+// @param uSkewZ -100..100 = 0
+// @param uVertJitter 0..100 = 0
+// @param uBreath 0..40 = 0
+// @param uSwayPhase 0..300 = 0
+// @param uRoll -180..180 = 0
+// @param uShiftX -100..100 = 0
+// @param uShiftY -100..100 = 0
+// @param uLightYaw -180..180 = 0
+// @param uLightHeight -200..300 = 100
+// @param uSpecPower 4..300 = 100
+// @param uFresnelPower 30..250 = 100
+// @param uFogDepth 0..400 = 100
+// @param uHorizonShift -30..30 = 0
+// @param uBandSharp 4..300 = 100
+// @param uBandAmount 0..400 = 100
+// @param uBandPhase -180..180 = 0
+// @param uEdgeLine 0..100 = 0
+// @param uEdgeGlow 0..100 = 0
+// @param uTopColor color = #ffffff
+// @param uBottomColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uBandColor color = #ffffff
+// @param uEnvGroundColor color = #ffffff
+// @param uEnvSkyColor color = #ffffff
+uniform float uWedge;     // 奥行きでの幅の変化 (%)。0 = なし / 正で奥が狭いくさび形
+uniform float uSkewZ;     // 前後方向のずれ (%)
+uniform float uVertJitter; // 頂点のばらつき (%)。結晶のような不揃いな立方体
+uniform float uBreath;    // 立方体全体の膨らみ縮みの振れ幅 (%)
+uniform float uSwayPhase; // 頂点ごとのよじれの位相のずれ (%)
+uniform float uRoll;      // 画面の回転 (度)
+uniform float uShiftX;    // 画面の左右の位置 (%)
+uniform float uShiftY;    // 画面の上下の位置 (%)
+uniform float uLightYaw;  // ハイライト光源の水平回転 (度)
+uniform float uLightHeight; // ハイライト光源の高さ (%)
+uniform float uSpecPower; // ハイライトの絞り (%)。大きいほど小さく鋭い
+uniform float uFresnelPower; // 縁の反射の絞り (%)。大きいほど縁に細く出る
+uniform float uFogDepth;  // 奥ほど暗くなる量 (%)
+uniform float uHorizonShift; // 環境の暗→明の切り替わりの高さ (%)
+uniform float uBandSharp; // 反射する横帯の鋭さ (%)
+uniform float uBandAmount; // 反射する横帯の強さ (%)
+uniform float uBandPhase; // 反射する横帯の回り込み (度)
+uniform float uEdgeLine;  // 面の継ぎ目 (立方体の辺) の暗い線の濃さ (%)
+uniform float uEdgeGlow;  // 面の継ぎ目の光る線の強さ (%)
+uniform vec3 uTopColor; // 上向きの面のティント
+uniform vec3 uBottomColor; // 下向きの面のティント
+uniform vec3 uSpecColor; // ハイライトのティント
+uniform vec3 uBandColor; // 反射する横帯のティント
+uniform vec3 uEnvGroundColor; // 環境の暗い側のティント
+uniform vec3 uEnvSkyColor; // 環境の明るい側のティント
 
 vec3 bp_verts[8];
 const float BP_ROUND = 0.03;
@@ -135,16 +185,18 @@ vec2 bp_rot(vec2 p, float an){
 // クロームが映す疑似環境(銀)
 vec3 bp_env(vec3 d){
   float up = d.y*0.5 + 0.5;
-  vec3 c = mix(vec3(0.06, 0.07, 0.09), vec3(0.93, 0.95, 1.0), smoothstep(0.0, 0.9, up));
+  vec3 c = mix(vec3(0.06, 0.07, 0.09) * uEnvGroundColor, vec3(0.93, 0.95, 1.0) * uEnvSkyColor, smoothstep(0.0 + uHorizonShift / 100.0, 0.9 + uHorizonShift / 100.0, up));
   c += vec3(0.6) * pow(max(d.y, 0.0), 5.0) * (uEnvTop / 100.0);             // 天頂のソフトライト
   float az = atan(d.x, d.z);
-  c += vec3(0.3) * pow(max(cos(az*float(int(uEnvBands + 0.5))), 0.0), 8.0);     // 横の反射帯
+  c += vec3(0.3) * uBandColor * (uBandAmount / 100.0) * pow(max(cos(az*float(int(uEnvBands + 0.5)) + radians(uBandPhase)), 0.0), 8.0 * (uBandSharp / 100.0));     // 横の反射帯
   return c;
 }
 
 vec3 bg_patchsdf(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = (2.0*I - resolution.xy) / resolution.y;
+  if(uRoll != 0.0) uv = bp_rot(uv, radians(uRoll));
+  if(uShiftX != 0.0 || uShiftY != 0.0) uv -= vec2(uShiftX * 0.02, uShiftY * 0.007);
 
   vec3 ro = vec3(0.0, 0.0, 4.0);
   vec3 rd = normalize(vec3(uv, -2.0));
@@ -157,10 +209,14 @@ vec3 bg_patchsdf(vec2 fc){
     p *= vec3(uBoxW, uBoxH, uBoxD) / 100.0;
     if(uTaper != 0.0){ p.xz *= 1.0 - uTaper / 100.0 * (p.y * 0.5 + 0.5); }
     if(uSkew != 0.0){ p.x += p.y * uSkew / 100.0; }
+    if(uWedge != 0.0){ p.x *= 1.0 - uWedge / 100.0 * (p.z * 0.5 + 0.5); }
+    if(uSkewZ != 0.0){ p.z += p.y * uSkewZ / 100.0; }
+    if(uVertJitter != 0.0){ float fi = float(i); p += vec3(sin(fi * 12.9898), sin(fi * 78.233 + 1.7), sin(fi * 37.719 + 4.1)) * (uVertJitter / 100.0 * 0.35); }
+    if(uBreath != 0.0){ p *= 1.0 + uBreath / 100.0 * sin(time * 2.0 * 6.2831 / 15.0); }
     if(uSaddle != 0.0){ p.y += p.x * p.z * uSaddle / 100.0; }
     if(uCubeTwist != 0.0){ p.xz = bp_rot(p.xz, p.y * radians(uCubeTwist)); }
-    p.xz = bp_rot(p.xz,  amp*cos(time*3.0*6.2831/15.0 + p.y + 0.0)/2.0 * (uSwayXZ / 100.0));
-    p.yz = bp_rot(p.yz, -amp*cos(time*1.0*6.2831/15.0 + p.x + 2.0)/1.0 * (uSwayYZ / 100.0));
+    p.xz = bp_rot(p.xz,  amp*cos(time*3.0*6.2831/15.0 + p.y + 0.0 + float(i) * uSwayPhase * 0.02)/2.0 * (uSwayXZ / 100.0));
+    p.yz = bp_rot(p.yz, -amp*cos(time*1.0*6.2831/15.0 + p.x + 2.0 + float(i) * uSwayPhase * 0.03)/1.0 * (uSwayYZ / 100.0));
     p.xz = bp_rot(p.xz,  4.0 + radians(uAngle) + time*1.0*6.2831/15.0);
     p.yz = bp_rot(p.yz, radians(uTilt));
     bp_verts[i] = p;
@@ -178,11 +234,24 @@ vec3 bg_patchsdf(vec2 fc){
     // クローム: 環境反射 + フレネル + 鋭いハイライト(テクスチャを置換)
     vec3 rr = reflect(rd, nor);
     vec3 env = bp_env(rr);
-    float fres = pow(1.0 - max(dot(nor, -rd), 0.0), 4.0);
+    float fres = pow(1.0 - max(dot(nor, -rd), 0.0), 4.0 * (uFresnelPower / 100.0));
     vec3 lig = normalize(vec3(6.0, 5.0, -1.0));
-    float spe = pow(max(dot(nor, normalize(lig - rd)), 0.0), 60.0);
-    col = mix(env*0.55*(uFaceRefl / 100.0), env, fres) + spe*vec3(1.0)*1.6;
-    col *= exp2(-t*0.1);
+    if(uLightYaw != 0.0 || uLightHeight != 100.0){
+      lig = vec3(6.0, 5.0 * uLightHeight / 100.0, -1.0);
+      lig.xz = bp_rot(lig.xz, radians(uLightYaw));
+      lig = normalize(lig);
+    }
+    float spe = pow(max(dot(nor, normalize(lig - rd)), 0.0), 60.0 * (uSpecPower / 100.0));
+    col = mix(env*0.55*(uFaceRefl / 100.0), env, fres) + spe*uSpecColor*1.6;
+    if(uTopColor != vec3(1.0)) col *= mix(vec3(1.0), uTopColor, smoothstep(0.1, 0.9, nor.y));
+    if(uBottomColor != vec3(1.0)) col *= mix(vec3(1.0), uBottomColor, smoothstep(0.1, 0.9, -nor.y));
+    if(uEdgeLine != 0.0 || uEdgeGlow != 0.0){
+      float eg = min(min(uvt.x, 1.0 - uvt.x), min(uvt.y, 1.0 - uvt.y));
+      float el = 1.0 - smoothstep(0.0, 0.04, eg);
+      col *= 1.0 - el * uEdgeLine / 100.0;
+      col += vec3(el * uEdgeGlow / 100.0 * 0.8);
+    }
+    col *= exp2(-t*0.1*(uFogDepth / 100.0));
   }
 
   col = col*(2.0 * (uGlow / 100.0))/(1.0 + col);                // gain
