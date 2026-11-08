@@ -39,6 +39,27 @@ float gc_smin(float a, float b, float k){
 // @param uRibSize 50..140 = 100.0
 // @param uFin     0..200 = 100.0
 // @param uCurve   0..200 = 100.0
+// @param uCamYaw -40..40 = 0
+// @param uCamPitch -30..30 = 0
+// @param uLensFov 50..200 = 100
+// @param uLensBarrel -100..100 = 0
+// @param uMirrorFold -100..100 = 0
+// @param uCamShiftX -100..100 = 0
+// @param uCamShiftY -100..100 = 0
+// @param uRollSway 0..90 = 0
+// @param uBandCount 3..8 = 3
+// @param uBandSharp 30..300 = 100
+// @param uSoftbox 0..300 = 100
+// @param uEnvTurn -180..180 = 0
+// @param uNormSmooth 50..1000 = 100
+// @param uAccGain 30..300 = 100
+// @param uVignette 0..100 = 0
+// @param uSkyTint color = #ffffff
+// @param uBandTint color = #ffffff
+// @param uRimTint color = #ffffff
+// @param uBoneTint color = #ffffff
+// @param uWallTint color = #ffffff
+// @param uFogTint color = #ffffff
 uniform float uRelief;   // 筋繊維の起伏の強さ (%) (0 = 滑らかなトンネル)
 uniform float uWidth;    // トンネルの広さ (%)
 uniform float uRough;    // 鏡面のぼけ (%) (大きいと映り込みが滲む)
@@ -55,6 +76,27 @@ uniform float uRibGap;   // 肋骨 (とフィン) の間隔 (%)
 uniform float uRibSize;  // 肋骨の輪の大きさ (%)
 uniform float uFin;      // 背のフィンの高さ (%) (0 = フィンなし)
 uniform float uCurve;    // トンネルの蛇行の大きさ (%) (0 = まっすぐ)
+uniform float uCamYaw;   // カメラを左右へ振る角度 (度)
+uniform float uCamPitch;   // カメラを上下へ振る角度 (度)
+uniform float uLensFov;   // 画角 (%)。大きいほど広角
+uniform float uLensBarrel;   // レンズの樽型歪み (%)。負で糸巻き型
+uniform float uMirrorFold;   // 画面を折り返して左右対称にする位置 (%)。0 で折り返しなし
+uniform float uCamShiftX;   // カメラ位置の横ずれ (%)
+uniform float uCamShiftY;   // カメラ位置の縦ずれ (%)
+uniform float uRollSway;   // ロールの揺れ幅 (度)
+uniform float uBandCount;   // 環境の縦の光帯の本数 (整数に丸める)
+uniform float uBandSharp;   // 光帯の鋭さ (%)
+uniform float uSoftbox;   // 上下のソフトボックスの強さ (%)
+uniform float uEnvTurn;   // 映り込む環境の向き (度)
+uniform float uNormSmooth;   // 法線の平滑化。大きいと起伏の映り込みが滑らか (%)
+uniform float uAccGain;   // 表面に当たった所の明るさの立ち上がり (%)
+uniform float uVignette;   // 周辺減光 (%)
+uniform vec3 uSkyTint;   // 環境の空グラデーションに掛ける色
+uniform vec3 uBandTint;   // 環境の光帯に掛ける色
+uniform vec3 uRimTint;   // フレネル白縁に掛ける色
+uniform vec3 uBoneTint;   // 骨 (脊椎・肋骨) に掛ける色
+uniform vec3 uWallTint;   // 壁に掛ける色
+uniform vec3 uFogTint;   // 奥へ向かう減衰の吸収色
 
 // 壁=クロム/シルバーの筋肉質トンネル: 壁/床/天井の角を smin で大きく丸めて連続化し、
 // 低～中周波の筋繊維束を形状の起伏として持たせる(法線が滑らか=鏡面でも粉らない)。
@@ -149,7 +191,7 @@ float gc_map(vec3 p){
 
 vec3 gc_nrm(vec3 p){
   const vec2 k = vec2(1.0, -1.0);
-  const float h = 0.02;
+  float h = 0.02 * (uNormSmooth / 100.0);
   return GC_N(k.xyy*gc_map(p+k.xyy*h) + k.yyx*gc_map(p+k.yyx*h) +
               k.yxy*gc_map(p+k.yxy*h) + k.xxx*gc_map(p+k.xxx*h));
 }
@@ -158,10 +200,11 @@ vec3 gc_nrm(vec3 p){
 // 鏡面に映り込んで壁の繊維の起伏を浮かせるため、明暗のコントラストを持たせる。
 vec3 gc_env(vec3 dir){
   float up = dir.y*0.5 + 0.5;
-  vec3 c = mix(vec3(0.03, 0.04, 0.06), vec3(0.95, 0.97, 1.0), smoothstep(0.0, 0.9, up));
-  c += vec3(0.9, 0.93, 1.0) * smoothstep(0.6, 0.98, abs(dir.y));     // 上下のソフトボックス
+  vec3 c = mix(vec3(0.03, 0.04, 0.06), vec3(0.95, 0.97, 1.0) * uSkyTint, smoothstep(0.0, 0.9, up));
+  c += vec3(0.9, 0.93, 1.0) * (uSoftbox / 100.0) * smoothstep(0.6, 0.98, abs(dir.y));     // 上下のソフトボックス
   float az = atan(dir.x, dir.z);
-  c += vec3(0.5, 0.55, 0.7) * pow(max(cos(az*3.0), 0.0), 10.0);      // 明るい縦の光帯
+  if(uEnvTurn != 0.0) az += radians(uEnvTurn);
+  c += vec3(0.5, 0.55, 0.7) * uBandTint * pow(max(cos(az*floor(uBandCount + 0.5)), 0.0), 10.0 * (uBandSharp / 100.0));      // 明るい縦の光帯
   c += vec3(0.35) * pow(max(cos(az*5.0 + 2.0), 0.0), 16.0);          // 細い光帯
   return c;
 }
@@ -186,11 +229,20 @@ vec3 bg_ghost(vec2 fc){
   vec2 u = (I - r.xy/2.0)/r.y;
   u.y -= 0.2;
 
+  if(uLensFov != 100.0) u *= uLensFov / 100.0;
+  if(uLensBarrel != 0.0) u *= 1.0 + (uLensBarrel / 100.0) * 2.0 * dot(u, u);
+  if(uMirrorFold != 0.0) u.x = abs(u.x - uMirrorFold / 200.0) + uMirrorFold / 200.0;
+  float rollA = time*0.3 + radians(uAngle);
+  if(uRollSway != 0.0) rollA += radians(uRollSway) * sin(time*0.7);
+  vec2 ur = GC_R(rollA) * u;
+  if(uCamYaw != 0.0 || uCamPitch != 0.0) ur += vec2(tan(radians(uCamYaw)), tan(radians(uCamPitch)));
+
   vec3 ro = GC_P(GC_T),
        Z = GC_N(GC_P(GC_T + 2.) - ro),
        X = GC_N(vec3(Z.z, 0, -Z.x)),
-       D = GC_N(vec3(GC_R(time*0.3 + radians(uAngle)) * u, 1)            // カメラを連続ロール回転
+       D = GC_N(vec3(ur, 1)            // カメラを連続ロール回転
             * mat3(-X, cross(X, Z), Z));
+  if(uCamShiftX != 0.0 || uCamShiftY != 0.0) ro.xy += vec2(uCamShiftX, uCamShiftY) * 0.06;
 
   // 発光蓄積スタイルの連続マーチ(表面に漸近収束 → 画面が切れない)。
   float d = 0.0, s = 1.0, i = 0.0, acc = 0.0;
@@ -210,9 +262,18 @@ vec3 bg_ghost(vec2 fc){
   float fres = pow(1.0 - max(dot(n, -D), 0.0), 5.0);
 
   vec3 col = gc_roughEnv(Rr, 0.02 * (uRough / 100.0));                  // ほぼ鏡面のクローム/シルバー反射
-  col = mix(col, vec3(0.97, 0.98, 1.0), fres*0.5 * (uRim / 100.0));   // フレネルの白縁
-  float dens = tanh(acc * 0.012);                    // 表面にしっかり当たった所ほど明るく
+  col = mix(col, vec3(0.97, 0.98, 1.0) * uRimTint, fres*0.5 * (uRim / 100.0));   // フレネルの白縁
+  if(uBoneTint != vec3(1.0) || uWallTint != vec3(1.0)){
+    vec3 pt = p;
+    pt.xy -= GC_P(pt.z).xy;
+    col *= (gc_bones(pt) < gc_wall(pt)) ? uBoneTint : uWallTint;
+  }
+  float dens = tanh(acc * 0.012 * (uAccGain / 100.0));                    // 表面にしっかり当たった所ほど明るく
   col *= mix(0.25, 1.0, dens);                       // すり抜け/奥は暗く(自然な減衰)
-  col *= exp(-d*0.003 * (uFog / 100.0));
+  col *= exp(-d*0.003 * (uFog / 100.0) * (vec3(2.0) - uFogTint));
+  if(uVignette != 0.0){
+    vec2 vq = fc / resolution.xy - 0.5;
+    col *= 1.0 - (uVignette / 100.0) * smoothstep(0.25, 0.8, length(vq));
+  }
   return clamp(col, 0.0, 1.0);
 }

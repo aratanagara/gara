@@ -32,6 +32,14 @@ float cn_fbox(vec3 p, vec3 b){ return cn_vmax(abs(p) - b); }
 // @param uTwistRadial 0..300 = 100
 // @param uSecondTwist 0..250 = 100
 // @param uShellThick 30..300 = 100
+// @param uChanMix 0..100 = 0
+// @param uSolarize 0..100 = 0
+// @param uPosterize 0..8 = 0
+// @param uVignette 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uCrystalTint color = #ffffff
+// @param uHighTint color = #ffffff
+// @param uShadowTint color = #ffffff
 uniform float uDetail;    // 内側の sin 重ね回数 (下げると軽く、形が単純になる)
 uniform float uTwist;     // ねじれ量 (%)
 uniform float uFold;      // 破片フォールドの距離 (%)
@@ -52,6 +60,14 @@ uniform float uFacetColor; // 面ごとの色の変わる細かさ (%)
 uniform float uTwistRadial; // 半径に沿ったねじれ (%)
 uniform float uSecondTwist; // 折り返し後の 2 回目のねじれ (%)
 uniform float uShellThick; // 結晶の殻の厚み (%)
+uniform float uChanMix; // 色チャンネルの入れ替えを混ぜる量 (%)。色の配置が変わる
+uniform float uSolarize; // 明暗を折り返して反転させる量 (%)
+uniform float uPosterize; // 色の段数 (0 で連続)
+uniform float uVignette; // 周辺減光 (%)
+uniform float uGrain; // 画面のざらつき (%)
+uniform vec3 uCrystalTint; // 結晶の光に掛ける色
+uniform vec3 uHighTint; // 明るい部分に掛ける色
+uniform vec3 uShadowTint; // 暗い部分に掛ける色
 
 vec3 bg_crystalnoise(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -127,10 +143,26 @@ vec3 bg_crystalnoise(vec2 fc){
     z += dm * 0.35;                              // 軽量化: 刻みを大きく(同じ深さを少ない手数で)
   }
 
+  if(uCrystalTint != vec3(1.0)) col *= uCrystalTint;
   col = tanh(col * (uGlow / 100.0) / 1300.0);                     // ステップ減ぶんの明るさ補正
   // 彩度を落とす
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(lum), col, 0.35);
+  if(uChanMix != 0.0) col = mix(col, col.brg, uChanMix / 100.0);
+  if(uSolarize != 0.0) col = mix(col, abs(col * 2.0 - 1.0), uSolarize / 100.0);
+  if(uPosterize != 0.0){
+    float pl = max(uPosterize, 2.0);
+    col = floor(col * pl + 0.5) / pl;
+  }
+  if(uHighTint != vec3(1.0) || uShadowTint != vec3(1.0)) col *= mix(uShadowTint, uHighTint, smoothstep(0.1, 0.6, lum));
+  if(uVignette != 0.0){
+    vec2 vq = fc / resolution.xy - 0.5;
+    col *= 1.0 - (uVignette / 100.0) * smoothstep(0.25, 0.8, length(vq));
+  }
+  if(uGrain != 0.0){
+    float gh = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);
+    col = max(col + (gh - 0.5) * (uGrain / 100.0) * 0.5 * (0.15 + lum), 0.0);
+  }
   if(abs(uCosGrad) > 0.0001){
     col = mix(col, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }

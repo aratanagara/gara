@@ -26,6 +26,21 @@
 // @param uTubeFlat -40..70 = 0.0
 // @param uSssGlow 0..250 = 100.0
 // @param uAoReach 85..200 = 100.0
+// @param uOrbitYaw -70..70 = 0
+// @param uOrbitPitch -50..50 = 0
+// @param uFocal 60..180 = 100
+// @param uCamShiftX -100..100 = 0
+// @param uCamShiftY -100..40 = 0
+// @param uLightLeanX -100..100 = 0
+// @param uLightLeanZ -100..100 = 0
+// @param uAmbientAmt 0..300 = 100
+// @param uBandSlant -100..100 = 0
+// @param uEdgeDark 0..100 = 0
+// @param uVigDepth 0..200 = 100
+// @param uGrain 0..100 = 0
+// @param uDiffTint color = #ffffff
+// @param uAmbTint color = #ffffff
+// @param uSssTint color = #ffffff
 uniform float uWarp;      // うねり (ドメイン変形) の強さ (%)
 uniform float uThick;     // チューブの太さ (%)
 uniform float uDensity;   // 虹色の帯の密度 (%。0 で一色)
@@ -44,6 +59,21 @@ uniform float uTubeSquare; // 断面を四角に寄せる量 (%)
 uniform float uTubeFlat; // 断面を平たく / 縦長にする (%)。正で平たく、負で細く
 uniform float uSssGlow; // 縁の暖色の透け感 (%)
 uniform float uAoReach; // 陰影 (AO) の届く距離 (%)
+uniform float uOrbitYaw; // カメラをチューブの周りで左右へ回す角度 (度)
+uniform float uOrbitPitch; // カメラを上下へ回す角度 (度)
+uniform float uFocal; // 画角 (%)。大きいほど望遠で拡大
+uniform float uCamShiftX; // 画面の構図を横へずらす (%)
+uniform float uCamShiftY; // 画面の構図を縦へずらす (%)
+uniform float uLightLeanX; // ドーム光を左右へ傾ける量 (%)
+uniform float uLightLeanZ; // ドーム光を手前/奥へ傾ける量 (%)
+uniform float uAmbientAmt; // 環境光 (影の底上げ) の量 (%)
+uniform float uBandSlant; // 虹色の帯を横方向へ傾ける量 (%)
+uniform float uEdgeDark; // シルエット縁の暗い輪郭 (%)
+uniform float uVigDepth; // 周辺減光の深さ (%)
+uniform float uGrain; // 画面のざらつき (%)
+uniform vec3 uDiffTint; // 拡散光に掛ける色
+uniform vec3 uAmbTint; // 環境光に掛ける色
+uniform vec3 uSssTint; // 縁の透け感に掛ける色
 
 vec3 sd_warp(vec3 p){
   float t = time;
@@ -124,8 +154,21 @@ vec3 bg_sinedeform(vec2 fc){
   float aS = radians(uAngle);
   p = mat2(cos(aS), -sin(aS), sin(aS), cos(aS)) * p;
 
+  if(uCamShiftX != 0.0 || uCamShiftY != 0.0) p -= vec2(uCamShiftX, uCamShiftY) / 50.0;
   vec3 ro = vec3(0.0, 0.0, 4.5);
-  vec3 rd = normalize( vec3(p.xy, -2.0) );
+  vec3 rd = normalize( vec3(p.xy, -2.0 * (uFocal / 100.0)) );
+  if(uOrbitPitch != 0.0){
+    float oa = radians(uOrbitPitch);
+    mat2 om = mat2(cos(oa), sin(oa), -sin(oa), cos(oa));
+    ro.yz = om * ro.yz;
+    rd.yz = om * rd.yz;
+  }
+  if(uOrbitYaw != 0.0){
+    float ob = radians(uOrbitYaw);
+    mat2 on = mat2(cos(ob), sin(ob), -sin(ob), cos(ob));
+    ro.xz = on * ro.xz;
+    rd.xz = on * rd.xz;
+  }
 
   vec3 col = vec3(0.0);                   // 背景は黒 (entrypoint が uBgColor で塗る)
   bgAlpha = 0.0;                          // 背景は透明
@@ -137,7 +180,9 @@ vec3 bg_sinedeform(vec2 fc){
     vec3 nor = sd_nor(pos);
     vec3 uvw = sd_warp(pos / (uScale / 100.0));
 
-    vec3 mate = sd_pal(uvw.y*0.12*(uDensity / 100.0));
+    float bandW = uvw.y;
+    if(uBandSlant != 0.0) bandW += uvw.x * (uBandSlant / 100.0);
+    vec3 mate = sd_pal(bandW*0.12*(uDensity / 100.0));
     mate = pow(mate, vec3(2.2));
 
     float occ = sd_ao(pos, nor);
@@ -145,18 +190,29 @@ vec3 bg_sinedeform(vec2 fc){
     vec3  ref = reflect(rd, nor);
 
     col = vec3(0.0);
-    float dif = max(0.0, 0.2 + 0.8*nor.y) * occ;
-    float spe = pow(max(0.0, ref.y), 14.0) * occ * (0.04 + 0.96*pow(fre, 5.0));
-    col += 3.6*(uGlow / 100.0)*mate*dif;                                 // diffuse(dome)
+    vec3 ldir = vec3(0.0, 1.0, 0.0);
+    bool leaned = (uLightLeanX != 0.0 || uLightLeanZ != 0.0);
+    if(leaned) ldir = normalize(vec3(uLightLeanX / 50.0, 1.0, uLightLeanZ / 50.0));
+    float ndl = leaned ? dot(nor, ldir) : nor.y;
+    float rdl = leaned ? dot(ref, ldir) : ref.y;
+    float dif = max(0.0, 0.2 + 0.8*ndl) * occ;
+    float spe = pow(max(0.0, rdl), 14.0) * occ * (0.04 + 0.96*pow(fre, 5.0));
+    col += 3.6*(uGlow / 100.0)*mate*dif*uDiffTint;                                 // diffuse(dome)
     col += spe*1.6;                                      // 鏡面ハイライト
-    col += mate*occ*(0.5 + 0.5*nor.y);                  // ambient(常に≥0)
-    col += mate*(1.1*(uSssGlow / 100.0))*fre*fre*vec3(1.0, 0.82, 0.66)*occ;  // sss(暖色)
+    col += mate*occ*(0.5 + 0.5*nor.y)*(uAmbientAmt / 100.0)*uAmbTint;                  // ambient(常に≥0)
+    col += mate*(1.1*(uSssGlow / 100.0))*fre*fre*vec3(1.0, 0.82, 0.66)*uSssTint*occ;  // sss(暖色)
 
     col = pow(col, vec3(0.30, 0.42, 0.5) * (uContrast / 100.0));              // トーンマップ
+    if(uEdgeDark != 0.0) col *= 1.0 - (uEdgeDark / 100.0) * smoothstep(0.35, 1.0, fre);
   }
 
   vec2 q = I / resolution.xy;
-  col *= 0.5 + 0.5*pow( 16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y), 0.2 );
+  float vk = uVigDepth / 100.0;
+  col *= 1.0 - vk*0.5 + vk*0.5*pow( 16.0*q.x*q.y*(1.0-q.x)*(1.0-q.y), 0.2 );
+  if(uGrain != 0.0){
+    float gh = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);
+    col = max(col + (gh - 0.5) * (uGrain / 100.0) * 0.3 * bgAlpha, 0.0);
+  }
 
   return col;
 }
