@@ -43,6 +43,28 @@
 // @param uGround  0..4    = 0.0
 // @param uSeed    0..100  = 0.0
 // @param uKick    0..200  = 45.0
+// @param uCenterX -100..100 = 0.0
+// @param uCenterY -100..100 = 0.0
+// @param uRotate  -180..180 = 0.0
+// @param uMirrorX 0..100 = 0.0
+// @param uMirrorY 0..100 = 0.0
+// @param uBarrel  -100..100 = 0.0
+// @param uShardLong 40..200 = 100.0
+// @param uShardThin 30..250 = 100.0
+// @param uTriShare 0..250 = 100.0
+// @param uShearMul 0..300 = 100.0
+// @param uCellJitter 0..300 = 100.0
+// @param uHeroSize 20..250 = 100.0
+// @param uHeroThick 30..250 = 100.0
+// @param uHeroSpread 0..250 = 100.0
+// @param uMidDens 0..200 = 100.0
+// @param uSmallDens 0..200 = 100.0
+// @param uTexScale 40..250 = 100.0
+// @param uTexTurn -90..90 = 0.0
+// @param uPatternLock 0..7 = 0.0
+// @param uAccentShift 0..9 = 0.0
+// @param uShardSat -100..100 = 0.0
+// @param uShardTint color = #ffffff
 uniform float uSpeed;   // 破片が漂う速さ (%)
 uniform float uDrift;   // 位置の漂いの量 (%)。0 で位置が止まる
 uniform float uTurn;    // 回転の量 (%)。0 で向きが止まる
@@ -60,6 +82,28 @@ uniform float uGrain;   // 紙の目・粒 (%)
 uniform float uGround;  // 地色 0=cream / 1=cerulean / 2=crimson / 3=deep green / 4=世代ごとに選び、なめらかに移る
 uniform float uSeed;    // 配置と柄のシード
 uniform float uKick;    // 拍 / 音で漂いが増える量 (%)
+uniform float uCenterX; // 構図の中心の左右位置 (%)
+uniform float uCenterY; // 構図の中心の上下位置 (%)
+uniform float uRotate;  // 構図全体の回転 (度)
+uniform float uMirrorX; // 左右に折り返す量 (%)。100 で中心から鏡像
+uniform float uMirrorY; // 上下に折り返す量 (%)。100 で中心から鏡像
+uniform float uBarrel;  // 構図の樽型・糸巻き型の歪み (%)。負で糸巻き
+uniform float uShardLong; // 破片の長辺の長さ (%)
+uniform float uShardThin; // 破片の短辺の幅 (%)。下げると細い刃、上げると太い板
+uniform float uTriShare; // 三角の破片の割合 (%)。0 で三角なし
+uniform float uShearMul; // 四角の破片の剪断のゆがみ (%)
+uniform float uCellJitter; // 破片の位置のばらつき (%)。0 で升の中央にそろう
+uniform float uHeroSize; // 主役の大きな破片の長さ (%)
+uniform float uHeroThick; // 主役の大きな破片の太さ (%)
+uniform float uHeroSpread; // 主役の置き位置を中心から離す量 (%)
+uniform float uMidDens; // 中の層の破片の出現率 (%)
+uniform float uSmallDens; // 小の層の破片の出現率 (%)
+uniform float uTexScale; // 柄の細かさ (%)。縞や模様の間隔
+uniform float uTexTurn; // 柄を破片に対して回す角度 (度)
+uniform float uPatternLock; // 柄を 1 種類に固定。0 で自由、1 ゼブラ 2 等高線 3 放射 4 インク 5 紙 6 平塗り 7 モアレ
+uniform float uAccentShift; // 差し色パレットを回す (色の組み合わせが変わる)
+uniform float uShardSat; // 破片の彩度 (%)。負で色が抜ける
+uniform vec3  uShardTint; // 破片の色 (掛け算)
 
 // ─── 乱数 / ノイズ ────────────────────────────────────────
 float sc_h1(float n){
@@ -115,6 +159,7 @@ vec3 sc_ground(int g){
   return vec3(0.975, 0.945, 0.880);            // cream
 }
 vec3 sc_accent(float h){
+  if(uAccentShift != 0.0) h += floor(uAccentShift + 0.5) * 0.1;
   int i = int(floor(fract(h) * 10.0));
   if(i == 0) return vec3(0.05, 0.74, 0.95);  // cyan
   if(i == 1) return vec3(0.98, 0.10, 0.50);  // hot pink
@@ -344,6 +389,15 @@ vec3 sc_tex(int typ, vec2 lp, float idf, vec2 px, float grain){
   return col;
 }
 
+vec3 sc_shardLook(vec3 c){
+  if(uShardSat != 0.0){
+    float lm = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(lm), c, 1.0 + uShardSat / 100.0);
+  }
+  if(uShardTint != vec3(1.0)){ c *= uShardTint; }
+  return c;
+}
+
 // 柄の選び方。大きい面は広い柄 (グラデ・等高線・にじみ) を多めに、小さい切れ端は平塗りと縞を多めに
 int sc_pick(float r, float lay){
   if(lay < 0.5){
@@ -399,6 +453,7 @@ float sc_poly(vec2 p, vec2 ctr, float ang, float hl2, float hw2, float tri,
     v3 = v2;
   } else {
     float shear = (hj - 0.5) * mix(0.3, 1.4, hw) + shearW;
+    if(uShearMul != 100.0){ shear = (hj - 0.5) * mix(0.3, 1.4, hw) * (uShearMul / 100.0) + shearW; }
     v0 = vec2(-hl2 * (mix(0.75, 1.0, hx) + w0), -hw2 * (mix(0.6, 1.0, hy) + w1));
     v1 = vec2( hl2 * (mix(0.75, 1.0, hy) + w2), -hw2 * (mix(0.6, 1.0, ha) + w0));
     v2 = vec2( hl2 * (mix(0.75, 1.0, hp) + w1), hw2 * (mix(0.6, 1.0, hx) + w2));
@@ -433,7 +488,8 @@ void sc_shard(float lay, vec2 cell, float cs, vec2 p, float T, float seed, float
   float near = smoothstep(1.35, 0.25, length(ctr0 - focus));
   float w = mix(1.0, near, cluster);
   float he = sc_h2(key + 8.0);
-  if(he > dens * mix(0.30, 1.0, w)) return;
+  float dk = lay > 1.5 ? uSmallDens : (lay > 0.5 ? uMidDens : 100.0);
+  if(he > (dk != 100.0 ? dens * (dk / 100.0) * mix(0.30, 1.0, w) : dens * mix(0.30, 1.0, w))) return;
   idf = sc_h2(key + 11.0) * 97.0 + lay * 3.0 + seed * 0.01;
   float hx = sc_h2(key + 1.0);
   float hy = sc_h2(key + 2.0);
@@ -444,6 +500,7 @@ void sc_shard(float lay, vec2 cell, float cs, vec2 p, float T, float seed, float
   float hp = sc_h2(key + 7.0);
   float hj = sc_h2(key + 9.0);
   typ = sc_pick(sc_h2(key + 10.0), lay);
+  if(uPatternLock > 0.5) typ = int(floor(uPatternLock + 0.5)) - 1;
   prio = hp * 0.70 + lay * 0.45;
 
   // 出入り。小さすぎる破片は置かない (辺が潰れて升ごと塗られるのを防ぐ)
@@ -451,6 +508,7 @@ void sc_shard(float lay, vec2 cell, float cs, vec2 p, float T, float seed, float
   if(sw < 0.04) return;
 
   ctr = ctr0 + (vec2(hx, hy) - 0.5) * 0.30 * cs;
+  if(uCellJitter != 100.0){ ctr = ctr0 + (vec2(hx, hy) - 0.5) * 0.30 * cs * (uCellJitter / 100.0); }
   float ph = idf * 0.37;
   ctr += drift * cs * 0.10 * vec2(sin(T * 0.21 + ph), cos(T * 0.17 + ph * 1.7));
   ang = sc_tilt(ha, hs, thA, thB, align) + turn * 0.10 * sin(T * 0.07 + ph);
@@ -462,6 +520,8 @@ void sc_shard(float lay, vec2 cell, float cs, vec2 p, float T, float seed, float
   hw2 *= 1.0 + morph * 0.30 * sin(T * 0.70 + mph * 1.7 + 1.3);
   hl2 *= sw;
   hw2 *= sw;
+  if(uShardLong != 100.0){ hl2 *= uShardLong / 100.0; }
+  if(uShardThin != 100.0){ hw2 *= uShardThin / 100.0; }
   float reach = length(vec2(hl2, hw2));
   if(reach > cs * 1.18){
     float k = cs * 1.18 / reach;
@@ -473,7 +533,7 @@ void sc_shard(float lay, vec2 cell, float cs, vec2 p, float T, float seed, float
   float w1 = sin(T * 0.57 + mph * 1.3 + 2.0) * wob;
   float w2 = sin(T * 0.51 + mph * 0.7 + 4.0) * wob;
   float shearW = morph * 0.25 * sin(T * 0.45 + mph * 0.9);
-  float tri = step(hs, 0.38);
+  float tri = step(hs, uTriShare != 100.0 ? 0.38 * (uTriShare / 100.0) : 0.38);
   sd = sc_poly(p, ctr, ang, hl2, hw2, tri, hx, hy, ha, hp, hl, hj, hw, w0, w1, w2, shearW);
 }
 
@@ -488,6 +548,7 @@ void sc_hero(int k, vec2 p, float T, float seed, float scl, float drift, float m
   float sel = k == 0 ? sel0 : sel1;
   float aspect = resolution.x / max(resolution.y, 1.0);
   vec2 pt = vec2(sel < 2.0 ? -aspect / 6.0 : aspect / 6.0, mod(sel, 2.0) < 1.0 ? -1.0 / 6.0 : 1.0 / 6.0);
+  if(uHeroSpread != 100.0){ pt *= uHeroSpread / 100.0; }
   float hx = sc_h1(seed * 3.1 + 23.0 + fk * 7.0);
   float hy = sc_h1(seed * 3.1 + 24.0 + fk * 7.0);
   float hl = sc_h1(seed * 3.1 + 25.0 + fk * 7.0);
@@ -497,6 +558,7 @@ void sc_hero(int k, vec2 p, float T, float seed, float scl, float drift, float m
   float hs = sc_h1(seed * 3.1 + 29.0 + fk * 7.0);
   idf = 200.0 + fk * 17.0 + seed * 0.01;
   typ = sc_pick(sc_h1(seed * 3.1 + 30.0 + fk * 7.0), 0.0);
+  if(uPatternLock > 0.5) typ = int(floor(uPatternLock + 0.5)) - 1;
   prio = 0.35 + hp * 0.45;
   float sw = sc_swap(phase, 0.15 * fk, old);
   if(sw < 0.04) return;
@@ -505,7 +567,9 @@ void sc_hero(int k, vec2 p, float T, float seed, float scl, float drift, float m
   ctr += drift * 0.06 * vec2(sin(T * 0.19 + ph), cos(T * 0.15 + ph * 1.7));
   ang = thA + (fk == 0.0 ? 0.0 : (hs - 0.5) * 0.5) + morph * 0.05 * sin(T * 0.11 + ph);
   float hl2 = mix(0.62, 0.95, hl) * scl;
+  if(uHeroSize != 100.0){ hl2 *= uHeroSize / 100.0; }
   float hw2 = hl2 * mix(0.16, 0.42, hw);
+  if(uHeroThick != 100.0){ hw2 *= uHeroThick / 100.0; }
   float mph = idf * 2.3;
   hl2 *= (1.0 + morph * 0.15 * sin(T * 0.50 + mph)) * sw;
   hw2 *= (1.0 + morph * 0.20 * sin(T * 0.40 + mph * 1.7 + 1.3)) * sw;
@@ -556,6 +620,15 @@ int sc_groundIdx(float seedG){
   return int(floor(sc_h1(seedG * 7.7 + 5.0) * 3.999));
 }
 
+vec2 sc_view(vec2 p){
+  if(uCenterX != 0.0 || uCenterY != 0.0){ p -= vec2(uCenterX * 1.5, uCenterY) / 100.0; }
+  if(uRotate != 0.0){ p = sc_rot(p, radians(uRotate)); }
+  if(uBarrel != 0.0){ p *= 1.0 + uBarrel / 100.0 * 0.5 * dot(p, p); }
+  if(uMirrorX != 0.0){ float ma = -(1.0 - uMirrorX / 100.0) * 1.8; p.x = abs(p.x - ma) + ma; }
+  if(uMirrorY != 0.0){ float mb = -(1.0 - uMirrorY / 100.0) * 1.0; p.y = abs(p.y - mb) + mb; }
+  return p;
+}
+
 vec3 bg_shard_collage(vec2 fc){
   float seed = floor(max(uSeed, 0.0) + 0.5);
   float bt = getBeat();
@@ -590,6 +663,7 @@ vec3 bg_shard_collage(vec2 fc){
   float zoom = max(bgZoom, 0.001);
   vec2 p = (fc - 0.5 * resolution) / max(resolution.y, 1.0);
   p = p / zoom + bgCamPx / max(resolution.y, 1.0);
+  if(uCenterX != 0.0 || uCenterY != 0.0 || uRotate != 0.0 || uBarrel != 0.0 || uMirrorX != 0.0 || uMirrorY != 0.0){ p = sc_view(p); }
   float px = 1.35 / (max(resolution.y, 1.0) * zoom);
 
   float tooth = sc_h2(fc + vec2(0.37, 0.11));
@@ -676,7 +750,9 @@ vec3 bg_shard_collage(vec2 fc){
       float uCover = smoothstep(-px, px, underSd);
       float uFill = smoothstep(gap - px, gap + px, underSd);
       vec2 ulp = sc_rot(p - underCtr, -underAng);
-      vec3 utex = sc_tex(underTyp, ulp, underId, fc, grain) * toothMul;
+      if(uTexTurn != 0.0){ ulp = sc_rot(ulp, radians(uTexTurn)); }
+      vec3 utex = sc_tex(underTyp, uTexScale != 100.0 ? ulp * (uTexScale / 100.0) : ulp, underId, fc, grain) * toothMul;
+      utex = sc_shardLook(utex);
       base = mix(ground, mix(rim, utex, uFill), uCover);
     }
     float cover = smoothstep(-px, px, topSd);
@@ -686,7 +762,10 @@ vec3 bg_shard_collage(vec2 fc){
       sc_palMain = fract(topPal);
       sc_palAcc = floor(topPal) * 0.1 + 0.05;
       vec2 lp = sc_rot(p - topCtr, -topAng);
-      face = mix(rim, sc_tex(topTyp, lp, topId, fc, grain) * toothMul, fill);
+      if(uTexTurn != 0.0){ lp = sc_rot(lp, radians(uTexTurn)); }
+      vec3 ttex = sc_tex(topTyp, uTexScale != 100.0 ? lp * (uTexScale / 100.0) : lp, topId, fc, grain) * toothMul;
+      ttex = sc_shardLook(ttex);
+      face = mix(rim, ttex, fill);
     }
     col = mix(base, face, cover);
   }

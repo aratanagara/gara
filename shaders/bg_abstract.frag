@@ -62,6 +62,24 @@ mat2 aa_rot(float a){
 // @param uCamSway 0..200 = 0.0
 // @param uRoll -90..90 = 0.0
 // @param uFocal 60..160 = 100.0
+// @param uOrbX -100..100 = 0.0
+// @param uOrbY -100..100 = 0.0
+// @param uOrbPulse 0..250 = 100.0
+// @param uOrbColor color = #ffffff
+// @param uBandShift -100..100 = 0.0
+// @param uBandHue -100..100 = 0.0
+// @param uCamX -100..100 = 0.0
+// @param uCamBob 0..200 = 0.0
+// @param uCamYaw -45..45 = 0.0
+// @param uCamPitch -45..45 = 0.0
+// @param uBarrel -100..100 = 0.0
+// @param uSqueezeX 50..200 = 100.0
+// @param uMirrorX 0..100 = 0.0
+// @param uMirrorY 0..100 = 0.0
+// @param uVignette -100..100 = 0.0
+// @param uFilmGrain 0..100 = 0.0
+// @param uLightTint color = #ffffff
+// @param uShadowTint color = #ffffff
 uniform float uGlow; // 全体の明るさ (%)
 uniform float uDensity; // 場の模様の細かさ (%)
 uniform float uWarp; // 奥行きに沿ったねじれ (%)
@@ -78,6 +96,24 @@ uniform float uCamHeight; // カメラの高さ。正で場の上へ
 uniform float uCamSway; // カメラの左右の揺れ (%)
 uniform float uRoll; // 画面の傾き (度)
 uniform float uFocal; // 画角の広さ (%)。上げると広角
+uniform float uOrbX; // オーブの中心の左右位置 (%)
+uniform float uOrbY; // オーブの中心の上下位置 (%)
+uniform float uOrbPulse; // オーブの明滅の振れ幅 (%)
+uniform vec3  uOrbColor; // オーブの色 (掛け算)
+uniform float uBandShift; // 色の帯を奥行き方向へずらす (%)
+uniform float uBandHue; // 色の帯の R/G/B の位相差 (%)。帯の色合いが変わる
+uniform float uCamX; // カメラの左右位置 (%)
+uniform float uCamBob; // カメラの上下の揺れ (%)
+uniform float uCamYaw; // カメラの左右の向き (度)
+uniform float uCamPitch; // カメラの上下の向き (度)
+uniform float uBarrel; // 視野の樽型・糸巻き型の歪み (%)。負で糸巻き
+uniform float uSqueezeX; // 画の横の伸縮 (%)
+uniform float uMirrorX; // 左右に折り返す量 (%)。100 で中心から鏡像
+uniform float uMirrorY; // 上下に折り返す量 (%)。100 で中心から鏡像
+uniform float uVignette; // 周辺の減光 (%)。負で周辺が明るくなる
+uniform float uFilmGrain; // フィルムの粒 (%)
+uniform vec3  uLightTint; // 明るい部分の色 (掛け算)
+uniform vec3  uShadowTint; // 暗い部分の色 (掛け算)
 
 vec3 bg_abstract(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
@@ -91,10 +127,25 @@ vec3 bg_abstract(vec2 fc){
   // Ray direction & camera pos
   vec3 dd = vec3(2.0 * I, 0.0) - resolution.xyy;
   dd.z *= 100.0 / uFocal;
+  if(uSqueezeX != 100.0){ dd.x *= 100.0 / uSqueezeX; }
+  if(uMirrorX != 0.0){ float ma = -(1.0 - uMirrorX / 100.0) * resolution.x; dd.x = abs(dd.x - ma) + ma; }
+  if(uMirrorY != 0.0){ float mb = -(1.0 - uMirrorY / 100.0) * resolution.y; dd.y = abs(dd.y - mb) + mb; }
+  if(uBarrel != 0.0){ vec2 bq = dd.xy / resolution.y; dd.xy *= 1.0 + uBarrel / 100.0 * 0.5 * dot(bq, bq); }
   vec3 d = normalize(dd);
   if(uRoll != 0.0){ float ra = radians(uRoll); float rc = cos(ra), rs = sin(ra); d.xy = mat2(rc, -rs, rs, rc) * d.xy; }
+  if(uCamYaw != 0.0){ float ya = radians(uCamYaw); float yc = cos(ya), ys = sin(ya); d.xz = mat2(yc, -ys, ys, yc) * d.xz; }
+  if(uCamPitch != 0.0){ float pa = radians(uCamPitch); float pc = cos(pa), ps = sin(pa); d.yz = mat2(pc, -ps, ps, pc) * d.yz; }
   vec3 p = vec3(0, uCamHeight / 100.0, t);
   if(uCamSway != 0.0) p.x = sin(t * 0.2) * (uCamSway / 100.0);
+  if(uCamX != 0.0) p.x += uCamX / 100.0;
+  if(uCamBob != 0.0) p.y += sin(t * 0.3) * (uCamBob / 100.0 * 0.5);
+  vec2 uv0 = uv;
+  if(uOrbX != 0.0 || uOrbY != 0.0){ uv -= vec2(uOrbX * 1.8, uOrbY) / 100.0; }
+  vec3 bandC = vec3(0.5, 0.8, 0.9);
+  if(uBandShift != 0.0){ bandC -= vec3(uBandShift / 100.0 * 3.0); }
+  if(uBandHue != 0.0){ bandC -= vec3(0.0, 1.0, 2.0) * (uBandHue / 100.0 * 2.0); }
+  vec3 orbCol = vec3(7, 4, 1) * uOrbColor;
+  float orbR = 1e-3 * abs(sin(t * 0.4) * (0.5 * (uOrbPulse / 100.0)) + 2.0);
 
   vec3 l = vec3(0.0);   // accumulated radiance
 
@@ -112,12 +163,12 @@ vec3 bg_abstract(vec2 fc){
     p += d * s;
 
     // Accumulate radiance: field glow + moving orb
-    l += (sin(p.z * (0.5 * (uBandFreq / 100.0)) - vec3(0.5, 0.8, 0.9)) /
+    l += (sin(p.z * (0.5 * (uBandFreq / 100.0)) - bandC) /
          (abs(s * 0.001) + 1e-6))
-         + 0.3 * (uOrb / 100.0) * vec3(7, 4, 1) /
+         + 0.3 * (uOrb / 100.0) * orbCol /
          (length(uv + vec2(-1.0 * (uOrbSweep / 100.0) + 2.0 * (uOrbSweep / 100.0) * smoothstep(-1.0, 1.0, sin(t * 0.50)),
                            -0.4 + sin(t * 0.25) * (0.3 * (uOrbBob / 100.0))))
-          * (1e-3 * abs(sin(t * 0.4) * 0.5 + 2.0)));
+          * orbR);
   }
 
   // Tonemap + gamma correction (l*l = 様式的なコントラスト強調)
@@ -126,5 +177,13 @@ vec3 bg_abstract(vec2 fc){
   //   最後に [0,1] へ収め、Slot B 合成時の RGB 破綻(NaN/>1 痕)を防ぐ。
   vec3 hdr = clamp(l * l / 3e12 * (uGlow / 100.0), 0.0, 64.0);
   vec3 c = pow(max(aa_aces(hdr), 0.0), vec3(1.0 / 2.2));
+  if(uLightTint != vec3(1.0) || uShadowTint != vec3(1.0)){
+    c *= mix(uShadowTint, uLightTint, clamp(dot(c, vec3(0.299, 0.587, 0.114)), 0.0, 1.0));
+  }
+  if(uVignette != 0.0){ c *= clamp(1.0 - uVignette / 100.0 * 0.3 * dot(uv0, uv0), 0.0, 2.0); }
+  if(uFilmGrain != 0.0){
+    float gr = fract(sin(dot(fc, vec2(12.9898, 78.233)) + floor(time * 24.0) * 3.1) * 43758.5453);
+    c += (gr - 0.5) * (uFilmGrain / 100.0) * 0.25;
+  }
   return clamp(c, 0.0, 1.0);
 }
