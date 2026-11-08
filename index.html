@@ -9,7 +9,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794161110">
+<link rel="stylesheet" href="style.css?v=1794161366">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -309,6 +309,29 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
               <option value="11">Barcode (バーコード化)</option>
             </select>
           </div>
+          <div class="row"><label>Rotate</label><input type="range" id="imgRotate" min="-180" max="180" step="1" value="0" title="画像の回転 (度)。画像の外は透明"><div class="val" id="imgRotateVal">0</div></div>
+          <div class="row"><label>Sway</label><input type="range" id="imgSway" min="0" max="30" step="1" value="0" title="回転の揺れ幅 (度)。ゆっくり左右に揺れる"><div class="val" id="imgSwayVal">0</div></div>
+          <div class="row"><label>Skew X</label><input type="range" id="imgSkewX" min="-60" max="60" step="1" value="0" title="横の傾き (度)"><div class="val" id="imgSkewXVal">0</div></div>
+          <div class="row"><label>Skew Y</label><input type="range" id="imgSkewY" min="-60" max="60" step="1" value="0" title="縦の傾き (度)"><div class="val" id="imgSkewYVal">0</div></div>
+          <div class="row"><label>Keystone</label><input type="range" id="imgKeystone" min="-80" max="80" step="1" value="0" title="台形ゆがみ (%)。+ で上が狭く / - で下が狭く"><div class="val" id="imgKeystoneVal">0</div></div>
+          <div class="row"><label>Stretch</label><input type="range" id="imgStretch" min="30" max="300" step="1" value="100" title="横幅の比率 (%)"><div class="val" id="imgStretchVal">100</div></div>
+          <div class="row"><label>Mirror</label><select id="imgMirror" style="flex:1" title="鏡像: 中心線で折り返す"><option value="0">なし</option><option value="1">左右</option><option value="2">上下</option><option value="3">左右 + 上下</option></select></div>
+          <div class="row"><label>Tiles +</label><input type="range" id="imgTiles" min="0" max="7" step="1" value="0" title="敷き詰め: 1 辺に足す枚数 (0=1 枚のまま)"><div class="val" id="imgTilesVal">0</div></div>
+          <div class="row"><label>Tile Flip</label><input type="checkbox" id="imgTileMirror" title="敷き詰めを交互に裏返す (継ぎ目がつながる)"></div>
+          <div class="row"><label>Kaleido</label><input type="range" id="imgKaleido" min="0" max="12" step="1" value="0" title="万華鏡の分割数 (0=なし)"><div class="val" id="imgKaleidoVal">0</div></div>
+          <div class="row"><label>Bulge</label><input type="range" id="imgBulge" min="-40" max="100" step="1" value="0" title="樽型 / 糸巻き型のゆがみ (%)"><div class="val" id="imgBulgeVal">0</div></div>
+          <div class="row"><label>Twirl</label><input type="range" id="imgTwirl" min="-360" max="360" step="5" value="0" title="中心のねじれ (度)"><div class="val" id="imgTwirlVal">0</div></div>
+          <div class="row"><label>Wave Amp</label><input type="range" id="imgWaveAmp" min="0" max="15" step="1" value="0" title="波ゆがみの振れ幅 (%)"><div class="val" id="imgWaveAmpVal">0</div></div>
+          <div class="row"><label>Wave Count</label><input type="range" id="imgWaveCount" min="1" max="12" step="1" value="5" title="波ゆがみの山の数 (Wave Amp が 1 以上のとき)"><div class="val" id="imgWaveCountVal">5</div></div>
+          <div class="row"><label>Pixelate</label><input type="range" id="imgPixelate" min="0" max="100" step="1" value="0" title="モザイクの粗さ (%)"><div class="val" id="imgPixelateVal">0</div></div>
+          <div class="row"><label>Chroma Split</label><input type="range" id="imgChroma" min="0" max="50" step="1" value="0" title="色ずれ (RGB の分離幅 %)"><div class="val" id="imgChromaVal">0</div></div>
+          <div class="row"><label>Chroma Angle</label><input type="range" id="imgChromaAngle" min="-180" max="180" step="5" value="0" title="色ずれの向き (度) (Chroma Split が 1 以上のとき)"><div class="val" id="imgChromaAngleVal">0</div></div>
+          <div class="row"><label>Corner</label><input type="range" id="imgCorner" min="0" max="100" step="1" value="0" title="画像の角丸 (%)。画像の外は透明"><div class="val" id="imgCornerVal">0</div></div>
+          <div class="row"><label>Edge Fade</label><input type="range" id="imgEdgeFade" min="0" max="60" step="1" value="0" title="画像の縁のぼかし (%)。画像の外は透明"><div class="val" id="imgEdgeFadeVal">0</div></div>
+          <div class="row"><label>Drone Zoom</label><input type="range" id="imgDroneBase" min="100" max="160" step="1" value="118" title="Drone の基本ズーム (%)"><div class="val" id="imgDroneBaseVal">118</div></div>
+          <div class="row"><label>Drone Depth</label><input type="range" id="imgDroneDepth" min="0" max="100" step="1" value="100" title="Drone の寄り引きの振れ幅 (%)"><div class="val" id="imgDroneDepthVal">100</div></div>
+          <div class="row"><label>Drone Drift</label><input type="range" id="imgDroneDrift" min="0" max="100" step="1" value="100" title="Drone の漂いの大きさ (%)"><div class="val" id="imgDroneDriftVal">100</div></div>
+          <div class="row"><label>Fade (ms)</label><input type="range" id="imgFadeMs" min="0" max="2000" step="50" value="350" title="画像を切り替えるときの内蔵クロスフェードの長さ (Trans がカット以外のとき)"><div class="val" id="imgFadeMsVal">350</div></div>
           <div class="row"><label>Manual</label>
             <button id="imgPrev" style="flex:1" title="前の画像">◀ Prev</button>
             <button id="imgNext" style="flex:1" title="次の画像 (C キーでも送り)">Next ▶</button>
@@ -983,6 +1006,33 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Black</label><input type="checkbox" id="ikBlack" title="濃い黒い絵の具版 (低明度 / 鈍いウェット反射)"></div>
           <div class="row"><label>Hue</label><input type="range" id="ikBgHue" class="huebar" min="0" max="1" step="0.005" value="0" title="白(左端)→ ドラッグで色相環を回す (Slot A クローム & Slot B ライン共通)"><div class="val" id="ikBgHueVal">0.000</div></div>
           <div class="row"><label>Auto Hue</label><input type="checkbox" id="ikAutoHue" title="ON: Slot A の最も鮮やかで支配的な色相を自動で Hue に適用"></div>
+          <div class="row"><label>Ring X</label><input type="range" id="ikRingX" min="-100" max="100" step="1" value="0" title="インク発生リングの中心 X (%) (Black / Slot B の線で見える)"><div class="val" id="ikRingXVal">0</div></div>
+          <div class="row"><label>Ring Y</label><input type="range" id="ikRingY" min="-100" max="100" step="1" value="0" title="インク発生リングの中心 Y (%) (Black / Slot B の線で見える)"><div class="val" id="ikRingYVal">0</div></div>
+          <div class="row"><label>Ring Stretch</label><input type="range" id="ikRingStretch" min="40" max="250" step="1" value="100" title="リングの横幅比 (%)。100=真円 / 大きいほど横長の楕円 (Black / Slot B の線で見える)"><div class="val" id="ikRingStretchVal">100</div></div>
+          <div class="row"><label>Ring Angle</label><input type="range" id="ikRingAngle" min="-90" max="90" step="1" value="0" title="楕円リングの回転 (度) (Black / Slot B の線で見える)"><div class="val" id="ikRingAngleVal">0</div></div>
+          <div class="row"><label>Ring Lobes</label><input type="range" id="ikRingLobes" min="0" max="12" step="1" value="0" title="リングの花弁数 (0=真円) (Black / Slot B の線で見える)"><div class="val" id="ikRingLobesVal">0</div></div>
+          <div class="row"><label>Lobe Depth</label><input type="range" id="ikLobeDepth" min="0" max="80" step="1" value="30" title="花弁の深さ (%) (Ring Lobes が 1 以上のとき) (Black / Slot B の線で見える)"><div class="val" id="ikLobeDepthVal">30</div></div>
+          <div class="row"><label>Ring Edge</label><input type="range" id="ikRingEdge" min="40" max="300" step="5" value="100" title="リング断面の鋭さ (%)。大きいほど芯だけが残る (Black / Slot B の線で見える)"><div class="val" id="ikRingEdgeVal">100</div></div>
+          <div class="row"><label>Swell</label><input type="range" id="ikSwell" min="0" max="200" step="5" value="100" title="場全体の大きなうねりの振れ幅 (%)"><div class="val" id="ikSwellVal">100</div></div>
+          <div class="row"><label>Band Density</label><input type="range" id="ikBandDensity" min="40" max="160" step="5" value="100" title="帯の数 (%)"><div class="val" id="ikBandDensityVal">100</div></div>
+          <div class="row"><label>Band Shear</label><input type="range" id="ikBandShear" min="0" max="300" step="5" value="100" title="帯の位相の傾き量 (%)"><div class="val" id="ikBandShearVal">100</div></div>
+          <div class="row"><label>Band Angle</label><input type="range" id="ikBandAngle" min="-180" max="180" step="5" value="0" title="帯の位相の傾きの向き (度)"><div class="val" id="ikBandAngleVal">0</div></div>
+          <div class="row"><label>Curl Detail</label><input type="range" id="ikCurlDetail" min="1" max="16" step="0.5" value="4" title="渦を拾う間隔 (px)。小さいほど細かい渦"><div class="val" id="ikCurlDetailVal">4</div></div>
+          <div class="row"><label>Flow Angle</label><input type="range" id="ikFlowAngle" min="-60" max="60" step="5" value="0" title="流れの向き (度)。0=等高線に沿う渦 / 90=外へ広がる流れ"><div class="val" id="ikFlowAngleVal">0</div></div>
+          <div class="row"><label>Feedback Zoom</label><input type="range" id="ikFbZoom" min="-100" max="100" step="1" value="0" title="フィードバックの拡大縮小 (%)。+ で内側へ吸い込み / - で外へ広がる"><div class="val" id="ikFbZoomVal">0</div></div>
+          <div class="row"><label>Feedback Spin</label><input type="range" id="ikFbSpin" min="-100" max="100" step="1" value="0" title="フィードバックの回転 (%)"><div class="val" id="ikFbSpinVal">0</div></div>
+          <div class="row"><label>Chrome Scale</label><input type="range" id="ikChromeScale" min="30" max="200" step="5" value="100" title="クロームの流れ場の大きさ (%)"><div class="val" id="ikChromeScaleVal">100</div></div>
+          <div class="row"><label>Chrome Refresh</label><input type="range" id="ikChromeRefresh" min="20" max="300" step="5" value="100" title="クロームの流れ場の入れ替わる速さ (%)"><div class="val" id="ikChromeRefreshVal">100</div></div>
+          <div class="row"><label>Breath Floor</label><input type="range" id="ikBreathFloor" min="10" max="100" step="1" value="40" title="ブリージングで密度が下がる下限 (%)。100=ブリージングなし"><div class="val" id="ikBreathFloorVal">40</div></div>
+          <div class="row"><label>Reflection Bend</label><input type="range" id="ikReflBend" min="0" max="300" step="5" value="100" title="反射の曲がり量 (%)"><div class="val" id="ikReflBendVal">100</div></div>
+          <div class="row"><label>Reflection Detail</label><input type="range" id="ikReflDetail" min="30" max="200" step="5" value="100" title="反射の滑らかさの幅 (%)"><div class="val" id="ikReflDetailVal">100</div></div>
+          <div class="row"><label>Reflection Sky</label><input type="range" id="ikReflSky" min="-100" max="300" step="5" value="100" title="反射の上下グラデの強さ (%)"><div class="val" id="ikReflSkyVal">100</div></div>
+          <div class="row"><label>Edge Shade</label><input type="range" id="ikEdgeShade" min="0" max="120" step="5" value="100" title="暗い境目の濃さ (%)"><div class="val" id="ikEdgeShadeVal">100</div></div>
+          <div class="row"><label>Edge Sense</label><input type="range" id="ikEdgeSense" min="30" max="200" step="5" value="100" title="境目を拾う感度 (%)"><div class="val" id="ikEdgeSenseVal">100</div></div>
+          <div class="row"><label>Edge Tint</label><input type="color" id="ikEdgeTint" value="#ffffff" title="暗い境目の色の掛け算ティント (白=そのまま)"></div>
+          <div class="row"><label>Tint Strength</label><input type="range" id="ikTintStrength" min="0" max="100" step="1" value="100" title="Hue の色の濃さ (%)"><div class="val" id="ikTintStrengthVal">100</div></div>
+          <div class="row"><label>Ink Fill</label><input type="range" id="ikInkFill" min="0" max="100" step="1" value="0" title="Slot B: インクの塊を塗りつぶす濃さ (%)"><div class="val" id="ikInkFillVal">0</div></div>
+          <div class="row"><label>Wet Shine</label><input type="range" id="ikWetShine" min="0" max="300" step="5" value="100" title="Black のウェット反射の強さ (%)"><div class="val" id="ikWetShineVal">100</div></div>
           <div class="help" style="margin-top:6px">フィードバック式インク流体 (Inkelly by leon denise)。Beat Sync で拍に合わせてインク場が切替。</div>
         </div>
 
@@ -1512,43 +1562,43 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794161110"></script>
-<script src="mode/layer.js?v=1794161110"></script>
-<script src="vendor/iro.min.js?v=1794161110"></script>
-<script src="vendor/mediabunny.min.js?v=1794161110"></script>
-<script src="mode/textdeform.js?v=1794161110"></script>
-<script src="mode/textdeform-comp.js?v=1794161110"></script>
-<script src="mode/ugomeki.js?v=1794161110"></script>
-<script src="mode/slicer.js?v=1794161110"></script>
-<script src="mode/video.js?v=1794161110"></script>
-<script src="mode/aratanagara.js?v=1794161110"></script>
-<script src="vendor/p5.min.js?v=1794161110"></script>
-<script src="mode/cyberui.js?v=1794161110"></script>
-<script src="mode/novel.js?v=1794161110"></script>
-<script src="shaders/inkelly.js?v=1794161110"></script>
-<script src="sketchfx.js?v=1794161110"></script>
-<script src="pixelsortfx.js?v=1794161110"></script>
-<script src="shaders/boltzmann.js?v=1794161110"></script>
-<script src="mode/pen.js?v=1794161110"></script>
-<script src="shaders/caverns.js?v=1794161110"></script>
-<script src="mode/shelf.js?v=1794161110"></script>
-<script src="shaders/ribbon.js?v=1794161110"></script>
-<script src="mode/photoplane.js?v=1794161110"></script>
-<script src="mode/shredder.js?v=1794161110"></script>
-<script src="mode/transflock.js?v=1794161110"></script>
-<script src="mode/liquidpeel.js?v=1794161110"></script>
-<script src="mode/windflock.js?v=1794161110"></script>
-<script src="mode/rhizome.js?v=1794161110"></script>
-<script src="mode/surrealfloat.js?v=1794161110"></script>
-<script src="mode/chrometype.js?v=1794161110"></script>
-<script src="mode/tower4149.js?v=1794161110"></script>
-<script src="mode/fude.js?v=1794161110"></script>
-<script src="mode/image.js?v=1794161110"></script>
-<script src="mode/spacetype.js?v=1794161110"></script>
-<script src="pollockfx.js?v=1794161110"></script>
-<script src="overlay.js?v=1794161110"></script>
-<script src="gif.js?v=1794161110"></script>
-  <script src="app.js?v=1794161110"></script>
-<script src="camroll.js?v=1794161110" defer></script>
+<script src="presets.js?v=1794161366"></script>
+<script src="mode/layer.js?v=1794161366"></script>
+<script src="vendor/iro.min.js?v=1794161366"></script>
+<script src="vendor/mediabunny.min.js?v=1794161366"></script>
+<script src="mode/textdeform.js?v=1794161366"></script>
+<script src="mode/textdeform-comp.js?v=1794161366"></script>
+<script src="mode/ugomeki.js?v=1794161366"></script>
+<script src="mode/slicer.js?v=1794161366"></script>
+<script src="mode/video.js?v=1794161366"></script>
+<script src="mode/aratanagara.js?v=1794161366"></script>
+<script src="vendor/p5.min.js?v=1794161366"></script>
+<script src="mode/cyberui.js?v=1794161366"></script>
+<script src="mode/novel.js?v=1794161366"></script>
+<script src="shaders/inkelly.js?v=1794161366"></script>
+<script src="sketchfx.js?v=1794161366"></script>
+<script src="pixelsortfx.js?v=1794161366"></script>
+<script src="shaders/boltzmann.js?v=1794161366"></script>
+<script src="mode/pen.js?v=1794161366"></script>
+<script src="shaders/caverns.js?v=1794161366"></script>
+<script src="mode/shelf.js?v=1794161366"></script>
+<script src="shaders/ribbon.js?v=1794161366"></script>
+<script src="mode/photoplane.js?v=1794161366"></script>
+<script src="mode/shredder.js?v=1794161366"></script>
+<script src="mode/transflock.js?v=1794161366"></script>
+<script src="mode/liquidpeel.js?v=1794161366"></script>
+<script src="mode/windflock.js?v=1794161366"></script>
+<script src="mode/rhizome.js?v=1794161366"></script>
+<script src="mode/surrealfloat.js?v=1794161366"></script>
+<script src="mode/chrometype.js?v=1794161366"></script>
+<script src="mode/tower4149.js?v=1794161366"></script>
+<script src="mode/fude.js?v=1794161366"></script>
+<script src="mode/image.js?v=1794161366"></script>
+<script src="mode/spacetype.js?v=1794161366"></script>
+<script src="pollockfx.js?v=1794161366"></script>
+<script src="overlay.js?v=1794161366"></script>
+<script src="gif.js?v=1794161366"></script>
+  <script src="app.js?v=1794161366"></script>
+<script src="camroll.js?v=1794161366" defer></script>
 </body>
 </html>

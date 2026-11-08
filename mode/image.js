@@ -17,7 +17,30 @@ const ImageMode = {
     fit: 'contain',      // contain | cover | drone
     image: '',           // 現在の画像名 (single の復元用。送りのたび更新)
     transBeats: -1,      // 切替トランジション: -1=Trans 連動 / 0=カット / n=拍数 (startPresetTrans)
-    transStyle: -1       // 切替演出: -1=Style 連動 (App.transStyle) / 0=なし (素の Crossfade) / 1..=各演出
+    transStyle: -1,      // 切替演出: -1=Style 連動 (App.transStyle) / 0=なし (素の Crossfade) / 1..=各演出
+    rotate: 0,           // 画像の回転 (度)
+    sway: 0,             // 回転の揺れ幅 (度)
+    skewX: 0,            // 横の傾き (度)
+    skewY: 0,            // 縦の傾き (度)
+    keystone: 0,         // 台形ゆがみ (%)。+ で上が狭く / - で下が狭く
+    stretch: 100,        // 横幅の比率 (%)
+    mirror: 0,           // 鏡像: 0=なし / 1=左右 / 2=上下 / 3=左右+上下
+    tiles: 0,            // 敷き詰め: 1 辺に足す枚数 (0=1 枚のまま)
+    tileMirror: false,   // 敷き詰めを交互に裏返す
+    kaleido: 0,          // 万華鏡の分割数 (0=なし)
+    bulge: 0,            // 樽型 / 糸巻き型のゆがみ (%)
+    twirl: 0,            // 中心のねじれ (度)
+    waveAmp: 0,          // 波ゆがみの振れ幅 (%)
+    waveCount: 5,        // 波ゆがみの山の数
+    pixelate: 0,         // モザイクの粗さ (%)
+    chroma: 0,           // 色ずれ (RGB の分離幅 %)
+    chromaAngle: 0,      // 色ずれの向き (度)
+    corner: 0,           // 画像の角丸 (%)
+    edgeFade: 0,         // 画像の縁のぼかし (%)
+    droneBase: 118,      // Drone の基本ズーム (%)
+    droneDepth: 100,     // Drone の寄り引きの振れ幅 (%)
+    droneDrift: 100,     // Drone の漂いの大きさ (%)
+    fadeMs: 350          // 画像切替の内蔵クロスフェード (ms)
   },
   PDefaults: null,
 
@@ -61,25 +84,100 @@ uniform int  u_fit;      // 0=contain, 1=cover, 2=drone (cover ベースでゆ�
 uniform float u_time;    // drone 用の時間 (GL.clock = Space フリーズ/逆再生に追従)
 uniform float u_seed;    // 画像ごとの位相ずらし
 uniform float u_mixT;    // 0=prev .. 1=cur
-vec4 sampleFit(sampler2D tex, vec2 imgSize){
-  vec2 uv = v_uv;
+uniform float u_rot;     // 回転 (rad)
+uniform float u_sway;    // 回転の揺れ幅 (rad)
+uniform vec2  u_skew;    // 傾き (tan)
+uniform float u_key;     // 台形ゆがみ
+uniform float u_stretch; // 横幅の比率
+uniform int   u_mirror;  // 鏡像
+uniform float u_tiles;   // 敷き詰め枚数
+uniform float u_tileMirror;
+uniform float u_kal;     // 万華鏡の分割数
+uniform float u_bulge, u_twirl; // 樽 / ねじれ (rad)
+uniform vec2  u_wave;    // 波の振れ幅 / 山の数
+uniform float u_pix;     // モザイクのコマの大きさ (画面の高さ比)
+uniform vec2  u_chroma;  // 色ずれの向きと幅 (uv)
+uniform float u_corner, u_edgeFade;
+uniform vec3  u_drone;   // 基本ズーム / 寄り引き / 漂い
+uniform float u_clip;    // 1=画像の外を透明にする
+vec4 sampleAt(sampler2D tex, vec2 imgSize, vec2 off){
+  vec2 uv = v_uv + off;
   uv.y = 1.0 - uv.y;     // 画像は上下反転でアップロードされるので戻す
+  float va = u_viewSize.x / max(u_viewSize.y, 1.0);
+  if(u_pix > 0.0){
+    vec2 cell = vec2(u_pix / va, u_pix);
+    uv = (floor(uv / cell) + 0.5) * cell;
+  }
+  if(u_wave.x != 0.0 || u_bulge != 0.0 || u_twirl != 0.0 || u_kal > 1.5 || u_mirror != 0
+     || u_rot != 0.0 || u_sway != 0.0 || u_skew.x != 0.0 || u_skew.y != 0.0 || u_key != 0.0 || u_stretch != 1.0){
+    vec2 p = (uv - 0.5) * vec2(va, 1.0);
+    if(u_wave.x != 0.0){
+      float k = u_wave.y * 6.2831853;
+      p += u_wave.x * vec2(sin(p.y * k + u_time * 1.3), sin(p.x * k * 0.6 + u_time * 1.1 + 1.7));
+    }
+    if(u_mirror != 0){
+      if(u_mirror == 1 || u_mirror == 3) p.x = abs(p.x);
+      if(u_mirror == 2 || u_mirror == 3) p.y = abs(p.y);
+    }
+    if(u_kal > 1.5){
+      float seg = 6.2831853 / floor(u_kal + 0.5);
+      float a = atan(p.y, p.x);
+      a = abs(mod(a, seg) - seg * 0.5);
+      p = length(p) * vec2(cos(a), sin(a));
+    }
+    if(u_bulge != 0.0) p *= 1.0 + u_bulge * dot(p, p);
+    if(u_twirl != 0.0){
+      float tw = u_twirl * (1.0 - smoothstep(0.0, 1.0, length(p)));
+      float cs = cos(tw), sn = sin(tw);
+      p = vec2(cs * p.x - sn * p.y, sn * p.x + cs * p.y);
+    }
+    float ang = u_rot + u_sway * sin(u_time * 0.7 + u_seed);
+    if(ang != 0.0){
+      float cs = cos(ang), sn = sin(ang);
+      p = vec2(cs * p.x + sn * p.y, -sn * p.x + cs * p.y);
+    }
+    p = vec2(p.x + p.y * u_skew.x, p.y + p.x * u_skew.y);
+    if(u_key != 0.0) p.x /= 1.0 + 2.0 * u_key * p.y;
+    p.x /= u_stretch;
+    uv = p / vec2(va, 1.0) + 0.5;
+  }
+  if(u_tiles > 1.0){
+    uv *= u_tiles;
+    uv = (u_tileMirror > 0.5) ? 1.0 - abs(1.0 - mod(uv, 2.0)) : fract(uv);
+  }
+  float edgeA = 1.0;
   if(imgSize.x > 0.5 && imgSize.y > 0.5){
-    float va = u_viewSize.x / max(u_viewSize.y, 1.0);
     float ta = imgSize.x  / max(imgSize.y,  1.0);
     vec2 s = (u_fit >= 1) ? ((va > ta) ? vec2(1.0, va/ta) : vec2(ta/va, 1.0))
                           : ((va > ta) ? vec2(ta/va, 1.0) : vec2(1.0, va/ta));
     uv = (uv - 0.5) / s + 0.5;
     if(u_fit == 2){
       // ドローン風: ~20 秒周期でズームし、余白の範囲でリサージュに漂う (常に cover を維持)
-      float z = 1.18 + 0.16 * sin(u_time * 0.32 + u_seed);
-      float m = 0.5 * (1.0 - 1.0 / z);
+      float z = max(u_drone.x + (0.16 * u_drone.y) * sin(u_time * 0.32 + u_seed), 1.0);
+      float m = 0.5 * (1.0 - 1.0 / z) * u_drone.z;
       uv = (uv - 0.5) / z + 0.5
          + m * vec2(sin(u_time * 0.23 + u_seed * 1.7), cos(u_time * 0.19 + u_seed * 2.3));
     }
+    if(u_corner > 0.0 || u_edgeFade > 0.0){
+      vec2 hf = vec2(ta, 1.0) * 0.5;
+      float rr = u_corner * 0.5;
+      vec2 q = abs((uv - 0.5) * vec2(ta, 1.0)) - hf + rr;
+      float sd = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0) - rr;
+      float w = max(fwidth(sd) * 0.75, 1e-5);
+      edgeA = (u_edgeFade > 0.0) ? smoothstep(0.0, u_edgeFade * 0.5, -sd) : smoothstep(-w, w, -sd);
+    }
   }
-  if(u_fit == 0 && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);   // contain の余白は透明
-  return texture(tex, clamp(uv, 0.0, 1.0));
+  if((u_fit == 0 || u_clip > 0.5) && (uv.x < 0.0 || uv.x > 1.0 || uv.y < 0.0 || uv.y > 1.0)) return vec4(0.0);   // contain の余白は透明
+  vec4 c = texture(tex, clamp(uv, 0.0, 1.0));
+  c *= edgeA;
+  return c;
+}
+vec4 sampleFit(sampler2D tex, vec2 imgSize){
+  if(u_chroma.y == 0.0 && u_chroma.x == 0.0) return sampleAt(tex, imgSize, vec2(0.0));
+  vec4 c0 = sampleAt(tex, imgSize, vec2(0.0));
+  vec4 cr = sampleAt(tex, imgSize, u_chroma);
+  vec4 cb = sampleAt(tex, imgSize, -u_chroma);
+  return vec4(cr.r, c0.g, cb.b, max(max(cr.a, c0.a), cb.a));
 }
 void main(){
   vec4 cur = sampleFit(u_tex, u_imgSize);
@@ -111,6 +209,9 @@ void main(){
     this.locTime = gl.getUniformLocation(this.prog, 'u_time');
     this.locSeed = gl.getUniformLocation(this.prog, 'u_seed');
     this.locMixT = gl.getUniformLocation(this.prog, 'u_mixT');
+    this.loc = {};
+    for(const n of ['u_rot', 'u_sway', 'u_skew', 'u_key', 'u_stretch', 'u_mirror', 'u_tiles', 'u_tileMirror', 'u_kal', 'u_bulge', 'u_twirl',
+                    'u_wave', 'u_pix', 'u_chroma', 'u_corner', 'u_edgeFade', 'u_drone', 'u_clip']) this.loc[n] = gl.getUniformLocation(this.prog, n);
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
@@ -191,7 +292,7 @@ void main(){
   //   キーは folders.json の dir (単一画像エントリはファイルパス) なので両方を一意に扱える。
   //   'vj.def.' プレフィックスで defs サーバー同期にも自動で乗る (別端末へも反映)。
   _folderParamKey: 'vj.def.image.folderParams',
-  FOLDER_KEYS: ['order', 'everyBeats', 'fit', 'transBeats', 'transStyle'],
+  FOLDER_KEYS: ['order', 'everyBeats', 'fit', 'transBeats', 'transStyle', 'rotate', 'sway', 'skewX', 'skewY', 'keystone', 'stretch', 'mirror', 'tiles', 'tileMirror', 'kaleido', 'bulge', 'twirl', 'waveAmp', 'waveCount', 'pixelate', 'chroma', 'chromaAngle', 'corner', 'edgeFade', 'droneBase', 'droneDepth', 'droneDrift', 'fadeMs'],
   _storedFolderParams(){
     try{ return JSON.parse(localStorage.getItem(this._folderParamKey) || '{}'); }
     catch(e){ return {}; }
@@ -358,9 +459,11 @@ void main(){
     const gl = this.gl, { fbo, w, h } = opts;
     const key = opts.slot === 'B' ? 'B' : 'A';
     const st = this._slot(key);
+    const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
     // クロスフェード進行 (smoothstep)
     if(st.mixT < 1){
-      const u = this._fadeDur > 0 ? (this._now() - st.fadeStart) / this._fadeDur : 1;
+      const fd = (typeof st.P.fadeMs === 'number') ? Math.max(0, dz(st.P.fadeMs)) / 1000 : this._fadeDur;
+      const u = fd > 0 ? (this._now() - st.fadeStart) / fd : 1;
       st.mixT = u >= 1 ? 1 : Math.max(0, u*u*(3 - 2*u));
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
@@ -382,6 +485,31 @@ void main(){
     gl.uniform1f(this.locTime, (typeof GL !== 'undefined' && typeof GL.clock === 'number') ? GL.clock : this._now());
     gl.uniform1f(this.locSeed, (st.idx * 2.399 + (key === 'B' ? 1.234 : 0)) % 6.2832);
     gl.uniform1f(this.locMixT, st.mixT);
+    {
+      const P = st.P, L = this.loc, RAD = Math.PI / 180;
+      const rot = dz(P.rotate) * RAD, sway = dz(P.sway) * RAD, skx = dz(P.skewX), sky = dz(P.skewY), key = dz(P.keystone) / 100;
+      const str = dz(P.stretch) / 100, mir = Math.round(dz(P.mirror)), kal = Math.round(dz(P.kaleido));
+      const bul = dz(P.bulge) / 100, twi = dz(P.twirl) * RAD, wav = dz(P.waveAmp) / 100;
+      gl.uniform1f(L.u_rot, rot);
+      gl.uniform1f(L.u_sway, sway);
+      gl.uniform2f(L.u_skew, Math.tan(skx * RAD), Math.tan(sky * RAD));
+      gl.uniform1f(L.u_key, key);
+      gl.uniform1f(L.u_stretch, str);
+      gl.uniform1i(L.u_mirror, mir);
+      gl.uniform1f(L.u_tiles, 1 + Math.round(dz(P.tiles)));
+      gl.uniform1f(L.u_tileMirror, P.tileMirror ? 1 : 0);
+      gl.uniform1f(L.u_kal, kal);
+      gl.uniform1f(L.u_bulge, bul);
+      gl.uniform1f(L.u_twirl, twi);
+      gl.uniform2f(L.u_wave, wav, Math.round(dz(P.waveCount)));
+      gl.uniform1f(L.u_pix, dz(P.pixelate) / 100 * 0.12);
+      const ca = dz(P.chromaAngle) * RAD, cm = dz(P.chroma) / 100 * 0.05, va = w / Math.max(h, 1);
+      gl.uniform2f(L.u_chroma, cm * Math.cos(ca) / va, cm * Math.sin(ca));
+      gl.uniform1f(L.u_corner, dz(P.corner) / 100);
+      gl.uniform1f(L.u_edgeFade, dz(P.edgeFade) / 100);
+      gl.uniform3f(L.u_drone, dz(P.droneBase) / 100, dz(P.droneDepth) / 100, dz(P.droneDrift) / 100);
+      gl.uniform1f(L.u_clip, (rot || sway || skx || sky || key || str !== 1 || mir || kal > 1 || bul || twi || wav) ? 1 : 0);
+    }
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.enableVertexAttribArray(this.locPos);
     gl.vertexAttribPointer(this.locPos, 2, gl.FLOAT, false, 0, 0);
