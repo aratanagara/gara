@@ -27,6 +27,21 @@ uniform float uGlow;   // きらめき・コースティクスの強さ (%)
 // @param uWarpFreqGain 70..125 = 100.0
 // @param uCausticSharp 60..400 = 100.0
 // @param uSparkleLevel 60..130 = 100.0
+// @param uCenterX -100..100 = 0
+// @param uCenterY -100..100 = 0
+// @param uRotate -180..180 = 0
+// @param uMirrorAxis -100..100 = 0
+// @param uSwirl -100..100 = 0
+// @param uMosaic 0..60 = 0
+// @param uWarpTurn -180..180 = 0
+// @param uRainbow 0..200 = 0
+// @param uBands 0..6 = 0
+// @param uTopFade -100..100 = 0
+// @param uGrain 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uWaterColor color = #ffffff
+// @param uCausticColor color = #ffffff
+// @param uSparkleColor color = #ffffff
 uniform float uSourceSpread; // 波源の散らばり (%)。下げると中央に集まる
 uniform float uRingStretch; // 波紋の横の伸び (%)。楕円の波になる
 uniform float uSkew; // 波紋の斜めのずらし (%)。負で逆向き
@@ -38,6 +53,21 @@ uniform float uWarpFalloff; // 歪みの各段の弱まり方 (%)
 uniform float uWarpFreqGain; // 歪みの各段で細かくなる速さ (%)
 uniform float uCausticSharp; // コースティクスの筋の鋭さ (%)
 uniform float uSparkleLevel; // きらめきの出る明るさの閾値 (%)
+uniform float uCenterX; // 波の見る位置の横ずらし (%)
+uniform float uCenterY; // 波の見る位置の縦ずらし (%)
+uniform float uRotate; // 水面全体の回転 (度)
+uniform float uMirrorAxis; // 左右の鏡像の折り返し位置 (%)。0 でなし
+uniform float uSwirl; // 中心からの距離に応じた渦のねじれ (%)。負で逆向き
+uniform float uMosaic; // 座標のモザイク化 (%)。大きいほど粗いブロック
+uniform float uWarpTurn; // 歪みの向きの回転 (度)
+uniform float uRainbow; // 波ごとの虹色の混ざり (%)。0 で白黒の水
+uniform float uBands; // 明度を等高線状の段に割る数 (0 でなし)
+uniform float uTopFade; // 上下方向のグラデーション (%)。正で上が暗く、負で下が暗い
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform float uVignette; // 周辺を暗くする量 (%)
+uniform vec3 uWaterColor; // 水面の色の掛け合わせ
+uniform vec3 uCausticColor; // コースティクスの色の掛け合わせ
+uniform vec3 uSparkleColor; // きらめきの色の掛け合わせ
 
 bool rw_custom = false;
 vec3 rw_poolsC(in vec2 uv){
@@ -134,7 +164,9 @@ vec3 rw_warp(in vec2 uv){
     if(i < iter){
       a /= amp;
       f *= fg;
-      c = a*rw_pools(uv + f*vec2(c.r-c.g, c.g-c.b));
+      vec2 wv = vec2(c.r-c.g, c.g-c.b);
+      if(uWarpTurn != 0.0){ float wt = radians(uWarpTurn); wv = mat2(cos(wt), -sin(wt), sin(wt), cos(wt)) * wv; }
+      c = a*rw_pools(uv + f*wv);
     }
   }
   return c;
@@ -142,6 +174,14 @@ vec3 rw_warp(in vec2 uv){
 vec3 bg_rainbowWater(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = I / resolution.xy;
+  if(uMirrorAxis != 0.0){ float mx = 0.5 + uMirrorAxis / 100.0 * 0.3; uv.x = mx + abs(uv.x - mx); }
+  if(uSwirl != 0.0){
+    float sw = (uSwirl / 100.0) * 3.0 * length(uv - 0.5);
+    uv = 0.5 + mat2(cos(sw), -sin(sw), sin(sw), cos(sw)) * (uv - 0.5);
+  }
+  if(uRotate != 0.0){ float ra = radians(uRotate); uv = 0.5 + mat2(cos(ra), -sin(ra), sin(ra), cos(ra)) * (uv - 0.5); }
+  if(uMosaic != 0.0){ float mn = 120.0 / (1.0 + uMosaic * 0.05); uv = (floor(uv * mn) + 0.5) / mn; }
+  if(uCenterX != 0.0 || uCenterY != 0.0) uv += vec2(uCenterX, uCenterY) / 100.0;
   if(uSkew != 0.0) uv.x += (uv.y - 0.5) * (uSkew / 100.0);
   rw_custom = (uSourceSpread != 100.0 || uRingStretch != 100.0 || uFreqGrow != 100.0 || uAmpDecay != 100.0 || uRingSharp != 100.0);
   vec3 c0 = rw_warp(uv);
@@ -151,8 +191,27 @@ vec3 bg_rainbowWater(vec2 fc){
   float L = dot(c0, vec3(0.299, 0.587, 0.114));
   float g = smoothstep(0.0, 0.85, L * (uContrast / 100.0));
   g = 0.40 + 0.60 * g;                                    // 明度を持ち上げて明るく
-  g += pow(clamp(L, 0.0, 1.0), 5.0 * (uCausticSharp / 100.0)) * 0.5 * (uGlow / 100.0);                // コースティクス(明るい筋)
-  g += pow(clamp((L - 0.70 * (uSparkleLevel / 100.0))/0.30, 0.0, 1.0), 3.0) * 0.6 * (uGlow / 100.0);  // 鋭いきらめき
+  float gBase = g;
+  float gCau = pow(clamp(L, 0.0, 1.0), 5.0 * (uCausticSharp / 100.0)) * 0.5 * (uGlow / 100.0);                // コースティクス(明るい筋)
+  g += gCau;
+  float gSpk = pow(clamp((L - 0.70 * (uSparkleLevel / 100.0))/0.30, 0.0, 1.0), 3.0) * 0.6 * (uGlow / 100.0);  // 鋭いきらめき
+  g += gSpk;
+  bool tinted = (uWaterColor != vec3(1.0) || uCausticColor != vec3(1.0) || uSparkleColor != vec3(1.0));
+  if(uBands != 0.0){ float bn = uBands + 1.0; g = floor(clamp(g, 0.0, 1.0) * bn + 0.5) / bn; }
+  if(uTopFade != 0.0) g *= 1.0 - (uTopFade / 100.0) * (fc.y / resolution.y - 0.5) * 1.2;
+  if(uVignette != 0.0){
+    vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y;
+    g *= 1.0 - (uVignette / 100.0) * smoothstep(0.3, 1.0, length(vq));
+  }
+  if(uGrain != 0.0){
+    float gh = fract(sin(dot(fc, vec2(12.9898, 78.233)) + time * 0.7) * 43758.5453);
+    g += (gh - 0.5) * (uGrain / 100.0) * 0.4;
+  }
   bgAlpha = clamp(g * 0.8, 0.0, 0.78);                     // 半透明の水(暗い谷ほど透ける)
-  return vec3(clamp(g, 0.0, 1.0));
+  vec3 outc = vec3(clamp(g, 0.0, 1.0));
+  if(tinted){
+    outc = clamp((gBase * uWaterColor + gCau * uCausticColor + gSpk * uSparkleColor) * (g / max(gBase + gCau + gSpk, 1e-4)), 0.0, 1.0);
+  }
+  if(uRainbow != 0.0) outc = clamp(outc + (uRainbow / 100.0) * 0.9 * (c0 - L), 0.0, 1.0);
+  return outc;
 }

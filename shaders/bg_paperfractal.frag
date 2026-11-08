@@ -34,6 +34,20 @@ float pf_plane(vec3 p, vec3 n){ return dot(p, normalize(n)); }
 // @param uBlob 0..300 = 100
 // @param uCamX -100..100 = 0
 // @param uCamY -100..100 = 0
+// @param uOrbitYaw -60..60 = 0
+// @param uOrbitPitch -60..60 = 0
+// @param uCamRoll -180..180 = 0
+// @param uMirrorAxis -100..100 = 0
+// @param uViewSwirl -100..100 = 0
+// @param uShadeFloor 0..60 = 10
+// @param uShadeCurve 40..250 = 100
+// @param uShadeBands 0..6 = 0
+// @param uDepthFade 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uSurfaceColor color = #ffffff
+// @param uShadowColor color = #ffffff
+// @param uGlowColor color = #ffffff
 uniform float uDetail;   // 入れ子にする折り紙の数 (下げると軽く、構造が単純になる)
 uniform float uScale;    // 物体全体の大きさ (%)
 uniform float uAngle;    // フラクタル全体の向き (度)
@@ -50,6 +64,20 @@ uniform float uCamWide;  // 画角の広さ (%)。大きいほど物体が小さ
 uniform float uBlob;     // 発光スフィアの形のゆらぎ (%)
 uniform float uCamX;     // カメラの横位置 (%)。視点が変わり見える面が変わる
 uniform float uCamY;     // カメラの縦位置 (%)
+uniform float uOrbitYaw; // カメラを物体の周りで左右に回す角度 (度)
+uniform float uOrbitPitch; // カメラを物体の周りで上下に回す角度 (度)
+uniform float uCamRoll;  // カメラのロール (度)
+uniform float uMirrorAxis; // 左右の鏡像の折り返し位置 (%)。0 でなし
+uniform float uViewSwirl; // 画面中心からの距離に応じた渦のねじれ (%)。負で逆向き
+uniform float uShadeFloor; // 最も奥の面の明るさ (%)。上げると奥が浮く
+uniform float uShadeCurve; // 手前から奥への陰影の落ち方 (%)。大きいほど奥が急に暗い
+uniform float uShadeBands; // 陰影を段に割る数 (0 でなし)。紙を重ねた等高線状になる
+uniform float uDepthFade; // 遠い面を黒へ溶かす量 (%)
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform float uVignette; // 周辺を暗くする量 (%)
+uniform vec3 uSurfaceColor; // 手前の面の色の掛け合わせ
+uniform vec3 uShadowColor; // 奥の面の色の掛け合わせ
+uniform vec3 uGlowColor; // 発光スフィアの光の色の掛け合わせ
 
 float pf_cut_ps(vec3 p, float s){
   p *= s;
@@ -101,11 +129,26 @@ vec3 bg_paperfractal(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 uv = (2.0*I - resolution.xy)/resolution.y;
 
+  if(uMirrorAxis != 0.0){ float mx = uMirrorAxis / 100.0 * 0.5; uv.x = mx + abs(uv.x - mx); }
+  if(uViewSwirl != 0.0){
+    float sw = (uViewSwirl / 100.0) * 2.0 * length(uv);
+    uv = mat2(cos(sw), -sin(sw), sin(sw), cos(sw)) * uv;
+  }
+  if(uCamRoll != 0.0){ float cr = radians(uCamRoll); uv = mat2(cos(cr), -sin(cr), sin(cr), cos(cr)) * uv; }
+
   float dither = pf_hash21(uv);
   pf_g1 = 0.0;
 
   vec3 ro = vec3(0.001, 0.001, -4.5);
   vec3 rd = normalize(vec3(uv * 2.0 * (uCamWide / 100.0), 0.8));   // 全体を小さく(広角化=折りが小さく密に見える)
+  if(uOrbitYaw != 0.0){
+    mat2 oy = pf_rot(radians(uOrbitYaw));
+    ro.xz *= oy; rd.xz *= oy;
+  }
+  if(uOrbitPitch != 0.0){
+    mat2 op = pf_rot(radians(uOrbitPitch));
+    ro.yz *= op; rd.yz *= op;
+  }
   if(uCamX != 0.0 || uCamY != 0.0){ ro.xy += vec2(uCamX, uCamY) / 100.0; }
   vec3 p  = ro;
   vec3 col = vec3(0.0);                   // 背景は黒 (entrypoint が uBgColor で塗る)
@@ -122,11 +165,25 @@ vec3 bg_paperfractal(vec2 fc){
 
   if(hit){
     // 単純なグレースケール陰影(グレインなし)
-    float v = mix(0.10, 0.95, 1.0 - shad);
+    float sd = 1.0 - shad;
+    if(uShadeCurve != 100.0) sd = pow(sd, uShadeCurve / 100.0);
+    float v = mix(uShadeFloor / 100.0, 0.95, sd);
+    if(uShadeBands != 0.0){ float bn = uShadeBands + 1.0; v = floor(v * bn + 0.5) / bn; }
     col = vec3(v);
-    col += pf_g1*vec3(0.05) * (uGlow / 100.0);
+    if(uSurfaceColor != vec3(1.0) || uShadowColor != vec3(1.0)) col *= mix(uShadowColor, uSurfaceColor, sd);
+    if(uDepthFade != 0.0) col *= 1.0 - (uDepthFade / 100.0) * smoothstep(3.0, 9.0, length(p - ro));
+    vec3 gl = pf_g1*vec3(0.05) * (uGlow / 100.0);
+    if(uGlowColor != vec3(1.0)) gl *= uGlowColor;
+    col += gl;
   }
 
+  if(hit){
+    if(uVignette != 0.0) col *= 1.0 - (uVignette / 100.0) * smoothstep(0.5, 2.0, length(uv));
+    if(uGrain != 0.0){
+      float gh = fract(sin(dot(fc, vec2(12.9898, 78.233)) + time * 0.7) * 43758.5453);
+      col += (gh - 0.5) * (uGrain / 100.0) * 0.4;
+    }
+  }
   bgAlpha = hit ? 1.0 : 0.0;              // 本体=不透明 / 背景=透明
   return col;
 }
