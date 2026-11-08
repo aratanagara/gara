@@ -47,15 +47,45 @@ uniform float uThick;     // 床グリッド線の太さ (%)
 uniform float uGlow;      // 床グリッド線の明るさ (%)
 uniform float uAngle; // 床グリッドの向き (度。固定角でずらす)
 uniform float uSteps; // 雲の積算ステップ数 (下げると軽く、雲が薄く粗くなる)
+// @param uMtnHeight  40..200  = 100.0
+// @param uMtnJag     0..250   = 100.0
+// @param uMtnPeaks   2..12    = 6.0
+// @param uMtnPeaks2  1..8     = 3.0
+// @param uMtnAudio   0..250   = 100.0
+// @param uHazeBand   40..200  = 100.0
+// @param uFloorDepth 40..200  = 100.0
+// @param uFloorFog   50..300  = 100.0
+// @param uMtnEdge    50..1500 = 100.0
+// @param uFloorRamp  40..250  = 100.0
+// @param uCloudLac   85..125  = 100.0
+// @param uCloudScale 50..200  = 100.0
+// @param uCloudThick 60..140  = 100.0
+// @param uCloudSoft  20..500  = 100.0
+// @param uCamPitch   30..170  = 100.0
+uniform float uMtnHeight; // 地平線の山の高さ (%)
+uniform float uMtnJag; // 山の稜線のうねりの振れ幅 (%)
+uniform float uMtnPeaks; // 山並みの大きな起伏の数
+uniform float uMtnPeaks2; // 山並みの緩やかな起伏の数
+uniform float uMtnAudio; // 音声が山を持ち上げる量 (%)
+uniform float uHazeBand; // 山の奥のマゼンタの靄の高さ (%)
+uniform float uFloorDepth; // 床の低さ (%)。上げると地面が遠く、グリッドが詰まる
+uniform float uFloorFog; // グリッドが遠方で消える速さ (%)
+uniform float uMtnEdge; // 山の稜線のにじみ (%)。上げると稜線がぼやける
+uniform float uFloorRamp; // 床の手前から奥への色の変わり方 (%)。上げると奥に寄る
+uniform float uCloudLac; // 雲の細部の周波数の倍率 (%)
+uniform float uCloudScale; // 雲の塊の大きさ (%)。上げると小さな雲が多数に
+uniform float uCloudThick; // 雲の層の厚み (%)
+uniform float uCloudSoft; // 雲の縁のやわらかさ (%)
+uniform float uCamPitch; // カメラの仰角 (%)。地平線の位置が変わる
 
 float hc_density(vec3 pos, vec3 offset){
-  vec3 p = pos*0.0212242 + offset;
-  float dens = hc_fbm(p, HC_FBM_FREQ);
+  vec3 p = pos*0.0212242*(uCloudScale / 100.0) + offset;
+  float dens = hc_fbm(p, HC_FBM_FREQ * (uCloudLac / 100.0));
   // カバレッジをゆっくり時間変動させ、雲が湧いて流れて消えるタイミングを作る
   float covAmt = HC_COVERAGE * (uCover / 100.0) + 0.32 * sin(time*0.07) + 0.12 * sin(time*0.17 + 1.3);
   covAmt = clamp(covAmt, 0.12, 0.85);
   float cov = 1.0 - covAmt;
-  dens *= smoothstep(cov, cov+0.05, dens);
+  dens *= smoothstep(cov, cov+0.05*(uCloudSoft / 100.0), dens);
   return clamp(dens, 0.0, 1.0);
 }
 
@@ -72,7 +102,7 @@ vec4 hc_clouds(vec3 ro, vec3 rd){
 
   vec3 wind = vec3(0.0, 0.0, -time*0.2);
   int hcN = int(uSteps + 0.5);
-  float march = HC_THICKNESS / float(hcN);
+  float march = HC_THICKNESS * (uCloudThick / 100.0) / float(hcN);
   vec3 dir_step = rd / rd.y * march;
   float T = 1.0; vec3 C = vec3(0.0); float alpha = 0.0;
   for(int i=0;i<HC_STEPS;i++){
@@ -97,7 +127,7 @@ vec3 sc_grid(vec2 xz){
   vec2 g = abs(fract(coord*(0.5 * (uGrid / 100.0)))-0.5) / fwidth(coord*(0.5 * (uGrid / 100.0)));
   float line = min(g.x, g.y);
   float mask = 1.0 - min(line / (uThick / 100.0), 1.0);
-  float fade = exp(-length(xz)*0.04);
+  float fade = exp(-length(xz)*0.04*(uFloorFog / 100.0));
   float center = 1.0 - smoothstep(0.0, 0.1, abs(xz.x));
   return vec3(1.0, 1.0, 1.0) * (mask + center*0.5) * fade * 1.6 * (uGlow / 100.0);   // 白いグリッド線
 }
@@ -131,7 +161,7 @@ vec3 bg_tronclouds(vec2 fc){
 
   // カメラ(ゆるい公転)
   float t = time/2.0;
-  vec2 rot = vec2(0.5, t);
+  vec2 rot = vec2(0.5 * (uCamPitch / 100.0), t);
   vec3 uvVec = normalize(vec3(uv, 1.0));
   uvVec = hc_rotate(uvVec, rot);
 
@@ -152,7 +182,7 @@ vec3 bg_tronclouds(vec2 fc){
 
   // 地平線の奥(山の下)を濃いマゼンタで塗る(青帯を消して床と連続させる)。地平線の下まで覆う。
   {
-    float haze = smoothstep(0.18, 0.06, el);    // el<=0.06 は完全に濃いマゼンタ、0.18で消える
+    float haze = smoothstep(0.18 * (uHazeBand / 100.0), 0.06 * (uHazeBand / 100.0), el);    // el<=0.06 は完全に濃いマゼンタ、0.18で消える
     col = mix(col, vec3(0.16, 0.0, 0.22), haze);
   }
 
@@ -165,25 +195,25 @@ vec3 bg_tronclouds(vec2 fc){
     float w  = texture(uFFT, vec2(uw, 0.75)).r;       // 波形 0..1, 中心0.5
     // 滑らかなカーブの山並み(2π整数倍で始点/終点が接続)
     float TAU = 6.2831853;
-    float trav = sin(u*TAU*6.0 - time*4.0)*0.5 + sin(u*TAU*3.0 + time*2.3)*0.5;
-    float ridge = 0.18 + trav*0.10 + (w - 0.5)*(1.2 + iEnergy*10.0);
+    float trav = sin(u*TAU*float(int(uMtnPeaks + 0.5)) - time*4.0)*0.5 + sin(u*TAU*float(int(uMtnPeaks2 + 0.5)) + time*2.3)*0.5;
+    float ridge = 0.18 * (uMtnHeight / 100.0) + trav*0.10*(uMtnJag / 100.0) + (w - 0.5)*(1.2 + iEnergy*10.0)*(uMtnAudio / 100.0);
     ridge = max(ridge, 0.03);
     if(el < ridge){
       float gg = clamp(el / ridge, 0.0, 1.0);                // 0=ふもと, 1=稜線
       vec3 mtn = mix(vec3(0.20, 0.0, 0.26), vec3(0.95, 0.0, 0.95), gg);  // 反転: ふもと濃い → 稜線 原色
-      float edge = smoothstep(ridge, ridge - 0.004, el);     // 稜線をくっきり(角張り)
+      float edge = smoothstep(ridge, ridge - 0.004 * (uMtnEdge / 100.0), el);     // 稜線をくっきり(角張り)
       col = mix(col, mtn, edge);
     }
   }
 
   // 地面 = TRON サイバーグリッド。手前=明るいマゼンタ→奥=濃いマゼンタ
   if(el < -0.001){
-    float floorY = -2.5;
+    float floorY = -2.5 * (uFloorDepth / 100.0);
     float tt = (floorY - 1.0) / el;     // 視点高さ1.0 から床へ
     if(tt > 0.0){
       vec3 hit = vec3(0.0,1.0,0.0) + uvVec*tt;
       // 原色マゼンタの範囲を広く、奥(地平線付近)だけ濃いマゼンタに(pow で遠方寄せ)
-      float depth = pow(clamp(tt * 0.045, 0.0, 1.0), 3.0);
+      float depth = pow(clamp(tt * 0.045, 0.0, 1.0), 3.0 * (uFloorRamp / 100.0));
       vec3 floorGrad = mix(vec3(0.95, 0.0, 0.95), vec3(0.16, 0.0, 0.22), depth);
       vec3 floorCol = floorGrad + sc_grid(hit.xz);
       float blend = smoothstep(0.0, -0.06, el);

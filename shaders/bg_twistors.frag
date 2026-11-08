@@ -17,9 +17,32 @@ const vec3  TW_LIGHTPOS = vec3(10.0);
 
 int tw_m; // material index
 
+// @param uBarHeight 40..250 = 100
+// @param uBarSpaceX 60..200 = 100
+// @param uBarSpaceZ 60..200 = 100
+// @param uWaveFreq 50..200 = 100
+// @param uSwayFreq 50..200 = 100
+// @param uCamHeight 60..160 = 100
+// @param uCamPitch 75..130 = 100
+// @param uEnvBands 1..8 = 2
+// @param uAoDepth 0..150 = 100
+// @param uSpecSharp 30..300 = 100
+// @param uShadowSoft 30..300 = 100
+uniform float uBarHeight; // 柱の上下方向の長さ (%)
+uniform float uBarSpaceX; // 縦柱の X 方向の間隔 (%)
+uniform float uBarSpaceZ; // 横柱の Z 方向の間隔 (%)
+uniform float uWaveFreq; // 上下うねりの細かさ (%)
+uniform float uSwayFreq; // トンネルの歪みの細かさ (%)
+uniform float uCamHeight; // カメラの高さ (%)
+uniform float uCamPitch; // カメラの俯角 (%)
+uniform float uEnvBands; // 映り込む縦帯の本数
+uniform float uAoDepth; // 接触影の濃さ (%)
+uniform float uSpecSharp; // 鏡面ハイライトの鋭さ (%)
+uniform float uShadowSoft; // 影のぼかし幅 (%)
+
 float tw_cube(vec4 c, vec3 pos){
   c.xyz -= pos;
-  return max(max(abs(c.x)-c.w, abs(c.y)-c.w), abs(c.z)-c.w);
+  return max(max(abs(c.x)-c.w, abs(c.y)-c.w*(uBarHeight / 100.0)), abs(c.z)-c.w);
 }
 
 // @param uWarp 0..180 = 100.0
@@ -43,17 +66,19 @@ float tw_df(vec3 p){
   float sc = uScale / 100.0;
   p /= sc;
   p += vec3(
-    sin(p.z*1.55 + time) + sin(p.z*1.34 + time),
+    sin(p.z*1.55*(uSwayFreq / 100.0) + time) + sin(p.z*1.34*(uSwayFreq / 100.0) + time),
     0.0,
-    sin(p.x*1.34 + time) + sin(p.x*1.55 + time)
+    sin(p.x*1.34*(uSwayFreq / 100.0) + time) + sin(p.x*1.55*(uSwayFreq / 100.0) + time)
   ) * 0.5 * (uWarp / 100.0);
-  vec3 mp = mod(p, 1.0);
+  float spX = uBarSpaceX / 100.0, spZ = uBarSpaceZ / 100.0;
+  vec3 mp = mod(p, vec3(spX, 1.0, spZ));
   mp.y = p.y;
 
-  float s1 = tw_cube(vec4(0.5, 0.5, 0.5, 0.15 * (uSize / 100.0)),
-                     vec3(mp.x, mp.y + (sin(p.z*TW_PI)*sin(p.x*TW_PI))*0.25*(uWave / 100.0), 0.5));
-  float s2 = tw_cube(vec4(0.5, 0.5, 0.5, 0.15 * (uSize / 100.0)),
-                     vec3(0.5, mp.y + (sin(p.x*TW_PI)*-sin(p.z*TW_PI))*0.25*(uWave / 100.0), mp.z));
+  float wf = TW_PI * (uWaveFreq / 100.0);
+  float s1 = tw_cube(vec4(0.5 * spX, 0.5, 0.5, 0.15 * (uSize / 100.0)),
+                     vec3(mp.x, mp.y + (sin(p.z*wf)*sin(p.x*wf))*0.25*(uWave / 100.0), 0.5));
+  float s2 = tw_cube(vec4(0.5, 0.5, 0.5 * spZ, 0.15 * (uSize / 100.0)),
+                     vec3(0.5, mp.y + (sin(p.x*wf)*-sin(p.z*wf))*0.25*(uWave / 100.0), mp.z));
   tw_m = s1 < s2 ? 0 : 1;
   return min(s1, s2) * sc;
 }
@@ -93,7 +118,7 @@ vec3 tw_env(vec3 d){
   vec3 c = mix(vec3(0.06, 0.07, 0.09), vec3(0.93, 0.95, 1.0), smoothstep(0.0, 0.9, up));
   c += vec3(0.6) * pow(max(d.y, 0.0), 5.0);
   float az = atan(d.x, d.z);
-  c += vec3(0.3) * pow(max(cos(az*2.0), 0.0), 8.0);
+  c += vec3(0.3) * pow(max(cos(az*floor(uEnvBands + 0.5)), 0.0), 8.0);
   return c;
 }
 
@@ -104,10 +129,10 @@ vec3 tw_normal(vec3 point, vec2 e){
 vec3 bg_twistors(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
 
-  vec3 camPos = vec3(0.0, sin(time*0.3) + 3.0, time);
+  vec3 camPos = vec3(0.0, sin(time*0.3) + 3.0 * (uCamHeight / 100.0), time);
   vec3 uv = vec3(I / resolution.xy, 1.0);
   vec3 rayDir = normalize(uv);
-  TW_R(rayDir.yz, sin(time*0.25)*0.25 + 1.25);
+  TW_R(rayDir.yz, sin(time*0.25)*0.25 + 1.25 * (uCamPitch / 100.0));
   TW_R(rayDir.xz, sin(time*0.2) + radians(uAngle));
 
   float gd = TW_MAXD;
@@ -125,9 +150,11 @@ vec3 bg_twistors(vec2 fc){
     vec3 env = tw_env(rr);
     float fres = pow(1.0 - max(dot(n, -rayDir), 0.0), 4.0);
     vec3 lig = normalize(TW_LIGHTPOS - point);
-    float spe = pow(max(dot(n, normalize(lig - rayDir)), 0.0), 60.0);
-    float ao = clamp(tw_softShadow(point, point + n, 2.0, 8.0, gd), 0.0, 1.0);
-    col = (mix(env*0.55, env, fres) + spe*vec3(1.6)*(uGlow / 100.0)) * (0.35 + 0.65*ao);
+    float spe = pow(max(dot(n, normalize(lig - rayDir)), 0.0), 60.0 * (uSpecSharp / 100.0));
+    float ao = clamp(tw_softShadow(point, point + n, 2.0, 8.0 * (uShadowSoft / 100.0), gd), 0.0, 1.0);
+    float aoW = 0.65, aoB = 0.35;
+    if(uAoDepth != 100.0){ aoW = 0.65 * (uAoDepth / 100.0); aoB = 1.0 - aoW; }
+    col = (mix(env*0.55, env, fres) + spe*vec3(1.6)*(uGlow / 100.0)) * (aoB + aoW*ao);
     col *= exp2(-march.y*0.06*(uFog / 100.0));
   }
 

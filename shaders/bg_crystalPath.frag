@@ -19,6 +19,14 @@ mat2 cpRot(float a){ return mat2(cos(a),-sin(a),sin(a),cos(a)); }
 // @param uSize 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uSteps 30..40 = 40.0
+// @param uSides 3..8 = 3.0
+// @param uTubeRadius 40..200 = 100.0
+// @param uTubeNeck 30..300 = 100.0
+// @param uFoldClamp 60..130 = 100.0
+// @param uInvScale 70..115 = 100.0
+// @param uInvMin 30..150 = 100.0
+// @param uRimWidth 40..250 = 100.0
+// @param uShade 0..250 = 100.0
 uniform float uThick;   // 壁厚 (メッシュの線の太さ) (%)
 uniform float uSpacing;   // オブジェクトのセル間隔 (%)
 uniform float uTwist;   // ねじれの強さ (%)
@@ -27,6 +35,14 @@ uniform float uDepth;   // 遠方フォグの距離 (%)
 uniform float uSize;   // 要素ひとつの大きさ (%。配置は変えない)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
+uniform float uSides;   // チューブ断面の角数 (3 = 三角形)
+uniform float uTubeRadius;   // チューブ断面の半径 (%)
+uniform float uTubeNeck;   // 中央から端へ細くなる区間の長さ (%)
+uniform float uFoldClamp;   // 折り返しの境界の位置 (%)
+uniform float uInvScale;   // 反転写像の拡大率 (%)
+uniform float uInvMin;   // 反転写像の最小半径 (%)。下げると中心が強く跳ね返る
+uniform float uRimWidth;   // 縁の光の幅 (%)。下げると縁だけが細く光る
+uniform float uShade;   // 面ごとの陰影の深さ (%)
 
 // メッシュ風: 中空のチューブ/リング構造にして粉状の点ではなく線/網に
 //   abs(p)+offset で 8 octant に放射配置、abs(faceDist - r) で壁厚のあるシェルに
@@ -34,12 +50,12 @@ float cp_d12(vec3 p){
   vec3 a = vec3(0.0, CP_PHI - 1.0, CP_PHI);
   p = abs(p) - a;
   float y = abs(p.y);
-  float rad = 0.13 * (0.45 + 0.55*max(0.0, 1.0 - y*1.1));
+  float rad = 0.13 * (uTubeRadius / 100.0) * (0.45 + 0.55*max(0.0, 1.0 - y*1.1*(100.0 / uTubeNeck)));
   float thick = 0.150 * (uThick / 100.0);        // 壁厚 (メッシュの線の太さ)
   // 断面を正三角形に: セルごとにランダム回転 (cpTriRot)
   vec2 q = p.xz;
   float ang = atan(q.x, q.y) + cpTriRot;
-  float seg = 6.28318530718 / 3.0;
+  float seg = 6.28318530718 / floor(uSides + 0.5);
   float faceDist = cos(floor(0.5 + ang/seg)*seg - ang) * length(q);
   return abs(faceDist - rad) - thick;
 }
@@ -59,8 +75,9 @@ float cp_de(vec3 pos, float iters){
   tpos.xz *= cpRot(2.2 * (uTwist / 100.0) * tpos.y);   // 強いねじれ
   vec4 p = vec4(tpos / (uSize / 100.0), 1.0);
   for(float i=0.0;i<iters;i++){
-    p.xz = clamp(p.xz, -0.9, 0.9)*2.0 - p.xz;
-    p = p*2.7/clamp(dot(p.xyz,p.xyz), 0.6, 3.0);
+    float fcl = 0.9 * (uFoldClamp / 100.0);
+    p.xz = clamp(p.xz, -fcl, fcl)*2.0 - p.xz;
+    p = p*(2.7 * (uInvScale / 100.0))/clamp(dot(p.xyz,p.xyz), 0.6 * (uInvMin / 100.0), 3.0);
   }
   float fr = cp_d12(p.xzy) / p.w * (uSize / 100.0);
   cpIfsColor = vec3( log(p.w)*2.0 + 2.0*length(p.xz)*vec3(1.0,2.0,2.4) );
@@ -114,7 +131,7 @@ void cp_march(vec3 ro, vec3 rd){
       vec3 surf = cpPal(ph);
       vec3 nn = cp_abnormal(p, 1.0);
       vec3 ld = normalize(vec3(0.4, 0.7, -0.5));
-      float dif = 0.6 + 0.4*max(dot(nn, ld), 0.0);
+      float dif = 0.6 + 0.4 * (uShade / 100.0)*max(dot(nn, ld), 0.0);
       // メタリック: 金属らしい鋭い鏡面ハイライト (Blinn-Phong)。
       // 鋭いコア + 広いグレアの二段重ねでギラつきを強調。
       vec3 hlf = normalize(ld - rd);
@@ -124,7 +141,7 @@ void cp_march(vec3 ro, vec3 rd){
       surf += spec  * vec3(1.05, 1.08, 1.15) * 1.6 * (uGlow / 100.0);
       surf += glare * vec3(0.85, 0.90, 1.02) * 0.7 * (uGlow / 100.0);
       // Fresnel: エッジを金属的に強く持ち上げ + マゼンタの差し色
-      float fres = pow(1.0 - max(dot(nn, -rd), 0.0), 3.0);
+      float fres = pow(1.0 - max(dot(nn, -rd), 0.0), 3.0 * (uRimWidth / 100.0));
       surf = surf * (1.0 + fres * 0.6) + vec3(0.06, 0.07, 0.10) * fres;
       surf = mix(surf, vec3(1.00, 0.20, 0.78), fres * 0.22);
       // 加算ではなく mix で合成 (チャンネル飽和→白線を防ぐ)

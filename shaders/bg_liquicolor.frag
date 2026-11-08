@@ -29,27 +29,53 @@ vec3 lq_slerp(vec3 a, vec3 b, float t){
 // @param uDensity  25..300 = 100.0
 // @param uWarp     0..300  = 100.0
 // @param uContrast 25..300 = 100.0
+// @param uStepLen   50..200 = 100.0
+// @param uFieldBias -40..40 = 0.0
+// @param uFieldX    50..200 = 100.0
+// @param uFieldY    50..200 = 100.0
+// @param uFieldZ    50..200 = 100.0
+// @param uLensDepth 25..300 = 100.0
+// @param uFocal     50..200 = 100.0
+// @param uSwirlStep -100..100 = 0.0
+// @param uStepRamp  -100..100 = 0.0
+// @param uTailFade  0..200 = 0.0
 uniform float uDetail;    // 視線を流す反復回数 (下げると軽く、流れが短くなる)
 uniform float uDensity;   // ノイズ場の細かさ (%)
 uniform float uWarp;      // 視線の曲げ具合 (%)
 uniform float uContrast;  // コントラスト (%)
+uniform float uStepLen;   // 1 ステップで流れる距離 (%)。下げると流れが短く密、上げると長く伸びる
+uniform float uFieldBias; // ノイズ場の奥行き方向の偏り (%)。流れが手前/奥へ寄る
+uniform float uFieldX;    // ノイズ場の X 方向の細かさ (%)
+uniform float uFieldY;    // ノイズ場の Y 方向の細かさ (%)
+uniform float uFieldZ;    // ノイズ場の Z (奥行き) 方向の細かさ (%)
+uniform float uLensDepth; // 視点から場に入る初期オフセット (%)
+uniform float uFocal;     // 画角の焦点距離 (%)。下げると広角で歪む
+uniform float uSwirlStep; // ステップごとの視線のねじれ (%)。負で逆回り
+uniform float uStepRamp;  // 後のステップほど歩幅を変える量 (%)
+uniform float uTailFade;  // 後のステップの寄与を弱める量 (%)。流れの尾が薄くなる
 
 vec3 bg_liquicolor(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
-  vec3 v = normalize(vec3((2.0*I - resolution.xy)/resolution.y, 0.5));
-  vec3 p = vec3(0.5, 0.5, 0.5 + time*0.25) + v*0.25;
+  vec3 v = normalize(vec3((2.0*I - resolution.xy)/resolution.y, 0.5 * (uFocal / 100.0)));
+  vec3 p = vec3(0.5, 0.5, 0.5 + time*0.25) + v*(0.25 * (uLensDepth / 100.0));
 
   const int N = 16;
   int lqCnt = int(uDetail + 0.5);
   vec3 color = vec3(0.0);
+  float tailW = 1.0;
+  float tailSum = 0.0;
+  float tailDecay = exp2(-uTailFade / 100.0 * 0.35);
   for(int i=0;i<N;i++){
     if(i >= lqCnt) break;
-    vec3 c = normalize(lq_field(p*(7.0 * (uDensity / 100.0)))*2.0 - 1.0);   // 周波数を上げて空間変化を出す
-    color += c;
+    vec3 c = normalize(lq_field((p * vec3(uFieldX / 100.0, uFieldY / 100.0, uFieldZ / 100.0))*(7.0 * (uDensity / 100.0)))*2.0 - vec3(1.0, 1.0, 1.0 + uFieldBias / 100.0));   // 周波数を上げて空間変化を出す
+    if(uTailFade != 0.0){ color += c * tailW; tailSum += tailW; tailW *= tailDecay; } else { color += c; }
     v = lq_slerp(v, c, -0.25 * (uWarp / 100.0));
-    p += v/16.0;
+    if(uSwirlStep != 0.0){ v.xy *= lq_rotate(uSwirlStep / 100.0 * 0.3); }
+    float stepK = 16.0;
+    if(uStepRamp != 0.0) stepK = 16.0 / max(1.0 + uStepRamp / 100.0 * (float(i) / 8.0 - 1.0), 0.15);
+    p += v/(stepK * (uStepLen / 100.0));
   }
-  color /= float(lqCnt);
+  color /= (uTailFade != 0.0) ? tailSum : float(lqCnt);
   color.yz *= lq_rotate(time);
   color = tanh(color*(2.0 * (uContrast / 100.0)))*0.5 + 0.5;
 

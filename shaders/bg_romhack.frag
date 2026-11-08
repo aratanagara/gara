@@ -51,6 +51,15 @@ float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * R
 // @param uAngle -180..180 = 0.0
 // @param uTilt -90..90 = 0.0
 // @param uSteps 30..64 = 64.0
+// @param uCdCount 3..8 = 8
+// @param uHoleSize 40..500 = 100
+// @param uTaper 30..120 = 100
+// @param uClearSize 0..200 = 100
+// @param uOval 70..140 = 100
+// @param uFanCount 1..12 = 4
+// @param uRainbowCycles 1..8 = 3
+// @param uRainbowAmt 0..300 = 100
+// @param uBandCount 1..8 = 3
 uniform float uStep; // 段の高さ (CD 1 枚の厚み) (%)
 uniform float uMotion; // 各段の伸び縮みの振幅 (%)
 uniform float uThick; // 段の縁の黒線の太さ (%)
@@ -58,13 +67,22 @@ uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uTilt; // 縦の傾き・仰角 (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+uniform float uCdCount; // 積む CD の枚数 (外周の大きいものから消える)
+uniform float uHoleSize; // 中心のスピンドル穴の大きさ (%)
+uniform float uTaper; // 外周の大きさの段差の付き方 (%)。小さいと段が詰まる
+uniform float uClearSize; // 中央の透明なガラス領域の大きさ (%)
+uniform float uOval; // 円盤の縦横比 (%)。1 より大きいと縦長
+uniform float uFanCount; // 回折の扇状の筋の本数
+uniform float uRainbowCycles; // 裏面の虹が円周を巡る回数
+uniform float uRainbowAmt; // 裏面の虹の鮮やかさ (%)
+uniform float uBandCount; // 裏面のシルバーと虹の帯の本数
 
 // CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。
 float rh_outer(int k){
   float fk = float(k);
   vec4 h = rh_hash4(fk + 5.0);
   float span    = 1.0 - 0.34*RH_HUB;
-  float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(fk + 0.5)/float(RH_RINGS));
+  float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/float(RH_RINGS));
   float amp     = (0.10 + 0.24*h.x) * span * (uMotion / 100.0);
   float rate    = 0.15 + 0.75*h.y;
   float phase   = h.z * 6.2831;
@@ -81,9 +99,13 @@ float rh_cyl(vec3 p, float R, float Hc){
 float rh_zig(vec3 p){
   float sc = uScale / 100.0;
   p /= sc;
+  float ky = uOval / 100.0;
+  if(ky != 1.0){ p.y *= ky; }
   float d = 1e9;
-  for(int i = 0; i < RH_RINGS; i++) d = min(d, rh_cyl(p, rh_R[i], rh_H[i]));
-  float hole = length(p.xy) - RH_HOLE*RH_HUB*RH_RDISC;   // 無限縦シリンダ
+  int ncd = int(uCdCount + 0.5);   // ループは定数回のまま (展開させる)。枚数を超えた CD は距離を遠くして消す
+  for(int i = 0; i < RH_RINGS; i++) d = min(d, (i < ncd) ? rh_cyl(p, rh_R[i], rh_H[i]) : 1e9);
+  float hole = length(p.xy) - RH_HOLE*RH_HUB*RH_RDISC*(uHoleSize / 100.0);   // 無限縦シリンダ
+  if(ky > 1.0){ return max(d, -hole) * sc / ky; }
   return max(d, -hole) * sc;                                   // 穴をくり抜く
 }
 vec3 rh_zigN(vec3 p){
@@ -133,7 +155,8 @@ vec3 bg_romhack(vec2 fc){
   crd = vec3(rcy*crd.x + rsy*crd.z, crd.y, -rsy*crd.x + rcy*crd.z);
 
   // 各 CD の外周(ワールド)と rank 高さ → ziggurat を組む(外周が小=高い段)
-  for(int i = 0; i < RH_RINGS; i++) rh_R[i] = rh_outer(i) * RH_RDISC;
+  int ncd = int(uCdCount + 0.5);
+  for(int i = 0; i < RH_RINGS; i++) rh_R[i] = (i < ncd) ? rh_outer(i) * RH_RDISC : 0.0;
   for(int i = 0; i < RH_RINGS; i++){
     float rank = 1.0;
     for(int j = 0; j < RH_RINGS; j++){ if(rh_R[j] > rh_R[i]) rank += 1.0; }
@@ -154,11 +177,12 @@ vec3 bg_romhack(vec2 fc){
 
   vec3 nor = rh_zigN(p);
   vec2  po  = p.xy / (uScale / 100.0);
+  if(uOval != 100.0){ po.y *= uOval / 100.0; }
   float r   = length(po);
   float rn  = r / RH_RDISC;
   float ang = atan(po.y, po.x);
   vec2  rdir = (r > 1e-4) ? po/r : vec2(1.0, 0.0);
-  float rData = 0.34 * RH_HUB;
+  float rData = 0.34 * RH_HUB * (uClearSize / 100.0);
 
   float topFace  = smoothstep(0.25, 0.75, nor.z);          // 上面(段の天面)
   float sideFace = smoothstep(0.5, 0.15, nor.z);           // 側面(段の厚み=縦壁)
@@ -180,11 +204,11 @@ vec3 bg_romhack(vec2 fc){
   {
     float a   = ang/6.2831853 + 0.5;                        // 0..1 周回
     float lit = 0.5 + 0.5*dot(rdir, Lw.xy);                 // 光源を向く側で虹が強く出る
-    float hue = a*3.0 + lAng*0.6 - time*0.05;               // 光源角で虹を掃引(継ぎ目なし)
+    float hue = a*floor(uRainbowCycles + 0.5) + lAng*0.6 - time*0.05;               // 光源角で虹を掃引(継ぎ目なし)
     vec3 rainbow = rh_spectral(hue);
     rainbow = mix(rainbow, vec3(1.0), 0.08);
-    vec3 gradCol = silver + (rainbow - 0.5) * (0.35 + 0.40*lit);  // シルバーに虹を加減算(明るさ維持・光源側ほど鮮やか)
-    float blend = 0.5 + 0.5*sin(a*6.2831853*3.0 + lAng*1.2 - time*0.3);  // 帯も光源で回転
+    vec3 gradCol = silver + (rainbow - 0.5) * (0.35 + 0.40*lit) * (uRainbowAmt / 100.0);  // シルバーに虹を加減算(明るさ維持・光源側ほど鮮やか)
+    float blend = 0.5 + 0.5*sin(a*6.2831853*floor(uBandCount + 0.5) + lAng*1.2 - time*0.3);  // 帯も光源で回転
     bandCol = mix(silver, gradCol, blend);                  // シルバー⇄虹 を滑らかに繋ぐ
   }
   // ── フロント(山側)= CD-R のような白 / バック(平らな面)= 高品質の放射状虹グラデ ──
@@ -194,6 +218,7 @@ vec3 bg_romhack(vec2 fc){
   // 各段の縁の黒ボンディング線(フロントの段の区切り)
   float bond = 0.0;
   for(int i = 0; i < RH_RINGS; i++){
+    if(i >= ncd) continue;
     float edge = rh_R[i] / RH_RDISC;
     bond = max(bond, smoothstep(0.009 * (uThick / 100.0), 0.0, abs(rn - (edge - 0.010))));
   }
@@ -216,7 +241,7 @@ vec3 bg_romhack(vec2 fc){
   vec3 spectrum = rh_diffract(ang*0.5 + dot(Lxy, tang)*2.5 + rd*grooveDensity*0.16);
   spectrum = mix(spectrum, vec3(1.0), 0.25);
   float aniso = pow(abs(dot(tang, vec2(-Lxy.y, Lxy.x))), 1.5);
-  float fan = smoothstep(0.45, 1.0, 0.5 + 0.5*sin(ang*4.0 + rn*8.0));
+  float fan = smoothstep(0.45, 1.0, 0.5 + 0.5*sin(ang*floor(uFanCount + 0.5) + rn*8.0));
   float NdotH = max(dot(nor, Hh), 0.0);
   float diffAmt = aniso * fan * smoothstep(0.0, 0.1, rn) * (0.4 + 0.9*pow(NdotH, 4.0)) * backSide;
 

@@ -16,7 +16,42 @@ const Caverns = {
   BUFRES:256,   // Buffer A は固定 256x256(飛行エリア world [75,235]x[35,195] を 1unit/px でカバー)。描画解像度から分離
   SCALE:0.5,    // Image パスは縮小解像度で描画 → 線形アップスケール(滑らかな洞窟なので劣化は目立たない。重ければ下げる)
   noiseTex:null, vao:null, _imgFBO:null,
-  frame:0, startTime:0,
+  frame:0, startTime:0, _bakeKey:'',
+
+  // ── パラメータ (UI から操作。使う直前に App.deadParam を通す)。既定値 = 原作と同一の絵 ──
+  //   bake: true は地形 SDF (Buffer A) に効くもの。変えたら次のフレームで SDF を焼き直す
+  P:{
+    caveScale:100,   // 洞窟全体の起伏の大きさ (柱・丘の間隔と高さ, %)
+    floorHills:100,  // 床の丘の高さ (%)
+    stalactites:100, // 天井から垂れる鍾乳石の長さ (%)
+    ceilFreq:100,    // 鍾乳石の細かさ (%)
+    ceiling:100,     // 天井の高さ (%)
+    tunnel:100,      // 飛行経路にくり抜くトンネルの太さ (%)
+    rough:100,       // 岩肌のざらつき (%)
+    grain:100,       // ざらつきの細かさ (%)
+    lookAhead:100,   // カメラが進行方向のどれだけ先を見るか (%)。上げるとカーブの内側を向く
+    beam:100,        // ヘッドライトの絞り (%)。上げると細いスポットに
+    falloff:100,     // ヘッドライトの減衰 (%)。下げると奥まで届く
+    gloss:100,       // 岩の艶 (鏡面ハイライトの鋭さ, %)
+    fog:100,         // 霧の濃さ (%)
+  },
+  PDefaults:null,
+  SPECS:[
+    ['Cave Scale',  'caveScale',   60,  160, 1, 'pct'],
+    ['Floor Hills', 'floorHills',  0,   250, 1, 'pct'],
+    ['Stalactites', 'stalactites', 0,   300, 1, 'pct'],
+    ['Ceiling Freq','ceilFreq',    40,  300, 1, 'pct'],
+    ['Ceiling',     'ceiling',     40,  250, 1, 'pct'],
+    ['Tunnel',      'tunnel',      40,  300, 1, 'pct'],
+    ['Rough',       'rough',       0,   400, 1, 'pct'],
+    ['Grain',       'grain',       25,  400, 1, 'pct'],
+    ['Look Ahead',  'lookAhead',   20,  600, 1, 'pct'],
+    ['Beam',        'beam',        20,  400, 1, 'pct'],
+    ['Falloff',     'falloff',     10,  400, 1, 'pct'],
+    ['Gloss',       'gloss',       20,  400, 1, 'pct'],
+    ['Fog',         'fog',         0,   400, 1, 'pct'],
+  ],
+  _BAKE:['caveScale','floorHills','stalactites','ceilFreq','ceiling','tunnel','rough','grain'],
 
   VS:`#version 300 es
 void main(){ vec2 p = vec2(float((gl_VertexID<<1)&2), float(gl_VertexID&2)); gl_Position = vec4(p*2.0-1.0, 0.0, 1.0); }`,
@@ -33,6 +68,19 @@ uniform sampler2D iChannel2;
 uniform sampler2D iChannel3;
 uniform vec3  iChannelResolution[4];
 uniform float uSlotB;   // 1=Slot B(白線+透過)
+uniform float uCaveScale;
+uniform float uFloorHills;
+uniform float uStalactites;
+uniform float uCeilFreq;
+uniform float uCeiling;
+uniform float uTunnel;
+uniform float uRough;
+uniform float uGrain;
+uniform float uLookAhead;
+uniform float uBeam;
+uniform float uFalloff;
+uniform float uGloss;
+uniform float uFog;
 out vec4 _o;
 `,
 
@@ -51,14 +99,14 @@ mat3 cameraMatrix(vec3 camFwd){
 }
 const vec3 fpmid = vec3(155, 4.75, 115);
 const float fprad = 80., fpwid = 2.25;
-float dFlightPath(vec3 p){ p -= fpmid; p /= fprad; return length(abs(vec2(length(p.xz) - 1., p.y))) * fprad - fpwid; }
+float dFlightPath(vec3 p){ p -= fpmid; p /= fprad; return length(abs(vec2(length(p.xz) - 1., p.y))) * fprad - fpwid * uTunnel; }
 vec3 flightPath(float time){ float t = .02 * time; t = mod(t, pi + pi); return fprad * vec3(sin(t), 0, cos(t)) + fpmid; }
 float SDF(vec3 p){
   float dt = dFlightPath(p);
-  const float scale = 32.;
+  float scale = 32. * uCaveScale;
   p.xz /= scale * .5 / pi;
-  float df = p.y + 0.5 - .55*(sin(p.x)*sin(p.z)*.5+.5)*scale*yscale,
-        dc = (sin(1.7*p.x)*sin(1.8*p.z)*.5+.5)*scale*yscale*.5 - p.y + 5.5;
+  float df = p.y + 0.5 - .55*uFloorHills*(sin(p.x)*sin(p.z)*.5+.5)*scale*yscale,
+        dc = (sin(1.7*uCeilFreq*p.x)*sin(1.8*uCeilFreq*p.z)*.5+.5)*scale*yscale*.5*uStalactites - p.y + 5.5*uCeiling;
   df *= .75; dc *= .75;
   return max(min(df, dc), -dt);
 }
@@ -70,8 +118,8 @@ float SDF(vec3 p){
 float SDFLevel(vec2 p, float y){
   y += .5;
   vec3 q = vec3(p.x, y / yscale, p.y);
-  vec2 nuv = 0.7 * vec2(q.x + q.y*3.7, q.z + q.y*2.3) / vec2(textureSize(iChannel3, 0));
-  return max(SDF(q) + texture(iChannel3, nuv).x - 0.5, -dFlightPath(q));
+  vec2 nuv = 0.7 * uGrain * vec2(q.x + q.y*3.7, q.z + q.y*2.3) / vec2(textureSize(iChannel3, 0));
+  return max(SDF(q) + (texture(iChannel3, nuv).x - 0.5) * uRough, -dFlightPath(q));
 }
 void mainImage(out vec4 c, vec2 p){
   if ((iFrame & 511) >= 2) { c = texelFetch(BufferA, ivec2(p), 0); return; }  // 大半はキャッシュを保持
@@ -138,19 +186,19 @@ vec3 RenderScene(vec3 ro, vec3 rd, vec3 cf, out float d, out vec3 outN){
   vec3 n = normalize(Gradient(d * rd + ro, .0004 * d));
   if (d >= tmax) n = -L;
   outN = n;
-  float spot = pow(max(0., dot(rd, cf)), 16.) / (1. + .04 * d * d);
+  float spot = pow(max(0., dot(rd, cf)), 16. * uBeam) / (1. + .04 * uFalloff * d * d);
   vec3 csky = skyColor(rd);
   vec3 c = vec3(0);
   c += 1.1 * pow(max(0., -dot(n, rd)), 1.) * spot;
   vec3 h = normalize(-rd + L);
-  float sp = 32.;
+  float sp = 32. * uGloss;
   c += .4 * 8. / pi * (sp + 2.) * pow(max(0., dot(n, h)), sp) * spot * spot;
-  c = mix(csky, c, exp2(-.01 * d));
+  c = mix(csky, c, exp2(-.01 * uFog * d));
   return c;
 }
 void ViewRay(vec2 p, vec2 r, out vec3 ro, out vec3 rd, out vec3 cf){
   vec2 q = StoQ(p, r);
-  vec3 eye_pos = flightPath(iTime), eye_future = flightPath(iTime+1.), look_dir = normalize(eye_future - eye_pos);
+  vec3 eye_pos = flightPath(iTime), eye_future = flightPath(iTime+1.*uLookAhead), look_dir = normalize(eye_future - eye_pos);
   mat3 M = cameraMatrix(look_dir);
   cf = look_dir;
   const float hfovy = pi / 7.;
@@ -204,6 +252,7 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
       iChannel3:   gl.getUniformLocation(p,'iChannel3'),
       iChannelResolution: gl.getUniformLocation(p,'iChannelResolution[0]'),
       uSlotB:      gl.getUniformLocation(p,'uSlotB'),
+      P: Object.fromEntries(Object.keys(this.P).map(k => [k, gl.getUniformLocation(p, 'u' + k[0].toUpperCase() + k.slice(1))])),
     };
   },
 
@@ -284,6 +333,16 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     gl.bindVertexArray(this.vao);
 
+    // パラメータ (%) → 倍率。地形に効くものが変わったら SDF を焼き直す (Buffer A は frame&511 < 2 で再計算)
+    const P = this.P;
+    const dz = (v)=> (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+    const pv = {};
+    for(const k of Object.keys(P)) pv[k] = dz(P[k]) / 100;
+    for(const k of ['caveScale','ceilFreq','ceiling','tunnel','grain','lookAhead','beam','falloff','gloss']) pv[k] = Math.max(0.05, pv[k]);
+    const bakeKey = this._BAKE.map(k => pv[k]).join(',');
+    if(bakeKey !== this._bakeKey){ this._bakeKey = bakeKey; this.frame = 0; }
+    const setP = (U)=>{ for(const k in U.P) if(U.P[k]) gl.uniform1f(U.P[k], pv[k]); };
+
     // ---- Pass 1: Buffer A (自身のフィードバックを読みつつ SDF キャッシュを書く。固定 BUFRES) ----
     const cur = this.bufFBO[this.bufIdx], nxt = this.bufFBO[this.bufIdx ^ 1];
     gl.bindFramebuffer(gl.FRAMEBUFFER, nxt.fbo); gl.viewport(0,0,B,B);
@@ -291,6 +350,7 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
     gl.uniform3f(this.uBuf.iResolution, B, B, 1);
     gl.uniform1f(this.uBuf.iTime, time);
     gl.uniform1i(this.uBuf.iFrame, this.frame);
+    setP(this.uBuf);
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, cur.tex); gl.uniform1i(this.uBuf.iChannel0, 0);
     gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.noiseTex); gl.uniform1i(this.uBuf.iChannel3, 3);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -303,6 +363,7 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
     gl.uniform3f(this.uImg.iResolution, iw, ih, 1);
     gl.uniform1f(this.uImg.iTime, time);
     gl.uniform1i(this.uImg.iFrame, this.frame);
+    setP(this.uImg);
     gl.uniform4f(this.uImg.iMouse, 0, 0, 0, 0);
     if(this.uImg.iChannelResolution) gl.uniform3fv(this.uImg.iChannelResolution, new Float32Array([B, B, 1, 0,0,0, 0,0,0, 0,0,0]));
     if(this.uImg.uSlotB) gl.uniform1f(this.uImg.uSlotB, slot === 'B' ? 1.0 : 0.0);
@@ -321,3 +382,4 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
     this.frame++;
   }
 };
+Caverns.PDefaults = JSON.parse(JSON.stringify(Caverns.P));   // 既定値はスクリプト読込時に確定 (state 復元より先)

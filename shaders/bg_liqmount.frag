@@ -7,8 +7,29 @@
 //         cosineGradient(uCosGrad)対応。ヘルパは lm_ で名前空間化。
 // =====================================================
 
+// @param uRidgeX    60..160 = 100.0
+// @param uRidgeZ    50..200 = 100.0
+// @param uRidgeMix  0..160 = 100.0
+// @param uPersist   50..130 = 100.0
+// @param uOctTurn   -90..90 = 0.0
+// @param uHorizon   -40..30 = 0.0
+// @param uCamHeight 60..160 = 100.0
+// @param uSnowLine  -80..80 = 0.0
+// @param uCrest     0..70 = 0.0
+uniform float uRidgeX;    // 大きなうねりの X 方向の細かさ (%)
+uniform float uRidgeZ;    // 大きなうねりの Z 方向の細かさ (%)
+uniform float uRidgeMix;  // Z 方向のうねりの混ざり具合 (%)。0 で X 方向だけの畝
+uniform float uPersist;   // 細かい波の残り方 (%)。上げるとギザギザ、下げるとなめらか
+uniform float uOctTurn;   // 重ねる波ごとの向きのずれ (度)
+uniform float uHorizon;   // 地平線の高さ (%)。カメラの俯角
+uniform float uCamHeight; // カメラの高さ (%)
+uniform float uSnowLine;  // 雪線の高さ (%)。上げると雪が高い所だけに
+uniform float uCrest;     // 稜線の鋭さ (%)。波の山を尖らせた折れ線状の尾根にする
+
 float lm_h(vec3 p){
-  return (sin(p.x*0.9 + time) + 0.7*cos(p.z*1.1 + time)) / 2.0;
+  float hh = (sin(p.x*0.9*(uRidgeX / 100.0) + time) + 0.7*(uRidgeMix / 100.0)*cos(p.z*1.1*(uRidgeZ / 100.0) + time)) / 2.0;
+  if(uCrest != 0.0) hh = mix(hh, -abs(hh) * 1.2, uCrest / 100.0);
+  return hh;
 }
 
 // @param uDetail 1..4 = 4.0
@@ -33,11 +54,13 @@ float lm_SDF(vec3 p){
   float amplitude = 0.5;
   float freq = 2.0 * (uDensity / 100.0);
   p.y += lm_h(q) * (uRelief / 100.0);
+  mat2 octR = mat2(4.0/5.0, -3.0/5.0, 3.0/5.0, 4.0/5.0);
+  if(uOctTurn != 0.0){ float oa = radians(uOctTurn); octR = octR * mat2(cos(oa), -sin(oa), sin(oa), cos(oa)); }
   for(int i=0; i<4; i++){    // 高周波を削ってなめらかな面に(液体クローム向き)
     if(i >= int(uDetail + 0.5)) break;
     q *= freq;
-    q.xz *= mat2(4.0/5.0, -3.0/5.0, 3.0/5.0, 4.0/5.0);
-    amplitude *= 0.6;
+    q.xz *= octR;
+    amplitude *= 0.6 * (uPersist / 100.0);
     scale *= freq;
     p.y += lm_h(q) * amplitude / scale * (uRelief / 100.0);
   }
@@ -84,7 +107,7 @@ vec3 lm_shade(vec3 p, vec3 rd){
 
   float blendFactor1 = smoothstep(0.20, 0.30, abs(normal.y-0.5));
   float blendFactor2 = smoothstep(0.05, 0.15, abs(normal.y-0.5));
-  float posBlendFactor  = smoothstep(-1.0, 1.0, p.y);
+  float posBlendFactor  = smoothstep(-1.0, 1.0, p.y - uSnowLine / 100.0);
   float posBlendFactor2 = smoothstep(-1.0, 1.0, -p.y-0.7);
 
   vec3 mix1 = mix(color1, color2, blendFactor2);
@@ -111,8 +134,8 @@ vec3 bg_liqmount(vec2 fc){
   if(resolution.x < resolution.y) uv.xy = uv.yx;
 
   float tt = time/4.0;
-  vec3 ro = normalize(vec3(0, 2.0+sin(tt)*0.5, -3.5)) * 10.0;
-  vec3 rd = normalize(vec3(uv - vec2(0, 0.5), 1));
+  vec3 ro = normalize(vec3(0, 2.0*(uCamHeight / 100.0)+sin(tt)*0.5, -3.5)) * 10.0;
+  vec3 rd = normalize(vec3(uv - vec2(0, 0.5 + uHorizon / 100.0), 1));
 
   float tr = tt/2.0 + radians(uAngle);
   mat3 rotY = mat3(cos(tr),0.0,sin(tr), 0.0,1.0,0.0, -sin(tr),0.0,cos(tr));

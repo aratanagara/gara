@@ -39,6 +39,16 @@ float bn_k3d(vec3 sp, vec3 d, vec3 dm, float s, vec3 r){
 // @param uScale 50..150 = 100.0
 // @param uAngle -180..180 = 0.0
 // @param uSteps 28..45 = 45.0
+// @param uBarLength 50..150 = 100.0
+// @param uBarHeight 30..400 = 100.0
+// @param uBarDepth  30..200 = 100.0
+// @param uOffsetX   90..150 = 100.0
+// @param uOffsetZ   70..150 = 100.0
+// @param uSubScale  70..150 = 100.0
+// @param uKnotA     50..150 = 100.0
+// @param uKnotB     85..150 = 100.0
+// @param uCoilTwist 75..150 = 100.0
+// @param uBandWidth 50..150 = 100.0
 uniform float uSpread; // 構造の広がり (%)
 uniform float uThick; // 棒の太さ (%)
 uniform float uTwist; // ねじれの強さ (%)
@@ -46,13 +56,23 @@ uniform float uGlow; // 明るさ (%)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+uniform float uBarLength; // 棒の長さ (%)
+uniform float uBarHeight; // 棒の断面の高さ (%)
+uniform float uBarDepth; // 棒の断面の奥行き (%)
+uniform float uOffsetX; // 折り返しの X 方向の間隔 (%)
+uniform float uOffsetZ; // 折り返しの Z 方向の間隔 (%)
+uniform float uSubScale; // 2 段目の小さな棒の縮尺 (%)
+uniform float uKnotA; // 折り返しごとの回転 (XY 面) の量 (%)
+uniform float uKnotB; // 折り返しごとの回転 (ZY 面) の量 (%)
+uniform float uCoilTwist; // 奥行き方向 (XY 回転) のねじれの強さ (%)
+uniform float uBandWidth; // 色の帯 (量子化段) の幅 (%)
 
 vec2 bn_map(vec3 sp){
   float sc = uScale / 100.0;
   sp /= sc;
   sp.zy *= BN_RT(sp.x * 0.2 * (uTwist / 100.0) + bn_t);
-  sp.xy *= BN_RT(sp.z * 0.05 * (uTwist / 100.0) + bn_t);
-  float dst0 = bn_k3d(sp, vec3(7.0, 5.0, 3.0) * (uSpread / 100.0), vec3(5.0, 0.7 * (uThick / 100.0), 0.7 * (uThick / 100.0)), 1.7, vec3(2.0, 3.0, 2.0));
+  sp.xy *= BN_RT(sp.z * 0.05 * (uTwist / 100.0) * (uCoilTwist / 100.0) + bn_t);
+  float dst0 = bn_k3d(sp, vec3(7.0 * (uOffsetX / 100.0), 5.0, 3.0 * (uOffsetZ / 100.0)) * (uSpread / 100.0), vec3(5.0 * (uBarLength / 100.0), 0.7 * (uThick / 100.0) * (uBarHeight / 100.0), 0.7 * (uThick / 100.0) * (uBarDepth / 100.0)), 1.7 * (uSubScale / 100.0), vec3(2.0 * (uKnotA / 100.0), 3.0 * (uKnotB / 100.0), 2.0));
   return vec2(dst0 * sc, 0.0);
 }
 
@@ -144,7 +164,7 @@ vec3 bg_meguru(vec2 fc){
   float phase = freeModeActive ? (tm * 0.0018) : (bt * 0.015 + j * 1.5);
   float spatialGrad = dot(sp, vec3(0.008, 0.006, 0.010));
   float colorParam = spatialGrad + d0 * 0.006 + bn_t * 0.08 + phase;
-  float qStep = 0.34;
+  float qStep = 0.34 * (uBandWidth / 100.0);
   float qf = colorParam / qStep;
   float qb = floor(qf);
   float qramp = smoothstep(0.45, 1.00, fract(qf));

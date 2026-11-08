@@ -11,37 +11,63 @@ const int   FM_STEPS = 56;     // 元 500 → 軽量化(さらに削減)
 const float FM_MAXD  = 36.0;   // 元 10000 → 近景中心に短縮
 const float FM_EPS   = 0.1;
 
+// @param uTubeRadius 80..112 = 100.0
+uniform float uTubeRadius; // 基本形のくびれ・管の太さ (%)
 // 元の length 系 SDF (描画保証)。簡略化はフラクタル層の削減で行う。
-float fm_sdf1(vec3 p){ return (length(abs(sin(p.yzx)) - abs(cos(p)))) - 1.0; }
+float fm_sdf1(vec3 p){ return (length(abs(sin(p.yzx)) - abs(cos(p)))) - (uTubeRadius / 100.0); }
 // @param uDetail 1..3 = 3.0
 // @param uMoss   0..200 = 100.0
 // @param uBump   0..300 = 100.0
 // @param uGlow   0..300 = 100.0
 // @param uMotion 0..300 = 100.0
 // @param uSteps 20..56 = 56.0
+// @param uPatternScale 96..130 = 100.0
+// @param uInflate 0..160 = 100.0
+// @param uFoldWarp 80..130 = 100.0
+// @param uLayerRatio 85..125 = 100.0
+// @param uSlide -100..100 = 0.0
+// @param uDirt 0..300 = 100.0
+// @param uLumpScale 50..200 = 100.0
+// @param uGrainScale 50..200 = 100.0
+// @param uCamDist 60..150 = 100.0
+// @param uCamBob 0..250 = 100.0
+// @param uFov 60..160 = 100.0
 uniform float uDetail; // フラクタル層の数 (下げると軽く、形が大きく滑らかになる)
 uniform float uMoss; // 苔・土のパッチの広さ (%)
 uniform float uBump; // ボコボコの凹凸の強さ (%)
 uniform float uGlow; // ハイライト・縁の光 (%)
 uniform float uMotion; // 苔のうごめきの振幅 (%)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+uniform float uPatternScale; // 構造全体の繰り返しの大きさ (%)
+uniform float uInflate; // 構造の膨らみ・肉付き (%)
+uniform float uFoldWarp; // 層ごとの折れ曲がりの強さ (%)
+uniform float uLayerRatio; // 層ごとの細かさの比 (%)
+uniform float uSlide; // 構造を横へずらす量。別の部分が見える
+uniform float uDirt; // 土のパッチの広さ (%)
+uniform float uLumpScale; // 大きな隆起の大きさ (%)
+uniform float uGrainScale; // 細かなザラつきの大きさ (%)
+uniform float uCamDist; // カメラの公転半径 (%)
+uniform float uCamBob; // カメラの上下動の幅 (%)
+uniform float uFov; // 画角 (%)
 
 float fm_sdf(vec3 p){
   float result = 0.0;
   p.x += 40.0;
-  p /= 8.0;
+  if(uSlide != 0.0) p.x += uSlide;
+  p /= 8.0 * (uPatternScale / 100.0);
   // フラクタル層を 4→3 に削減 (高周波のギザギザを減らして大きめの形に)。
   float i = 1.0;
   for(int k = 0; k < 3; k++){
     if(k >= int(uDetail + 0.5)) break;
     float i1 = i*i;
+    float i1w = i1 * (uFoldWarp / 100.0);
     float i2 = i1*5.0;
     float tt = time * 0.45;   // うねうね(時間アニメ)を遅く
-    p += (sin((p.yzx + tt/i2)/i1) + cos((p.yzx + tt/i2)/i1)) * i1;
+    p += (sin((p.yzx + tt/i2)/i1) + cos((p.yzx + tt/i2)/i1)) * i1w;
     result += fm_sdf1(p*i1)/i1;
-    i *= -2.0;
+    i *= -2.0 * (uLayerRatio / 100.0);
   }
-  return -(result - .1) * 2.0;
+  return -(result - 0.1 * (uInflate / 100.0)) * 2.0;
 }
 vec3 fm_surfaceColor(vec3 p3){
   p3 = vec3(fm_sdf(p3/7.0), fm_sdf(p3/11.0), fm_sdf(p3/13.0));
@@ -102,11 +128,13 @@ float fm_flow(vec3 q){ return sin(fm_sdf(q * 0.85) * 1.2 + 1.3) * 0.5 + 0.5; }
 vec3 bg_flowingMetal(vec2 fc){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 xy = I - resolution/2.0;
-  float z = resolution.y / tan(radians(45.0)/2.0);
+  float tnH = tan(radians(45.0)/2.0);
+  if(uFov != 100.0) tnH = tan(radians(45.0 * (uFov / 100.0))/2.0);
+  float z = resolution.y / tnH;
   vec3 viewDir = normalize(vec3(xy, -z));
   // カメラの公転 (原点を中心に周回 + ゆるい上下動)。半径は十分大きく取り内部に入らない。
   float ct = time * 0.12;
-  vec3 eye = vec3(cos(ct)*3.2, sin(ct*0.5)*1.4, sin(ct)*3.2);
+  vec3 eye = vec3(cos(ct)*(3.2 * (uCamDist / 100.0)), sin(ct*0.5)*(1.4 * (uCamBob / 100.0)), sin(ct)*(3.2 * (uCamDist / 100.0)));
   mat3 v2w = fm_view(eye, vec3(0.0), vec3(0.0, 1.0, 0.0));
   vec3 wd = v2w * viewDir;
   float dist = fm_march(eye, wd, 0.0, FM_MAXD);
@@ -139,10 +167,11 @@ vec3 bg_flowingMetal(vec2 fc){
   vec3 moss  = (m < 0.5) ? mix(brown, green, m*2.0) : mix(green, lime, (m - 0.5)*2.0);
   vec3 dirt  = vec3(0.32, 0.22, 0.11);
   // ボコボコ・隆起: 大きな隆起(lump) + 細かいザラつき(gr)、ノイズ勾配で強いバンプ陰影。
-  float lump = fm_fbm(pm*4.0);
-  float gr   = fm_fbm(pm*10.0)*0.55 + fm_fbm(pm*26.0)*0.45;
-  float bE = 0.025, b0 = fm_fbm(pm*10.0);
-  vec3 grad3 = (vec3(fm_fbm(pm*10.0+vec3(bE,0,0)), fm_fbm(pm*10.0+vec3(0,bE,0)), fm_fbm(pm*10.0+vec3(0,0,bE))) - b0) / bE;
+  float lump = fm_fbm(pm*(4.0 * (uLumpScale / 100.0)));
+  float gs = 10.0 * (uGrainScale / 100.0);
+  float gr   = fm_fbm(pm*gs)*0.55 + fm_fbm(pm*(26.0 * (uGrainScale / 100.0)))*0.45;
+  float bE = 0.025, b0 = fm_fbm(pm*gs);
+  vec3 grad3 = (vec3(fm_fbm(pm*gs+vec3(bE,0,0)), fm_fbm(pm*gs+vec3(0,bE,0)), fm_fbm(pm*gs+vec3(0,0,bE))) - b0) / bE;
   vec3 bn = normalize(n + grad3 * 1.6 * (uBump / 100.0));                  // 強いバンプ=ボコボコ
   float bdiff = clamp(dot(bn, normalize(vec3(0.4, 0.7, 0.5))), 0.0, 1.0);
   float bsh = 0.16 + 1.10 * bdiff;                       // 強コントラストの凹凸陰影
@@ -156,7 +185,8 @@ vec3 bg_flowingMetal(vec2 fc){
   float mcA = 0.74 - mcS;
   float mcB = 0.86 - mcS;
   float mossMask = smoothstep(mcA, mcB, fm_flow(pm));
-  float dirtMask = smoothstep(mcA, mcB, fm_flow(pm + 40.0)) * (1.0 - mossMask*0.8);
+  float mdS = mcS + 0.5 * (uDirt / 100.0 - 1.0);
+  float dirtMask = smoothstep(0.74 - mdS, 0.86 - mdS, fm_flow(pm + 40.0)) * (1.0 - mossMask*0.8);
 
   // 金属(クローム)ベースに、苔・土をマットで「置換」合成(乗算しない=反射しない)。
   vec3 col = silver;
@@ -167,7 +197,7 @@ vec3 bg_flowingMetal(vec2 fc){
   // 隆起感: パッチの光源側にドロップシャドウ + 縁のリム光彩。
   vec3 sOff = normalize(vec3(0.4, 0.7, 0.5)) * 0.25;     // 光源方向へオフセット
   float mossL = smoothstep(mcA, mcB, fm_flow(pm + sOff));
-  float dirtL = smoothstep(mcA, mcB, fm_flow(pm + sOff + 40.0)) * (1.0 - mossL*0.8);
+  float dirtL = smoothstep(0.74 - mdS, 0.86 - mdS, fm_flow(pm + sOff + 40.0)) * (1.0 - mossL*0.8);
   float matteL = max(mossL, dirtL);
   float drop = clamp(matteL - matte, 0.0, 1.0);          // 隣(光源側)がパッチで自分は金属=影
   col *= 1.0 - drop * 0.55;                              // ドロップシャドウ

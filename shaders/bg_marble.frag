@@ -21,6 +21,27 @@ float vm_ofs = .0001;
 #define vm_hash44(p) fract(18.5453 * sin(p * mat4(127.1,311.7,269.5,183.3, 421.1,547.6,231.3,298.4, 87.6,123.4,356.1,654.3, 765.1,876.4,132.5,234.8)))
 #define vm_disp(p) ( -vm_ofs + (1.0 + 2.0*vm_ofs) * vm_hash44(p) )
 
+// @param uCellX      50..200 = 100.0
+// @param uCellY      50..200 = 100.0
+// @param uCellZ      50..200 = 100.0
+// @param uNoiseScale 50..200 = 100.0
+// @param uProfile    80..150 = 100.0
+// @param uLineStart  0..10 = 0.0
+// @param uLayerFade  50..200 = 100.0
+// @param uLayerZoom  60..150 = 100.0
+// @param uLayerTurn  -180..180 = 0.0
+// @param uCellJitter 25..100 = 100.0
+uniform float uCellX; // セルの X 方向の伸縮 (%)
+uniform float uCellY; // セルの Y 方向の伸縮 (%)
+uniform float uCellZ; // セルの Z 方向の伸縮 (%)
+uniform float uNoiseScale; // 歪みノイズの波長 (%)。下げると細かくうねる
+uniform float uProfile; // 線の断面の指数 (%)。上げると線が鋭く、下げると丸い
+uniform float uLineStart; // 線が始まる距離 (%)。上げるとセルの縁だけが残る
+uniform float uLayerFade; // 重ねた層の減衰の速さ (%)
+uniform float uLayerZoom; // 層ごとの細かさの倍率 (%)
+uniform float uLayerTurn; // 層ごとの追加回転 (度)
+uniform float uCellJitter; // セルの点のばらつき (%)。下げると規則的な格子状
+
 float vm_voronoi(vec4 u){
   u.w *= 0.1;
   u.w = 1.0 - 2.0 * abs(fract(u.w + 0.5) - 0.5);
@@ -36,6 +57,7 @@ float vm_voronoi(vec4 u){
   for(int k = 0; k < 8; k++){
     p = iu_offset + vec4(k % 2, (k / 2) % 2, (k / 4) % 2, k / 8);
     o = vm_disp(p);
+    if(uCellJitter != 100.0) o = 0.5 + (o - 0.5) * (uCellJitter / 100.0);
     r = p - u + o;
     d = dot(r, r);
     if(d < m){ m2 = m; P2 = P; m = d; P = r; }
@@ -102,12 +124,12 @@ vec3 bg_marble(vec2 fc){
   vec4 col = vec4(0., 0., 0., 1.);
   for(float i = 0.; i < 4.; i++){
     if(i >= floor(uLayers + 0.5)) break;
-    vec3 V = pos / vm_Shape / (uSize / 100.0);
-    vec3 D = vm_Curve * (uWarp / 100.0) * vm_fbm33(pos / vm_Smooth) * vm_Smooth;
+    vec3 V = pos / (vm_Shape * vec3(uCellX / 100.0, uCellY / 100.0, uCellZ / 100.0)) / (uSize / 100.0);
+    vec3 D = vm_Curve * (uWarp / 100.0) * vm_fbm33(pos / (vm_Smooth * (uNoiseScale / 100.0))) * (vm_Smooth * (uNoiseScale / 100.0));
     float d = vm_voronoi(vec4(V + D, time));
-    d = min(1.0, vm_LineW / (uThick / 100.0) * pow(max(0.0, d - vm_LineS), vm_Sat));
-    col += vec4(1.0 - d) / exp2(i);
-    pos *= 1.5 * vm_rot3(.37);
+    d = min(1.0, vm_LineW / (uThick / 100.0) * pow(max(0.0, d - (vm_LineS + uLineStart / 100.0)), vm_Sat * (uProfile / 100.0)));
+    col += vec4(1.0 - d) / exp2(i * (uLayerFade / 100.0));
+    pos *= 1.5 * (uLayerZoom / 100.0) * vm_rot3(.37 + radians(uLayerTurn));
   }
   if(!vm_dark) col.rgb = vec3(1.0) - col.rgb;
   return col.rgb;

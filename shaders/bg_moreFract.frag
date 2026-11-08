@@ -47,6 +47,28 @@ uniform float uContrast; // コントラスト (%。大きいほど暗く締ま�
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+// @param uArmReach 60..140 = 100.0
+// @param uArmAngle -35..35 = 0.0
+// @param uTwistPitch 0..250   = 100.0
+// @param uTwistStep  0..250   = 100.0
+// @param uShrink 92..106 = 100.0
+// @param uSquare     0..100   = 0.0
+// @param uNoiseScale 40..250 = 100.0
+// @param uNoiseDepth 0..200   = 100.0
+// @param uOrbit      -80..80  = 0.0
+// @param uDiffuse    0..300   = 100.0
+// @param uIrid       0..250   = 100.0
+uniform float uArmReach; // 各段の枝の張り出し (%)
+uniform float uArmAngle; // 枝の張り出す向き (度)
+uniform float uTwistPitch; // 高さに応じたねじれの粗さ (%)
+uniform float uTwistStep; // 段ごとのねじれの積み増し (%)
+uniform float uShrink; // 段ごとの縮み方の基準 (%)。大きいほど枝が長く続く
+uniform float uSquare; // 管の断面を丸から四角へ (%)
+uniform float uNoiseScale; // 線の太さのむらの細かさ (%)
+uniform float uNoiseDepth; // 線の太さのむらの深さ (%)
+uniform float uOrbit; // カメラを物体の周りに回す角度 (度)
+uniform float uDiffuse; // 面の陰影の強さ (%)
+uniform float uIrid; // 反射に乗る虹色の色相の広がり (%)。0 で単色
 
 float mfGetDist(vec3 p, float tm){
   float sc = uScale / 100.0;
@@ -54,22 +76,25 @@ float mfGetDist(vec3 p, float tm){
   p.xz = mfRot(radians(uAngle)) * p.xz;
   vec2 uv = p.xz;
   uv.x = abs(uv.x);
-  float th = 0.4*p.y - 0.6*tm;
+  float th = 0.4*p.y*(uTwistPitch / 100.0) - 0.6*tm;
   float n = floor(uDetail + 0.5);
-  float m = 1.8;
+  float m = 1.8 * (uArmReach / 100.0);
   vec2 q = vec2(1.0,0.0);
+  if(uArmAngle != 0.0){ float qa = radians(uArmAngle); q = vec2(cos(qa), sin(qa)); }
   for(float i=0.0;i<8.0;i++){
     if(i >= n) break;
     uv -= m*q;
-    th += 0.5*p.y + 0.05*tm;
+    th += 0.5*p.y*(uTwistStep / 100.0) + 0.05*tm;
     uv = mfRot(th)*uv;
     uv.x = abs(uv.x);
-    m *= 0.05*(uWarp / 100.0)*cos(8.0*(uDensity / 100.0)*length(uv)) + 0.55;
+    m *= 0.05*(uWarp / 100.0)*cos(8.0*(uDensity / 100.0)*length(uv)) + 0.55*(uShrink / 100.0);
   }
-  float nz = mfNoise(p*0.6);
+  float nz = mfNoise(p*0.6*(uNoiseScale / 100.0));
   nz = nz*nz;          // 細線は残しつつ、幅のある線を増やす (nz³→nz²)
-  float w = 0.12*(uThick / 100.0)*exp(4.0*nz);
-  float d = length(uv) - 2.0*m*w;
+  float w = 0.12*(uThick / 100.0)*exp(4.0*(uNoiseDepth / 100.0)*nz);
+  float dl = length(uv);
+  if(uSquare != 0.0) dl = mix(dl, max(abs(uv.x), abs(uv.y)), uSquare / 100.0);
+  float d = dl - 2.0*m*w;
   return 0.5*d*sc;
 }
 
@@ -112,6 +137,7 @@ vec3 bg_moreFract(vec2 fc){
   uv += bgCamPx/resolution.y;
 
   vec3 ro = vec3(5.5, 0.1*T, 0.0);
+  if(uOrbit != 0.0){ float oa = radians(uOrbit); ro.xz = mfRot(oa) * ro.xz; }
   vec3 rd = mfRayDir(uv, ro, vec3(0.0, 0.1*T, 0.0), 2.0);
   vec3 col = vec3(0.0);
 
@@ -122,14 +148,14 @@ vec3 bg_moreFract(vec2 fc){
     vec3 rfl = reflect(rd, nrm);
 
     float ambient = 0.3;
-    float difPower = 0.4;
+    float difPower = 0.4 * (uDiffuse / 100.0);
     float dif = max(dot(nrm, normalize(vec3(1,2,3))), 0.0);
     col = vec3(dif*difPower + ambient);
     col *= mfEnv(rfl);
     col *= 1.0 + rfl.y;
     col = clamp(col, 0.0, 1.0);
     vec3 e = vec3(1.0);
-    col *= mfPal(rfl.y, e, e, e, 0.35*vec3(0.0,0.33,0.66));
+    col *= mfPal(rfl.y, e, e, e, 0.35*(uIrid / 100.0)*vec3(0.0,0.33,0.66));
   }
   col = pow(col, vec3(0.4545 * (uContrast / 100.0)));
   return col;

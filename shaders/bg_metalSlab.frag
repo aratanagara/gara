@@ -44,6 +44,30 @@ uniform float uThick;   // 破片の縁の線・光彩の太さ (%)
 uniform float uReflect;   // 環境反射の強さ (%)
 uniform float uContrast;   // 面内の明暗グラデの強さ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
+// @param uBreakProb 0..180 = 100.0
+// @param uSplitJitter  0..180   = 0.0
+// @param uCutOffset 0..60 = 0.0
+// @param uBigThreshold 25..300  = 100.0
+// @param uToneSpread   0..200   = 100.0
+// @param uWindowFreq   40..250  = 100.0
+// @param uWindowWidth 20..200 = 100.0
+// @param uShadow       0..100   = 100.0
+// @param uShadowReach  20..300  = 100.0
+// @param uGlint        0..250   = 100.0
+// @param uWindowSecond 0..250   = 100.0
+// @param uFresnel      0..200   = 100.0
+uniform float uBreakProb; // 分割を途中でやめる確率 (%)。大きいほど大きな板が残る
+uniform float uSplitJitter; // 切り線の向きのばらつき (度)
+uniform float uCutOffset; // 切り線を中心からずらす量 (%)。板の大きさが不ぞろいになる
+uniform float uBigThreshold; // 「大きな面」とみなす面積の基準 (%)
+uniform float uToneSpread; // 板ごとの明るさのばらつき (%)
+uniform float uWindowFreq; // 映り込む窓の筋の細かさ (%)
+uniform float uWindowWidth; // 窓の筋の太さ (%)
+uniform float uShadow; // 上の辺が落とす影の濃さ (%)
+uniform float uShadowReach; // 影の幅 (%)
+uniform float uGlint; // 面内の鋭い鏡面グリントの強さ (%)
+uniform float uWindowSecond; // 2 本目の細い窓の筋の濃さ (%)
+uniform float uFresnel; // 縁の環境反射の強さ (%)
 
 vec3 bg_metalSlab(vec2 fc){
   vec2 R = resolution;
@@ -73,7 +97,9 @@ vec3 bg_metalSlab(vec2 fc){
     vec2 p0 = c;
 
     float a = 1.5*t*(hash11(id) > 0.5 ? 1.0 : -1.0) + radians(uAngle);
+    if(uSplitJitter != 0.0) a += (hash11(id + 3.1) - 0.5) * radians(uSplitJitter);
     vec2 dir = vec2(cos(a), sin(a));
+    if(uCutOffset != 0.0) p0 += vec2(-dir.y, dir.x) * (hash11(id + 7.7) - 0.5) * 0.5 * (uCutOffset / 100.0);
 
     int i0 = 0; vec2 q0 = vec2(0.0);
     for(int j = 0; j < MS_MAXN; j++){
@@ -119,7 +145,7 @@ vec3 bg_metalSlab(vec2 fc){
     t += 1e2 * (hash11(id) - 0.5);
 
     // 元はパーリンノイズでブレイク確率を変調していたが、ハッシュのみに置換
-    if(hash11(id + floor(t/1.5)) < 0.10) break;
+    if(hash11(id + floor(t/1.5)) < 0.10 * (uBreakProb / 100.0)) break;
   }
 
   // === ガラス破片シェーディング (リアル寄り) ===
@@ -130,6 +156,7 @@ vec3 bg_metalSlab(vec2 fc){
 
   // ベース: クールなシルバー。明度をプレート毎にバラつかせる
   float base = mix(0.40, 0.74, h);
+  if(uToneSpread != 100.0) base = mix(0.57 - 0.17 * (uToneSpread / 100.0), 0.57 + 0.17 * (uToneSpread / 100.0), h);
   vec3 silver = vec3(0.92, 0.95, 1.04);   // 青み寄りのシルバー色
   vec3 plate = vec3(base) * silver;
 
@@ -156,7 +183,7 @@ vec3 bg_metalSlab(vec2 fc){
     area += va.x*vb.y - vb.x*va.y;
   }
   area = abs(area) * 0.5;
-  float big = smoothstep(0.20, 0.8, area);   // 大きい面ほど 1
+  float big = smoothstep(0.20 * (uBigThreshold / 100.0), 0.8 * (uBigThreshold / 100.0), area);   // 大きい面ほど 1
   // 明部側に大面積限定の強い指向ハイライト (辺に平行な帯)
   plate += big * pow(gT, 3.0) * silver * 1.0;
 
@@ -171,16 +198,16 @@ vec3 bg_metalSlab(vec2 fc){
   vec3  sky    = vec3(0.55, 0.62, 0.80);
   vec3  flr    = vec3(0.03, 0.04, 0.07);
   vec3  envCol = mix(flr, sky, vert);
-  float s      = dot(rc, refT) * 7.0 + h*12.0;                 // 窓ストリークの座標
-  float win    = smoothstep(0.80, 1.0, sin(s))
-               + 0.45*smoothstep(0.5, 1.0, sin(s*0.33 + 1.7));
+  float s      = dot(rc, refT) * 7.0 * (uWindowFreq / 100.0) + h*12.0;                 // 窓ストリークの座標
+  float win    = smoothstep(0.80 - 0.2 * ((uWindowWidth / 100.0) - 1.0), 1.0, sin(s))
+               + 0.45*(uWindowSecond / 100.0)*smoothstep(0.5, 1.0, sin(s*0.33 + 1.7));
   envCol += win * vec3(1.05, 1.08, 1.16);
   // 反射率: 大面積ほど鏡面的、明部ほど反射が見える
   float refl   = (0.30 + 0.45*big) * (0.5 + 0.5*pow(gT, 1.5)) * (uReflect / 100.0);
   plate = mix(plate, envCol, clamp(refl, 0.0, 0.85));
   // 鋭い鏡面グリント (面内に数点)
   float glint  = smoothstep(0.93, 1.0, sin(s*1.3 + 0.5)) * smoothstep(0.55, 1.0, gT);
-  plate += glint * vec3(1.10, 1.12, 1.22);
+  plate += glint * (uGlint / 100.0) * vec3(1.10, 1.12, 1.22);
   // 屈折/色収差の薄いティント (青緑寄り)
   plate += win * vec3(-0.03, 0.012, 0.06);
 
@@ -189,7 +216,7 @@ vec3 bg_metalSlab(vec2 fc){
 
   // Fresnel: 縁ほど環境反射が強い (ガラスらしいエッジの照り)
   float fres = 1.0 - smoothstep(0.0, 0.06, -d1);   // 縁=1, 内側=0
-  o = mix(o, envCol, fres * 0.40);
+  o = mix(o, envCol, clamp(fres * 0.40 * (uFresnel / 100.0), 0.0, 1.0));
 
   // === ガラスの輪郭(白) + 溝(黒い影) ===
   float ad = abs(d1);
@@ -199,9 +226,9 @@ vec3 bg_metalSlab(vec2 fc){
   gN = (length(gN) > 1e-6) ? normalize(gN) : vec2(0.0, 1.0);
 
   // (0) ドロップシャドウ: 上側の辺が下の破片に落とす影 (黒寄り)
-  float shadeBand = smoothstep(0.055, 0.0, -d1);
+  float shadeBand = smoothstep(0.055 * (uShadowReach / 100.0), 0.0, -d1);
   float downFace  = clamp(gN.y, 0.0, 1.0);
-  o *= mix(1.0, 0.18, shadeBand * downFace);
+  o *= mix(1.0, 0.18, min(shadeBand * downFace * (uShadow / 100.0), 1.0));
 
   // (1) 境界まわりに白いぼかし (広めソフトな光彩)
   float lw = 100.0 / max(uThick, 1.0);
