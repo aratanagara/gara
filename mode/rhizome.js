@@ -69,6 +69,25 @@ const Rhizome = {
     cycle:16,       // 平ら → 立ち上がり → 平ら の周期 (秒。beat では拍)
     tilt:60,        // 立ち上がったときの地面の倒れ (deg)
     yaw:45,         // 立ち上がったときの地面の回りの振れ幅 (deg)。周期ごとに -Yaw〜+Yaw の間でゆるやかに変わる
+    markerFill:74,  // 楕円の塗りの濃さ (%)。下げると透けて縁の線が主になる
+    rim:100,        // 楕円の縁のペン線の太さ (%。Line とは別)
+    markerHue:0,    // 楕円 (黄緑のマーカー・円盤) の色相の回し (deg)
+    lineHue:0,      // 緑・灰茶の線とノードの点・帯の色相の回し (deg)
+    arrowHue:0,     // 青い弧・矢印・扇の線の色相の回し (deg)
+    arrowhead:100,  // 矢印の頭の大きさ (%)
+    markerFlat:100, // 楕円のつぶれ (%。100 で元の形、下げると細く、上げると丸く)
+    inkPool:100,    // ペン先を置いた両端と四角の角にたまるインクの大きさ (%)
+    paperGrain:100, // 紙の目の濃さ (%。Slot A)
+    shade:100,      // 楕円の片側の影の濃さ (%)
+    camDist:100,    // 立ち上がったときの遠近の強さ (%。下げるほど強い遠近)
+    lean:100,       // 楕円・菱形の傾きのばらつき (%。0 で全部が横向き)
+    sizeMix:100,    // 楕円の大小の差 (%。0 でそろう)
+    linkRange:100,  // 近くのノードへ線を伸ばす範囲 (%)
+    dotSize:100,    // 巻きひげの端の点の大きさ (%)
+    squareSize:100, // 茶色の四角の大きさ (%)
+    diamondFlat:100,// 菱形のつぶれ (%)
+    planeSize:100,  // 縦に立つ面の大きさ (%)
+    meanderWave:100,// うねる赤い線の波の振れ (%)
     seed:0,         // 乱数のシード
     paper:[0.965, 0.958, 0.935],   // 紙の色 (Slot A)。Slot B は透過
   },
@@ -87,9 +106,27 @@ const Rhizome = {
     ['Figures',  'figures',  0,   100, 1,   'pct'],
     ['Meander',  'meander',  0,   300, 1,   'pct'],
     ['Band',     'band',     0,   200, 1,   'pct'],
+    ['Plane Size', 'planeSize', 40, 200, 1,  'pct'],
+    ['Meander Wave', 'meanderWave', 0, 300, 1, 'pct'],
+    ['Square Size', 'squareSize', 30, 300, 1, 'pct'],
     ['Diamonds', 'diamonds', 0,   100, 1,   'pct'],
+    ['Diamond Flat', 'diamondFlat', 40, 200, 1, 'pct'],
     ['Spread',   'spread',   10,  300, 1,   'pct'],
+    ['Link Range', 'linkRange', 40, 250, 1,  'pct'],
+    ['Lean',     'lean',     0,   300, 1,   'pct'],
+    ['Size Mix', 'sizeMix',  0,   150, 1,   'pct'],
+    ['Dot Size', 'dotSize',  30,  400, 1,   'pct'],
     ['Line',     'line',     20,  400, 1,   'pct'],
+    ['Marker Fill', 'markerFill', 20, 100, 1, 'pct'],
+    ['Rim',      'rim',      20,  400, 1,   'pct'],
+    ['Marker Flat', 'markerFlat', 50, 200, 1, 'pct'],
+    ['Shade',    'shade',    0,   400, 1,   'pct'],
+    ['Marker Hue', 'markerHue', -180, 180, 1, 'deg'],
+    ['Line Hue', 'lineHue',  -180, 180, 1,  'deg'],
+    ['Arrow Hue', 'arrowHue', -180, 180, 1, 'deg'],
+    ['Arrowhead', 'arrowhead', 20, 300, 1,  'pct'],
+    ['Ink Pool', 'inkPool',  0,   300, 1,   'pct'],
+    ['Paper Grain', 'paperGrain', 0, 600, 1, 'pct'],
     ['Pencil',   'pencil',   0,   200, 1,   'pct'],
     ['Hand',     'hand',     0,   300, 1,   'pct'],
     ['Boil',     'boil',     0,   300, 1,   'pct'],
@@ -100,6 +137,7 @@ const Rhizome = {
     ['Cycle',    'cycle',    4,   64,  1,   'int'],
     ['Tilt',     'tilt',     20,  70,  1,   'deg'],
     ['Yaw',      'yaw',      -90, 90,  1,   'deg'],
+    ['Perspective', 'camDist', 70, 300, 1,  'pct'],
     ['Seed',     'seed',     0,   99,  1,   'int'],
   ],
 
@@ -198,6 +236,10 @@ uniform float uPencil;
 uniform float uHand;
 uniform float uBoil;             // 描き直しのコマごとの種のずれ (0..1。0 = 描き直さない)
 uniform vec3 uSqFill;
+uniform float uFill;             // 楕円の塗りの濃さ (既定 0.74)
+uniform float uShade;            // 楕円の片側の影 (既定 1)
+uniform float uBlot;             // インクだまりの大きさ (既定 1)
+uniform float uGrainP;           // 紙の目 (既定 1)
 out vec4 o;
 float h2(vec2 p){
   vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -254,7 +296,7 @@ void main(){
     float hs = dot(w - vA.xy, sab) / max(dot(sab, sab), 1e-12);
     if(!full && (hs < 0.0 || hs >= 1.0)) a = 0.0;
     if(full){   // ペン先を置いた所と離した所のインクだまり
-      float rb = max(hw * 1.45, 1.0 * px) * (0.85 + 0.3 * h2(vec2(sd, 3.0)));
+      float rb = max(hw * 1.45, 1.0 * px) * (0.85 + 0.3 * h2(vec2(sd, 3.0))) * uBlot;
       float db = min(length(w - vA.xy), length(w - vA.zw)) - rb;
       a = max(a, (1.0 - smoothstep(-0.5 * px, px, db)) * 0.95 * hk);
     }
@@ -287,9 +329,9 @@ void main(){
     // 片側の影 (縁に近く、楕円ごとに決まった側が濃い)
     float la = 6.2831853 * h2(vec2(sd, 3.3));
     float shade = smoothstep(0.45, 1.0, rf) * smoothstep(-0.3, 0.9, dot(qf / fab / max(rf, 1e-4), g2q * vec2(cos(la), sin(la))));
-    float dark = uPencil * (0.08 * lap + 0.06 * streak + 0.06 * pool) + hk * 0.13 * shade;
+    float dark = uPencil * (0.08 * lap + 0.06 * streak + 0.06 * pool) + hk * 0.13 * shade * uShade;
     vec3 fc = vC.rgb * (1.0 - dark);
-    float fa = fil * 0.74;
+    float fa = fil * uFill;
     // ペンの縁: 一周でわずかに内外へずれて描き始めと終わりが食い違い、描き終わりは少し重なる
     float u = fract((atan(g.y, g.x) - 6.2831853 * h2(vec2(sd, 5.5))) / 6.2831853);
     float drift = (h2(vec2(sd, 6.6)) - 0.5) * 2.6 * px * uHand;
@@ -332,14 +374,14 @@ void main(){
     float hw = vB.z * 1.2;
     float oa = (1.0 - smoothstep(hw - 0.5 * px, hw + px, d)) * 0.92 * grain;
     // 角のインクだまり
-    float dc = min(min(length(w - P0), length(w - P1)), min(length(w - P2), length(w - P3))) - max(hw * 1.5, 1.0 * px);
+    float dc = min(min(length(w - P0), length(w - P1)), min(length(w - P2), length(w - P3))) - max(hw * 1.5, 1.0 * px) * uBlot;
     oa = max(oa, (1.0 - smoothstep(-0.5 * px, px, dc)) * 0.9 * hk);
     fa = clamp(fa, 0.0, 1.0);
     float A = (oa + fa * (1.0 - oa)) * vB.w;
     o = vec4((vC.rgb * oa + uSqFill * fa * (1.0 - oa)) * vB.w, A);
     return;
   } else if(type < 4.5){                            // 紙
-    col = vC.rgb * (0.99 + 0.016 * vn(gl_FragCoord.xy * 0.35) + 0.01 * vn(gl_FragCoord.xy * 0.04));
+    col = vC.rgb * (0.99 + uGrainP * 0.016 * vn(gl_FragCoord.xy * 0.35) + uGrainP * 0.01 * vn(gl_FragCoord.xy * 0.04) + (1.0 - uGrainP) * 0.013);
     a = 1.0;
   } else {                                          // 色鉛筆の帯 (折れ線の 1 区間。継ぎ目は両隣と同じ向きで切って重ならない)
     vec2 pa = vA.xy, pb = vA.zw;
@@ -402,7 +444,7 @@ void main(){
     this.ok = !!this.prog;
     if(this.ok){
       const U = (n)=>gl.getUniformLocation(this.prog, n);
-      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), boil:U('uBoil'), sqFill:U('uSqFill') };
+      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), boil:U('uBoil'), sqFill:U('uSqFill'), fill:U('uFill'), shade:U('uShade'), blot:U('uBlot'), grainP:U('uGrainP') };
       this.vao = gl.createVertexArray();
       gl.bindVertexArray(this.vao);
       this.cornerVBO = gl.createBuffer();
@@ -424,6 +466,26 @@ void main(){
     this.initialized = true;
   },
   update(){},
+
+  // 色相の回し (deg)。0 のときは元の色 (COL) をそのまま返す。マーカー = 黄緑の楕円と円盤 / 線 = 緑・灰茶の線と点・帯 / 矢印 = 青
+  _palette(mk, ln, ar){
+    if(!mk && !ln && !ar) return this.COL;
+    const rot = (c, deg)=>{
+      if(!deg) return c;
+      const a = deg * Math.PI / 180, cs = Math.cos(a), sn = Math.sin(a), k = (1 - cs) / 3, w = Math.sqrt(1 / 3) * sn;
+      const r = c[0], g = c[1], b = c[2];
+      return [
+        Math.max(0, Math.min(1, r * (cs + k) + g * (k - w) + b * (k + w))),
+        Math.max(0, Math.min(1, r * (k + w) + g * (cs + k) + b * (k - w))),
+        Math.max(0, Math.min(1, r * (k - w) + g * (k + w) + b * (cs + k))),
+      ];
+    };
+    const C = Object.assign({}, this.COL);
+    for(const k of ['lime', 'limeRim', 'hub', 'mint', 'relay']) C[k] = rot(C[k], mk);
+    for(const k of ['green', 'dot', 'taupe', 'band']) C[k] = rot(C[k], ln);
+    C.blue = rot(C.blue, ar);
+    return C;
+  },
 
   // ── 乱数 (整数 3 つ + シードから 0..1) ──
   _hash(a, b, c){
@@ -572,7 +634,7 @@ void main(){
     const want = Math.round(c.links * (1.5 + 3.0 * this._hash(r.i, r.n, 12)));
     if(want <= 0) return r.links;
     // 近くのノード (R 以内) / 網をまたぐ遠くのノード (R〜2.6R、長い線) / 四角どうしはさらに遠くまで (茶色の長い線)
-    const R = 0.40 * c.spread, RL = 2.6 * R, RS = 0.9 * c.spread, t0 = r.tPop;
+    const R = 0.40 * c.spread * c.linkRange, RL = 2.6 * R, RS = 0.9 * c.spread, t0 = r.tPop;
     const cand = [], far = [], sq = [];
     for(let j = 0; j < c.N; j++){
       if(j === r.i) continue;
@@ -623,6 +685,8 @@ void main(){
   _fan(K){
     const {t, H, C} = K;
     const nC = Math.round(14 * K.pct('curves')), nF = K.num('fans', 1, 10), openK = K.pct('open'), swK = K.pct('swirl'), seedK = K.pct('seeds');
+    const coilK = K.pv('coil', 1), discK = K.pv('discSize', 1), seedSzK = K.pv('seedSize', 1), aimK = K.pv('aim', 1), stagK = K.pv('stagger', 1), lenMixK = K.pv('lenMix', 1), scatK = K.pv('scatter', 1);
+    const greenP = K.pv('greenShare', 0.22), dashP = K.pv('dashed', 0.18);
     if(nC <= 0) return;
     const c01 = this._clamp01;
     for(let g = 0; g < nF; g++){
@@ -630,13 +694,13 @@ void main(){
       if(H(id, n, 3) > 0.85 || x > 0.95) continue;
       const [tx, ty] = this._camAt(s, cy2.T);
       const sx = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, sy = ty + (H(id, n, 5) - 0.5) * 0.7;
-      const dir = Math.atan2(ty - sy, tx - sx + 1e-6) + (H(id, n, 6) - 0.5) * 1.2;   // おおむね画面の中ほどへ向く
+      const dir = Math.atan2(ty - sy, tx - sx + 1e-6) + (H(id, n, 6) - 0.5) * 1.2 * aimK;   // おおむね画面の中ほどへ向く
       const open = (0.8 + 0.9 * H(id, n, 7)) * openK;
       const len = (0.55 + 0.4 * H(id, n, 8)) * K.spread;
       const sw = (H(id, n, 9) < 0.5 ? -1 : 1) * (0.5 + 0.6 * H(id, n, 10)) * swK;
       const al = 0.9 * c01(x / 0.03) * (1 - c01((x - 0.88) / 0.07));
       // 源のバネ: 線の根元の後ろに小さく巻く
-      const ca = Math.cos(dir), sa = Math.sin(dir), cL = 0.07 * K.sizeK, cr = 0.012 * K.sizeK;
+      const ca = Math.cos(dir), sa = Math.sin(dir), cL = 0.07 * K.sizeK * coilK, cr = 0.012 * K.sizeK * coilK;
       const coil = (v)=>{
         const k = v * 10 * Math.PI, along = -cL * (1 - v) + cr * 0.6 * Math.cos(k), side = cr * Math.sin(k);
         return [sx + ca * along - sa * side, sy + sa * along + ca * side, 0];
@@ -644,8 +708,8 @@ void main(){
       K.pushPoly(K.arcs, coil, 90, 0, c01(x / 0.06), K.hwB, C.ink, al, false, H(id, n, 11));
       for(let j = 0; j < nC; j++){
         const hj = (c)=>H(id * 64 + j, n, c);
-        const th = dir + open * ((nC > 1 ? j / (nC - 1) : 0.5) - 0.5) + (hj(1) - 0.5) * 0.08;
-        const Lj = len * (0.75 + 0.45 * hj(2));
+        const th = dir + open * ((nC > 1 ? j / (nC - 1) : 0.5) - 0.5) + (hj(1) - 0.5) * 0.08 * scatK;
+        const Lj = len * (lenMixK === 1 ? 0.75 + 0.45 * hj(2) : Math.max(0.3, 0.975 + 0.45 * (hj(2) - 0.5) * lenMixK));
         const ex = sx + Math.cos(th) * Lj, ey = sy + Math.sin(th) * Lj;
         // 3 次の曲線: 出だしは巻く向きへ振れ、先は流れに沿って入る
         const a1 = th + sw * 0.9, a2 = th - sw * 0.4;
@@ -655,10 +719,10 @@ void main(){
           const w0 = (1 - v) * (1 - v) * (1 - v), w1 = 3 * (1 - v) * (1 - v) * v, w2 = 3 * (1 - v) * v * v, w3 = v * v * v;
           return [w0 * sx + w1 * c1x + w2 * c2x + w3 * ex, w0 * sy + w1 * c1y + w2 * c2y + w3 * ey, 0];
         };
-        const st = 0.04 + 0.22 * hj(3), xe = 0.80 - st * 0.4;
+        const st = (0.04 + 0.22 * hj(3)) * stagK, xe = 0.80 - st * 0.4;
         const lf = K.life2(x - st, 0.20, 0.62 - st * 0.5, xe - st);
         if(!lf) continue;
-        const colL = hj(4) < 0.22 ? C.green : C.blue, dashed = hj(5) < 0.18;
+        const colL = hj(4) < greenP ? C.green : C.blue, dashed = hj(5) < dashP;
         K.pushPoly(K.arcs, f, dashed ? 34 : 26, lf[0], lf[1], K.hwL, colL, al, dashed, hj(6));
         if(lf[1] >= 1 && lf[0] <= 0 && !dashed) K.pushArrow(K.arcs, f(1), f(0.97), K.hwL, colL, al, hj(7));
         // 先の円盤 (4 分の 1 は黒い種): 線が 0.86 まで届いたらふくらむ
@@ -667,9 +731,9 @@ void main(){
         if(sc <= 0.001) continue;
         const pc = f(0.86), pn = f(0.88), tang = Math.atan2(pn[1] - pc[1], pn[0] - pc[0]);
         if(hj(8) < seedK){
-          K.pushEllipse(pc[0], pc[1], 0.008 * K.sizeK * sc, 0.005 * K.sizeK * sc, tang + Math.PI / 2, C.ink, C.ink, hj(9));
+          K.pushEllipse(pc[0], pc[1], 0.008 * K.sizeK * seedSzK * sc, 0.005 * K.sizeK * seedSzK * sc, tang + Math.PI / 2, C.ink, C.ink, hj(9));
         } else {
-          const r = 0.115 * (0.10 + 0.18 * hj(10)) * K.sizeK * (0.6 + 0.6 * Lj / len) * sc;
+          const r = 0.115 * (0.10 + 0.18 * hj(10)) * K.sizeK * discK * (0.6 + 0.6 * Lj / len) * sc;
           K.pushEllipse(pc[0], pc[1], r, r * (0.38 + 0.15 * hj(11)), tang + Math.PI / 2, C.lime, C.limeRim, hj(9));
         }
         if(hj(12) < 0.5 * K.links){
@@ -689,29 +753,30 @@ void main(){
     const {t, H, C} = K;
     const c01 = this._clamp01, al = 0.88, rings = [];
     const nR = K.num('rings', 1, 12), memK = Math.max(0.05, K.pct('members')), hubK = K.pct('hub'), floatK = K.pct('float');
+    const ringK = Math.max(0.05, K.pv('ringSize', 1)), chainP = K.pv('chain', 0.8), runP = K.pv('runaway', 0.12), crossK = K.pv('cross', 0.6), hubSzK = Math.max(0.05, K.pv('hubSize', 1)), memMixK = K.pv('memberMix', 1), jitK = K.pv('ringJitter', 1);
     for(let g = 0; g < nR; g++){
       const id = 700000 + g, cy2 = this._pool(id, t, 3.2), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.85 || x > 0.97) continue;
       const [tx, ty] = this._camAt(s, cy2.T);
       const ox = tx + (H(id, n, 4) - 0.5) * K.aspect * 0.8, oy = ty + (H(id, n, 5) - 0.5) * 0.7;
-      const R = (0.09 + 0.12 * H(id, n, 6)) * K.spread;
+      const R = (0.09 + 0.12 * H(id, n, 6)) * K.spread * ringK;
       const m = Math.max(5, Math.min(40, Math.round((9 + 12 * H(id, n, 7)) * memK)));
       const z = H(id, n, 8) < floatK ? 0.10 + 0.20 * H(id, n, 9) : 0;          // 宙に浮く輪
       const hub = [ox + (H(id, n, 10) - 0.5) * R * 0.4, oy + (H(id, n, 11) - 0.5) * R * 0.4, z + (0.22 + 0.25 * H(id, n, 12)) * hubK];
       const a0 = H(id, n, 13) * Math.PI * 2 + (H(id, n, 14) - 0.5) * 0.5 * (t - s);
       const sh = this._popAt(x, 0.02, 0.86, 0.04, K.pop);
-      if(sh > 0.001) K.pushEllipse(hub[0], hub[1], 0.016 * K.sizeK * sh, 0.010 * K.sizeK * sh, H(id, n, 15) * 3, C.hub, C.limeRim, H(id, n, 16), hub[2]);
+      if(sh > 0.001) K.pushEllipse(hub[0], hub[1], 0.016 * K.sizeK * hubSzK * sh, 0.010 * K.sizeK * hubSzK * sh, H(id, n, 15) * 3, C.hub, C.limeRim, H(id, n, 16), hub[2]);
       const pos = [];
       for(let j = 0; j < m; j++){
         const hj = (c)=>H(id * 64 + j, n, c);
-        const aj = a0 + Math.PI * 2 * (j + (hj(1) - 0.5) * 0.35) / m;
-        const esc = hj(3) < 0.12 * K.links ? c01((x - 0.5 - 0.15 * hj(4)) / 0.3) : 0;   // 輪を離れて逃げる
+        const aj = a0 + Math.PI * 2 * (j + (hj(1) - 0.5) * 0.35 * jitK) / m;
+        const esc = hj(3) < runP * K.links ? c01((x - 0.5 - 0.15 * hj(4)) / 0.3) : 0;   // 輪を離れて逃げる
         const rr = R * (0.92 + 0.16 * hj(2)) * (1 + 1.6 * esc * esc);
         const p = [ox + Math.cos(aj) * rr, oy + Math.sin(aj) * rr, z];
         pos.push(p);
         const xp = 0.06 + 0.28 * j / m, xd = 0.78 + 0.10 * j / m;
         const sc = this._popAt(x, xp, xd, 0.05, K.pop) * (1 + 0.15 * K.kick);
-        const rx = Math.min(R * Math.PI / m * 0.8, 0.05) * (0.8 + 0.4 * hj(5)) * K.sizeK * sc;
+        const rx = Math.min(R * Math.PI / m * 0.8, 0.05) * (memMixK === 1 ? 0.8 + 0.4 * hj(5) : Math.max(0.2, 1 + 0.4 * (hj(5) - 0.5) * memMixK)) * K.sizeK * sc;
         if(sc > 0.001) K.pushEllipse(p[0], p[1], rx, rx * (0.5 + 0.15 * hj(6)), aj + Math.PI / 2, C.lime, C.limeRim, hj(7), z);
         // 宙の一点から伸びる線 (現れたあと点の側から伸び、消える前に点へ縮む)
         const gl = Math.min(c01((x - xp - 0.04) / 0.10), 1 - c01((x - xd + 0.06) / 0.06));
@@ -725,7 +790,7 @@ void main(){
       }
       // 隣どうしを短い線で (鎖)
       for(let j = 0; j < m; j++){
-        if(H(id * 64 + j, n, 11) > 0.8) continue;
+        if(H(id * 64 + j, n, 11) > chainP) continue;
         const k = (j + 1) % m, st = 0.06 + 0.28 * Math.max(j, k) / m + 0.04;
         const gc = Math.min(c01((x - st) / 0.05), 1 - c01((x - 0.76 - 0.10 * Math.min(j, k) / m) / 0.05));
         if(gc > 0) K.line3(K.lines, pos[j], pos[k], K.hwG, al, C.green, H(id * 64 + j, n, 12), gc);
@@ -737,7 +802,7 @@ void main(){
       for(let b = a + 1; b < rings.length; b++){
         const A = rings[a], B = rings[b];
         for(let e = 0; e < 2; e++){
-          if(H(A.id * 31 + B.id, A.n * 7 + B.n, 40 + e) > 0.6 * K.links) continue;
+          if(H(A.id * 31 + B.id, A.n * 7 + B.n, 40 + e) > crossK * K.links) continue;
           const pa = A.pos[Math.floor(H(A.id, A.n, 50 + e) * A.pos.length)], pb = B.pos[Math.floor(H(B.id, B.n, 50 + e) * B.pos.length)];
           const st = 0.4 + 0.1 * H(A.id + B.id, A.n + B.n, 60 + e);
           const gx = Math.min(c01((Math.min(A.x, B.x) - st) / 0.12), 1 - c01((Math.max(A.x, B.x) - 0.74) / 0.05));
@@ -763,6 +828,7 @@ void main(){
       if(p0 && p1 && Math.hypot(p0[0] - p1[0], p0[1] - p1[1]) > 0.004) K.pushArrow(arr, tip, from, hw, col, a, sd);
     };
     const nCol = K.num('columns', 0, 8), nLay = K.num('layers', 3, 40), hK = K.pct('height'), axK = K.pct('axes'), arK = K.pct('arrows');
+    const colWK = Math.max(0.05, K.pv('colWidth', 1)), unK = K.pv('unravel', 1), csK = K.pv('colSpread', 1), tubeK = Math.max(0.05, K.pv('tubeWidth', 1)), burstN = Math.round(4 * K.pv('burst', 1));
     // 立ち上がりの角度 (要素ごとに少しずれ、少し弾んで立つ) と、そのときの「上」の向き (寝ていると地面の +y = 画面の上)
     const thOf = (lag)=> (Math.PI / 2) * K.riseK * this._ease(c01((K.rn - 0.3 * lag) / 0.7), 0.5 * K.pop);
     const upOf = (th)=> [0, Math.cos(th), Math.sin(th)];
@@ -793,13 +859,13 @@ void main(){
       const id = 900000 + g, cy2 = this._pool(id, t, 3.0), n = cy2.n, s = cy2.s, x = cy2.x;
       if(H(id, n, 3) > 0.9 || x > 0.96) continue;
       const [tx, ty] = this._camAt(s, cy2.T);
-      const R = (0.035 + 0.02 * H(id, n, 6)) * K.sizeK, Hc = (0.30 + 0.20 * H(id, n, 7)) * hK, M = nLay;
+      const R = (0.035 + 0.02 * H(id, n, 6)) * K.sizeK * colWK, Hc = (0.30 + 0.20 * H(id, n, 7)) * hK, M = nLay;
       // 根元は、寝ているとき柱の中ほどが画面の高さの中ほどに来る所 (上が画面からはみ出さない)
-      const ox = tx + ((g + 0.5) / nCol - 0.5) * 0.85 * K.aspect + (H(id, n, 4) - 0.5) * 0.2, oy = ty - Hc * 0.5 + (H(id, n, 5) - 0.5) * 0.2;
+      const ox = tx + ((g + 0.5) / nCol - 0.5) * 0.85 * csK * K.aspect + (H(id, n, 4) - 0.5) * 0.2, oy = ty - Hc * 0.5 + (H(id, n, 5) - 0.5) * 0.2;
       // 段階 (周期の中の位置 x): 0.02 一つの楕円 / 0.10 青い軸 / 0.22 上・中・下の楕円と赤い筒 / 0.30〜0.55 楕円が詰まる / 0.60〜 ほどけて散る / 0.86〜 消える
       const fade = 1 - sm((x - 0.86) / 0.08);
       const un = sm((x - 0.60) / 0.24);
-      const lean = (H(id, n, 8) - 0.5) * 2.0 * R * 4;           // ほどけると傾く (上ほど横へずれる)
+      const lean = (H(id, n, 8) - 0.5) * 2.0 * R * 4 * unK;           // ほどけると傾く (上ほど横へずれる)
       const ph = H(id, n, 9) * 6.28;
       const th = thOf(H(id, n, 11)), u = upOf(th);
       // 柱の根元から、横 (画面の横に見える地面の向き) に w、上 (柱の向き) に h の点
@@ -807,8 +873,8 @@ void main(){
       // 段 k の楕円の位置 (ほどけると傾き、うねり、いくつかは外へ離れて降りる)
       const at = (k)=>{
         const zk = Hc * k / (M - 1), hk2 = H(id * 64 + k, n, 1);
-        const wav = un * (lean * zk / Hc + R * 1.3 * Math.sin(k * 0.9 + ph) + R * 0.9 * (hk2 - 0.5));
-        const away = hk2 < 0.22 ? un * un * (0.10 + 0.10 * H(id * 64 + k, n, 2)) * K.spread : 0;
+        const wav = un * (lean * zk / Hc + (R * 1.3 * Math.sin(k * 0.9 + ph) + R * 0.9 * (hk2 - 0.5)) * unK);
+        const away = hk2 < 0.22 ? un * un * unK * (0.10 + 0.10 * H(id * 64 + k, n, 2)) * K.spread : 0;
         const aa = H(id * 64 + k, n, 3) * 6.28;
         const q = pt(wav, zk * (1 - 0.5 * (away > 0 ? un : 0)));
         return [q[0] + Math.cos(aa) * away, q[1] + Math.sin(aa) * away, q[2]];
@@ -828,8 +894,8 @@ void main(){
       const p0 = [ox, oy, 0];
       // 1 つ目の楕円から地面に放射する矢印 (軸が伸びると縮む)
       const gr = Math.min(sm((x - 0.03) / 0.05), 1 - sm((x - 0.14) / 0.05));
-      for(let k = 0; k < 4 && gr > 0; k++){
-        const a = (k + 0.3 * H(id, n, 10 + k)) * Math.PI / 2 + H(id, n, 14) * 6.28, L = (0.07 + 0.05 * H(id, n, 15 + k)) * K.spread;
+      for(let k = 0; k < burstN && gr > 0; k++){
+        const a = (k + 0.3 * H(id, n, 10 + k)) * Math.PI * 2 / burstN + H(id, n, 14) * 6.28, L = (0.07 + 0.05 * H(id, n, 15 + k)) * K.spread;
         const q1 = [ox + Math.cos(a) * L, oy + Math.sin(a) * L, 0];
         K.line3(K.lines, p0, q1, K.hwG, al, C.green, H(id, n, 20 + k), gr);
         if(gr >= 1) arrow(K.lines, q1, lerp3(p0, q1, 0.9), K.hwG, C.green, al, H(id, n, 24 + k));
@@ -849,11 +915,11 @@ void main(){
       const tg = sm((x - 0.22) / 0.08), tA = al * (1 - sm((x - 0.58) / 0.06)) * fade;
       if(tg > 0 && tA > 0.002){
         for(const sg of [-1, 1]){
-          const o = R * 1.18 * sg;
+          const o = R * 1.18 * tubeK * sg;
           const e0 = pt(o, -0.05 * Hc), e1 = pt(o, Hc * 1.06);
           K.line3(K.arcs, e0, e1, K.hwL, tA, C.red, H(id, n, 40 + sg), tg);
           if(tg >= 1){
-            const hk3 = R * 0.30 * sg;
+            const hk3 = R * 0.30 * tubeK * sg;
             K.line3(K.arcs, e0, [e0[0] + sx[0] * hk3, e0[1] + sx[1] * hk3, e0[2]], K.hwL, tA, C.red, H(id, n, 43 + sg));
             K.line3(K.arcs, e1, [e1[0] + sx[0] * hk3, e1[1] + sx[1] * hk3, e1[2]], K.hwL, tA, C.red, H(id, n, 46 + sg));
           }
@@ -864,7 +930,7 @@ void main(){
         const ga = al * Math.min(1, un * 2) * fade;
         for(let k = 0; k + 1 < M; k++) if(H(id * 64 + k, n, 7) < 0.5) K.line3(K.lines, pos[k], pos[k + 1], K.hwG * 0.8, ga, C.green, H(id * 64 + k, n, 8), Math.min(1, un * 1.5));
         for(const sg of [-1, 1]){
-          const o = R * 1.4 * sg, lt = lean * un;
+          const o = R * 1.4 * tubeK * sg, lt = lean * un;
           K.line3(K.lines, pt(o, 0), pt(o + lt, Hc), K.hwG * 0.8, ga * 0.8, C.green, H(id, n, 50 + sg), Math.min(1, un * 1.5));
         }
         for(const [k, c] of [[0, 60], [M - 1, 61], [1, 62], [M - 2, 63]]){
@@ -889,6 +955,7 @@ void main(){
     const rot = (d, a)=>[d[0] * Math.cos(a) - d[1] * Math.sin(a), d[0] * Math.sin(a) + d[1] * Math.cos(a)];
     const nL = K.num('launches', 1, 4), nN = K.num('cluster', 4, 20), cK = K.pct('curves'), dK = K.pct('discs'), nRing = K.num('rings', 0, 20), trK = K.pct('trails');
     const sp = K.spread, sz = K.sizeK, hwI = K.hwB * 0.9;
+    const netK = Math.max(0.05, K.pv('netSize', 1)), tubeWK = Math.max(0.05, K.pv('tubeWidth', 1)), fanAK = Math.max(0.05, K.pv('fanAngle', 1)), fanLK = Math.max(0.05, K.pv('fanLen', 1)), discK = Math.max(0.05, K.pv('discSize', 1)), tailK = Math.max(0.05, K.pv('tailLen', 1)), bendK = K.pv('tubeBend', 1), openK = Math.max(0.05, K.pv('ringOpen', 1));
     // 地面の楕円の輪郭だけ (筒の輪)。c = 中心、u = 長い軸の向き (単位)、R / r = 長い・短い半径
     const ring = (c, u, R, r, col, a, sd)=> K.pushPoly(K.lines, (v)=>{
       const q = v * Math.PI * 2;
@@ -910,8 +977,8 @@ void main(){
       for(let k = 0; k < nN; k++){
         const r = Math.sqrt((k + 0.5) / nN), th = k * 2.39996 + H(id, n, 7) * 6.28;
         nodes.push({
-          x:ccx + Math.cos(th) * r * 0.15 * sp + (H(id * 64 + k, n, 1) - 0.5) * 0.03,
-          y:ccy + Math.sin(th) * r * 0.27 * sp + (H(id * 64 + k, n, 2) - 0.5) * 0.03,
+          x:ccx + Math.cos(th) * r * 0.15 * sp * netK + (H(id * 64 + k, n, 1) - 0.5) * 0.03,
+          y:ccy + Math.sin(th) * r * 0.27 * sp * netK + (H(id * 64 + k, n, 2) - 0.5) * 0.03,
           pop:0.02 + 0.16 * k / nN, rx:(0.028 + 0.022 * H(id * 64 + k, n, 3)) * sz,
         });
       }
@@ -960,16 +1027,16 @@ void main(){
         if(sc > 0.001) K.pushEllipse(nd.x, nd.y, nd.rx * sc, nd.rx * sc * (0.62 + 0.16 * hk(25)), 1.1 + (hk(26) - 0.5) * 0.5, C.mint, C.ink, hk(27));
       }
       // ── 筒 (口から後ろへ。曲がって上へ抜ける筒と、まっすぐ後ろの薄い筒) ──
-      const Rr = 0.052 * sz * (0.9 + 0.2 * H(id, n, 8)), bk = [-cd[0], -cd[1]];
+      const Rr = 0.052 * sz * (0.9 + 0.2 * H(id, n, 8)) * tubeWK, bk = [-cd[0], -cd[1]];
       const up = H(id, n, 9) < 0.5 ? 1 : -1;
       const P0 = [S.x, S.y], P1 = [S.x + bk[0] * 0.12 * sp, S.y + bk[1] * 0.12 * sp];
-      const P2 = [S.x + bk[0] * 0.06 * sp + cn[0] * up * 0.26 * sp, S.y + bk[1] * 0.06 * sp + cn[1] * up * 0.26 * sp];
+      const P2 = [S.x + bk[0] * 0.06 * sp + cn[0] * up * 0.26 * sp * bendK, S.y + bk[1] * 0.06 * sp + cn[1] * up * 0.26 * sp * bendK];
       const axis = (v)=>[(1 - v) * (1 - v) * P0[0] + 2 * (1 - v) * v * P1[0] + v * v * P2[0], (1 - v) * (1 - v) * P0[1] + 2 * (1 - v) * v * P1[1] + v * v * P2[1]];
       const nrm = (v)=>{ const a = axis(Math.max(0, v - 0.01)), b = axis(Math.min(1, v + 0.01)), l = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1; return [-(b[1] - a[1]) / l, (b[0] - a[0]) / l]; };
       const tubeA = al * fade;
       for(let k = 1; k <= nRing; k++){   // 輪は遠い端から口へ順に現れる
         const v = k / (nRing + 0.5), sc = this._popAt(x, 0.12 + 0.14 * (1 - v), 0.80, 0.04, K.pop);
-        if(sc > 0.001) ring([...axis(v), 0], nrm(v), Rr * sc, Rr * 0.34 * sc, C.ink, tubeA, H(id * 64 + 40 + k, n, 1));
+        if(sc > 0.001) ring([...axis(v), 0], nrm(v), Rr * sc, Rr * 0.34 * openK * sc, C.ink, tubeA, H(id * 64 + 40 + k, n, 1));
       }
       const gs = Math.min(sm((x - 0.12) / 0.14), 1 - sm((x - 0.80) / 0.06));
       if(gs > 0){
@@ -986,7 +1053,7 @@ void main(){
         const gh = [0.62, 0.62, 0.62], ghA = tubeA * 0.55;
         for(let k = 1; k <= 4; k++){
           const c = [S.x + bk[0] * 0.045 * k * sp, S.y + bk[1] * 0.045 * k * sp, 0];
-          if(gs * 4 >= k) ring(c, cn, Rr, Rr * 0.34, gh, ghA, H(id * 64 + 50 + k, n, 1));
+          if(gs * 4 >= k) ring(c, cn, Rr, Rr * 0.34 * openK, gh, ghA, H(id * 64 + 50 + k, n, 1));
         }
         for(const sg of [-1, 1]){
           const a0 = [S.x + cn[0] * Rr * sg, S.y + cn[1] * Rr * sg, 0], a1 = [a0[0] + bk[0] * 0.20 * sp, a0[1] + bk[1] * 0.20 * sp, 0];
@@ -1028,8 +1095,8 @@ void main(){
       const nF = Math.round(32 * cK);
       for(let j = 0; j < nF; j++){
         const hj = (c)=>H(id * 256 + j, n, c);
-        const ph = ((nF > 1 ? j / (nF - 1) : 0.5) - 0.5) * 1.5 + (hj(1) - 0.5) * 0.08;
-        const dj = rot(cd, ph), Lj = (0.45 + 0.35 * hj(2)) * sp, dm = rot(cd, ph * 0.55);
+        const ph = ((nF > 1 ? j / (nF - 1) : 0.5) - 0.5) * 1.5 * fanAK + (hj(1) - 0.5) * 0.08;
+        const dj = rot(cd, ph), Lj = (0.45 + 0.35 * hj(2)) * sp * fanLK, dm = rot(cd, ph * 0.55);
         const e0 = [Rp[0], Rp[1]], e1 = [Rp[0] + dj[0] * Lj, Rp[1] + dj[1] * Lj], c1 = [Rp[0] + dm[0] * Lj * 0.5, Rp[1] + dm[1] * Lj * 0.5];
         const f = (v)=>[(1 - v) * (1 - v) * e0[0] + 2 * (1 - v) * v * c1[0] + v * v * e1[0], (1 - v) * (1 - v) * e0[1] + 2 * (1 - v) * v * c1[1] + v * v * e1[1], 0];
         const st = 0.42 + 0.12 * hj(3);
@@ -1045,14 +1112,14 @@ void main(){
         const fly = 0.06 * sp * sm((x - xp) / 0.35);
         const q0 = f(vj), q1 = f(Math.min(1, vj + 0.02)), tl = Math.hypot(q1[0] - q0[0], q1[1] - q0[1]) || 1, tg = [(q1[0] - q0[0]) / tl, (q1[1] - q0[1]) / tl];
         const pc = [q0[0] + tg[0] * fly, q0[1] + tg[1] * fly, 0];
-        const rD = (0.012 + 0.06 * Math.pow(vj, 1.6)) * sz * (0.6 + 0.8 * hj(8)), ta = Math.atan2(tg[1], tg[0]);
+        const rD = (0.012 + 0.06 * Math.pow(vj, 1.6)) * sz * discK * (0.6 + 0.8 * hj(8)), ta = Math.atan2(tg[1], tg[0]);
         K.pushEllipse(pc[0], pc[1], rD * sc, rD * 0.42 * sc, ta + Math.PI / 2, C.mint, C.ink, hj(9));
         // 緑の尾 (円盤の上下の縁から先へ伸び、下へ曲がって矢印)
         if(hj(10) < trK){
           const gt = Math.min(c01((x - xp - 0.04) / 0.12), 1 - c01((x - 0.84) / 0.05));
           for(const sg of [-1, 1]){
             const nv = [-tg[1] * sg, tg[0] * sg], b0 = [pc[0] + nv[0] * rD * 0.9 * sc, pc[1] + nv[1] * rD * 0.9 * sc];
-            const L = 0.10 * sp, bend = rot(tg, -0.7);
+            const L = 0.10 * sp * tailK, bend = rot(tg, -0.7);
             const b1 = [b0[0] + tg[0] * L * 0.6, b0[1] + tg[1] * L * 0.6], b2 = [b1[0] + bend[0] * L * 0.6, b1[1] + bend[1] * L * 0.6];
             const ft = (v)=>[(1 - v) * (1 - v) * b0[0] + 2 * (1 - v) * v * b1[0] + v * v * b2[0], (1 - v) * (1 - v) * b0[1] + 2 * (1 - v) * v * b1[1] + v * v * b2[1], 0];
             if(gt > 0) K.pushPoly(K.lines, ft, 14, 0, gt, K.hwG, C.green, al, false, hj(11 + sg));
@@ -1079,6 +1146,7 @@ void main(){
     const net = this.useNet;                             // 網 (ノードと線) を描く
     const style = this.draw ? -1 : Math.max(0, Math.min(2, Math.round(P.style) || 0));   // 0 = 図 1 / 1 = 図 2 / 2 = 両方 / -1 = 別の図
     const pk = (k)=> P[k] != null ? Math.max(0, dz(P[k]) * 0.01) : 0;   // その図が持たないパラメータは 0 (%)
+    const pv = (k, d)=> P[k] != null ? Math.max(0, dz(P[k]) * 0.01) : d;   // その図が持たないパラメータは既定 d
     const sqK = pk('squares'), diaK = pk('diamonds'), tenK = pk('tendrils');
     const riseK = Math.max(0, Math.min(1, dz(P.rise) * 0.01));
     const deg = Math.PI / 180;
@@ -1096,10 +1164,10 @@ void main(){
       pTendril: Math.min(0.6, tenK * (style === 1 ? 0.20 : 0.30)),
       drift: Math.max(0, dz(P.drift) * 0.01) * 0.4,
       pop: Math.max(0, dz(P.pop) * 0.01),
-      aspect, riseK, D:2.2,
+      aspect, riseK, D:2.2 * Math.max(0.3, pv('camDist', 1)), linkRange:Math.max(0.1, pv('linkRange', 1)),
       cphM: Math.cos(tiltM), sphM: Math.sin(tiltM), yawM, cyc: Math.max(2, dz(P.cycle)),
     };
-    const sig = [cfg.N, cfg.life, cfg.beat, cfg.spread, cfg.links, cfg.pSquare, cfg.pDiamond, cfg.pTendril, cfg.drift, aspect.toFixed(3), seed, tiltM.toFixed(4), yawM.toFixed(4), cfg.cyc].join('|');
+    const sig = [cfg.N, cfg.life, cfg.beat, cfg.spread, cfg.links, cfg.pSquare, cfg.pDiamond, cfg.pTendril, cfg.drift, aspect.toFixed(3), seed, tiltM.toFixed(4), yawM.toFixed(4), cfg.cyc, cfg.D, cfg.linkRange].join('|');
     if(sig !== this._sig || this._memo.size > 60000){ this._memo.clear(); this._sig = sig; }
     this._cfg = cfg;
     this._salt = Math.imul(seed + 1, 0x6a09e667) | 0;
@@ -1127,12 +1195,12 @@ void main(){
       return [cx + qx * k, cy + (qy * cph + z * sph) * k, depth];
     };
 
-    const C = this.COL;
+    const C = this._palette(dz(P.markerHue) || 0, dz(P.lineHue) || 0, dz(P.arrowHue) || 0);
     const sizeK = Math.max(0, dz(P.size) * 0.01);
     const lineK = Math.max(0.05, dz(P.line) * 0.01);
     const kick = Math.max(0, dz(P.kick) * 0.01) * (beatMode ? Math.pow(1 - (opts.beat - Math.floor(opts.beat)), 2) : 0);
     const u = 1 / 1080;                        // 1080p の 1px (線幅の単位)
-    const hwG = 0.60 * u * lineK, hwB = 0.72 * u * lineK, hwL = 0.90 * u * lineK, rDot = 1.8 * u * lineK, hwE = 0.62 * u * lineK;
+    const hwG = 0.60 * u * lineK, hwB = 0.72 * u * lineK, hwL = 0.90 * u * lineK, rDot = 1.8 * u * lineK * Math.max(0.05, pv('dotSize', 1)), hwE = 0.62 * u * lineK * Math.max(0.05, pv('rim', 1));
     const mx = aspect * 0.5 + 0.1, my = 0.6;
     const onScreen = (p)=> p && Math.abs(p[0] - cx) < mx + 0.2 && Math.abs(p[1] - cy) < my + 0.2;
     // 手描きのばらつきの種 (0..1)。地面の位置や要素の番号から決めるので、地面が倒れて画面での位置が変わっても同じ
@@ -1196,7 +1264,7 @@ void main(){
     const pushArrow = (arr, tip3, prev3, hw, col, al, sd)=>{
       const pt = P3(tip3[0], tip3[1], tip3[2]), pp = P3(prev3[0], prev3[1], prev3[2]);
       if(!pt || !pp || al <= 0.002) return;
-      const dx = pt[0] - pp[0], dy = pt[1] - pp[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, nx = -uy, ny = ux, L = 0.015 * lineK;
+      const dx = pt[0] - pp[0], dy = pt[1] - pp[1], l = Math.hypot(dx, dy) || 1, ux = dx / l, uy = dy / l, nx = -uy, ny = ux, L = 0.015 * lineK * Math.max(0.05, pv('arrowhead', 1));
       const hs = Math.floor((sd || 0) * 1e6);
       for(const sg of [1, -1]){
         const Lk = L * (0.8 + 0.4 * this._hash(hs, sg, 52)), ok = 0.55 * (0.75 + 0.5 * this._hash(hs, sg, 53));
@@ -1205,8 +1273,10 @@ void main(){
       }
     };
     // 地面 (高さ z) の楕円 (中心・半径・向き) を画面の楕円へ (共役半径から主軸を求める)
+    const flatK = Math.max(0.05, pv('markerFlat', 1));
     const pushEllipse = (x, y, rx, ry, ang, col, col2, sd, z)=>{
       z = z || 0;
+      ry = ry * flatK;
       const c0 = P3(x, y, z);
       if(!c0 || !onScreen(c0)) return;
       const ca = Math.cos(ang), sa = Math.sin(ang);
@@ -1249,6 +1319,7 @@ void main(){
     const lineCol = (a, b)=> (a.kind === 's' || b.kind === 's') ? [C.brown, hwB] : [mixC(C.green, C.taupe, Math.min(morphOf(a), morphOf(b))), hwG];
 
     // ── ノードと線 (すべて地面) ──
+    const sqSizeK = Math.max(0.05, pv('squareSize', 1)), diaFlatK = Math.max(0.05, pv('diamondFlat', 1)), leanK = pv('lean', 1), mixK = pv('sizeMix', 1);
     const reach = 1.9;   // 立ち上がると見える地面が広がるので、中心からこの範囲までは描く
     const netNodes = [];
     for(let i = 0; net && i < cfg.N; i++){
@@ -1283,21 +1354,22 @@ void main(){
         pushDot(r.x, r.y, rDot, C.dot, sc, sd2(r.x, r.y));
       } else if(r.kind === 's'){
         // 茶色の四角 (地面に置いた正方形。斜めから見ると菱形)
-        const hs = 0.115 * (0.30 + 0.12 * hh) * sizeK * sc, a = ((hh * 7.7) % 1 - 0.5) * 0.16, ca = Math.cos(a), sa = Math.sin(a);
+        const hs = 0.115 * (0.30 + 0.12 * hh) * sizeK * sqSizeK * sc, a = ((hh * 7.7) % 1 - 0.5) * 0.16, ca = Math.cos(a), sa = Math.sin(a);
         const cs4 = [[-1,-1],[1,-1],[1,1],[-1,1]].map(([ux, uy])=>[r.x + (ux * ca - uy * sa) * hs, r.y + (ux * sa + uy * ca) * hs]);
         pushQuad(cs4, 0.5, hwB, C.sqLine, sd2(r.x, r.y));
       } else {
         const mo = morphOf(r);
         if(mo > 0.001){
           // ベージュの水彩の菱形 (灰茶の縁)
-          const rx = 0.115 * (0.12 + 0.20 * hh) * sizeK * sc * mo, ry = rx * 0.62, a = ((hh * 5.7) % 1 - 0.5) * 0.5, ca = Math.cos(a), sa = Math.sin(a);
+          const rx = 0.115 * (0.12 + 0.20 * hh) * sizeK * sc * mo, ry = rx * 0.62 * diaFlatK, a = ((hh * 5.7) % 1 - 0.5) * 0.5 * leanK, ca = Math.cos(a), sa = Math.sin(a);
           const cs4 = [[rx, 0], [0, ry], [-rx, 0], [0, -ry]].map(([ux, uy])=>[r.x + ux * ca - uy * sa, r.y + ux * sa + uy * ca]);
           pushQuad(cs4, 0.42, hwG, C.taupe, sd2(r.x + 0.5, r.y));
         }
         if(mo < 0.999){
-          const rx = 0.115 * (0.10 + 0.30 * Math.pow(hh, 1.5)) * sizeK * sc * (1 - mo);
+          const sv = 0.10 + 0.30 * Math.pow(hh, 1.5);
+          const rx = 0.115 * (mixK === 1 ? sv : Math.max(0.03, 0.22 + (sv - 0.22) * mixK)) * sizeK * sc * (1 - mo);
           const ry = rx * (0.58 + 0.24 * ((hh * 7.3) % 1));
-          pushEllipse(r.x, r.y, rx, ry, ((hh * 13.1) % 1 - 0.5) * 0.7, C.lime, C.limeRim, sd2(r.x, r.y));
+          pushEllipse(r.x, r.y, rx, ry, ((hh * 13.1) % 1 - 0.5) * 0.7 * leanK, C.lime, C.limeRim, sd2(r.x, r.y));
         }
       }
     }
@@ -1316,7 +1388,7 @@ void main(){
         t, aspect, sizeK, kick, C, H, P3, line3, pushPoly, pushArrow, pushEllipse, life2, mixC, lines, arcs, netNodes, rn, riseK,
         sx:[cps, -sps],
         hwG, hwB, hwL, pop:cfg.pop, spread:cfg.spread, links:cfg.links,
-        pct:(k)=>Math.max(0, dz(P[k]) * 0.01), num:(k, lo, hi)=>Math.max(lo, Math.min(hi, Math.round(dz(P[k])))),
+        pct:(k)=>Math.max(0, dz(P[k]) * 0.01), pv, num:(k, lo, hi)=>Math.max(lo, Math.min(hi, Math.round(dz(P[k])))),
         paper:Array.isArray(P.paper) ? P.paper : this.PDefaults.paper,
       };
       this[this.draw](K);
@@ -1363,6 +1435,7 @@ void main(){
       }
       // 縦の面 (下辺を蝶番に、寝た状態から 90° 立ち上がる。面ごとに少しずつずれる) と切り抜かれた人
       const nPlane = Math.round(5 * Math.max(0, dz(P.planes) * 0.01));
+      const planeK = Math.max(0.05, pv('planeSize', 1)), waveK = pv('meanderWave', 1);
       const figK = Math.max(0, Math.min(1, dz(P.figures) * 0.01));
       const FIG = this._figure();
       for(let k = 0; k < nPlane; k++){
@@ -1379,7 +1452,7 @@ void main(){
         // 面ごとに横の持ち場を決め、画面での横の広がり (幅 × cos) がその中に収まる位置にする (隣の面と重ならない)
         const slot = aspect * 1.15 / nPlane;
         const ja = 1.05 + (H(id, n, 8) - 0.5) * 0.16;          // 下辺の向き (画面の横から奥へ)
-        const Hb = (0.42 + 0.22 * H(id, n, 6)) * sizeK;
+        const Hb = (0.42 + 0.22 * H(id, n, 6)) * sizeK * planeK;
         const W = Math.min(Hb * (1.3 + 0.4 * H(id, n, 7)), slot * 0.9 / Math.cos(ja)), Hh = Hb * sc;
         const [bx, by] = this._fromYaw(-aspect * 0.575 + k * slot + Math.max(0, slot - W * Math.cos(ja)) * H(id, n, 4), (H(id, n, 5) - 0.75) * 0.7, tx, ty, s);
         const [ex, ey] = this._fromYaw(Math.cos(ja), Math.sin(ja), 0, 0, s);   // 下辺の向き (地面)
@@ -1434,7 +1507,7 @@ void main(){
         const ph2 = H(id, n, 6) * 6.28, lp = 0.45 + 0.25 * H(id, n, 7), lr = 0.025 + 0.02 * H(id, n, 8);
         const dqx = qx1 - qx0, dqy = -1.12, dl = Math.hypot(dqx, dqy), nqx = -dqy / dl, nqy = dqx / dl;
         const f = (v)=>{
-          const wv = 0.035 * Math.sin(v * 14 + ph2) + 0.02 * Math.sin(v * 31 + ph2 * 1.7);
+          const wv = (0.035 * Math.sin(v * 14 + ph2) + 0.02 * Math.sin(v * 31 + ph2 * 1.7)) * waveK;
           const lv = Math.max(0, Math.min(1, (v - lp) / 0.08));
           const la = lv * Math.PI * 2, lx = lv > 0 && lv < 1 ? lr * Math.sin(la) : 0, ly = lv > 0 && lv < 1 ? lr * (1 - Math.cos(la)) : 0;
           const [wx, wy] = this._fromYaw(qx0 + dqx * v + nqx * wv + lx, 0.56 + dqy * v + nqy * wv + ly, tx, ty, s);
@@ -1508,6 +1581,10 @@ void main(){
       const boilN = boilK > 0 ? Math.floor(t * boilK * (beatMode ? 2 : 8 / Math.max(spd, 1e-3))) : 0;
       gl.uniform1f(this.U.boil, boilN * 0.6180339 - Math.floor(boilN * 0.6180339));   // 小数部だけ渡す (長く回しても桁落ちしない)
       gl.uniform3f(this.U.sqFill, C.sqFill[0], C.sqFill[1], C.sqFill[2]);
+      gl.uniform1f(this.U.fill, pv('markerFill', 0.74));
+      gl.uniform1f(this.U.shade, pv('shade', 1));
+      gl.uniform1f(this.U.blot, pv('inkPool', 1));
+      gl.uniform1f(this.U.grainP, pv('paperGrain', 1));
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instVBO);
       if(data.byteLength > this.instCap){
         this.instCap = Math.max(data.byteLength, this.instCap * 2, 65536);
@@ -1532,7 +1609,9 @@ Rhizome.PDefaults = JSON.parse(JSON.stringify(Rhizome.P));
 // own = その図だけのパラメータ (既定値)、ownSpecs = その UI。共通のパラメータは Rhizome の既定値から写す
 Rhizome._variant = function(draw, own, ownSpecs, useNet){
   const base = this;
-  const head = ['speed', 'life'].concat(useNet ? ['nodes'] : []), tail = ['size', 'spread', 'links', 'line', 'pencil', 'hand', 'boil', 'pop', 'kick', 'drift', 'rise', 'cycle', 'tilt', 'yaw', 'seed'];
+  const head = ['speed', 'life'].concat(useNet ? ['nodes'] : []);
+  const tail = ['size', 'spread', 'links'].concat(useNet ? ['linkRange', 'lean', 'sizeMix'] : [],
+    ['line', 'markerFill', 'rim', 'markerFlat', 'shade', 'markerHue', 'lineHue', 'arrowHue', 'arrowhead', 'inkPool', 'paperGrain', 'pencil', 'hand', 'boil', 'pop', 'kick', 'drift', 'rise', 'cycle', 'tilt', 'yaw', 'camDist', 'seed']);
   const P = {};
   for(const k of head.concat(tail, ['paper'])) P[k] = JSON.parse(JSON.stringify(base.PDefaults[k]));
   Object.assign(P, own);
@@ -1546,32 +1625,61 @@ Rhizome._variant = function(draw, own, ownSpecs, useNet){
   v.PDefaults = JSON.parse(JSON.stringify(P));
   return v;
 };
-const RhizomeFan = Rhizome._variant('_fan', {curves:100, fans:5, open:100, swirl:100, seeds:25}, [
+const RhizomeFan = Rhizome._variant('_fan', {curves:100, fans:5, open:100, swirl:100, seeds:25, coil:100, discSize:100, seedSize:100, aim:100, stagger:100, lenMix:100, scatter:100, greenShare:22, dashed:18}, [
   ['Curves', 'curves', 0,  300, 1, 'pct'],   // 扇 1 つの線の数 (%)
   ['Fans',   'fans',   1,  10,  1, 'int'],   // 同時に出る扇の枠の数
   ['Open',   'open',   10, 300, 1, 'pct'],   // 扇の開き (%)
   ['Swirl',  'swirl',  0,  300, 1, 'pct'],   // 線の巻き (%)
   ['Seeds',  'seeds',  0,  100, 1, 'pct'],   // 先が黒い種になる割合 (%)
+  ['Coil',   'coil',   30, 300, 1, 'pct'],   // 線の根元のバネの大きさ (%)
+  ['Disc Size', 'discSize', 20, 300, 1, 'pct'],   // 先の円盤の大きさ (%)
+  ['Seed Size', 'seedSize', 30, 400, 1, 'pct'],   // 黒い種の大きさ (%)
+  ['Aim',    'aim',    0,  300, 1, 'pct'],   // 扇が画面の中ほどから外れる向きのばらつき (%。0 で全部が中心へ向く)
+  ['Stagger', 'stagger', 0, 200, 1, 'pct'],  // 線が順に伸び始めるずれ (%。0 で一斉)
+  ['Length Mix', 'lenMix', 0, 300, 1, 'pct'],   // 線の長さのばらつき (%。0 でそろう)
+  ['Scatter', 'scatter', 0, 400, 1, 'pct'],  // 線の向きのばらつき (%)
+  ['Green Share', 'greenShare', 0, 100, 1, 'pct'],   // 青でなく緑になる線の割合 (%)
+  ['Dashed', 'dashed', 0, 100, 1, 'pct'],    // 破線になる線の割合 (%)
 ]);
-const RhizomePacks = Rhizome._variant('_packs', {rings:6, members:100, hub:100, float:35}, [
+const RhizomePacks = Rhizome._variant('_packs', {rings:6, members:100, hub:100, float:35, ringSize:100, chain:80, runaway:12, cross:60, hubSize:100, memberMix:100, ringJitter:100}, [
   ['Rings',   'rings',   1,  12,  1, 'int'],   // 同時に出る輪の枠の数
   ['Members', 'members', 10, 300, 1, 'pct'],   // 輪 1 つの楕円の数 (%)
   ['Hub',     'hub',     0,  300, 1, 'pct'],   // 宙の一点の高さ (%)
   ['Float',   'float',   0,  100, 1, 'pct'],   // 宙に浮く輪の割合 (%)
+  ['Ring Size', 'ringSize', 40, 250, 1, 'pct'],   // 輪の半径 (%)
+  ['Chain',   'chain',   0,  100, 1, 'pct'],   // 隣どうしを結ぶ短い線の割合 (%)
+  ['Runaway', 'runaway', 0,  100, 1, 'pct'],   // 輪を離れて逃げる楕円の割合 (%。Links に掛かる)
+  ['Cross',   'cross',   0,  200, 1, 'pct'],   // 別の輪へ渡る長い線の量 (%。Links に掛かる)
+  ['Hub Size', 'hubSize', 30, 400, 1, 'pct'],   // 宙の一点の楕円の大きさ (%)
+  ['Member Mix', 'memberMix', 0, 300, 1, 'pct'],   // 輪の楕円の大小の差 (%)
+  ['Ring Jitter', 'ringJitter', 0, 400, 1, 'pct'],   // 輪の上の並びの乱れ (%)
 ]);
-const RhizomeStack = Rhizome._variant('_stack', {nodes:90, columns:3, layers:18, height:100, axes:15, arrows:100}, [
+const RhizomeStack = Rhizome._variant('_stack', {nodes:90, columns:3, layers:18, height:100, axes:15, arrows:100, colWidth:100, unravel:100, colSpread:100, tubeWidth:100, burst:100, linkRange:100, lean:100, sizeMix:100}, [
   ['Columns', 'columns', 0,  8,   1, 'int'],   // 同時に立つ柱の枠の数
   ['Layers',  'layers',  3,  40,  1, 'int'],   // 柱 1 本に積み重なる楕円の数
   ['Height',  'height',  20, 300, 1, 'pct'],   // 柱と青い軸の高さ (%)
   ['Axes',    'axes',    0,  100, 1, 'pct'],   // 網の楕円を青い縦の両矢印が貫く割合 (%)
   ['Arrows',  'arrows',  0,  300, 1, 'pct'],   // 網の楕円から伸びる矢印の付いた線の量 (%)
+  ['Column Width', 'colWidth', 40, 200, 1, 'pct'],   // 柱の太さ (楕円の半径。%)
+  ['Unravel', 'unravel', 0,  300, 1, 'pct'],   // ほどけるときの傾き・うねり・離れ (%)
+  ['Column Spread', 'colSpread', 20, 150, 1, 'pct'],   // 柱どうしの横の間隔 (%)
+  ['Tube Width', 'tubeWidth', 50, 250, 1, 'pct'],   // 赤い筒の幅 (%)
+  ['Burst',   'burst',   0,  250, 1, 'pct'],   // 根元の楕円から地面に放射する矢印の本数 (%。100 で 4 本)
 ], true);
-const RhizomeTube = Rhizome._variant('_tube', {launches:2, cluster:10, curves:100, discs:70, rings:9, trails:35}, [
+const RhizomeTube = Rhizome._variant('_tube', {launches:2, cluster:10, curves:100, discs:70, rings:9, trails:35, netSize:100, tubeWidth:100, fanAngle:100, fanLen:100, discSize:100, tailLen:100, tubeBend:100, ringOpen:100}, [
   ['Launches', 'launches', 1, 4,   1, 'int'],   // 同時に出る「網 → 筒 → 扇」の枠の数
   ['Cluster',  'cluster',  4, 20,  1, 'int'],   // 網の楕円の数
   ['Curves',   'curves',   0, 300, 1, 'pct'],   // 扇の青い線の数 (%)
   ['Discs',    'discs',    0, 100, 1, 'pct'],   // 扇の線に円盤が付く割合 (%)
   ['Rings',    'rings',    0, 20,  1, 'int'],   // 曲がる筒の輪の数
   ['Trails',   'trails',   0, 100, 1, 'pct'],   // 円盤が緑の尾を引く割合 (%)
+  ['Net Size', 'netSize', 40, 250, 1, 'pct'],   // 網の楕円が散らばる広さ (%)
+  ['Tube Width', 'tubeWidth', 40, 200, 1, 'pct'],   // 筒の太さ (%)
+  ['Tube Bend', 'tubeBend', 0, 300, 1, 'pct'],   // 曲がる筒の曲がり (%。0 でまっすぐ後ろ)
+  ['Ring Open', 'ringOpen', 20, 250, 1, 'pct'],   // 筒の輪の開き (短い半径の比。%)
+  ['Fan Angle', 'fanAngle', 20, 250, 1, 'pct'],   // 扇の開き (%)
+  ['Fan Length', 'fanLen', 30, 200, 1, 'pct'],   // 扇の線の長さ (%)
+  ['Disc Size', 'discSize', 20, 300, 1, 'pct'],   // 遠くの円盤の大きさ (%)
+  ['Tail Length', 'tailLen', 30, 300, 1, 'pct'],   // 円盤の緑の尾の長さ (%)
 ]);
 const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rzstack:RhizomeStack, rztube:RhizomeTube };
