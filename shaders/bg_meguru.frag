@@ -49,6 +49,15 @@ float bn_k3d(vec3 sp, vec3 d, vec3 dm, float s, vec3 r){
 // @param uKnotB     85..150 = 100.0
 // @param uCoilTwist 75..150 = 100.0
 // @param uBandWidth 50..150 = 100.0
+// @param uCamHeight -100..100 = 0.0
+// @param uCamSide -40..100 = 0.0
+// @param uLens 100..200 = 100.0
+// @param uStripeScale 0..400 = 100.0
+// @param uDepthHue 100..500 = 100.0
+// @param uBandEdge 20..110 = 100.0
+// @param uBandShift -100..100 = 0.0
+// @param uDepthFade 30..100 = 100.0
+// @param uTint color = #ffffff
 uniform float uSpread; // 構造の広がり (%)
 uniform float uThick; // 棒の太さ (%)
 uniform float uTwist; // ねじれの強さ (%)
@@ -66,6 +75,15 @@ uniform float uKnotA; // 折り返しごとの回転 (XY 面) の量 (%)
 uniform float uKnotB; // 折り返しごとの回転 (ZY 面) の量 (%)
 uniform float uCoilTwist; // 奥行き方向 (XY 回転) のねじれの強さ (%)
 uniform float uBandWidth; // 色の帯 (量子化段) の幅 (%)
+uniform float uCamHeight; // カメラの高さ (%)。0 で元の位置
+uniform float uCamSide; // カメラの左右位置 (%)。0 で元の位置
+uniform float uLens; // 画角 (%)。大きいほど望遠
+uniform float uStripeScale; // 空間に沿った色の縞の細かさ (%)。0 で縞なし
+uniform float uDepthHue; // 奥行きによる色変化の量 (%)
+uniform float uBandEdge; // 色帯の境目のぼかし開始位置 (%)。小さいほどなだらか
+uniform float uBandShift; // 色帯の位置ずらし (%)
+uniform float uDepthFade; // 奥ほど暗くなる度合い (%)
+uniform vec3 uTint; // 図柄のティント色
 
 vec2 bn_map(vec3 sp){
   float sc = uScale / 100.0;
@@ -148,10 +166,12 @@ vec3 bg_meguru(vec2 fc){
   float beatKick = freeModeActive ? 0.0 : (j * 10.0);
   bn_t = mod((tm * 0.05) + beatKick, BN_PI * 30.0);
   vec3 ro = vec3(0.5, 0.0, -20.0);
+  if(uCamHeight != 0.0) ro.y += uCamHeight * 0.02;
+  if(uCamSide != 0.0) ro.x += uCamSide * 0.02;
   vec3 w = normalize(-ro);
   vec3 u = normalize(cross(w, vec3(0.0, 1.0, 0.0)));
   vec3 v = cross(u, w);
-  vec3 rd = normalize(mat3(u, v, w) * vec3(uv, 0.5));
+  vec3 rd = normalize(mat3(u, v, w) * vec3(uv, 0.5 * (uLens / 100.0)));
   float uvLen = length(uv);
   vec3 bgc = vec3(1.0 - (uvLen - 1.0)) * 0.001;
   vec3 amb = bgc * 0.1;
@@ -162,12 +182,13 @@ vec3 bg_meguru(vec2 fc){
   // OFF: 素のグレースケール / ON(uCosGrad): 固有の cosine gradient 彩色
   // 空間/距離による位相をソフト量子化してバンド状の濃淡にする
   float phase = freeModeActive ? (tm * 0.0018) : (bt * 0.015 + j * 1.5);
-  float spatialGrad = dot(sp, vec3(0.008, 0.006, 0.010));
-  float colorParam = spatialGrad + d0 * 0.006 + bn_t * 0.08 + phase;
+  float spatialGrad = dot(sp, vec3(0.008, 0.006, 0.010)) * (uStripeScale / 100.0);
+  float colorParam = spatialGrad + d0 * 0.006 * (uDepthHue / 100.0) + bn_t * 0.08 + phase;
+  if(uBandShift != 0.0) colorParam += uBandShift * 0.01;
   float qStep = 0.34 * (uBandWidth / 100.0);
   float qf = colorParam / qStep;
   float qb = floor(qf);
-  float qramp = smoothstep(0.45, 1.00, fract(qf));
+  float qramp = smoothstep(0.45 * (uBandEdge / 100.0), 1.00, fract(qf));
   colorParam = (qb + qramp) * qStep;
   vec3 palette = vec3(fract(colorParam));
   if(abs(uCosGrad) > 0.0001){
@@ -176,7 +197,8 @@ vec3 bg_meguru(vec2 fc){
     vec3 cosPalette = cosGradColor((colorParam - phase) + cgInv);
     palette = mix(palette, cosPalette, abs(uCosGrad));
   }
-  vec3 rainbow_fcl = palette / (d0 * 0.005 + 0.05);
+  if(uTint != vec3(1.0)) palette *= uTint;
+  vec3 rainbow_fcl = palette / (d0 * 0.005 * (uDepthFade / 100.0) + 0.05);
   return amb + clamp(rainbow_fcl, 0.0, 10.0) * 0.15 * (uGlow / 100.0) - 0.35;
 }
 

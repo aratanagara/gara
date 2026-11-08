@@ -44,6 +44,18 @@ vec3  st_look(vec3 eye, vec3 target, vec2 anchor, float fov){
 // @param uSkyReach 50..200 = 100.0
 // @param uScreenWave 0..250 = 100.0
 // @param uBreath 0..300 = 100.0
+// @param uEyeOrbit -180..180 = 0.0
+// @param uLookShift -100..100 = 0.0
+// @param uRoll -180..180 = 0.0
+// @param uSwirl 0..250 = 100.0
+// @param uBlobTint color = #ffffff
+// @param uHaloTint color = #ffffff
+// @param uSkyTint color = #ffffff
+// @param uDustAmt 0..300 = 100.0
+// @param uHitEps 50..400 = 100.0
+// @param uShadeCurve 50..200 = 100.0
+// @param uSilhouette 30..300 = 100.0
+// @param uVignette 0..200 = 0.0
 uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、構造が単純になる)
 uniform float uSpread;    // 折り畳みの広がり (%)
 uniform float uSize;     // 球塊の大きさ (%)
@@ -64,6 +76,18 @@ uniform float uHaloReach; // 暖色のにじみの届く距離 (%)
 uniform float uSkyReach; // 背景の光の広がり (%)
 uniform float uScreenWave; // 画面のうねりの振れ幅 (%)
 uniform float uBreath; // 放射状の脈動の振れ幅 (%)
+uniform float uEyeOrbit; // カメラを物体の周りに回す角度 (度)
+uniform float uLookShift; // 視線の上下のずらし (%)
+uniform float uRoll; // 画面の傾き (度)
+uniform float uSwirl; // 画面中心からの渦巻きの強さ (%)
+uniform vec3 uBlobTint; // 球塊のティント色
+uniform vec3 uHaloTint; // 暖色のにじみのティント色
+uniform vec3 uSkyTint; // 背景の光のティント色
+uniform float uDustAmt; // 表面の粉状の粒立ち (%)
+uniform float uHitEps; // 表面とみなす距離のしきい値 (%)。大きいほど輪郭がふくらむ
+uniform float uShadeCurve; // 奥行きの陰影の曲線 (%)。上げると暗部が沈む
+uniform float uSilhouette; // 球塊と背景の境目の鋭さ (%)。下げると背景が染み込む
+uniform float uVignette; // 周辺減光 (%)
 
 float st_geometry0(vec3 pos, float tm){
   // 流れるドメインワープ: 折り畳み前に pos を正弦場でうねらせる(有機的な歪み)
@@ -98,13 +122,20 @@ float st_raymarch(vec3 eye, vec3 ray, float tm, out float total){
   total = 0.0;
   const int count = 30;
   int cnt = int(uSteps + 0.5);
+  float dk = 0.9, dm = 0.1, hk = 0.001;
+  if(uDustAmt != 100.0){ dm = 0.1*(uDustAmt / 100.0); dk = 1.0 - dm; }
+  if(uHitEps != 100.0) hk = 0.001*(uHitEps / 100.0);
   for(int k=0; k<count; k++){
     if(k >= cnt) break;
     int index = cnt - k;
     float dist = st_geometry(eye + ray*total, tm);
-    dist *= 0.9 + 0.1*dither;                 // 原典どおり(微細な粒揺らぎ)
+    dist *= dk + dm*dither;                 // 原典どおり(微細な粒揺らぎ)
     total += dist;
-    if(dist < 0.001*total) return float(index)/float(cnt);
+    if(dist < hk*total){
+      float sh = float(index)/float(cnt);
+      if(uShadeCurve != 100.0) sh = pow(sh, uShadeCurve / 100.0);
+      return sh;
+    }
   }
   return 0.0;
 }
@@ -125,13 +156,16 @@ vec3 bg_storming(vec2 fc){
   vec2 uv = 2.0*(I - 0.5*resolution) / resolution.y;
 
   // ワープ/カーブ: 画面 uv を「中心からの距離に応じた渦巻き」+「うねり」で歪める
+  if(uRoll != 0.0) uv = st_rot(radians(uRoll)) * uv;
   float rr = length(uv);
-  uv *= st_rot((0.35 + 0.35*sin(time*0.25)) * rr);                       // 距離依存の渦巻き(カーブ)
+  uv *= st_rot((0.35 + 0.35*sin(time*0.25)) * rr);
+  if(uSwirl != 100.0) uv *= st_rot((0.35 + 0.35*sin(time*0.25)) * rr * (uSwirl / 100.0 - 1.0));                       // 距離依存の渦巻き(カーブ)
   uv += 0.14 * (uScreenWave / 100.0) * vec2(sin(uv.y*3.0 + time*0.7), cos(uv.x*3.0 + time*0.6));  // うねりワープ
   uv *= 1.0 + 0.10 * (uBreath / 100.0) * sin(rr*3.5 - time*0.8);                             // 放射状のうねり(脈動)
 
   vec3 eye = vec3(1.0, 3.5 * (uEyeHeight / 100.0), 1.0);
-  vec3 ray = st_look(eye, vec3(0.0), uv, 2.0 * (uFocal / 100.0));
+  if(uEyeOrbit != 0.0) eye.xz = st_rot(radians(uEyeOrbit)) * eye.xz;
+  vec3 ray = st_look(eye, vec3(0.0, uLookShift * 0.03, 0.0), uv, 2.0 * (uFocal / 100.0));
 
   float total = 0.0;
   vec3 o = vec3(0.0);
@@ -143,13 +177,18 @@ vec3 bg_storming(vec2 fc){
   // 原作の色処理そのまま(最後のガンマ pow(.4545) は原作に無い)
   float gray = o.r;
   o *= vec3(0.8, 0.8, 0.9);
+  if(uBlobTint != vec3(1.0)) o *= uBlobTint;
   float d = smoothstep(0.0, 2.0 * (uSkyReach / 100.0), length(uv));
   vec3 sky = mix(vec3(0.35, 0.37, 0.4), vec3(0.0), d);
+  if(uSkyTint != vec3(1.0)) sky *= uSkyTint;
   d = smoothstep(5.0 * (uHaloReach / 100.0), 0.0, total);
-  o += vec3(0.8, 0.7, 0.6) * d * (uWarmHalo / 100.0);
-  o = mix(sky, o, pow(clamp(o.r, 0.0, 1.0), 0.3));
+  if(uHaloTint == vec3(1.0)) o += vec3(0.8, 0.7, 0.6) * d * (uWarmHalo / 100.0);
+  else o += vec3(0.8, 0.7, 0.6) * uHaloTint * d * (uWarmHalo / 100.0);
+  if(uSilhouette == 100.0) o = mix(sky, o, pow(clamp(o.r, 0.0, 1.0), 0.3));
+  else o = mix(sky, o, pow(clamp(o.r, 0.0, 1.0), 0.3 * (uSilhouette / 100.0)));
 
   o = st_cosgrad(o, gray);
   bgAlpha = clamp(pow(clamp(gray, 0.0, 1.0), 0.3), 0.0, 1.0);
+  if(uVignette != 0.0) o *= max(1.0 - (uVignette / 100.0) * 0.3 * rr * rr, 0.0);
   return clamp(o, 0.0, 1.0);
 }
