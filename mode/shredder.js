@@ -83,6 +83,21 @@ const Shredder = {
     fogNear:0.85,      // 霞み始める距離 (カメラ距離に対する比率)
     fogFar:2.1,        // 完全に霞む距離 (同)
     beatKick:0.4,      // 拍での流速/伸びキック
+    bladeW:100,        // 刃の幅 (%)
+    tipSkew:0,         // 刃の先端を横へずらす (% 正負で向きが逆。鮫のヒレのような非対称な刃)
+    tail:100,          // 原点の裏へ突き抜ける長さ (%)
+    sizeVar:100,       // 大きさの個体差 (% 0=全員同サイズ)
+    lenVar:100,        // 刃の長さの個体差 (% 0=全員同じ長さ)
+    radialSize:0,      // 中心からの距離で大きさを変える (% 正=外ほど大 / 負=外ほど小)
+    pop:70,            // 湧く/消えるときの膨らみ方 (%。小=すぐ最大 / 大=最後まで小さい)
+    lightAng:0,        // 光源の向き (度。表面の陰影と反射が回る)
+    ambient:11,        // 面の底上げの明るさ (%)
+    rim:100,           // 縁の明るさ (%)
+    chromeHue:0,       // クロームの色相 (度)
+    chromeSat:100,     // クロームの彩度 (%)
+    tipLight:0,        // 刃の先端の明暗 (% 正=白く光る / 負=黒く沈む)
+    camRoll:0,         // カメラの傾き (度)
+    camShake:0,        // カメラの手ぶれ (%)
     seed:11,
   },
 
@@ -95,6 +110,7 @@ const Shredder = {
       return new Float32Array([x[0],y[0],z[0],0, x[1],y[1],z[1],0, x[2],y[2],z[2],0,
         -Shredder._dot(x,e),-Shredder._dot(y,e),-Shredder._dot(z,e),1]); },
   },
+  _dz(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
   _cross(a,b){ return [a[1]*b[2]-a[2]*b[1], a[2]*b[0]-a[0]*b[2], a[0]*b[1]-a[1]*b[0]]; },
   _dot(a,b){ return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; },
   _norm(a){ const l=Math.hypot(a[0],a[1],a[2])||1; return [a[0]/l,a[1]/l,a[2]/l]; },
@@ -255,6 +271,8 @@ uniform vec2 uGrid;
 uniform mat4 uMVP;
 uniform float uScale, uSpike, uTwist, uLife, uKick, uTime, uAim, uShapeRand, uBlades;
 uniform float uSpinRate, uSpinVar, uShape, uBend, uBendTurn, uFisheye, uNearCull;
+uniform float uBladeW, uTipSkew, uTail, uSizeVar, uLenVar, uRadialSize, uPop, uRadialRef;
+uniform vec3 uCenter;
 uniform vec3 uCamPos;
 out vec3 vN; out vec3 vWorld; out float vAlive; out float vSeedR; out float vSpeed; out float vViewDist;
 out float vTipDist;   // 刃の先端からの距離 (0=先端 / 1=根元) — クロームの放射グラデ用
@@ -275,9 +293,15 @@ void main(){
   vec3 prev = texture(uPrev, uv).xyz;
   float alive = clamp(cur.a / max(uLife, 1.0), 0.0, 1.0);
   // 生成/消滅で大きさが膨らんで消える (パラボラ)
-  float grow = pow(4.0 * alive * (1.0 - alive), 0.7);
+  float grow = pow(4.0 * alive * (1.0 - alive), uPop);
   float r = hash11(aId*1.37 + 3.1);
-  float sz = uScale * 0.10 * mix(0.55, 1.5, r) * grow;
+  float szR = mix(0.55, 1.5, r);
+  szR = max(szR + (szR - 1.0) * (uSizeVar - 1.0), 0.1);
+  float sz = uScale * 0.10 * szR * grow;
+  if(uRadialSize != 0.0){
+    float tR = length(cur.xyz - uCenter) / max(uRadialRef, 0.1);
+    sz *= clamp(1.0 + uRadialSize * (tR - 1.0), 0.1, 3.0);
+  }
   // カメラに近すぎる破片は縮めて消す (画面を覆う巨大な板になるのを防ぐ)
   if(uNearCull > 0.001){
     float camD = length(cur.xyz - uCamPos);
@@ -292,7 +316,7 @@ void main(){
   // 形状ランダム: 刃を間引く (= 粒ごとに角の数が変わる) / 長さ・幅・非対称さを散らす
   if(uShapeRand > 0.01 && rb > mix(1.0, 0.42, uShapeRand)){ gl_Position = vec4(2.0, 2.0, 2.0, 1.0); return; }
   float lenMul = mix(1.0, mix(0.30, 1.9, rb2), uShapeRand);
-  float widMul = mix(1.0, mix(0.35, 2.0, rb3), uShapeRand);
+  float widMul = mix(1.0, mix(0.35, 2.0, rb3), uShapeRand) * uBladeW;
   float skew   = mix(0.0, (rb2 - 0.5) * 1.5, uShapeRand);      // 先端を横へずらす = 非対称な鋭角
   float jit    = mix(0.0, (rb3 - 0.5) * 1.2, uShapeRand);      // 刃の角度を等間隔から崩す
   // 自転: Twist = 個体ごとの位相ばらつき / Spin Rate = 回転の速さ (個体差は Spin Var)
@@ -302,7 +326,9 @@ void main(){
             + uTwist * r * 6.2831853
             + uTime * 0.35 * spinRate * spinDir;
   float ca = cos(ang), sa = sin(ang);
-  float spike = uSpike * (0.7 + 0.9*hash11(aId*2.71 + bi)) * (1.0 + uKick) * lenMul;
+  float spikeR = 0.7 + 0.9*hash11(aId*2.71 + bi);
+  spikeR = max(spikeR + (spikeR - 1.15) * (uLenVar - 1.0), 0.1);
+  float spike = uSpike * spikeR * (1.0 + uKick) * lenMul;
   // aBlade.y: -0.35 で原点の裏側 / 1.0 で先端。x は根元だけ幅を持ち先端で 0 → 鋭利
   // 刃の形 (プルダウン): 0=三角 1=矢 2=針 3=薄片 4=十字
   int shp = int(uShape + 0.5);
@@ -311,6 +337,8 @@ void main(){
   else if(shp == 2){ wMul = 0.24; sMul = 1.75; baseMul = 0.7; }   // 針: 細長い
   else if(shp == 3){ wMul = 1.35; sMul = 0.45; baseMul = 1.6; }   // 薄片: 平たい破片
   else if(shp == 4){ wMul = 0.42; sMul = 1.15; baseMul = 2.6; }   // 十字: 原点を大きく貫く
+  baseMul *= uTail;
+  skew += uTipSkew * 0.8;
   float w = aBlade.x * widMul * (1.0 - max(aBlade.y, 0.0)) * wMul;
   float tip = max(aBlade.y, 0.0);
   float yy = (aBlade.y < 0.0) ? aBlade.y * baseMul : aBlade.y;
@@ -374,7 +402,8 @@ uniform vec3  uBgColor;
 uniform float uChromeCon, uChromeFloor, uNearFade, uPass, uNearMode;
 uniform vec3 uCamPos, uCamRight, uCamUp;   // 反射をカメラ基準で計算 (公転カメラでも aratanagara と同じ見え方)
 uniform float uStripeFreq, uStripeScale, uStripeAmt, uStripeW;   // 反射帯: 向き周波数 / 空間周期 / 濃さ / 幅
-uniform float uGlintAmt, uGlintSharp, uSpecAmt;                  // グリント量 / 鋭さ / スペキュラ量
+uniform float uGlintAmt, uGlintSharp, uSpecAmt;
+uniform float uLightAng, uAmbient, uRim, uChromeHue, uChromeSat, uTipLight;                  // グリント量 / 鋭さ / スペキュラ量
 // 8x8 Bayer 順序ディザ (Near Mode = ディザ 用)
 float bayer8(vec2 c){
   int x = int(mod(c.x, 8.0)), y = int(mod(c.y, 8.0));
@@ -405,6 +434,11 @@ void main(){
   if(!gl_FrontFacing) nn = -nn;
   vec3 l1 = normalize(vec3(-0.42, 0.72, 0.56));
   vec3 l2 = normalize(vec3(0.64, -0.20, 0.62));
+  if(uLightAng != 0.0){
+    float lc = cos(uLightAng), ls = sin(uLightAng);
+    l1 = vec3(lc*l1.x + ls*l1.z, l1.y, -ls*l1.x + lc*l1.z);
+    l2 = vec3(lc*l2.x + ls*l2.z, l2.y, -ls*l2.x + lc*l2.z);
+  }
   float d1 = max(0.0, dot(nn, l1));
   float d2 = max(0.0, dot(nn, l2));
   vec3 viewDir = normalize(uCamPos - vWorld);
@@ -415,7 +449,7 @@ void main(){
   vec2 pv = vec2(dot(vWorld, uCamRight), dot(vWorld, uCamUp));   // 画面平面でのワールド位置
   float rim = pow(max(0.0, 1.0 - abs(nv.z)), 1.45);
   float band = 0.5 + 0.5*sin(vWorld.x*5.2 - vWorld.y*2.7 + vWorld.z*6.4 + nn.x*3.0);
-  float light = clamp(0.11 + d1*0.50 + d2*0.22 + rim*0.16 + band*0.08, 0.04, 1.0);
+  float light = clamp(uAmbient + d1*0.50 + d2*0.22 + rim*0.16*uRim + band*0.08, 0.04, 1.0);
 
   // 表面: 既定は aratanagara と同じディープブルー #3F00FF 系。色相/彩度はパラメータで回す
   int cm = int(uColorMode + 0.5);
@@ -427,8 +461,8 @@ void main(){
   vec3 blue = blueBase * (0.32 + 0.78*light);
   blue = mix(vec3(0.010,0.003,0.080), blue, smoothstep(0.04, 0.92, light));
   blue *= 0.88 + 0.16*band;
-  blue += vec3(0.30,0.38,0.90) * pow(max(0.0, d1*0.64 + rim*0.58 + band*0.10), 2.5) * 0.18;
-  blue += vec3(0.55,0.62,1.00) * (spec1*0.05 + spec2*0.03 + pow(rim,2.2)*0.05);
+  blue += vec3(0.30,0.38,0.90) * pow(max(0.0, d1*0.64 + rim*0.58*uRim + band*0.10), 2.5) * 0.18;
+  blue += vec3(0.55,0.62,1.00) * (spec1*0.05 + spec2*0.03 + pow(rim,2.2)*0.05*uRim);
 
   // 裏面: クローム
   // 裏面クロームは aratanagara のシェイプ裏面と同じ式 (mode/aratanagara.js より移植)。
@@ -452,11 +486,21 @@ void main(){
   chrome += vec3(0.95,0.98,1.00) * (spec1*0.50 + spec2*0.42 + rimChrome*0.24) * uSpecAmt;
   chrome = mix(chrome, vec3(1.00,1.00,0.96), glint * uGlintAmt);
   chrome = clamp(uChromeFloor + (1.0 - uChromeFloor) * chrome, 0.0, 1.0);   // 黒つぶれの持ち上げ
+  if(uChromeSat != 1.0 || uChromeHue != 0.0){      // 色相を回すほど無彩色寄りのクロームに色を乗せる (連続)
+    float cs = uChromeSat * (1.0 + 2.5 * clamp(abs(uChromeHue) * 8.0, 0.0, 1.0));
+    chrome = clamp(mix(vec3(dot(chrome, vec3(0.299,0.587,0.114))), chrome, cs), 0.0, 1.0);
+    if(uChromeHue != 0.0) chrome = clamp(hueRot(chrome, uChromeHue), 0.0, 1.0);
+  }
 
   float chromeAmt = (cm == 2) ? 0.0 : ((cm == 1) ? 1.0 : uChrome);   // 2=表裏同色 / 1=全面クローム寄り
   blue   = clamp(blue   * uBlueLight,   0.0, 1.0);                  // 表(ブルー)の明度
   chrome = clamp(chrome * uChromeLight, 0.0, 1.0);                  // 裏(クローム)の明度
   vec3 col = gl_FrontFacing ? blue : mix(blue, chrome, chromeAmt);
+  if(uTipLight != 0.0){                               // 先端の明暗 (空気遠近の前に掛ける)
+    float tw = pow(clamp(1.0 - vTipDist, 0.0, 1.0), 2.0);
+    if(uTipLight > 0.0) col = mix(col, vec3(1.0), tw * uTipLight);
+    else col *= max(1.0 + uTipLight * tw, 0.0);
+  }
   // 空気遠近: 奥ほど背景色へ。背景は明るいグレー(aratanagara) ↔ 暗いチャコールを Bg で選ぶ
   vec3 bg = uBgColor;
   // 距離はカメラからの実距離で測る (公転カメラだとワールド z は奥行きにならない)。
@@ -759,7 +803,18 @@ void main(){
     const eye = [tgt[0] + Math.sin(this.cam.az)*Math.cos(el)*dist,
                  tgt[1] + Math.sin(el)*dist,
                  tgt[2] + Math.cos(this.cam.az)*Math.cos(el)*dist];
-    const view = this.m4.lookAt(eye, tgt, [0,1,0]);
+    const roll = this._dz(P.camRoll) * Math.PI / 180, shk = this._dz(P.camShake) / 100;
+    if(shk !== 0){
+      const sa = shk * 0.05 * dist;
+      eye[0] += Math.sin(clock*13.1) * sa; eye[1] += Math.sin(clock*17.3 + 1.0) * sa; eye[2] += Math.sin(clock*11.7 + 2.0) * sa;
+    }
+    let up = [0,1,0];
+    if(roll !== 0){
+      const fw = this._norm([tgt[0]-eye[0], tgt[1]-eye[1], tgt[2]-eye[2]]);
+      const cr = this._cross(fw, up), cs = Math.cos(roll), sn = Math.sin(roll), d = this._dot(fw, up) * (1 - cs);
+      up = [up[0]*cs + cr[0]*sn + fw[0]*d, up[1]*cs + cr[1]*sn + fw[1]*d, up[2]*cs + cr[2]*sn + fw[2]*d];
+    }
+    const view = this.m4.lookAt(eye, tgt, up);
     const proj = this.m4.persp(P.fov*Math.PI/180, w/Math.max(1,h), 0.05, dist*6);
     const mvp = this.m4.mul(proj, view);
 
@@ -801,6 +856,22 @@ void main(){
     gl.uniform1f(uD('uGlintAmt'), P.glintAmt);
     gl.uniform1f(uD('uGlintSharp'), P.glintSharp);
     gl.uniform1f(uD('uSpecAmt'), P.specAmt);
+    { const z = this._dz;
+      gl.uniform1f(uD('uBladeW'), z(P.bladeW)/100);
+      gl.uniform1f(uD('uTipSkew'), z(P.tipSkew)/100);
+      gl.uniform1f(uD('uTail'), z(P.tail)/100);
+      gl.uniform1f(uD('uSizeVar'), z(P.sizeVar)/100);
+      gl.uniform1f(uD('uLenVar'), z(P.lenVar)/100);
+      gl.uniform1f(uD('uRadialSize'), z(P.radialSize)/100);
+      gl.uniform1f(uD('uPop'), z(P.pop)/100);
+      gl.uniform1f(uD('uRadialRef'), Math.max(P.radius*1.9, 0.5));
+      gl.uniform3f(uD('uCenter'), c[0], c[1], c[2]);
+      gl.uniform1f(uD('uLightAng'), z(P.lightAng)*Math.PI/180);
+      gl.uniform1f(uD('uAmbient'), z(P.ambient)/100);
+      gl.uniform1f(uD('uRim'), z(P.rim)/100);
+      gl.uniform1f(uD('uChromeHue'), z(P.chromeHue)/360);
+      gl.uniform1f(uD('uChromeSat'), z(P.chromeSat)/100);
+      gl.uniform1f(uD('uTipLight'), z(P.tipLight)/100); }
     gl.uniform1f(uD('uNearFade'), P.nearFade);
     gl.uniform1f(uD('uNearMode'), P.nearMode);
     gl.uniform1f(uD('uNearCull'), P.nearCull);
