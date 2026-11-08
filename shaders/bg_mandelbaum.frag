@@ -3,8 +3,12 @@
 // Mandelbrot ベースの 3D ライティング。音声反応(bass/mids/highs)は除去し 0 固定。
 #define MB_MAX_ITER 48
 
+// @param uPalShift -100..100 = 0.0
+uniform float uPalShift;   // 素材パレットの位相のずれ (%)
+
 vec4 mb_getMaterial(float id, float tm){
   float t = fract(id*0.6180339 + tm*0.05);
+  if(uPalShift != 0.0) t = fract(t + uPalShift * 0.01);
   vec4 c1 = vec4(0.85,0.05,0.10,0.9);
   vec4 c2 = vec4(0.05,0.20,0.70,0.8);
   vec4 c3 = vec4(1.00,0.75,0.05,1.0);
@@ -50,6 +54,44 @@ uniform float uWaveAmp;  // 波線の揺れ幅 (%) (0 = 直線)
 uniform float uWaveFreq; // 波線の細かさ (%)
 uniform float uTriSize;  // 三角の大きさ (%)
 uniform float uReach;    // 線が伸びる範囲 (%)
+// @param uKeyYaw -180..180 = 0.0
+// @param uKeyPitch -40..40 = 0.0
+// @param uFillYaw -180..180 = 0.0
+// @param uFillLevel 0..400 = 100.0
+// @param uSpecLevel 0..300 = 100.0
+// @param uRimLevel 0..400 = 100.0
+// @param uRimSharp 1..10 = 4.0
+// @param uAmbientLevel 0..400 = 100.0
+// @param uAoDepth 40..250 = 100.0
+// @param uReliefDepth 30..300 = 100.0
+// @param uGrainLevel 0..500 = 100.0
+// @param uSplitTone 0..600 = 100.0
+// @param uPanX -100..100 = 0.0
+// @param uPanY -100..100 = 0.0
+// @param uMirror 0..100 = 0.0
+// @param uKeyColor color = #ffffff
+// @param uFillColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uAmbientColor color = #ffffff
+uniform float uKeyYaw;     // 主光源の方位 (度)
+uniform float uKeyPitch;   // 主光源の高さの振り (度)
+uniform float uFillYaw;    // 補助光の方位 (度)
+uniform float uFillLevel;  // 補助光 (青) の強さ (%)
+uniform float uSpecLevel;  // 鏡面ハイライトの強さ (%)
+uniform float uRimLevel;   // リムライトの強さ (%)
+uniform float uRimSharp;   // リムライトの絞り (大きいほど縁だけ)
+uniform float uAmbientLevel; // 環境光の量 (%)
+uniform float uAoDepth;    // 凹みの暗さの効き (%。大きいほど暗い範囲が広い)
+uniform float uReliefDepth; // 凹凸の深さ (%。大きいほど法線が傾く)
+uniform float uGrainLevel; // 粒子ノイズの量 (%)
+uniform float uSplitTone;  // 主光源側の赤み・影側の青みの振り (%)
+uniform float uPanX;       // 注目点の左右のずらし (%。拡大率に追従)
+uniform float uPanY;       // 注目点の上下のずらし (%。拡大率に追従)
+uniform float uMirror;     // 左右の鏡像の折り返し位置 (%)
+uniform vec3 uKeyColor;    // 主光源の色
+uniform vec3 uFillColor;   // 補助光の色
+uniform vec3 uRimColor;    // リムライトの色
+uniform vec3 uAmbientColor; // 環境光の色
 
 vec2 mb_mapScene(vec2 p, vec2 targetC, float zoom, float tm){
   vec2 c = targetC + p*zoom;
@@ -114,7 +156,7 @@ vec3 mb_calcNormal(vec2 p, vec2 targetC, float zoom, float tm, float hC){
   vec2 e = vec2(0.002*zoom, 0.0);
   float hX = mb_mapScene(p+e.xy, targetC, zoom, tm).x;
   float hY = mb_mapScene(p+e.yx, targetC, zoom, tm).x;
-  return normalize(vec3(hC-hX, hC-hY, e.x*20.0));
+  return normalize(vec3(hC-hX, hC-hY, e.x*20.0/(uReliefDepth / 100.0)));
 }
 
 vec2 mb_target(float idx){
@@ -156,6 +198,8 @@ vec3 bg_mandelbaum(vec2 fc){
   angle += radians(uAngle);
   mat2 rot = mat2(cos(angle), -sin(angle), sin(angle), cos(angle));
   vec2 p = uv * rot;
+  if(uMirror != 0.0) p.x = abs(p.x + (uMirror - 50.0) * 0.01) - (uMirror - 50.0) * 0.01;
+  if(uPanX != 0.0 || uPanY != 0.0) target += vec2(uPanX, uPanY) * 0.01 * zoom;
 
   vec2 sceneData = mb_mapScene(p, target, zoom, T);
   float height = sceneData.x;
@@ -167,21 +211,32 @@ vec3 bg_mandelbaum(vec2 fc){
   float gloss = mtl.a;
 
   vec3 lightDir1 = normalize(vec3(0.8,0.8,1.0));
+  if(uKeyYaw != 0.0 || uKeyPitch != 0.0){
+    lightDir1.xy = mat2(cos(radians(uKeyYaw)), sin(radians(uKeyYaw)), -sin(radians(uKeyYaw)), cos(radians(uKeyYaw))) * lightDir1.xy;
+    lightDir1.z += tan(radians(uKeyPitch)) * length(lightDir1.xy);
+    lightDir1 = normalize(lightDir1);
+  }
   vec3 lightCol1 = vec3(1.0,0.9,0.7)*1.2*(uGlow / 100.0);
+  lightCol1 *= uKeyColor;
   vec3 lightDir2 = normalize(vec3(-0.8,-0.6,0.5));
-  vec3 lightCol2 = vec3(0.2,0.4,0.8)*0.6*(uGlow / 100.0);
+  if(uFillYaw != 0.0){
+    lightDir2.xy = mat2(cos(radians(uFillYaw)), sin(radians(uFillYaw)), -sin(radians(uFillYaw)), cos(radians(uFillYaw))) * lightDir2.xy;
+    lightDir2 = normalize(lightDir2);
+  }
+  vec3 lightCol2 = vec3(0.2,0.4,0.8)*0.6*(uGlow / 100.0)*(uFillLevel / 100.0);
+  lightCol2 *= uFillColor;
   vec3 viewDir = vec3(0.0,0.0,1.0);
 
   float dif1 = max(dot(normal,lightDir1),0.0);
   float dif2 = max(dot(normal,lightDir2),0.0);
   vec3 half1 = normalize(lightDir1+viewDir);
-  float spec1 = pow(max(dot(normal,half1),0.0), 64.0*gloss*(uGloss / 100.0))*gloss*2.0;
+  float spec1 = pow(max(dot(normal,half1),0.0), 64.0*gloss*(uGloss / 100.0))*gloss*2.0*(uSpecLevel / 100.0);
   vec3 half2 = normalize(lightDir2+viewDir);
-  float spec2 = pow(max(dot(normal,half2),0.0), 32.0*gloss*(uGloss / 100.0))*gloss*0.5;
-  float fresnel = pow(1.0-max(dot(normal,viewDir),0.0), 4.0);
-  vec3 rimLight = vec3(1.0,0.9,0.8)*fresnel*gloss*0.8;
-  float ao = clamp(height*2.5, 0.1, 1.0);
-  vec3 ambient = albedo*0.15;
+  float spec2 = pow(max(dot(normal,half2),0.0), 32.0*gloss*(uGloss / 100.0))*gloss*0.5*(uSpecLevel / 100.0);
+  float fresnel = pow(1.0-max(dot(normal,viewDir),0.0), uRimSharp);
+  vec3 rimLight = vec3(1.0,0.9,0.8)*fresnel*gloss*0.8*(uRimLevel / 100.0)*uRimColor;
+  float ao = clamp(height*2.5*(uAoDepth / 100.0), 0.1, 1.0);
+  vec3 ambient = albedo*0.15*(uAmbientLevel / 100.0)*uAmbientColor;
 
   vec3 finalCol = ambient*ao;
   finalCol += albedo*(dif1*lightCol1 + dif2*lightCol2)*ao;
@@ -190,13 +245,13 @@ vec3 bg_mandelbaum(vec2 fc){
 
   finalCol += finalCol*finalCol*0.3;
 
-  finalCol.r += dif1*0.05*albedo.r;
-  finalCol.b -= dif1*0.05*albedo.b;
+  finalCol.r += dif1*0.05*(uSplitTone / 100.0)*albedo.r;
+  finalCol.b -= dif1*0.05*(uSplitTone / 100.0)*albedo.b;
 
   finalCol = (finalCol*(2.51*finalCol+0.03))/(finalCol*(2.43*finalCol+0.59)+0.14);
 
   float grain = fract(sin(dot(fc, vec2(12.9898,78.233)))*43758.5453);
-  finalCol -= grain*0.03;
+  finalCol -= grain*0.03*(uGrainLevel / 100.0);
 
   vec2 vUv = fc/resolution.xy;
   finalCol *= pow(16.0*vUv.x*vUv.y*(1.0-vUv.x)*(1.0-vUv.y), max(0.15 * (uVignette / 100.0), 1e-4));

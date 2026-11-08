@@ -46,6 +46,34 @@ uniform float uCornerSpread; // 3 つの角から広がる色の種の広がり 
 uniform float uCausticFreq; // コースティクスの筋の細かさ (%)
 uniform float uSparkleLevel; // きらめきが出始める明るさ (%)
 uniform float uDepthFade;  // 奥の層ほど寄与を弱める度合い (%)。0 = なし
+// @param uTurn -180..180 = 0
+// @param uSwirl -150..150 = 0
+// @param uShear -100..100 = 0
+// @param uMirror 0..100 = 0
+// @param uSeedShift -25..25 = 0
+// @param uBaseLevel 10..50 = 40
+// @param uCausticSharp 2..12 = 5
+// @param uGrain 0..60 = 0
+// @param uToneKnee 55..150 = 85
+// @param uLowCut 0..50 = 0
+// @param uRampGain 20..75 = 60
+// @param uWaterTint color = #ffffff
+// @param uCausticColor color = #ffffff
+// @param uGlintColor color = #ffffff
+uniform float uTurn;       // 水面の模様の回転 (度)
+uniform float uSwirl;      // 中心からの渦のねじれ (%)
+uniform float uShear;      // 模様の斜めの流し (%)
+uniform float uMirror;     // 左右の鏡像の折り返し位置 (%)
+uniform float uSeedShift;  // 色の種のずらし。模様の入り方が変わる (%)
+uniform float uBaseLevel;  // 水面の下地の明るさ (%)
+uniform float uCausticSharp; // コースティクスの筋の締まり (大きいほど細く)
+uniform float uGrain;      // 粒状のざらつき (%)
+uniform float uToneKnee;   // 明るさが頭打ちになる位置 (%)
+uniform float uLowCut;     // 暗部を沈める位置 (%)
+uniform float uRampGain;   // 明暗の振れ幅 (%)
+uniform vec3 uWaterTint;   // 水面全体のティント
+uniform vec3 uCausticColor; // コースティクスの筋の色
+uniform vec3 uGlintColor;  // きらめきの色
 
 vec3 bg_water(vec2 fc){
   // ズーム/パン
@@ -53,6 +81,13 @@ vec3 bg_water(vec2 fc){
   vec2 uv = I / resolution.xx;
   uv = vec2(.125, .75) + (uv - vec2(.125, .75)) * (.03 * (uDensity / 100.0));
   if(uCenterX != 0.0 || uCenterY != 0.0){ uv += vec2(uCenterX, uCenterY) / 100.0 * 0.03; }
+  if(uMirror != 0.0){ float xf = .125 + .03*(uMirror / 100.0 - .2); uv.x = xf - abs(uv.x - xf); }
+  if(uTurn != 0.0 || uSwirl != 0.0){
+    vec2 q = uv - vec2(.125, .75);
+    float ta = radians(uTurn) + uSwirl * 0.01 * length(q) / 0.03;
+    uv = vec2(.125, .75) + mat2(cos(ta), sin(ta), -sin(ta), cos(ta)) * q;
+  }
+  if(uShear != 0.0){ uv.x += (uv.y - .75) * uShear * 0.01; }
   float T = time * .65;
 
   vec3 c = clamp(1. - .7*(uCornerSpread / 100.0)*vec3(
@@ -60,6 +95,7 @@ vec3 bg_water(vec2 fc){
       length(uv - vec2(.9, 0)),
       length(uv - vec2(.5, 1))
       ), 0., 1.) * 2. - 1.;
+  if(uSeedShift != 0.0){ c = clamp(c + uSeedShift * 0.01, -1.0, 1.0); }
 
   vec3 c0 = vec3(0);
   float w0 = 0.;
@@ -85,10 +121,15 @@ vec3 bg_water(vec2 fc){
   // === 白黒の水(明るめ) ===
   c0 = clamp(c0, 0.0, 1.5);
   float L = dot(c0, vec3(0.299, 0.587, 0.114));
-  float g = smoothstep(0.0, 0.85, L);
-  g = 0.40 + 0.60 * g;                                    // 明度を持ち上げて明るく
-  g += pow(clamp(L, 0.0, 1.0), 5.0) * 0.5 * (uGlow / 100.0);                // コースティクス(明るい筋)
-  g += pow(clamp((L - uSparkleLevel / 100.0)/0.30, 0.0, 1.0), 3.0) * 0.6;  // 鋭いきらめき
+  float g = smoothstep(uLowCut / 100.0, uToneKnee / 100.0, L);
+  g = uBaseLevel / 100.0 + uRampGain / 100.0 * g;                                    // 明度を持ち上げて明るく
+  g += pow(clamp(L, 0.0, 1.0), uCausticSharp) * 0.5 * (uGlow / 100.0);                // コースティクス(明るい筋)
+  float sp = pow(clamp((L - uSparkleLevel / 100.0)/0.30, 0.0, 1.0), 3.0);
+  g += sp * 0.6;  // 鋭いきらめき
+  if(uGrain != 0.0){ g += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain * 0.004; }
   bgAlpha = clamp(g * 0.8, 0.0, 0.78);                     // 半透明の水(暗い谷ほど透ける)
-  return vec3(clamp(g, 0.0, 1.0));
+  vec3 wcol = vec3(clamp(g, 0.0, 1.0));
+  if(uCausticColor != vec3(1.0)){ wcol *= mix(vec3(1.0), uCausticColor, clamp(pow(clamp(L, 0.0, 1.0), uCausticSharp), 0.0, 1.0)); }
+  if(uGlintColor != vec3(1.0)){ wcol *= mix(vec3(1.0), uGlintColor, sp); }
+  return wcol * uWaterTint;
 }
