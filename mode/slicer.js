@@ -9,7 +9,10 @@
 // 画像ごとの保存対象キー (postScale=品質設定は共通のまま)
 const SL_IMG_KEYS = ['pieces','seed','sides','maxSides','explode','bend','curl','warpAmp','warpFreq',
   'overlapShadow','shadowStr','shadowRadius','shadowBias','autorot','camEl','fov','dist',
-  'autoMode','autoRebuildBeats','autoZoomAmp','autoElAmp','bgMode','bgColor'];
+  'autoMode','autoRebuildBeats','autoZoomAmp','autoElAmp','bgMode','bgColor',
+  'shardScale','smallShare','largeShare','scatterX','scatterY','polyBoost','sliverBoost','alignPull','alignAngle',
+  'tiltAmt','depthAmt','curlFreqAmt','texZoom','texRotate','drift','pieceTint','pieceSat','depthShade',
+  'camRoll','camAz','lookX','lookY','reshuffle'];
 
 const Slicer = {
   gl:null,
@@ -48,6 +51,30 @@ const Slicer = {
     postScale:0.75,    // ポストエフェクトの解像度スケール (0.75 = 約 56% ピクセル)
     bgMode:'image',    // 'black' | 'white' | 'image' (平均色で画像になじませる) | 'color' (bgColor)
     bgColor:[0,0,0],   // bgMode='color' のときの背景色 (Slot A で敷く / Slot B は透過)
+    // ── 第 2 弾: 思い通りに操る param (既定値で従来と同じ絵) ──
+    shardScale:100,    // 断片の大きさ (%)
+    smallShare:50,     // 小さい断片の割合 (%)
+    largeShare:18,     // 大きい断片の割合 (%)
+    scatterX:90,       // 断片を撒く幅 (画像幅に対する %)
+    scatterY:90,       // 断片を撒く高さ (%)
+    polyBoost:0,       // 多角形の断片へ置き換える割合 (%)
+    sliverBoost:0,     // 細い針の断片へ置き換える割合 (%)
+    alignPull:0,       // 断片の向きを揃える (%)
+    alignAngle:0,      // 揃える向き (deg)
+    tiltAmt:100,       // 断片の傾き (%)
+    depthAmt:100,      // 断片の奥行きの散らばり (%)
+    curlFreqAmt:100,   // Curl のうねりの細かさ (%)
+    texZoom:100,       // 断片に写る画像の拡大 (%)
+    texRotate:0,       // 断片に写る画像の回転 (deg)
+    drift:100,         // 断片の浮遊の振れ幅 (%)
+    pieceTint:[1,1,1], // 断片の色掛け
+    pieceSat:100,      // 断片の彩度 (%)
+    depthShade:0,      // 奥の断片を暗くする (%)
+    camRoll:0,         // カメラの回転 (deg)
+    camAz:0,           // カメラの方位のずれ (deg)
+    lookX:0,           // 注視点の X (%)
+    lookY:0,           // 注視点の Y (%)
+    reshuffle:100,     // Auto: 拍ごとに断片配置を組み直す割合 (%)
     // ── 画像選択 (ランタイム設定。画像ごと保存 SL_IMG_KEYS には含めない。
     //    含めると画像を読むたびにモードが上書きされ、Random が即 fixed に戻る) ──
     imgMode:'fixed',   // 'fixed' = 選んだ画像 / 'random' = ランダム表示
@@ -70,6 +97,7 @@ uniform mat4 u_view;
 uniform float u_time;
 uniform float u_warpAmp;    // グローバル warp 振幅 (M006 相当・空間全体を曲げる)
 uniform float u_warpFreq;   // グローバル warp 周波数
+uniform float u_drift;      // 浮遊の振れ幅 (1=従来)
 out vec2 v_uv;
 void main(){
   v_uv = a_uv;
@@ -81,7 +109,7 @@ void main(){
     pos.x += u_warpAmp * 0.6 * sin(pos.y*wf*0.7 + u_time*0.8);
     pos.y += u_warpAmp * 0.4 * cos(pos.z*wf*0.9 - u_time*0.7);
   }
-  float d = 0.004;
+  float d = 0.004 * u_drift;
   pos.x += sin(u_time*0.17 + a_seed*13.7) * d;
   pos.y += cos(u_time*0.13 + a_seed*7.31) * d * 0.7;
   pos.z += sin(u_time*0.11 + a_seed*5.17) * d * 0.4;
@@ -90,10 +118,21 @@ void main(){
   FS:`#version 300 es
 precision highp float;
 uniform sampler2D u_map;
+uniform vec3 u_tint;       // 断片の色掛け
+uniform float u_sat;       // 断片の彩度 (1=そのまま)
+uniform float u_shade;     // 奥を暗くする (0..1)
+uniform float u_camDist;
 in vec2 v_uv;
 out vec4 fragOut;
 void main(){
-  fragOut = vec4(texture(u_map, v_uv).rgb, 1.0);
+  vec3 c = texture(u_map, v_uv).rgb;
+  if(u_sat != 1.0){
+    float l = dot(c, vec3(0.299, 0.587, 0.114));
+    c = mix(vec3(l), c, u_sat);
+  }
+  c *= u_tint;
+  if(u_shade > 0.0) c *= 1.0 - u_shade * clamp((1.0 / gl_FragCoord.w - u_camDist) * 0.8, 0.0, 1.0);
+  fragOut = vec4(c, 1.0);
 }`,
   POST_VS:`#version 300 es
 in vec2 a_xy;
@@ -237,6 +276,11 @@ void main(){
       u_time: gl.getUniformLocation(this.prog,'u_time'),
       u_warpAmp:  gl.getUniformLocation(this.prog,'u_warpAmp'),
       u_warpFreq: gl.getUniformLocation(this.prog,'u_warpFreq'),
+      u_drift:    gl.getUniformLocation(this.prog,'u_drift'),
+      u_tint:     gl.getUniformLocation(this.prog,'u_tint'),
+      u_sat:      gl.getUniformLocation(this.prog,'u_sat'),
+      u_shade:    gl.getUniformLocation(this.prog,'u_shade'),
+      u_camDist:  gl.getUniformLocation(this.prog,'u_camDist'),
     };
     this.pLocs = {
       a_xy:       gl.getAttribLocation(this.postProg,'a_xy'),
@@ -264,6 +308,8 @@ void main(){
     this.initialized = true;
     return true;
   },
+
+  _dz(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
 
   _compileShader(type, src){
     const gl = this.gl;
@@ -343,6 +389,23 @@ void main(){
     const BEND    = this.P.bend;
     const CURL    = this.P.curl;
     const CAM_Z   = this.P.dist;
+    const dz = (v)=>this._dz(v);
+    const SHARD   = dz(this.P.shardScale) / 100;
+    const T_SMALL = dz(this.P.smallShare) / 100;
+    const T_LARGE = Math.max(T_SMALL, (100 - dz(this.P.largeShare)) / 100);
+    const SCAT_X  = dz(this.P.scatterX) / 100;
+    const SCAT_Y  = dz(this.P.scatterY) / 100;
+    const POLY    = dz(this.P.polyBoost) / 100;
+    const SLIVER  = dz(this.P.sliverBoost) / 100;
+    const ALIGN   = Math.min(1, dz(this.P.alignPull) / 100);
+    const ALIGN_A = dz(this.P.alignAngle) * Math.PI / 180;
+    const TILT    = dz(this.P.tiltAmt) / 100;
+    const DEPTH   = dz(this.P.depthAmt) / 100;
+    const CURLF   = dz(this.P.curlFreqAmt) / 100;
+    const TEXZ    = Math.max(0.05, dz(this.P.texZoom) / 100);
+    const TEXR    = dz(this.P.texRotate) * Math.PI / 180;
+    const texFx   = (TEXZ !== 1 || TEXR !== 0);
+    const tcs = Math.cos(TEXR), tsn = Math.sin(TEXR);
 
     const posArr=[], uvArr=[], seedArr=[], idxArr=[];
     let vi = 0;
@@ -388,7 +451,12 @@ void main(){
     function emit(fx, fy, fid, p){
       const w = wpos(fx, fy, p);
       posArr.push(w[0], w[1], w[2]);
-      uvArr.push(fx/A*0.5+0.5, 1-(fy*0.5+0.5));
+      if(texFx){
+        const rx = (fx*tcs - fy*tsn) / TEXZ, ry = (fx*tsn + fy*tcs) / TEXZ;
+        uvArr.push(rx/A*0.5+0.5, 1-(ry*0.5+0.5));
+      } else {
+        uvArr.push(fx/A*0.5+0.5, 1-(fy*0.5+0.5));
+      }
       seedArr.push(fid*7.3713);
       return vi++;
     }
@@ -415,36 +483,40 @@ void main(){
       const s=fid*13.71+3.3;
       const dr=rnd(s+0.80);
       const dbi=dr<0.5?Math.pow(dr*2,1.8)*0.5:1-Math.pow((1-dr)*2,1.8)*0.5;
-      const baseZ=(rnd(s+0.81)>0.5?1:-1)*dbi*EXPLODE*1.2;
+      const baseZ=(rnd(s+0.81)>0.5?1:-1)*dbi*EXPLODE*1.2*DEPTH;
       return {
         cx, cy, baseZ,
         bendAxis: rnd(s+0.20)*6.2832, bendAmt: rnds(s+0.21)*BEND,
         curlAxis: rnd(s+0.30)*6.2832, curlAmt: rnds(s+0.31)*CURL,
-        curlFreq: 1.5+rnd(s+0.32)*6.0,
-        tiltX: rnds(s+0.40)*0.5*EXPLODE,
-        tiltY: rnds(s+0.41)*0.5*EXPLODE,
+        curlFreq: (1.5+rnd(s+0.32)*6.0)*CURLF,
+        tiltX: rnds(s+0.40)*0.5*EXPLODE*TILT,
+        tiltY: rnds(s+0.41)*0.5*EXPLODE*TILT,
       };
     }
 
     for(let fid=0; fid<N_FRAGS; fid++){
       const s=fid*17.31+1.1;
-      const cx=rnds(s+0.1)*A*0.9;
-      const cy=rnds(s+0.2)*0.9;
+      const cx=rnds(s+0.1)*A*SCAT_X;
+      const cy=rnds(s+0.2)*SCAT_Y;
       const p=makeParams(fid, cx, cy);
       const sizeSeed = rnd(s+0.50);
       const sizeClass = rnd(s+0.51);
       let baseSize;
-      if(sizeClass < 0.5){
+      if(sizeClass < T_SMALL){
         baseSize = Math.pow(sizeSeed, 2.0) * 0.08 * A + 0.005 * A;
-      } else if(sizeClass < 0.82){
+      } else if(sizeClass < T_LARGE){
         baseSize = (0.05 + sizeSeed * 0.15) * A;
       } else {
         baseSize = (0.15 + sizeSeed * 0.35) * A;
       }
-      const rot = rnd(s+0.55)*Math.PI*2;
+      baseSize *= SHARD;
+      let rot = rnd(s+0.55)*Math.PI*2;
+      if(ALIGN > 0) rot += (ALIGN_A - rot) * ALIGN;
       const cr=Math.cos(rot), sr=Math.sin(rot);
       const R=(lx,ly,c,ss)=>[lx*c-ly*ss+cx, lx*ss+ly*c+cy];
-      const shapeType = Math.floor(rnd(s+0.60)*7);
+      let shapeType = Math.floor(rnd(s+0.60)*7);
+      if(POLY > 0 && rnd(s+0.69) < POLY) shapeType = 0;
+      else if(SLIVER > 0 && rnd(s+0.70) < SLIVER) shapeType = 2;
 
       if(shapeType===0){
         const minN = Math.max(3, this.P.sides|0);
@@ -785,8 +857,10 @@ void main(){
         this.P.explode = D.explode * (0.6 + 0.4 * Math.sin(seedT * 0.71));
         this.P.bend    = D.bend    * (0.5 + 0.5 * Math.sin(seedT * 0.83 + 1.7));
         this.P.curl    = D.curl    * (0.5 + 0.5 * Math.sin(seedT * 0.97 + 3.1));
-        // シードもエポックごとに更新 → 断片配置を変える
-        this.P.seed    = Math.floor(Math.abs(Math.sin(seedT * 1.31 + 4.7)) * 9999);
+        // シードもエポックごとに更新 → 断片配置を変える (reshuffle < 100 なら、その割合の拍だけ)
+        const rs = this._dz(this.P.reshuffle);
+        const keep = rs < 100 && (Math.abs(Math.sin(epoch * 12.9898) * 43758.5453) % 1) >= rs / 100;
+        if(!keep) this.P.seed = Math.floor(Math.abs(Math.sin(seedT * 1.31 + 4.7)) * 9999);
         this._needsRebuild = true;
       }
       // カメラ自動: ダイナミック回転 + 仰角ドリフト + ズーム呼吸 (複合周期)
@@ -843,16 +917,30 @@ void main(){
       const asp = sw / Math.max(1, sh);
       const fovRad = (this.P.fov * Math.PI / 180);
       const proj = this.m4.perspective(fovRad, asp, 0.01, 100);
-      const az = this.cam.az, el = this.cam.el, d = this.cam.dist;
+      const dz = (v)=>this._dz(v);
+      const roll = dz(this.P.camRoll) * Math.PI / 180;
+      if(roll !== 0){
+        // 画面の回転 (縦横比を保ったまま)
+        const cs = Math.cos(roll), sn = Math.sin(roll);
+        const m00 = proj[0], m11 = proj[5];
+        proj[0] = cs * m00; proj[1] = sn * asp * m00;
+        proj[4] = -sn / asp * m11; proj[5] = cs * m11;
+      }
+      const az = this.cam.az + dz(this.P.camAz) * Math.PI / 180, el = this.cam.el, d = this.cam.dist;
       const ex = Math.cos(el) * Math.sin(az) * d;
       const ey = Math.sin(el) * d;
       const ez = Math.cos(el) * Math.cos(az) * d;
-      const view = this.m4.lookAt([ex, ey, ez], [0,0,0], [0,1,0]);
+      const view = this.m4.lookAt([ex, ey, ez], [dz(this.P.lookX) * 0.01 * this.imgAsp, dz(this.P.lookY) * 0.01, 0], [0,1,0]);
       gl.uniformMatrix4fv(this.locs.u_proj, false, proj);
       gl.uniformMatrix4fv(this.locs.u_view, false, view);
       gl.uniform1f(this.locs.u_time, this._t);
       gl.uniform1f(this.locs.u_warpAmp,  this.P.warpAmp || 0);
       gl.uniform1f(this.locs.u_warpFreq, this.P.warpFreq || 2.0);
+      gl.uniform1f(this.locs.u_drift, dz(this.P.drift) / 100);
+      gl.uniform3fv(this.locs.u_tint, this.P.pieceTint);
+      gl.uniform1f(this.locs.u_sat, dz(this.P.pieceSat) / 100);
+      gl.uniform1f(this.locs.u_shade, Math.max(0, Math.min(1, dz(this.P.depthShade) / 100)));
+      gl.uniform1f(this.locs.u_camDist, d);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.imgTex);
       gl.uniform1i(this.locs.u_map, 0);
@@ -886,6 +974,7 @@ void main(){
     gl.uniform1f(this.pLocs.u_radius,   this.P.shadowRadius);
     gl.uniform1f(this.pLocs.u_bias,     this.P.shadowBias);
     gl.uniform1f(this.pLocs.u_enabled,  this.P.overlapShadow ? 1 : 0);
+
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
     gl.enableVertexAttribArray(this.pLocs.a_xy);
     gl.vertexAttribPointer(this.pLocs.a_xy, 2, gl.FLOAT, false, 0, 0);

@@ -17256,6 +17256,42 @@ void mainImage(out vec4 o, in vec2 f){
     slid('mgInit',      'initialCount', fi);
     slid('mgPageScale', 'pageScale',    f1);
     slid('mgManualZoom','manualZoom',   f2);
+    const pc = v=>v + '%', pd = v=>v + '°', ppx = v=>v + 'px', pms = v=>v + 'ms';
+    slid('mgTaper',       'clusterTaper',    pc);
+    slid('mgSpread',      'clusterSpread',   pc);
+    slid('mgFocusPull',   'focusPull',       pc);
+    slid('mgFocusX',      'focusX',          pc);
+    slid('mgFocusY',      'focusY',          pc);
+    slid('mgAnimSlide',   'animSlide',       pc);
+    slid('mgAnimStagger', 'animStagger',     pms);
+    slid('mgPanReach',    'dronePanReach',   pc);
+    slid('mgZoomWobble',  'droneZoomWobble', pc);
+    slid('mgYRate',       'droneYRate',      pc);
+    slid('mgPnlRotate',   'panelRotate',     pd);
+    slid('mgPnlAspect',   'panelAspect',     pc);
+    slid('mgPnlOpacity',  'panelOpacity',    pc);
+    slid('mgBorder',      'borderWidth',     pc);
+    slid('mgPnlShadow',   'panelShadow',     pc);
+    slid('mgPnlSat',      'panelSat',        pc);
+    slid('mgViewRotate',  'viewRotate',      pd);
+    slid('mgTiles',       'pageTiles',       fi);
+    slid('mgPixelate',    'pixelate',        ppx);
+    slid('mgChroma',      'chromaSplit',     ppx);
+    slid('mgWaveAmp',     'waveAmp',         pc);
+    slid('mgWaveFreq',    'waveFreq',        fi);
+    slid('mgVignette',    'vignette',        pc);
+    slid('mgGrain',       'grain',           pc);
+    for(const [id, key] of [['mgBorderColor', 'borderColor'], ['mgTint', 'panelTint']]){
+      const el = $('#'+id);
+      if(!el) continue;
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      el.value = toHex(M[key]);
+      el.dataset.default = toHex(App.resetValueFor('manga', key, Manga.PDefaults[key]));
+      el.addEventListener('input', ()=>{
+        const v = el.value;
+        M[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255];
+      });
+    }
 
     // BG color
     const bg = $('#mgBg');
@@ -21107,6 +21143,41 @@ void mainImage(out vec4 o, in vec2 f){
     slid('slShadowRad','shadowRadius', v=>v.toFixed(1), false);
     slid('slShadowBias','shadowBias',  f3, false);
     slid('slPostScale', 'postScale',   f2, false);
+    const pc = v=>v + '%', pd = v=>v + '°';
+    // 断片の形を作り直すもの: つまみを止めて 0.15 秒後に組み直す
+    const slidB = (id, key, fmt)=>{
+      slid(id, key, fmt, false);
+      const el = $('#'+id);
+      if(el) el.addEventListener('input', ()=>{ clearTimeout(Slicer._dbT); Slicer._dbT = setTimeout(()=> Slicer.markDirty(), 150); });
+    };
+    slidB('slShardScale',  'shardScale',  pc);
+    slidB('slSmallShare',  'smallShare',  pc);
+    slidB('slLargeShare',  'largeShare',  pc);
+    slidB('slScatterX',    'scatterX',    pc);
+    slidB('slScatterY',    'scatterY',    pc);
+    slidB('slPolyBoost',   'polyBoost',   pc);
+    slidB('slSliverBoost', 'sliverBoost', pc);
+    slidB('slAlignPull',   'alignPull',   pc);
+    slidB('slAlignAngle',  'alignAngle',  pd);
+    slidB('slTiltAmt',     'tiltAmt',     pc);
+    slidB('slDepthAmt',    'depthAmt',    pc);
+    slidB('slCurlFreqAmt', 'curlFreqAmt', pc);
+    slidB('slTexZoom',     'texZoom',     pc);
+    slidB('slTexRotate',   'texRotate',   pd);
+    slid('slDrift',        'drift',       pc, false);
+    slid('slReshuffle',    'reshuffle',   pc, false);
+    slid('slCamRoll',      'camRoll',     pd, false);
+    slid('slCamAz',        'camAz',       pd, false);
+    slid('slLookX',        'lookX',       pc, false);
+    slid('slLookY',        'lookY',       pc, false);
+    slid('slPieceSat',     'pieceSat',    pc, false);
+    slid('slDepthShade',   'depthShade',  pc, false);
+    for(const [id, key] of [['slPieceTint', 'pieceTint']]){
+      const el = $('#'+id);
+      if(!el) continue;
+      el.value = '#' + S[key].map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      el.addEventListener('input', ()=>{ const v = el.value; S[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+    }
     const os = $('#slOverlapShadow');
     if(os){ os.checked = !!S.overlapShadow; os.addEventListener('change', ()=>{ S.overlapShadow = os.checked; }); }
     const bm = $('#slBgMode');
@@ -21165,6 +21236,19 @@ void mainImage(out vec4 o, in vec2 f){
     set('slShadowRad', S.shadowRadius, v=>v.toFixed(1));
     set('slShadowBias', S.shadowBias, f3);
     set('slPostScale',  S.postScale,  f2);
+    { const pc = v=>v + '%', pd = v=>v + '°';
+      set('slShardScale', S.shardScale, pc); set('slSmallShare', S.smallShare, pc); set('slLargeShare', S.largeShare, pc);
+      set('slScatterX', S.scatterX, pc); set('slScatterY', S.scatterY, pc);
+      set('slPolyBoost', S.polyBoost, pc); set('slSliverBoost', S.sliverBoost, pc);
+      set('slAlignPull', S.alignPull, pc); set('slAlignAngle', S.alignAngle, pd);
+      set('slTiltAmt', S.tiltAmt, pc); set('slDepthAmt', S.depthAmt, pc); set('slCurlFreqAmt', S.curlFreqAmt, pc);
+      set('slTexZoom', S.texZoom, pc); set('slTexRotate', S.texRotate, pd); set('slDrift', S.drift, pc);
+      set('slReshuffle', S.reshuffle, pc);
+      set('slCamRoll', S.camRoll, pd); set('slCamAz', S.camAz, pd); set('slLookX', S.lookX, pc); set('slLookY', S.lookY, pc);
+      set('slPieceSat', S.pieceSat, pc); set('slDepthShade', S.depthShade, pc);
+      const hx = arr=>'#' + arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const pt = $('#slPieceTint'); if(pt) pt.value = hx(S.pieceTint);
+    }
     const bm = $('#slBgMode'); if(bm) bm.value = S.bgMode || 'image';
     const bc = $('#slBgColor'); if(bc && S.bgColor) bc.value = '#' + S.bgColor.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
   },
@@ -21196,6 +21280,20 @@ void mainImage(out vec4 o, in vec2 f){
     set('mgInit',       M.initialCount,  fi);
     set('mgPageScale',  M.pageScale,     f1);
     set('mgManualZoom', M.manualZoom,    f2);
+    { const pc = v=>v + '%', pd = v=>v + '°', ppx = v=>v + 'px', pms = v=>v + 'ms';
+      set('mgTaper', M.clusterTaper, pc); set('mgSpread', M.clusterSpread, pc);
+      set('mgFocusPull', M.focusPull, pc); set('mgFocusX', M.focusX, pc); set('mgFocusY', M.focusY, pc);
+      set('mgAnimSlide', M.animSlide, pc); set('mgAnimStagger', M.animStagger, pms);
+      set('mgPanReach', M.dronePanReach, pc); set('mgZoomWobble', M.droneZoomWobble, pc); set('mgYRate', M.droneYRate, pc);
+      set('mgPnlRotate', M.panelRotate, pd); set('mgPnlAspect', M.panelAspect, pc); set('mgPnlOpacity', M.panelOpacity, pc);
+      set('mgBorder', M.borderWidth, pc); set('mgPnlShadow', M.panelShadow, pc); set('mgPnlSat', M.panelSat, pc);
+      set('mgViewRotate', M.viewRotate, pd); set('mgTiles', M.pageTiles, fi); set('mgPixelate', M.pixelate, ppx);
+      set('mgChroma', M.chromaSplit, ppx); set('mgWaveAmp', M.waveAmp, pc); set('mgWaveFreq', M.waveFreq, fi);
+      set('mgVignette', M.vignette, pc); set('mgGrain', M.grain, pc);
+      const toHex2 = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      if($('#mgBorderColor')) $('#mgBorderColor').value = toHex2(M.borderColor);
+      if($('#mgTint')) $('#mgTint').value = toHex2(M.panelTint);
+    }
     if($('#mgSubdiv')) $('#mgSubdiv').value = String(M.subdiv);
     // Motion mode buttons
     if($('#mgModeDrone')) $('#mgModeDrone').classList.toggle('on', M.motionMode === 'drone');
