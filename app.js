@@ -20428,6 +20428,7 @@ void mainImage(out vec4 o, in vec2 f){
         ['Corner',    'corner',    0,    2,   0.02, f2],
         ['Wobble',    'wobble',    0,    2,   0.02, f2],
         ['Wobble Freq','wobbleFreq',0.5, 30,  0.1,  f1],
+        ['Edge Soft', 'edgeSoft',  0,    1,   0.02, f2],
       ]],
       ['Bristle', [
         ['Bristles',  'bristles',  2,    60,  1,    int],
@@ -20439,6 +20440,9 @@ void mainImage(out vec4 o, in vec2 f){
         ['Refill',    'refill',    1,    12,  1,    int],
         ['Splay',     'splay',     0,    1,   0.02, f2],
         ['Rough',     'rough',     0,    1,   0.02, f2],
+        ['Bristle Lean','bristleLean',-2, 2,  0.02, f2],
+        ['Fine Hair', 'fineHair',  0,    100, 1,    v=>String(Math.round(v))+'%'],
+        ['Rim Dry',   'rimDry',    0,    150, 1,    v=>String(Math.round(v))+'%'],
       ]],
       ['Ink', [
         ['Density',   'density',   0,    1,   0.02, f2],
@@ -20453,9 +20457,17 @@ void mainImage(out vec4 o, in vec2 f){
         ['Splat Size','splatSize', 0.2,  3,   0.02, f2],
         ['Splat Spread','splatSpread',0, 3,   0.02, f2],
         ['Sheen',     'sheen',     0,    1,   0.02, f2],
+        ['Sheen Angle','sheenAngle',-180,180,1,    deg],
+        ['Sheen Power','sheenPower',1,   30,  0.5,  f1],
+        ['Ink Gamma', 'inkGamma',  0.4,  3,   0.02, f2],
+        ['Edge Ring', 'edgeRing',  0,    1,   0.02, f2],
+        ['Bleed Halo','bleedHalo', 0,    200, 1,    v=>String(Math.round(v))+'%'],
       ]],
       ['Paper', [
         ['Grain',     'grain',     0,    1,   0.02, f2],
+        ['Grain Size','grainSize', 20,   400, 5,    v=>String(Math.round(v))+'%'],
+        ['Paper Mottle','paperMottle',0, 1,   0.02, f2],
+        ['Paper Vignette','paperVignette',0,1,0.02, f2],
         ['Paper Alpha','paperAlpha',0,   1,   0.02, f2],
       ]],
       ['Write', [
@@ -20496,7 +20508,8 @@ void mainImage(out vec4 o, in vec2 f){
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { smooth:1, merge:1, nibAngle:1, pressFreq:1, wobbleFreq:1, bristles:1, streak:1, bristleContrast:1, dryStart:1, refill:1,
       bleedScale:1, bleedTaps:1, splatSize:1, splatSpread:1, wrap:1, sizeMin:1, sizeMax:1, sizeSkew:1, area:1, aspect:1, penTime:1, easePow:1, strokeGap:1, writeBeats:1, holdBeats:1, fadeBeats:1, flow:1, boilRate:1, phase:1,
-      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, seed:1, tracking:1, leading:1, taperPow:1 };   // デッドゾーン表示をしない (設定値)
+      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, seed:1, tracking:1, leading:1, taperPow:1,
+      fineHair:1, rimDry:1, sheenAngle:1, sheenPower:1, inkGamma:1, bleedHalo:1, grainSize:1 };   // デッドゾーン表示をしない (設定値)
     root.innerHTML = '';
     const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
     // 文字入力。日本語の変換中は確定まで反映しない
@@ -20612,7 +20625,7 @@ void mainImage(out vec4 o, in vec2 f){
           for(const spec of specs){
             if(spec.sel) continue;
             const [label,key,mi,ma,step] = spec;
-            if(key === 'bleedTaps') continue;
+            if(key === 'bleedTaps' || key === 'edgeRing') continue;
             const v = mi + Math.random()*(ma - mi);
             P[key] = +(Math.round(v/step)*step).toFixed(4);
           }
