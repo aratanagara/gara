@@ -20914,6 +20914,47 @@ void mainImage(out vec4 o, in vec2 f){
       });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+    // 第 2 弾の追加行: SpaceType と同じく Ugomeki.P を毎回 live 参照する (loadPreset で P が差し替わっても効く)
+    const specsX = [
+      ['Text Angle', 'textAngle', -90, 90,  1,   v=>(v|0)+'°'],
+      ['Slope',      'slope',     -100,100, 1,   v=>(v|0)+'%'],
+      ['Shear',      'shear',     -100,100, 1,   v=>(v|0)+'%'],
+      ['Arc',        'arc',       -100,100, 1,   v=>(v|0)+'%'],
+      ['Stagger',    'stagger',    0, 100,  1,   v=>(v|0)+'%'],
+      ['Size Ramp X','sizeRampX', -60, 60,  1,   v=>(v|0)+'%'],
+      ['Size Ramp Y','sizeRampY', -60, 60,  1,   v=>(v|0)+'%'],
+      ['Size Variance','sizeVar',  0, 100,  1,   v=>(v|0)+'%'],
+      ['Tilt Variance','tiltVar',  0, 45,   1,   v=>(v|0)+'°'],
+      ['Fade Variance','fadeVar',  0, 100,  1,   v=>(v|0)+'%'],
+      ['Opacity',    'opacity',    20, 100, 1,   v=>(v|0)+'%'],
+      ['Stroke',     'strokeW',    0, 30,   1,   v=>(v|0)+'%'],
+      ['Fill',       'fillPct',    0, 100,  1,   v=>(v|0)+'%'],
+      ['Shadow Dist','shadowDist', 0, 60,   1,   v=>(v|0)+'%'],
+      ['Shadow Angle','shadowAngle',0, 360, 1,   v=>(v|0)+'°'],
+      ['Shadow Blur','shadowBlur', 0, 40,   1,   v=>(v|0)+'%'],
+      ['Vignette',   'vignette',   0, 100,  1,   v=>(v|0)+'%'],
+      ['Sway X',     'ampX',       0, 200,  1,   v=>(v|0)+'%'],
+      ['Sway Y',     'ampY',       0, 200,  1,   v=>(v|0)+'%'],
+      ['Char Delay', 'charDelay',  0, 300,  1,   v=>(v|0)+'ms'],
+      ['Cut Slices', 'cutSlices',  2, 8,    1,   v=>String(v|0)],
+    ];
+    for(const [label,key,mi,ma,step,fmt] of specsX){
+      const row=document.createElement('div'); row.className='row';
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=Ugomeki.P[key];
+      const val=document.createElement('div'); val.className='val'; val.textContent=fmt(Ugomeki.P[key]);
+      inp.addEventListener('input', ()=>{
+        const PP = Ugomeki.P;
+        PP[key]=parseFloat(inp.value); val.textContent=fmt(PP[key]);
+      });
+      inp.addEventListener('dblclick', ()=>{
+        const PP = Ugomeki.P;
+        const d = (Ugomeki.PDefaults && Ugomeki.PDefaults[key] !== undefined) ? Ugomeki.PDefaults[key] : parseFloat(inp.min);
+        PP[key]=d; inp.value=d; val.textContent=fmt(d);
+        App._undoSchedule();
+      });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
+    }
   },
 
   // ─── SpaceType (3D 空間タイポ) ───────────────────────────────
@@ -21046,6 +21087,19 @@ void mainImage(out vec4 o, in vec2 f){
       ['Sway Freq',  'swayFreq',   0.2, 6,  0.1,  v=>v.toFixed(1), false],
       ['Droop',      'droop',      0, 100,  1,    v=>(v|0)+'%', false],
       ['Twist',      'twist',      0, 90,   1,    v=>(v|0)+'°', false],
+      ['Glyph Width','glyphW',     50, 300, 1,    v=>(v|0)+'%', false],
+      ['Size Variance','sizeVar',  0, 100,  1,    v=>(v|0)+'%', false],
+      ['Weight',     'weight',    -30, 40,  1,    v=>(v|0)+'%', false],
+      ['Opacity',    'opacity',    20, 100, 1,    v=>(v|0)+'%', false],
+      ['Spread X',   'spreadX',    30, 250, 1,    v=>(v|0)+'%', false],
+      ['Spread Y',   'spreadY',    30, 250, 1,    v=>(v|0)+'%', false],
+      ['Spread Z',   'spreadZ',    30, 180, 1,    v=>(v|0)+'%', false],
+      ['Fog',        'fog',        0, 100,  1,    v=>(v|0)+'%', false],
+      ['Far Tint',   'farTint',    0, 100,  1,    v=>(v|0)+'%', false],
+      ['Fog Distance','fogDist',   4, 60,   1,    v=>String(v|0), false],
+      ['Wave Skew',  'waveSkew',   0, 120,  1,    v=>(v|0)+'%', false],
+      ['Ring Twist', 'ringTwist',  0, 120,  1,    v=>(v|0)+'%', false],
+      ['Counter Spin','counterSpin',-100, 200, 1, v=>(v|0)+'%', false],
       ['Radius',     'radius',     0.3, 3,  0.05, v=>v.toFixed(2), false],
       ['Row Gap',    'rowGap',     0.3, 3,  0.05, v=>v.toFixed(2), true],
       ['Tracking',   'tracking',   0.3, 2.5,0.05, v=>v.toFixed(2), true],
@@ -21053,6 +21107,10 @@ void mainImage(out vec4 o, in vec2 f){
       ['FOV',        'fov',        30, 110, 1,    v=>String(v|0), false],
       ['Distance',   'dist',       4, 40,   0.5,  v=>v.toFixed(1), false],
       ['Cam Elev',   'camEl',     -1.2, 1.2,0.02, v=>v.toFixed(2), false],
+      ['Cam Azimuth','camAz',     -180, 180, 1,   v=>(v|0)+'°', false],
+      ['Cam Roll',   'camRoll',   -90, 90,  1,    v=>(v|0)+'°', false],
+      ['Look X',     'lookX',     -6, 6,  0.5,  v=>v.toFixed(1), false],
+      ['Look Y',     'lookY',     -6, 6,  0.5,  v=>v.toFixed(1), false],
       ['Orbit Speed','orbitSpeed', 0, 1,    0.01, v=>v.toFixed(2), false],
       ['Cycle Beats','sceneBeats', 1, 64,   1,    v=>(v|0)+' beat', false],
       ['Beat Pulse', 'beatPulse',  0, 1.5,  0.05, v=>v.toFixed(2), false],

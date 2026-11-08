@@ -20,7 +20,9 @@ const ST_MD_KEYS = ['scene','fontFamily','bold','ink','paper','accent','accentRa
   'fov','dist','camEl','beatPulse','seed',
   'camOrbit','orbitSpeed','billboard','depthFade','transparentBg','radius','rowGap','tracking','emojiColor',
   'tiltX','tiltY','roll','extrude','sideShade','sideColorOn','sideColor','fold',
-  'lag','swayAmp','swayFreq','droop','twist','faceVel'];
+  'lag','swayAmp','swayFreq','droop','twist','faceVel',
+  'glyphW','sizeVar','weight','opacity','spreadX','spreadY','spreadZ','camAz','camRoll','lookX','lookY',
+  'fog','farTint','fogDist','waveSkew','ringTwist','counterSpin'];
 
 const ST_SCENES = ['wave','wall','arc','tunnel','cylinder','helix','sphere','rings','ribbon','lissajous','vortex','burst','scatter','fall'];
 
@@ -95,6 +97,9 @@ function stIsEmoji(ch){
   return (c>=0x1F000 && c<=0x1FAFF) || (c>=0x2600 && c<=0x27BF) || (c>=0xFE00 && c<=0xFE0F);
 }
 
+/* 新 param 用: |v|<0.1 を 0 にする (App.deadParam)。App が無い読み込み順でも落ちない */
+const stDP = v => (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+
 const SpaceType = {
   initialized: false,
   gl: null,
@@ -134,6 +139,20 @@ const SpaceType = {
     droop: 0,            // 垂れ(%)。左右の端が重力で垂れ下がる
     twist: 0,            // ねじれ(度)。字面の左右で軸がねじれる
     faceVel: 0,          // 進行方向へ向く度合い(%)。速度ベクトルに文字が正対
+    glyphW: 100,         // 字幅(%)。文字面を横に伸縮 (字送りは変えない)
+    sizeVar: 0,          // 文字ごとの大きさのばらつき(%)
+    weight: 0,           // 線の太さ(%)。+で太く / -で細く (アトラスのアルファを閾値で切る)
+    opacity: 100,        // 文字の不透明度(%)
+    spreadX: 100, spreadY: 100, spreadZ: 100,   // 配置の広がり(%)。文字の大きさは変えず位置だけ伸縮
+    camAz: 0,            // カメラの方位オフセット(度)。tunnel 以外
+    camRoll: 0,          // カメラのロール(度)
+    lookX: 0, lookY: 0,  // 注視点のずれ(ワールド単位)
+    fog: 0,              // 奥の霞(%)。遠い文字ほど透ける
+    farTint: 0,          // 奥ほど Accent 色へ寄せる(%)
+    fogDist: 14,         // 霞・色寄せが 0→100% になる奥行きの幅
+    waveSkew: 35,        // wave: 行ごとの位相ずれ(%)
+    ringTwist: 35,       // tunnel: リングごとのねじれ(%)
+    counterSpin: 100,    // cylinder / rings: 奇数段の逆回転の強さ(%)
     radius: 1.0,         // tunnel/cylinder/sphere の半径倍率
     rowGap: 1.0,         // 行間(wave の奥行き間隔 / cylinder の段間)倍率
     tracking: 1.0,       // 字送り(wave の字間 / tunnel・cylinder の角度間隔)倍率
@@ -166,24 +185,33 @@ in vec3 aPos;
 in vec2 aUV;
 in vec4 aExtra;      // x=alpha, y=accent(0/1), z=カラーグリフ(絵文字)フラグ, w=シェード(押し出し側面)
 uniform mat4 uVP;
-out vec2 vUv; out vec4 vExtra;
-void main(){ vUv = aUV; vExtra = aExtra; gl_Position = uVP * vec4(aPos, 1.0); }`,
+out vec2 vUv; out vec4 vExtra; out float vDepth;
+void main(){ vUv = aUV; vExtra = aExtra; gl_Position = uVP * vec4(aPos, 1.0); vDepth = gl_Position.w; }`,
   FS: `#version 300 es
 precision highp float;
-in vec2 vUv; in vec4 vExtra;
+in vec2 vUv; in vec4 vExtra; in float vDepth;
 uniform sampler2D uTex;
 uniform vec3 uInk, uAccent, uSideCol;
+uniform float uWeight, uOpacity, uFog, uFarTint, uFogDist, uFogRef;
 out vec4 frag;
 void main(){
   vec4 tx = texture(uTex, vUv);
-  float a = tx.a * vExtra.x;
+  float ta = tx.a;
+  if(uWeight != 0.0){ float th = 0.5 - uWeight/100.0; ta = smoothstep(th - 0.12, th + 0.12, ta); }
+  float a = ta * vExtra.x;
   // 側面レイヤー(shade<1)は閾値を上げて硬いエッジに → 層の縞が見えずソリッドな断面になる
   if(a < (vExtra.w < 0.999 ? 0.45 : 0.05)) discard;
   vec3 col = mix(uInk, uAccent, vExtra.y);
   if(vExtra.z > 1.5) col = uSideCol;      // 押し出し面(側壁/背面): 専用色
   else if(vExtra.z > 0.5) col = tx.rgb;   // 絵文字: アトラスの元色をそのまま使う
   col *= vExtra.w;                        // 押し出し側面の陰影(前面=1.0)
-  frag = vec4(col, vExtra.w < 0.999 ? vExtra.x : a);
+  float outA = vExtra.w < 0.999 ? vExtra.x : a;
+  if(uFog > 0.0 || uFarTint > 0.0){
+    float f = clamp((vDepth - uFogRef)/uFogDist + 0.8, 0.0, 1.0);
+    col = mix(col, uAccent, uFarTint*f);
+    outA *= 1.0 - uFog*f;
+  }
+  frag = vec4(col, outA * uOpacity);
 }`,
 
   MAX_INST: 4000,      // 文字数の上限
@@ -210,7 +238,7 @@ void main(){
     gl.linkProgram(this.prog);
     if(!__glReady(gl, this.prog, true)){ console.error('SpaceType link:', gl.getProgramInfoLog(this.prog)); this.initialized = true; return false; }
     this.loc = {};
-    ['uVP','uTex','uInk','uAccent','uSideCol'].forEach(n => this.loc[n] = gl.getUniformLocation(this.prog, n));
+    ['uVP','uTex','uInk','uAccent','uSideCol','uWeight','uOpacity','uFog','uFarTint','uFogDist','uFogRef'].forEach(n => this.loc[n] = gl.getUniformLocation(this.prog, n));
 
     const FPV = this.FLOATS_PER_VERT;
     this.verts = new Float32Array(this.MAX_QUADS * 6 * FPV);
@@ -414,7 +442,9 @@ void main(){
     const P = this.P, D = this.PDefaults || P;
     for(const k of ['size','density','depth','waveAmp','waveFreq','speed','spin','jitter','fov','dist','camEl',
                     'radius','rowGap','tracking','orbitSpeed','tiltX','tiltY','roll','extrude','fold',
-                    'lag','swayAmp','swayFreq','droop','twist','faceVel'])
+                    'lag','swayAmp','swayFreq','droop','twist','faceVel',
+                    'glyphW','sizeVar','weight','opacity','spreadX','spreadY','spreadZ','camAz','camRoll','lookX','lookY',
+                    'fog','farTint','fogDist','waveSkew','ringTwist','counterSpin'])
       P[k] = D[k];
     const rnd = mtMulberry((seed|0) + 1);
     const R = (a,b)=> a + (b-a)*rnd();
@@ -822,8 +852,12 @@ void main(){
     const scene = this._builtScene;
     const D = Math.max(4, P.depth);
     const S = P.size * (this._cellEm || 1.23) * (1 + pulse*0.5);
-    const half = S/2;
+    const half0 = S/2;
     const jit = P.jitter * P.size;
+    const glyphWK = stDP(P.glyphW)/100, sizeVarK = stDP(P.sizeVar)/100;
+    const spX = stDP(P.spreadX)/100, spY = stDP(P.spreadY)/100, spZ = stDP(P.spreadZ)/100;
+    const spreadOn = (spX !== 1 || spY !== 1 || spZ !== 1);
+    const waveSkewK = stDP(P.waveSkew)/100, ringTwistK = stDP(P.ringTwist)/100, counterK = stDP(P.counterSpin)/100;
     const T = 8;   // ループノイズ周期
     let o = 0, n = 0;
     const inst = this.inst || [];
@@ -857,19 +891,20 @@ void main(){
       const g = this.glyphs[it.ch];
       if(!g) continue;
       let cx=0, cy=0, cz=0, alpha=1;
+      const half = sizeVarK ? half0 * (1 + sizeVarK*0.6*(((it.sd*13.37) % 1) * 2 - 1)) : half0;
       let rx=half, ry=0, rz=0, ux=0, uy=half, uz=0;   // 既定=XY平面
       if(scene === 'wave'){
         const ay = t*P.spin*0.5;
         const ca = Math.cos(ay), sa = Math.sin(ay);
         const x0 = it.a*S*1.0, z0 = it.b;
-        const y = P.waveAmp*Math.sin(x0*P.waveFreq*0.6 + t*P.speed*1.6 + z0*0.35)
+        const y = P.waveAmp*Math.sin(x0*P.waveFreq*0.6 + t*P.speed*1.6 + z0*waveSkewK)
                 + jit*mtN1(it.sd, t, T);
         cx = x0*ca - z0*sa; cy = y; cz = x0*sa + z0*ca;
         rx = camRight[0]*half; ry = camRight[1]*half; rz = camRight[2]*half;
         ux = camUp[0]*half;    uy = camUp[1]*half;    uz = camUp[2]*half;
       } else if(scene === 'tunnel'){
         const z = D - ((it.b*D + t*P.speed*3.2) % D);           // 奥から手前へ
-        const ang = it.a + t*P.spin + it.c*0.35;
+        const ang = it.a + t*P.spin + it.c*ringTwistK;
         const rad = Math.max(1.5, D*0.18)*P.radius * (1 + 0.12*P.waveAmp*Math.sin(ang*3 + t*P.speed));
         const cA = Math.cos(ang), sA = Math.sin(ang);
         cx = cA*rad; cy = sA*rad; cz = 1.5 - z;
@@ -880,7 +915,7 @@ void main(){
           alpha = Math.max(0, Math.min(1, fade));
         }
       } else if(scene === 'cylinder'){
-        const dir = (it.b % 2) ? -1 : 1;                        // 行ごとに逆回転
+        const dir = (it.b % 2) ? -counterK : 1;                 // 行ごとに逆回転
         const ang = it.a + t*P.spin*dir;
         const rad = Math.max(2, D*0.2)*P.radius;
         const rows = it.c;
@@ -929,7 +964,7 @@ void main(){
         ux = 0; uy = half; uz = 0;
       } else if(scene === 'rings'){
         const rad = ((it.b+1)/it.c) * D*0.4*P.radius;
-        const dir = (it.b % 2) ? -1 : 1;
+        const dir = (it.b % 2) ? -counterK : 1;
         const ang = it.a + t*P.spin*dir*(0.4 + 1.2*(1 - it.b/it.c));   // 内側のリングほど速い
         const cA = Math.cos(ang), sA = Math.sin(ang);
         cx = sA*rad; cz = cA*rad;
@@ -1021,6 +1056,8 @@ void main(){
         ux = camUp[0]*half;    uy = camUp[1]*half;    uz = camUp[2]*half;
       }
 
+      if(spreadOn){ cx *= spX; cy *= spY; cz *= spZ; }
+
       // ── 速度ベクトル (前フレーム中心との差分)。しなり/進行方向向きに使う ──
       let vx=0, vy=0, vz=0, vlen=0;
       if(needVel){
@@ -1068,6 +1105,7 @@ void main(){
         if(pitchA) rot(Rx,Ry,Rz, pitchA * mtN1(it.sd+12, t, T));
         if(yawA)   rot(Ux,Uy,Uz, yawA   * mtN1(it.sd+13, t, T));
       }
+      if(glyphWK !== 1){ Rx *= glyphWK; Ry *= glyphWK; Rz *= glyphWK; }
       const foldAng = foldMax ? foldMax * (0.5 + 0.5*mtN1(it.sd+14, t, T)) : 0;
       const colF = P.emojiColor ? g.color : 0;
 
@@ -1278,12 +1316,19 @@ void main(){
       const sway = P.camOrbit ? 1 : 0;
       eye = [0, 0, 1.5]; center = [Math.sin(t*0.2)*0.8*sway, Math.cos(t*0.17)*0.8*sway, -Math.max(4, P.depth)];
     }else{
-      const az = P.camOrbit ? t*P.orbitSpeed : 0, el = P.camEl, dist = P.dist;
+      const az = (P.camOrbit ? t*P.orbitSpeed : 0) + stDP(P.camAz)*Math.PI/180, el = P.camEl, dist = P.dist;
       eye = [dist*Math.cos(el)*Math.sin(az), dist*Math.sin(el), dist*Math.cos(el)*Math.cos(az)];
       center = [0,0,0];
     }
+    const lkX = stDP(P.lookX), lkY = stDP(P.lookY);
+    if(lkX !== 0 || lkY !== 0){ center[0] += lkX; center[1] += lkY; }
     const proj = m4.persp(P.fov*Math.PI/180, w/h, 0.05, 300.0);
-    const view = m4.lookAt(eye, center, [0,1,0]);
+    let view = m4.lookAt(eye, center, [0,1,0]);
+    const camRollA = stDP(P.camRoll)*Math.PI/180;
+    if(camRollA !== 0){
+      const cr = Math.cos(camRollA), sr = Math.sin(camRollA);
+      view = m4.mul(new Float32Array([cr,sr,0,0, -sr,cr,0,0, 0,0,1,0, 0,0,0,1]), view);
+    }
     const vp = m4.mul(proj, view);
     const camRight = [view[0], view[4], view[8]];
     const camUp    = [view[1], view[5], view[9]];
@@ -1311,6 +1356,12 @@ void main(){
       gl.uniform3f(this.loc.uInk, ink[0], ink[1], ink[2]);
       gl.uniform3f(this.loc.uAccent, acc[0], acc[1], acc[2]);
       gl.uniform3f(this.loc.uSideCol, sc2[0], sc2[1], sc2[2]);
+      gl.uniform1f(this.loc.uWeight, stDP(P.weight));
+      gl.uniform1f(this.loc.uOpacity, stDP(P.opacity)/100);
+      gl.uniform1f(this.loc.uFog, stDP(P.fog)/100);
+      gl.uniform1f(this.loc.uFarTint, stDP(P.farTint)/100);
+      gl.uniform1f(this.loc.uFogDist, Math.max(4, stDP(P.fogDist)));
+      gl.uniform1f(this.loc.uFogRef, scene === 'tunnel' ? Math.max(4, P.depth)*0.5 : P.dist);
       gl.uniform1i(this.loc.uTex, 0);
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, this.atlasTex);

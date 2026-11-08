@@ -115,10 +115,15 @@ function mtClassifyChar(ch){
    1フレームが長すぎると ANGLE/Chrome が GL コンテキストを破棄する(TDR)ため必須の保護。 */
 const MT_FX_COST = {208:8, 209:13, 210:3, 211:4, 212:4, 213:4, 214:2};
 
+/* 新 param 用: |v|<0.1 を 0 にする (App.deadParam) */
+const mtDP = v => (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+
 function mtDrawCellFX(ctx, A, s, bSeed, ts, cx, cy, cellW, cellH, baseRot, pulse, drawFn, layerAlpha, budget){
   const T = A.dur;
   const ref = Math.max(cellW, cellH);
   if(layerAlpha === undefined) layerAlpha = 1;
+  const ampXk = mtDP(A.ampX)/100, ampYk = mtDP(A.ampY)/100;
+  const cutSl = Math.max(2, Math.min(8, Math.round(mtDP(A.cutSlices))));
 
   let alpha = 1;
   if(A.blink > 0){
@@ -129,7 +134,8 @@ function mtDrawCellFX(ctx, A, s, bSeed, ts, cx, cy, cellW, cellH, baseRot, pulse
   // 高速パス：再描画系・フィルタ・並列が無いときは1回の変換で描画
   if((A.mix||0)===0 && !(A.cutV>0||A.cutH>0||A.cutD>0||A.float>0||A.glitch>0||A.dbl>0) && !(A.hue>0||A.blur>0)){
     let dx=0, dy=0;
-    if(A.amp>0){ dx=A.amp/100*ref*mtN1(s+1,ts,T); dy=A.amp/100*ref*mtN1(s+2,ts,T); }
+    if(A.amp>0){ dx=A.amp/100*ref*mtN1(s+1,ts,T); dy=A.amp/100*ref*mtN1(s+2,ts,T);
+      if(ampXk!==1) dx*=ampXk; if(ampYk!==1) dy*=ampYk; }
     if(A.wave>0){ const L=ref*6; dy+=A.wave/100*ref*Math.sin(6.28318*((cx+cy)/L)-12.566*ts/T+mtHash(bSeed)*6.28318); }
     const jr = A.rot>0 ? A.rot*Math.PI/180*mtN1(s+3,ts,T) : 0;
     let sc = 1; if(A.scale>0){ sc=1+A.scale/100*mtN1(s+4,ts,T); if(sc<0.02)sc=0.02; }
@@ -153,7 +159,8 @@ function mtDrawCellFX(ctx, A, s, bSeed, ts, cx, cy, cellW, cellH, baseRot, pulse
 
   const effs = [];
   if(A.amp>0){
-    const dx=A.amp/100*ref*mtN1(s+1,ts,T), dy=A.amp/100*ref*mtN1(s+2,ts,T);
+    let dx=A.amp/100*ref*mtN1(s+1,ts,T), dy=A.amp/100*ref*mtN1(s+2,ts,T);
+    if(ampXk!==1) dx*=ampXk; if(ampYk!==1) dy*=ampYk;
     effs.push({salt:201, fn:inner=>{ ctx.translate(dx,dy); inner(); }});
   }
   if(A.wave>0){
@@ -235,8 +242,8 @@ function mtDrawCellFX(ctx, A, s, bSeed, ts, cx, cy, cellW, cellH, baseRot, pulse
     if(A[key]>0){
       const m=A[key]/100*Math.max(0,mtN1(s+ns,ts,T));
       if(m>0.02){
-        effs.push({salt, fn:inner=>{
-          const NS=4, span=ref*1.8;
+        effs.push({salt, cost:MT_FX_COST[salt]*cutSl/4, fn:inner=>{
+          const NS=cutSl, span=ref*1.8;
           for(let j=0;j<NS;j++){
             ctx.save(); ctx.rotate(ang);
             ctx.beginPath(); ctx.rect(-span/2+j*span/NS,-span*2.5,span/NS+0.5,span*5); ctx.clip();
@@ -261,10 +268,10 @@ function mtDrawCellFX(ctx, A, s, bSeed, ts, cx, cy, cellW, cellH, baseRot, pulse
 
   // 予算超過分は重い再描画系から順に並列へ逃がす(乗算コスト→加算コスト)
   if(budget){
-    const prod = ()=> serial.reduce((a,e)=> a*(MT_FX_COST[e.salt]||1), 1);
+    const prod = ()=> serial.reduce((a,e)=> a*(e.cost||MT_FX_COST[e.salt]||1), 1);
     while(prod() > budget){
       let hi=-1, hc=1;
-      serial.forEach((e,i)=>{ const c=MT_FX_COST[e.salt]||1; if(c>hc){ hc=c; hi=i; } });
+      serial.forEach((e,i)=>{ const c=e.cost||MT_FX_COST[e.salt]||1; if(c>hc){ hc=c; hi=i; } });
       if(hi<0) break;
       parallel.push(serial.splice(hi,1)[0]);
     }
@@ -301,7 +308,9 @@ const MT_MD_KEYS = ['amp','rot','scale','blink','cutV','cutH','cutD','float','be
   'echo','echoLen','aspect','dbl','glitch','wave','hue','blur','flipH','flipV','mix','tame',
   'fps','dur','perChar','vertical','align','spacing','overflow','lineLen','lineCount','letterSpace','lineSpace','fontScale',
   'fontFamily','bold','ink','paper','marginPct','bodyKanji','bodyHira','bodyKana','bodyLatin',
-  'typeCps','typeHold','cutBeats','animSeed'];
+  'typeCps','typeHold','cutBeats','animSeed',
+  'textAngle','slope','shear','arc','stagger','sizeRampX','sizeRampY','sizeVar','tiltVar','fadeVar','opacity',
+  'strokeW','fillPct','shadowDist','shadowAngle','shadowBlur','vignette','ampX','ampY','charDelay','cutSlices'];
 
 const Ugomeki = {
   initialized: false,
@@ -334,6 +343,24 @@ const Ugomeki = {
     cutBeats: 4,       // typeCps=0(カット表示)時、1キャンバスを何拍表示して次へ送るか
     // シード
     animSeed: 1,
+    // 配置・質感・動きの性格 (第 2 弾)
+    textAngle: 0,      // ブロック全体の回転(度)
+    slope: 0,          // 字の向きは保ったまま行の基線を傾ける(%)
+    shear: 0,          // 字の向きは保ったまま列をずらす(%)
+    arc: 0,            // 基線を弓なりに曲げる(%)
+    stagger: 0,        // 1字おきに上下へずらす(%)
+    sizeRampX: 0, sizeRampY: 0,   // 位置による大きさの傾斜(%)
+    sizeVar: 0,        // 文字ごとの大きさのばらつき(%)
+    tiltVar: 0,        // 文字ごとの傾きのばらつき(度)
+    fadeVar: 0,        // 文字ごとの濃さのばらつき(%)
+    opacity: 100,      // 文字の不透明度(%)
+    strokeW: 0,        // 縁取りの太さ(字の大きさに対する%)
+    fillPct: 100,      // 縁取り時の塗りの濃さ(%)
+    shadowDist: 0, shadowAngle: 45, shadowBlur: 0,   // ドロップシャドウ(距離は字の大きさに対する%)
+    vignette: 0,       // 周辺減光(%)
+    ampX: 100, ampY: 100,   // Sway の横/縦の振れ幅(%)
+    charDelay: 0,      // 文字ごとの時間のずれ(ms/字)
+    cutSlices: 4,      // Cut V/H/Diag の分割数
     // VJ 駆動
     beatSync: true,    // beatモード時、拍頭でノイズをコマ送り
     beatPulse: 0.3,    // 拍で文字が脈動する量
@@ -356,8 +383,11 @@ in vec2 a_pos; out vec2 v_uv;
 void main(){ v_uv = vec2(a_pos.x*0.5+0.5, 0.5 - a_pos.y*0.5); gl_Position = vec4(a_pos,0.0,1.0); }`,
   FS: `#version 300 es
 precision highp float;
-in vec2 v_uv; out vec4 frag; uniform sampler2D u_tex;
-void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
+in vec2 v_uv; out vec4 frag; uniform sampler2D u_tex; uniform float u_vig;
+void main(){
+  frag = texture(u_tex, clamp(v_uv,0.0,1.0));
+  if(u_vig > 0.0) frag.rgb *= 1.0 - u_vig*smoothstep(0.35, 1.0, length(v_uv - 0.5)*1.4142);
+}`,
 
   init(gl){
     if(this.initialized) return true;
@@ -376,6 +406,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     if(!__glReady(gl, this.prog, true)){ console.error('Ugomeki link:', gl.getProgramInfoLog(this.prog)); return false; }
     this.locPos = gl.getAttribLocation(this.prog, 'a_pos');
     this.locTex = gl.getUniformLocation(this.prog, 'u_tex');
+    this.locVig = gl.getUniformLocation(this.prog, 'u_vig');
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
@@ -509,7 +540,9 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     for(const k of ['amp','rot','scale','blink','cutV','cutH','cutD','float','beam','beamDist',
                     'echo','echoLen','aspect','dbl','glitch','wave','hue','blur','flipH','flipV','mix','tame',
                     'fontScale','letterSpace','lineSpace','lineLen','lineCount','marginPct',
-                    'bodyKanji','bodyHira','bodyKana','bodyLatin'])
+                    'bodyKanji','bodyHira','bodyKana','bodyLatin',
+                    'textAngle','slope','shear','arc','stagger','sizeRampX','sizeRampY','sizeVar','tiltVar','fadeVar','opacity',
+                    'strokeW','fillPct','shadowDist','shadowAngle','shadowBlur','vignette','ampX','ampY','charDelay','cutSlices'])
       P[k] = D[k];
     const rnd = mtMulberry((seed|0) + 1);
     const R = (a,b)=> a + (b-a)*rnd();
@@ -841,6 +874,25 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     };
 
     const n = Math.min(cells.length, visChars);
+    const w2 = w/2, h2 = h/2;
+    const tAng = mtDP(P.textAngle)*Math.PI/180;
+    const slopeK = mtDP(P.slope)/100*0.5, shearK = mtDP(P.shear)/100*0.5;
+    const arcK = mtDP(P.arc)/100*h*0.25, staggerK = mtDP(P.stagger)/100*fs;
+    const rampX = mtDP(P.sizeRampX)/100, rampY = mtDP(P.sizeRampY)/100;
+    const sizeVarK = mtDP(P.sizeVar)/100*0.8, tiltVarK = mtDP(P.tiltVar)*Math.PI/180, fadeVarK = mtDP(P.fadeVar)/100;
+    const inkA = mtDP(P.opacity)/100;
+    const strokeK = mtDP(P.strokeW)/100*fs, fillA = mtDP(P.fillPct)/100;
+    const delayK = mtDP(P.charDelay)/1000;
+    const shD = mtDP(P.shadowDist)/100*fs, shB = mtDP(P.shadowBlur)/100*fs;
+    ctx.save();
+    if(tAng !== 0){ ctx.translate(w2, h2); ctx.rotate(tAng); ctx.translate(-w2, -h2); }
+    if(shD > 0 || shB > 0){
+      const ang = mtDP(P.shadowAngle)*Math.PI/180;
+      ctx.shadowOffsetX = Math.cos(ang)*shD; ctx.shadowOffsetY = Math.sin(ang)*shD; ctx.shadowBlur = shB;
+      const hx = /^#([0-9a-f]{6})$/i.exec(String(P.ink));
+      const iv = hx ? parseInt(hx[1], 16) : 0;
+      ctx.shadowColor = 'rgba(' + ((iv>>16)&255) + ',' + ((iv>>8)&255) + ',' + (iv&255) + ',0.45)';
+    }
     // 1フレームの描画コール予算：文字数で割って1文字あたりの上限を決める(TDR保護)
     const perCharBudget = Math.max(16, Math.floor(6000 / Math.max(1, n)));
     for(let i=0;i<n;i++){
@@ -852,8 +904,30 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
         else if(MT_PUNCT.includes(c.ch)){ ox = fs*0.55; oy = -fs*0.55; }
         else if(MT_SMALL.includes(c.ch)){ ox = fs*0.1;  oy = -fs*0.1; }
       }
-      const bodyS = bodyOf(c.ch);
-      const drawFn = bodyS !== 1
+      if(slopeK) oy += (c.cx - w2)*slopeK;
+      if(shearK) ox += (c.cy - h2)*shearK;
+      if(arcK){ const q = (c.cx - w2)/w2; oy += arcK*q*q; }
+      if(staggerK) oy += ((i&1) ? 0.5 : -0.5)*staggerK;
+      let bodyS = bodyOf(c.ch);
+      if(rampX) bodyS *= Math.max(0.1, 1 + rampX*(c.cx - w2)/w2);
+      if(rampY) bodyS *= Math.max(0.1, 1 + rampY*(c.cy - h2)/h2);
+      if(sizeVarK) bodyS *= 1 + sizeVarK*(2*mtHash(i*5.3 + P.animSeed*1.7) - 1);
+      if(tiltVarK) br += tiltVarK*(2*mtHash(i*3.7 + P.animSeed*2.9 + 5) - 1);
+      const la = fadeVarK ? inkA*(1 - fadeVarK*mtHash(i*7.9 + P.animSeed*4.1 + 9)) : inkA;
+      const tsC = delayK ? (((ts - i*delayK) % A.dur) + A.dur) % A.dur : ts;
+      const drawFn = strokeK > 0
+        ? ()=>{
+            ctx.save(); if(bodyS !== 1) ctx.scale(bodyS, bodyS);
+            ctx.lineWidth = strokeK; ctx.lineJoin = 'round'; ctx.strokeStyle = P.ink; ctx.strokeText(c.ch, 0, 0);
+            if(fillA < 1){   // 縁取りの内側を紙色(透過背景なら消去)で抜き、Fill% 分だけ墨を戻す
+              const ga = ctx.globalAlpha;
+              if(P.transparentBg){ ctx.globalCompositeOperation = 'destination-out'; ctx.fillText(c.ch, 0, 0); ctx.globalCompositeOperation = 'source-over'; }
+              else { ctx.fillStyle = P.paper; ctx.fillText(c.ch, 0, 0); ctx.fillStyle = P.ink; }
+              if(fillA > 0){ ctx.globalAlpha = ga*fillA; ctx.fillText(c.ch, 0, 0); ctx.globalAlpha = ga; }
+            }else ctx.fillText(c.ch, 0, 0);
+            ctx.restore();
+          }
+        : bodyS !== 1
         ? ()=>{ ctx.save(); ctx.scale(bodyS, bodyS); ctx.fillText(c.ch, 0, 0); ctx.restore(); }
         : ()=> ctx.fillText(c.ch, 0, 0);
       // 残像：過去の時刻のフレームを薄く後ろに重ねる(文字数が多いときはレイヤ数を絞る)
@@ -864,12 +938,13 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       if(echoN>0){
         const gap = (A.echoLen/1000)*0.6 + 0.008;
         for(let e2=echoN; e2>=1; e2--){
-          const tsE = ((ts - e2*gap)%A.dur + A.dur)%A.dur;
-          mtDrawCellFX(ctx, A, s, this._seed, tsE, c.cx+ox, c.cy+oy, fs, fs, br, pulse, drawFn, Math.pow(0.62,e2)*0.85, cellBudget);
+          const tsE = ((tsC - e2*gap)%A.dur + A.dur)%A.dur;
+          mtDrawCellFX(ctx, A, s, this._seed, tsE, c.cx+ox, c.cy+oy, fs, fs, br, pulse, drawFn, Math.pow(0.62,e2)*0.85*la, cellBudget);
         }
       }
-      mtDrawCellFX(ctx, A, s, this._seed, ts, c.cx+ox, c.cy+oy, fs, fs, br, pulse, drawFn, 1, cellBudget);
+      mtDrawCellFX(ctx, A, s, this._seed, tsC, c.cx+ox, c.cy+oy, fs, fs, br, pulse, drawFn, la, cellBudget);
     }
+    ctx.restore();
   },
 
   render(opts){
@@ -889,6 +964,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.uniform1i(this.locTex, 0);
+    gl.uniform1f(this.locVig, mtDP(this.P.vignette)/100);
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.enableVertexAttribArray(this.locPos);
     gl.vertexAttribPointer(this.locPos, 2, gl.FLOAT, false, 0, 0);
