@@ -69,6 +69,43 @@ uniform float uGlint; // 面内の鋭い鏡面グリントの強さ (%)
 uniform float uWindowSecond; // 2 本目の細い窓の筋の濃さ (%)
 uniform float uFresnel; // 縁の環境反射の強さ (%)
 
+// @param uCenterX -100..100 = 0.0
+// @param uCenterY -100..100 = 0.0
+// @param uMirrorX -100..100 = 0.0
+// @param uPixelate 0..100 = 0.0
+// @param uLightTurn -90..90 = 0.0
+// @param uSheenGain 0..250 = 100.0
+// @param uSheenSharp 40..250 = 100.0
+// @param uBigGlow 0..250 = 100.0
+// @param uRefractTint 0..300 = 100.0
+// @param uPlateHue 0..100 = 0.0
+// @param uGrooveDark 0..108 = 100.0
+// @param uOutlineGlow 0..150 = 100.0
+// @param uVignette 0..100 = 0.0
+// @param uGrain 0..100 = 0.0
+// @param uSilverTint color = #ffffff
+// @param uSkyTint color = #ffffff
+// @param uWindowTint color = #ffffff
+// @param uEdgeTint color = #ffffff
+uniform float uCenterX; // 板の配置を横へずらす (%)
+uniform float uCenterY; // 板の配置を縦へずらす (%)
+uniform float uMirrorX; // 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+uniform float uPixelate; // 座標のモザイク化 (%)。上げるほど板が階段状になる
+uniform float uLightTurn; // 金属の指向光の向きを回す (度)
+uniform float uSheenGain; // 明部の帯状ハイライトの強さ (%)
+uniform float uSheenSharp; // 帯状ハイライトの鋭さ (%)。上げるほど細い帯
+uniform float uBigGlow; // 大きな面だけに乗る強い光の強さ (%)
+uniform float uRefractTint; // 窓の映り込みの色ずれ (%)
+uniform float uPlateHue; // 板ごとの色づき (%)。板ごとに違う色相が乗る
+uniform float uGrooveDark; // 縁の黒い溝線の濃さ (%)
+uniform float uOutlineGlow; // 縁の白いぼかしの強さ (%)
+uniform float uVignette; // 周辺減光 (%)
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform vec3 uSilverTint; // 銀色の色味 (掛け算のティント)
+uniform vec3 uSkyTint; // 映り込む空の色味 (掛け算のティント)
+uniform vec3 uWindowTint; // 窓の筋の色味 (掛け算のティント)
+uniform vec3 uEdgeTint; // 縁の光の色味 (掛け算のティント)
+
 vec3 bg_metalSlab(vec2 fc){
   vec2 R = resolution;
   vec2 u = (fc + fc - R) / R.y;
@@ -76,6 +113,9 @@ vec3 bg_metalSlab(vec2 fc){
   // VJ ツール用 zoom / pan
   u = u / max(bgZoom, 0.001);
   u += bgCamPx / R.y * 2.0;
+  if(uMirrorX != 0.0){ float ax = uMirrorX / 100.0 * 0.5; u.x = ax - sign(uMirrorX) * abs(u.x - ax); }
+  if(uCenterX != 0.0 || uCenterY != 0.0){ vec2 pw = vec2(R.x / R.y, 1.0) * 1.05; u = mod(u + vec2(uCenterX, uCenterY) / 100.0 * 0.4 + pw, 2.0 * pw) - pw; }
+  if(uPixelate != 0.0){ float pz = uPixelate / 100.0 * 0.12; u = (floor(u / pz) + 0.5) * pz; }
 
   float t = time * (bpm / 120.0) / 6.0;
 
@@ -157,7 +197,7 @@ vec3 bg_metalSlab(vec2 fc){
   // ベース: クールなシルバー。明度をプレート毎にバラつかせる
   float base = mix(0.40, 0.74, h);
   if(uToneSpread != 100.0) base = mix(0.57 - 0.17 * (uToneSpread / 100.0), 0.57 + 0.17 * (uToneSpread / 100.0), h);
-  vec3 silver = vec3(0.92, 0.95, 1.04);   // 青み寄りのシルバー色
+  vec3 silver = vec3(0.92, 0.95, 1.04) * uSilverTint;   // 青み寄りのシルバー色
   vec3 plate = vec3(base) * silver;
 
   // メタリックグラデ: 光は図形の特定の辺に平行に差し込む。
@@ -168,12 +208,16 @@ vec3 bg_metalSlab(vec2 fc){
   vec2  eb   = P[(e1 + 1) % N];
   vec2  edge = normalize(eb - ea + vec2(1e-5));
   vec2  gDir = vec2(-edge.y, edge.x);          // 辺の法線 (明暗の変化方向)
+  if(uLightTurn != 0.0){ float lt = radians(uLightTurn); gDir = mat2(cos(lt), -sin(lt), sin(lt), cos(lt)) * gDir; }
   vec2  pc   = ms_center(P, N);
   float gT   = clamp(0.5 + 0.5*dot(u - pc, gDir), 0.0, 1.0);
   // 暗→明のランプ (金属は暗部が締まり明部が伸びる)
   plate *= mix(mix(1.0, 0.55, uContrast / 100.0), mix(1.0, 1.15, uContrast / 100.0), smoothstep(0.0, 1.0, gT));
   // 明部側に鋭い鏡面ハイライト (辺に平行な帯)
-  plate += pow(gT, 6.0) * silver * 0.55;
+  float pw6, pw3;
+  if(uSheenSharp == 100.0){ pw6 = pow(gT, 6.0); pw3 = pow(gT, 3.0); }
+  else { pw6 = pow(gT, 6.0 * (uSheenSharp / 100.0)); pw3 = pow(gT, 3.0 * (uSheenSharp / 100.0)); }
+  plate += pw6 * silver * 0.55 * (uSheenGain / 100.0);
   // 一定以上の大きな面にだけ強い光を加える。
   //   面積 (shoelace) を測り、大きいほど強くハイライトする。
   float area = 0.0;
@@ -185,7 +229,7 @@ vec3 bg_metalSlab(vec2 fc){
   area = abs(area) * 0.5;
   float big = smoothstep(0.20 * (uBigThreshold / 100.0), 0.8 * (uBigThreshold / 100.0), area);   // 大きい面ほど 1
   // 明部側に大面積限定の強い指向ハイライト (辺に平行な帯)
-  plate += big * pow(gT, 3.0) * silver * 1.0;
+  plate += big * pw3 * silver * 1.0 * (uBigGlow / 100.0);
 
   // === ガラス鏡面マテリアル: 面ごとの擬似環境反射 ===
   //   各破片を傾いたガラス/鏡面とみなし、面の向き(h,h3)で
@@ -195,13 +239,13 @@ vec3 bg_metalSlab(vec2 fc){
   vec2  refT   = vec2(-refDir.y, refDir.x);
   vec2  rc     = u - pc;
   float vert   = clamp(0.5 + 0.7*dot(rc, refDir), 0.0, 1.0);   // 空(上)〜床(下)
-  vec3  sky    = vec3(0.55, 0.62, 0.80);
+  vec3  sky    = vec3(0.55, 0.62, 0.80) * uSkyTint;
   vec3  flr    = vec3(0.03, 0.04, 0.07);
   vec3  envCol = mix(flr, sky, vert);
   float s      = dot(rc, refT) * 7.0 * (uWindowFreq / 100.0) + h*12.0;                 // 窓ストリークの座標
   float win    = smoothstep(0.80 - 0.2 * ((uWindowWidth / 100.0) - 1.0), 1.0, sin(s))
                + 0.45*(uWindowSecond / 100.0)*smoothstep(0.5, 1.0, sin(s*0.33 + 1.7));
-  envCol += win * vec3(1.05, 1.08, 1.16);
+  envCol += win * vec3(1.05, 1.08, 1.16) * uWindowTint;
   // 反射率: 大面積ほど鏡面的、明部ほど反射が見える
   float refl   = (0.30 + 0.45*big) * (0.5 + 0.5*pow(gT, 1.5)) * (uReflect / 100.0);
   plate = mix(plate, envCol, clamp(refl, 0.0, 0.85));
@@ -209,7 +253,8 @@ vec3 bg_metalSlab(vec2 fc){
   float glint  = smoothstep(0.93, 1.0, sin(s*1.3 + 0.5)) * smoothstep(0.55, 1.0, gT);
   plate += glint * (uGlint / 100.0) * vec3(1.10, 1.12, 1.22);
   // 屈折/色収差の薄いティント (青緑寄り)
-  plate += win * vec3(-0.03, 0.012, 0.06);
+  plate += win * vec3(-0.03, 0.012, 0.06) * (uRefractTint / 100.0);
+  if(uPlateHue != 0.0) plate *= mix(vec3(1.0), 0.6 + 0.5 * cos(6.28318 * (h + vec3(0.0, 0.33, 0.67))), uPlateHue / 100.0);
 
   // 破片しか描画しない (背景は隣接する別プレートが必ず存在するので bg は不要)
   vec3 o = plate;
@@ -233,10 +278,10 @@ vec3 bg_metalSlab(vec2 fc){
   // (1) 境界まわりに白いぼかし (広めソフトな光彩)
   float lw = 100.0 / max(uThick, 1.0);
   float whiteBlur = exp(-ad * 320.0 * lw);
-  o = mix(o, vec3(1.0), whiteBlur * 0.85);
+  o = mix(o, vec3(1.0) * uEdgeTint, min(whiteBlur * 0.85 * (uOutlineGlow / 100.0), 1.0));
   // (1b) その中心に細い黒線を乗せる (白ぼかし + 黒ライン)
   float blackLine = exp(-ad * 420.0 * lw);
-  o *= 1.0 - blackLine * 0.92;
+  o *= 1.0 - blackLine * 0.92 * (uGrooveDark / 100.0);
 
   // (2) ガラスの白い輪郭: 溝の内側 (破片側) からにじむ光彩。
   //     鋭いバンドではなく内側へ滑らかに減衰させて発光ぎみに見せる
@@ -249,5 +294,7 @@ vec3 bg_metalSlab(vec2 fc){
 
   // ガラスとして半透明に: 本体 ~0.4、明るい輪郭/ハイライトほど濃く
   bgAlpha = clamp(0.42 + dot(clamp(o, 0.0, 1.0), vec3(0.299, 0.587, 0.114)) * 0.45, 0.0, 0.82);
+  if(uVignette != 0.0){ vec2 vq = (fc * 2.0 - resolution) / resolution.y; o *= 1.0 - clamp(dot(vq, vq) * 0.35, 0.0, 1.0) * uVignette / 100.0; }
+  if(uGrain != 0.0) o += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain / 100.0 * 0.6;
   return clamp(o, 0.0, 1.2);
 }

@@ -59,6 +59,43 @@ uniform float uRefract;    // ガラスの屈折率の差 (%)。上げるほど�
 uniform float uGlassFade;  // ガラスを通るごとの減衰 (%)。上げると奥まで見える
 uniform float uShinePow;   // ハイライトの鋭さ (%)
 
+// @param uCenterX -100..100 = 0.0
+// @param uCenterY -100..100 = 0.0
+// @param uMirrorX -100..100 = 0.0
+// @param uRoll -180..180 = 0.0
+// @param uCamDist 70..140 = 100.0
+// @param uCamLift -100..100 = 0.0
+// @param uFov 60..160 = 100.0
+// @param uLightLift -100..100 = 0.0
+// @param uLightSep -100..100 = 0.0
+// @param uLight1Gain 0..250 = 100.0
+// @param uGlassMilk 0..300 = 100.0
+// @param uFarClip 60..100 = 100.0
+// @param uVignette 0..100 = 0.0
+// @param uGrain 0..100 = 0.0
+// @param uVolTint color = #ffffff
+// @param uGlassTint color = #ffffff
+// @param uLight1Tint color = #ffffff
+// @param uLight2Tint color = #ffffff
+uniform float uCenterX; // 物体の位置を横へずらす (%)
+uniform float uCenterY; // 物体の位置を縦へずらす (%)
+uniform float uMirrorX; // 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+uniform float uRoll; // カメラのロール (度)。画面が傾く
+uniform float uCamDist; // カメラの距離 (%)
+uniform float uCamLift; // カメラの高さの底上げ (%)。負で見上げ、正で見下ろし
+uniform float uFov; // 画角 (%)。上げると広角、下げると望遠
+uniform float uLightLift; // 2 つの光源の高さ (%)。負で低く、正で高く
+uniform float uLightSep; // 2 つの光源の方位の開き (%)
+uniform float uLight1Gain; // 暖色の光源の強さ (%)
+uniform float uGlassMilk; // ガラスの白い厚みの濃さ (%)
+uniform float uFarClip; // 奥行きの打ち切り距離 (%)。下げると奥が早く消える
+uniform float uVignette; // 周辺減光 (%)
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform vec3 uVolTint; // 内側の発光の色味 (掛け算のティント)
+uniform vec3 uGlassTint; // ガラスの白い厚みの色味 (掛け算のティント)
+uniform vec3 uLight1Tint; // 暖色の光源の色味 (掛け算のティント)
+uniform vec3 uLight2Tint; // 寒色の光源の色味 (掛け算のティント)
+
 // 距離場: 1本の波打つループ(最低限のパス)。半径・高さが大きく動き、局所的に大きく伸縮する。
 //   入り組みを避けつつダイナミックに。単一トーラスなので軽い。
 float fr_de(vec3 p){
@@ -90,24 +127,30 @@ vec3 fr_normal(vec3 p){
 vec3 bg_fragile(vec2 fc){
   vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 coord = (I*2.0 - resolution) / resolution.y;
+  if(uMirrorX != 0.0){ float ax = uMirrorX / 100.0 * 0.5; coord.x = ax + sign(uMirrorX) * abs(coord.x - ax); }
+  if(uRoll != 0.0){ float rl = radians(uRoll); coord = mat2(cos(rl), -sin(rl), sin(rl), cos(rl)) * coord; }
+  if(uCenterX != 0.0 || uCenterY != 0.0) coord -= vec2(uCenterX, uCenterY) / 100.0 * 0.6;
 
   // カメラ: 原点(中心オブジェクト)を周回
   float ct = time*0.3;
-  float camDist = 4.0;
+  float camDist = 4.0 * (uCamDist / 100.0);
   vec3 from = vec3(cos(ct)*camDist, sin(ct*0.6)*1.6*(uCamElev / 100.0), sin(ct)*camDist);
+  if(uCamLift != 0.0) from.y += uCamLift / 100.0 * 2.0;
   vec3 cw = normalize(-from);
   vec3 cu = normalize(cross(vec3(0.0, 1.0, 0.0), cw));
   vec3 cv = cross(cw, cu);
-  float fov = 0.9;
+  float fov = 0.9 * (uFov / 100.0);
   vec3 raydir = normalize(coord.x*fov*cu + coord.y*fov*cv + cw);
 
-  const vec3 lightcol1 = vec3(1.0, 0.95, 0.85);
-  const vec3 lightcol2 = vec3(0.85, 0.95, 1.0);
+  vec3 lightcol1 = vec3(1.0, 0.95, 0.85) * uLight1Tint * (uLight1Gain / 100.0);
+  vec3 lightcol2 = vec3(0.85, 0.95, 1.0) * uLight2Tint;
   vec3 light1 = normalize(vec3(cos(time*0.5), 0.6, sin(time*0.5)));
   vec3 light2 = normalize(vec3(cos(time*0.5 + 2.0), 0.4, -sin(time*0.5)));
+  if(uLightSep != 0.0) light2 = normalize(vec3(cos(time*0.5 + 2.0 + uLightSep / 100.0 * 2.0), 0.4, -sin(time*0.5)));
+  if(uLightLift != 0.0){ light1 = normalize(vec3(light1.x, light1.y + uLightLift / 100.0 * 0.8, light1.z)); light2 = normalize(vec3(light2.x, light2.y + uLightLift / 100.0 * 0.8, light2.z)); }
 
   float jit = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);  // バンディング対策のディザ
-  float totdist = jit*0.12, glassfade = 1.0, ref = 0.0, vol = 0.0, maxdist = 11.0;
+  float totdist = jit*0.12, glassfade = 1.0, ref = 0.0, vol = 0.0, maxdist = 11.0 * (uFarClip / 100.0);
   vec3 spec = vec3(0.0);
   float shp = 40.0 * (uShinePow / 100.0);
   for(int r = 0; r < 56; r++){ if(r >= int(uSteps + 0.5)) break;                                    // 軽量化: 60→46 ステップ
@@ -136,8 +179,8 @@ vec3 bg_fragile(vec2 fc){
     if(totdist > maxdist) break;
   }
   vol = pow(vol, 1.3) * 0.009 * (uGlow / 100.0);
-  vec3 col = vec3(vol)*vec3(0.82, 0.90, 1.05) + spec*0.6*(uShine / 100.0);
-  col += vec3(0.92, 0.96, 1.0) * (1.0 - glassfade) * 0.22;       // ガラス通過量=白い厚み
+  vec3 col = vec3(vol)*vec3(0.82, 0.90, 1.05)*uVolTint + spec*0.6*(uShine / 100.0);
+  col += vec3(0.92, 0.96, 1.0) * uGlassTint * (1.0 - glassfade) * 0.22 * (uGlassMilk / 100.0);       // ガラス通過量=白い厚み
 
   if(abs(uCosGrad) > 0.0001){
     float lum = dot(col, vec3(0.299, 0.587, 0.114));
@@ -145,5 +188,7 @@ vec3 bg_fragile(vec2 fc){
   }
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   bgAlpha = clamp(lum*2.5, 0.0, 1.0);                             // 背景は透過(両スロット)
+  if(uVignette != 0.0){ vec2 vq = (fc * 2.0 - resolution) / resolution.y; col *= 1.0 - clamp(dot(vq, vq) * 0.35, 0.0, 1.0) * uVignette / 100.0; }
+  if(uGrain != 0.0) col += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain / 100.0 * 0.6 * bgAlpha;
   return col;
 }

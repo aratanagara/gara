@@ -43,6 +43,35 @@ uniform float uStretch; // 横方向の伸縮 (%)。下げると横に細長い�
 uniform float uRipple; // 座標のさざ波 (%)。花弁の縁がうねる
 uniform float uPetalSym; // 放射状の対称数 (枚数)。0 = なし
 
+// @param uCenterX -100..100 = 0.0
+// @param uCenterY -100..100 = 0.0
+// @param uShear -100..100 = 0.0
+// @param uLens -100..100 = 0.0
+// @param uTileCount 0..6 = 0.0
+// @param uPixelate 0..100 = 0.0
+// @param uPhase -180..180 = 0.0
+// @param uSeedC -200..200 = 0.0
+// @param uSeedD -200..200 = 0.0
+// @param uEdgeLine -100..100 = 0.0
+// @param uPosterize 0..10 = 0.0
+// @param uVignette 0..100 = 0.0
+// @param uGrain 0..100 = 0.0
+// @param uTint color = #ffffff
+uniform float uCenterX; // 花の中心を横へずらす (%)
+uniform float uCenterY; // 花の中心を縦へずらす (%)
+uniform float uShear; // 縦位置に応じた横ずれ (%)。花が斜めに流れる
+uniform float uLens; // 画面端の膨らみ・つぼみ (%)。正で樽型、負で糸巻き型
+uniform float uTileCount; // 鏡面タイルの数 (2〜6)。0〜1 で無効。花が敷き詰められる
+uniform float uPixelate; // 座標のモザイク化 (%)。上げるほど粗いブロック
+uniform float uPhase; // 形の変化の位相のずれ (度)。花の開き方の段階を変える
+uniform float uSeedC; // 入力 3 の固定オフセット (%)
+uniform float uSeedD; // 入力 4 の固定オフセット (%)
+uniform float uEdgeLine; // 輪郭の線 (%)。正で白い縁取り、負で黒い縁取り
+uniform float uPosterize; // 色の段数 (2〜10)。0〜1 で無効。ポスター調に階調を落とす
+uniform float uVignette; // 周辺減光 (%)
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform vec3 uTint; // 全体の色味 (掛け算のティント)
+
 vec4 cppn_fn(vec2 coordinate, float in0, float in1, float in2, float in3) {
     vec4 tmp;
     bufB[0] = vec4(coordinate.x, coordinate.y, 0., 0.);
@@ -227,8 +256,21 @@ vec3 bg_flowers(vec2 fc){
     ang = abs(mod(ang + 0.5 * seg, seg) - 0.5 * seg);
     uv = length(uv) * vec2(cos(ang), sin(ang));
   }
+  if(uShear != 0.0) uv.x += uv.y * (uShear / 100.0);
+  if(uLens != 0.0) uv += uv * (uLens / 100.0) * 0.25 * dot(uv, uv);
+  if(uCenterX != 0.0 || uCenterY != 0.0) uv += vec2(uCenterX, uCenterY) / 100.0;
+  if(uTileCount >= 1.5){ vec2 tg = uv * floor(uTileCount + 0.5) / 4.0 + 0.5; uv = (1.0 - abs(fract(tg * 0.5) * 2.0 - 1.0) - 0.5) * 4.0; }
   if(uRipple > 0.0) uv += (uRipple / 100.0) * 0.15 * sin(uv.yx * 5.0 + 1.3);
-  vec3 fl = cppn_fn(uv, sin(time) * (uMotion / 100.0) * (uShapeA / 100.0) + uSeedA / 100.0, sin(2.*time) * (uMotion / 100.0) * (uShapeB / 100.0) + uSeedB / 100.0, sin(3.*time) * (uMotion / 100.0) * (uShapeC / 100.0), sin(4.*time) * (uMotion / 100.0) * (uShapeD / 100.0)).rgb;
+  if(uPixelate != 0.0){ float pz = uPixelate / 100.0 * 0.5; uv = (floor(uv / pz) + 0.5) * pz; }
+  float tm = time;
+  if(uPhase != 0.0) tm += radians(uPhase);
+  vec3 fl = cppn_fn(uv, sin(tm) * (uMotion / 100.0) * (uShapeA / 100.0) + uSeedA / 100.0, sin(2.*tm) * (uMotion / 100.0) * (uShapeB / 100.0) + uSeedB / 100.0, sin(3.*tm) * (uMotion / 100.0) * (uShapeC / 100.0) + uSeedC / 100.0, sin(4.*tm) * (uMotion / 100.0) * (uShapeD / 100.0) + uSeedD / 100.0).rgb;
+  if(uEdgeLine != 0.0){ vec3 gx = dFdx(fl), gy = dFdy(fl); float eg = clamp((length(gx) + length(gy)) * 5.0, 0.0, 1.0); if(uEdgeLine > 0.0) fl = mix(fl, vec3(1.0), eg * uEdgeLine / 100.0); else fl *= 1.0 + eg * uEdgeLine / 100.0; }
   float flLum = dot(fl, vec3(0.299, 0.587, 0.114));
-  return clamp(mix(vec3(flLum), fl, uSat / 100.0), 0.0, 1.0);
+  vec3 oc = clamp(mix(vec3(flLum), fl, uSat / 100.0), 0.0, 1.0);
+  if(uPosterize >= 1.5){ float pn = floor(uPosterize + 0.5) - 1.0; oc = floor(oc * pn + 0.5) / pn; }
+  oc *= uTint;
+  if(uVignette != 0.0){ vec2 vq = (fc * 2.0 - resolution) / resolution.y; oc *= 1.0 - clamp(dot(vq, vq) * 0.35, 0.0, 1.0) * uVignette / 100.0; }
+  if(uGrain != 0.0) oc += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain / 100.0 * 0.6;
+  return oc;
 }
