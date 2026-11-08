@@ -94,6 +94,36 @@ uniform float uSize; // ボックスひとつの大きさ (%)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
+// @param uOffX -60..60 = 0
+// @param uOffY -60..60 = 0
+// @param uEnvShift -60..60 = 0
+// @param uStripeAmt 0..100 = 0
+// @param uAoPow 0..300 = 100
+// @param uFogCurve 40..300 = 100
+// @param uBgSpread 0..300 = 100
+// @param uSheen 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uChromeColor color = #ffffff
+// @param uAoColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uBackColor color = #ffffff
+uniform float uOffX; // 物体の横位置 (%)
+uniform float uOffY; // 物体の縦位置 (%)
+uniform float uEnvShift; // 環境反射の地平線の位置 (%)。反射の明暗の境目が動く
+uniform float uStripeAmt; // 反射に走る縞の濃さ (%)
+uniform float uAoPow; // 接触影の濃さ (%)。上げるとくぼみが暗く沈む
+uniform float uFogCurve; // 遠景が溶ける曲線の指数 (%)
+uniform float uBgSpread; // 背景の中心から周辺へのグラデーションの広がり (%)
+uniform float uSheen; // 虹色の艶 (%)。法線の向きで色が移ろう
+uniform float uGrain; // 粒状のざらつき (%)
+uniform float uVignette; // 周辺減光 (%)
+uniform vec3  uAoColor; // 接触影に掛けるティント
+uniform vec3  uChromeColor; // クロームの地色のティント
+uniform vec3  uSpecColor; // ハイライトの色のティント
+uniform vec3  uRimColor; // 縁のフレネル反射の色のティント
+uniform vec3  uBackColor; // 背景・遠景の色のティント
 
 vec2 wr_blocks(vec3 p, vec3 scl, vec3 rd){
   float t = time;
@@ -196,7 +226,7 @@ vec3 wr_norm(vec3 p){
 #define WR_AO(a0,n,p) smoothstep(-(a0)*(uAoReach / 100.0), (a0)*(uAoReach / 100.0), wr_map(p + n*((a0)*(uAoReach / 100.0))).z)
 
 vec3 bg_ravecube(vec2 fc){
-  vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
+  vec2 I = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + (bgCamPx - vec2(uOffX, uOffY) * (0.01 * resolution.y));
   vec2 uv = (I - 0.5*resolution) / resolution.y;
   float t = time;
   vec3 col = vec3(0);
@@ -225,17 +255,31 @@ vec3 bg_ravecube(vec2 fc){
     vec3 rr = reflect(rd, n);
     // クローム(鏡面反射)
     float env = 0.5 + 0.5*rr.y;
+    if(uEnvShift != 0.0) env += uEnvShift / 100.0;
     vec3 chrome = mix(vec3(0.03, 0.035, 0.05), vec3(0.92, 0.94, 1.00), smoothstep(0.12, 0.88, env));
+    if(uChromeColor != vec3(1.0)) chrome *= uChromeColor;
     chrome += pow(env, 8.0) * vec3(0.22);
+    if(uStripeAmt != 0.0) chrome *= 1.0 - (uStripeAmt / 100.0) * (0.5 + 0.5*sin(atan(rr.z, rr.x)*6.0 + rr.y*3.0));
     float spec = pow(length(sin(rr*5.)*.5 + .5)/sqrt(3.), 6.0 * (uSpecSharp / 100.0));   // 鋭い反射ハイライト
     float fres = pow(1.0 - abs(dot(rd, n)), 4.0 * (uRimSharp / 100.0));
-    chrome += (spec * vec3(1.0) * 1.2 + fres * vec3(0.7, 0.75, 0.9) * 0.5) * (uGlow / 100.0);
+    if(uSpecColor != vec3(1.0) || uRimColor != vec3(1.0)) chrome += (spec * uSpecColor * 1.2 + fres * vec3(0.7, 0.75, 0.9) * uRimColor * 0.5) * (uGlow / 100.0);
+    else chrome += (spec * vec3(1.0) * 1.2 + fres * vec3(0.7, 0.75, 0.9) * 0.5) * (uGlow / 100.0);
     float ao = WR_AO(0.3, n, p) * WR_AO(0.5, n, p) * WR_AO(0.9, n, p);
     col = chrome * pow(clamp(ao, 0.0, 1.0), 0.4);
+    if(uAoPow != 100.0) col = chrome * pow(clamp(ao, 0.0, 1.0), 0.4*(uAoPow / 100.0));
+    if(uAoColor != vec3(1.0)) col *= mix(uAoColor, vec3(1.0), pow(clamp(ao, 0.0, 1.0), 0.4));
+    if(uSheen != 0.0) col *= 1.0 + (uSheen / 100.0) * (cos(6.2831853 * ((n.y*0.5 + 0.5 + n.x*0.25) + vec3(0.0, 0.33, 0.67))) * 0.5 - 0.1);
   }
   vec3 bg = mix(vec3(0.05, 0.055, 0.07), vec3(0.12, 0.13, 0.17), length(uv));
+  if(uBgSpread != 100.0 || uBackColor != vec3(1.0)) bg = mix(vec3(0.05, 0.055, 0.07), vec3(0.12, 0.13, 0.17), length(uv)*(uBgSpread / 100.0)) * uBackColor;
   float fogK = dO/(WR_MDIST * (uFogDist / 100.0));
   if(uFogDist != 100.0) fogK = clamp(fogK, 0.0, 1.0);
+  if(uFogCurve != 100.0) fogK = pow(clamp(fogK, 0.0, 1.0), uFogCurve / 100.0);
   col = mix(col, bg, fogK);
+  if(uGrain != 0.0){
+    float gn = fract(sin(dot(fc, vec2(12.9898, 78.233)) + time) * 43758.5453);
+    col *= 1.0 + (gn - 0.5) * (uGrain / 100.0) * 1.2;
+  }
+  if(uVignette != 0.0) col *= 1.0 - (uVignette / 100.0) * smoothstep(0.2, 0.9, length(uv));
   return col;
 }
