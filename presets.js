@@ -2950,6 +2950,25 @@ void mainImage(out vec4 o, vec2 fragCoord) {
 // @param uBumpStrength 20..300 = 100
 // @param uHighlightSize 40..140 = 100
 // @param uSideLight 0..300 = 100
+// @param uGoopLowColor color = #ffffff
+// @param uGoopHighColor color = #ffffff
+// @param uCavityColor color = #000000
+// @param uSkyColor color = #ffffff
+// @param uHighlightColor color = #ffffff
+// @param uHeightTone 30..300 = 100
+// @param uReflectAmount 0..200 = 100
+// @param uEnvRotate -180..180 = 0
+// @param uHorizonShift -50..50 = 0
+// @param uHighlightSoft 30..300 = 100
+// @param uSurfaceTiltX -100..100 = 0
+// @param uSurfaceTiltY -100..100 = 0
+// @param uReflectFov 30..300 = 100
+// @param uRimReflect 0..150 = 0
+// @param uFieldShiftX -100..100 = 0
+// @param uFieldShiftY -100..100 = 0
+// @param uFieldRotate -180..180 = 0
+// @param uSurfaceGrain 0..60 = 0
+// @param uEdgeDark 0..100 = 0
 uniform float uEnv; uniform float uSpeed;
 uniform float uBlobScale; // 塊の細かさ (%)
 uniform float uCoarseScale; // 最も大きなうねりの細かさ (%)
@@ -2961,6 +2980,25 @@ uniform float uBlurReach; // 影・法線をぼかす半径 (%)
 uniform float uBumpStrength; // 表面の凹凸の強さ (%)
 uniform float uHighlightSize; // 上からの映り込みの広さ (%)
 uniform float uSideLight; // 横からの映り込みの強さ (%)
+uniform vec3 uGoopLowColor;  // 谷 (低い所) の色 (ティント)
+uniform vec3 uGoopHighColor; // 山 (高い所) の色 (ティント)
+uniform vec3 uCavityColor;   // 窪みの影に足す色。黒で従来どおり
+uniform vec3 uSkyColor;      // 映り込む空の色 (ティント)
+uniform vec3 uHighlightColor; // 映り込むハイライトの色 (ティント)
+uniform float uHeightTone;   // 谷から山への色の変わり方の指数 (%)。形は変わらない
+uniform float uReflectAmount; // 映り込み全体の強さ (%)
+uniform float uEnvRotate;    // 映り込む環境の水平回転 (度)
+uniform float uHorizonShift; // 環境の地平線の上下 (%)
+uniform float uHighlightSoft; // 上からの映り込みの縁のぼけ (%)。小さいと鋭い
+uniform float uSurfaceTiltX; // 表面全体の傾き 横 (%)。映り込みの位置が動く
+uniform float uSurfaceTiltY; // 表面全体の傾き 縦 (%)
+uniform float uReflectFov;   // 映り込みの画角 (%)。大きいと画面内の映り込みの差が小さい
+uniform float uRimReflect;   // 傾いた面ほど映り込みを強める量 (%)
+uniform float uFieldShiftX;  // 塊の模様の横ずらし (%)
+uniform float uFieldShiftY;  // 塊の模様の縦ずらし (%)
+uniform float uFieldRotate;  // 塊の模様の回転 (度)
+uniform float uSurfaceGrain; // 表面の粒 (%)
+uniform float uEdgeDark;     // 周辺の暗がり (%)
 float gK1, gK2, gGoop, gRampK;
 int gDetail;
 bool gGoopOn, gRampOn;
@@ -3057,9 +3095,13 @@ float heightBlur(vec2 c, float lod){
 // cubemap の代替: 手続きスタジオ env
 vec3 envAt(vec3 dir){
   float up = dir.y*0.5 + 0.5;
+  if(uHorizonShift != 0.0){ up = clamp(up + uHorizonShift/100.0, 0.0, 1.0); }
   vec3 sky = mix(vec3(0.12,0.15,0.22), vec3(0.9,0.95,1.05), up);
-  float hl = smoothstep(0.55*(uHighlightSize/100.0), 1.0, dir.y) + 0.5*(uSideLight/100.0)*smoothstep(0.9, 1.0, dir.x*0.5+0.5);
-  return sky + hl * 0.6 * uEnv;
+  float hlE0 = 0.55*(uHighlightSize/100.0);
+  float hlE1 = 1.0;
+  if(uHighlightSoft != 100.0){ hlE1 = hlE0 + (1.0 - hlE0)*(uHighlightSoft/100.0); }
+  float hl = smoothstep(hlE0, hlE1, dir.y) + 0.5*(uSideLight/100.0)*smoothstep(0.9, 1.0, dir.x*0.5+0.5);
+  return sky * uSkyColor + hl * 0.6 * uEnv * uHighlightColor;
 }
 
 float heightBlur_d(vec2 c, float lod){
@@ -3071,30 +3113,52 @@ float heightBlur_d(vec2 c, float lod){
   return s / 7.0;
 }
 
+vec2 fieldXf(vec2 fc){
+  if(uFieldRotate != 0.0){ vec2 c = iResolution.xy*0.5; float a = uFieldRotate*0.0174533; fc = c + mat2(cos(a), -sin(a), sin(a), cos(a))*(fc - c); }
+  if(uFieldShiftX != 0.0 || uFieldShiftY != 0.0){ fc += vec2(uFieldShiftX, uFieldShiftY)*iResolution.y*0.01; }
+  return fc;
+}
+vec3 goopBase(float height, float occlusion){
+  if(uHeightTone != 100.0){ height = pow(clamp(height, 0.0, 1.0), uHeightTone/100.0); }
+  vec3 col = mix(vec3(0.8,0.6,0.4)*uGoopLowColor, vec3(1.0)*uGoopHighColor, height) * (1.0 - occlusion);
+  if(uCavityColor != vec3(0.0)){ col += uCavityColor*clamp(occlusion, 0.0, 1.0); }
+  return col;
+}
+vec3 goopFinish(vec3 col, vec3 normal, vec2 fc){
+  if(uSurfaceTiltX != 0.0 || uSurfaceTiltY != 0.0){ normal = normalize(normal + vec3(uSurfaceTiltX, uSurfaceTiltY, 0.0)*0.012); }
+  float rz = 1.0;
+  if(uReflectFov != 100.0){ rz = 100.0/uReflectFov; }
+  vec3 rayDir = normalize(vec3((fc - iResolution.xy/2.0)/iResolution.y, rz));
+  vec3 envSampleDir = reflect(rayDir, normal);
+  if(uEnvRotate != 0.0){ float a = uEnvRotate*0.0174533; envSampleDir.xz = mat2(cos(a), -sin(a), sin(a), cos(a))*envSampleDir.xz; }
+  vec3 envSample = envAt(envSampleDir);
+  if(uRimReflect != 0.0){ envSample *= 1.0 + (uRimReflect/100.0)*2.0*(1.0 - normal.z); }
+  vec3 applied = 0.6*col + 0.4*(uReflectAmount/100.0)*col*envSample;
+  if(uSurfaceGrain != 0.0){ applied += (fract(sin(dot(fc, vec2(12.9898, 78.233)))*43758.5453) - 0.5)*(uSurfaceGrain/100.0)*0.4; }
+  if(uEdgeDark != 0.0){ applied *= 1.0 - (uEdgeDark/100.0)*smoothstep(0.1, 0.75, length(fc/iResolution.xy - 0.5)); }
+  return applied;
+}
+
 vec3 shade_d(vec2 fragCoord){
   vec2 fc = fragCoord.xy;
-  float height = heightAt_d(fc);
+  vec2 fh = fieldXf(fc);
+  float height = heightAt_d(fh);
   float occlusion = 0.0;
   for(float i=2.0;i<=5.0;i++){
-    float mh = heightBlur_d(fc, i);
+    float mh = heightBlur_d(fh, i);
     occlusion += 4.0 * (uOccAmount/100.0) * max(mh - height, 0.0) * (1.0 / i);
   }
-  vec3 col = mix(vec3(0.8,0.6,0.4), vec3(1.0), height) * (1.0 - occlusion);
+  vec3 col = goopBase(height, occlusion);
   vec3 totalNormal = vec3(0.0);
   for(float i=3.0;i<=5.0;i++){
     float texelStep = pow(2.0, i);
     vec3 n = normalize(vec3(
-      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fc+vec2(texelStep,0.0), i) - heightBlur_d(fc-vec2(texelStep,0.0), i)),
-      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fc+vec2(0.0,texelStep), i) - heightBlur_d(fc-vec2(0.0,texelStep), i)),
+      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fh+vec2(texelStep,0.0), i) - heightBlur_d(fh-vec2(texelStep,0.0), i)),
+      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fh+vec2(0.0,texelStep), i) - heightBlur_d(fh-vec2(0.0,texelStep), i)),
       1.0));
     totalNormal += n;
   }
-  vec3 normal = normalize(totalNormal);
-  vec3 rayDir = normalize(vec3((fc - iResolution.xy/2.0)/iResolution.y, 1.0));
-  vec3 envSampleDir = reflect(rayDir, normal);
-  vec3 envSample = envAt(envSampleDir);
-  vec3 applied = 0.6*col + 0.4*col*envSample;
-  return applied;
+  return goopFinish(col, normalize(totalNormal), fc);
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
@@ -3107,28 +3171,24 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   gRampOn = (uRampSharp != 0.0); gRampK = clamp(uRampSharp/100.0, 0.0, 1.0);
   float bump = 5.0*(uBumpStrength/100.0);
   vec2 fc = fragCoord.xy;
-  float height = heightAt(fc);
+  vec2 fh = fieldXf(fc);
+  float height = heightAt(fh);
   float occlusion = 0.0;
   for(float i=2.0;i<=5.0;i++){
-    float mh = heightBlur(fc, i);
+    float mh = heightBlur(fh, i);
     occlusion += 4.0 * (uOccAmount/100.0) * max(mh - height, 0.0) * (1.0 / i);
   }
-  vec3 col = mix(vec3(0.8,0.6,0.4), vec3(1.0), height) * (1.0 - occlusion);
+  vec3 col = goopBase(height, occlusion);
   vec3 totalNormal = vec3(0.0);
   for(float i=3.0;i<=5.0;i++){
     float texelStep = pow(2.0, i);
     vec3 n = normalize(vec3(
-      bump * (heightBlur(fc+vec2(texelStep,0.0), i) - heightBlur(fc-vec2(texelStep,0.0), i)),
-      bump * (heightBlur(fc+vec2(0.0,texelStep), i) - heightBlur(fc-vec2(0.0,texelStep), i)),
+      bump * (heightBlur(fh+vec2(texelStep,0.0), i) - heightBlur(fh-vec2(texelStep,0.0), i)),
+      bump * (heightBlur(fh+vec2(0.0,texelStep), i) - heightBlur(fh-vec2(0.0,texelStep), i)),
       1.0));
     totalNormal += n;
   }
-  vec3 normal = normalize(totalNormal);
-  vec3 rayDir = normalize(vec3((fc - iResolution.xy/2.0)/iResolution.y, 1.0));
-  vec3 envSampleDir = reflect(rayDir, normal);
-  vec3 envSample = envAt(envSampleDir);
-  vec3 applied = 0.6*col + 0.4*col*envSample;
-  fragColor = vec4(applied, 1.0);
+  fragColor = vec4(goopFinish(col, normalize(totalNormal), fc), 1.0);
 }
 `
 },
@@ -3579,6 +3639,22 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 // @param uSurfaceBloat 0..800 = 100
 // @param uSpecPow 20..400 = 100
 // @param uSpecAmount 0..300 = 100
+// @param uLightYaw -180..180 = 0
+// @param uLightPitch -80..80 = 0
+// @param uDiffuseAmount 0..250 = 100
+// @param uAmbientLift 0..100 = 0
+// @param uRimAmount 0..100 = 0
+// @param uDepthDark 0..100 = 0
+// @param uStepAO 0..100 = 0
+// @param uFov 70..200 = 100
+// @param uCamRoll -45..45 = 0
+// @param uViewShiftX -100..100 = 0
+// @param uViewShiftY -100..100 = 0
+// @param uOrbitPhase 0..360 = 0
+// @param uBodyColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uBackColor color = #000000
 uniform float uJuliaScale; // Julia 定数の大きさ (%)。形の複雑さが変わる
 uniform float uJuliaBiasX; // Julia 定数の x 成分のずれ (%)。0 で元の形
 uniform float uJuliaBiasW; // Julia 定数の w 成分のずれ (%)。0 で元の形
@@ -3589,6 +3665,22 @@ uniform float uCamHeight;  // カメラの高さ (%)。0 で水平
 uniform float uSurfaceBloat; // 表面の膨らみ (%)。0 で痩せ / 大きいと太る
 uniform float uSpecPow;    // ハイライトの鋭さ (%)
 uniform float uSpecAmount; // ハイライトの強さ (%)
+uniform float uLightYaw;   // 光の水平の向き (度)。カメラ基準
+uniform float uLightPitch; // 光の高さ (度)。0 で水平、正で上から
+uniform float uDiffuseAmount; // 拡散光の強さ (%)
+uniform float uAmbientLift; // 影側の底上げ (%)。0 で影が真っ暗
+uniform float uRimAmount;  // 輪郭のリムライトの強さ (%)
+uniform float uDepthDark;  // 奥ほど暗く沈む度合い (%)
+uniform float uStepAO;     // 窪みの陰の濃さ (%)。レイの反復数から出す
+uniform float uFov;        // 画角 (%)。大きいと望遠
+uniform float uCamRoll;    // カメラの傾き (度)
+uniform float uViewShiftX; // 画面内の横ずらし (%)
+uniform float uViewShiftY; // 画面内の縦ずらし (%)
+uniform float uOrbitPhase; // 軌道とアニメの位相 (度)。形の出る瞬間を選ぶ
+uniform vec3 uBodyColor;   // 本体の色 (ティント)
+uniform vec3 uSpecColor;   // ハイライトの色 (ティント)
+uniform vec3 uRimColor;    // リムライトの色
+uniform vec3 uBackColor;   // 背景に足す色。黒で従来どおり
 //   原作に忠実。VJ 向けに速度パラメータとアスペクト補正(横長での歪み防止)を追加。
 // @param uSpeed 0..3 = 1.0
 uniform float uSpeed;
@@ -3657,12 +3749,22 @@ vec3 trace (vec3 origin, vec3 direction) {
             float diffuse = max(-dot(normal, lightDirection), 0.0);
             float specular = -dot(reflect(direction, normal), lightDirection);
             if(uSpecPow != 100.0){ specular = pow(max(specular, 1e-4), 5.0*(uSpecPow/100.0)); } else { specular = max(pow(specular, 5.0), 0.0); }
-            float shade = diffuse * 0.7 + specular * 0.3*(uSpecAmount/100.0);
+            float dterm = diffuse * 0.7 * (uDiffuseAmount/100.0);
+            float sterm = specular * 0.3*(uSpecAmount/100.0);
+            if(uAmbientLift != 0.0){ dterm += 0.3*(uAmbientLift/100.0); }
+            float sk = 1.0;
+            if(uDepthDark != 0.0){ sk *= exp(-totalDistance*uDepthDark*0.005); }
+            if(uStepAO != 0.0){ sk *= max(1.0 - min(steps/30.0, 1.0)*(uStepAO/100.0), 0.0); }
+            vec3 col;
+            if(uSpecColor != vec3(1.0)){ col = dterm*tint + sterm*tint*uSpecColor; }
+            else { col = (dterm + sterm) * tint; }
+            if(sk != 1.0){ col *= sk; }
+            if(uRimAmount != 0.0){ col += pow(1.0 - max(-dot(direction, normal), 0.0), 3.0)*(uRimAmount/100.0)*uRimColor; }
             gHit = 1.0;
-            return shade * tint;
+            return col;
         }
     }
-    return vec3(0.1);   // 背景色 (Slot A ではこの色 / Slot B では alpha=0 で透過)
+    return vec3(0.1) + uBackColor;   // 背景色 (Slot A ではこの色 / Slot B では alpha=0 で透過)
 }
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord )
@@ -3670,6 +3772,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     gIter = int(uJuliaIter + 0.5);
     gCustom = (uJuliaScale != 100.0 || uJuliaBiasX != 0.0 || uJuliaBiasW != 0.0 || uSliceW != 0.0 || uJuliaIter != 25.0 || uSurfaceBloat != 100.0);
     float t = iTime * uSpeed;
+    if(uOrbitPhase != 0.0){ t += uOrbitPhase*0.0174533; }
     cameraPosition = 1.8*(uCamDist/100.0) * vec3(cos(t), 0, sin(t));
     if(uCamHeight != 0.0){ cameraPosition.y = uCamHeight*0.008; }
     cameraMatrix = mat3(cos(t+3.14/2.0), 0, -sin(t+3.14/2.0), 0, 1, 0, sin(t+3.14/2.0), 0, cos(t+3.14/2.0));
@@ -3677,13 +3780,23 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     if(uJuliaBiasX != 0.0){ offset.x += uJuliaBiasX*0.002; }
     if(uJuliaBiasW != 0.0){ offset.w += uJuliaBiasW*0.002; }
     lightDirection = vec3(cos(t + 3.14), 0.0, sin(t + 3.14));
+    if(uLightYaw != 0.0 || uLightPitch != 0.0){
+        float ly = uLightYaw*0.0174533, lp = uLightPitch*0.0174533;
+        vec2 lxz = mat2(cos(ly), -sin(ly), sin(ly), cos(ly))*lightDirection.xz;
+        lightDirection = normalize(vec3(lxz.x*cos(lp), sin(lp), lxz.y*cos(lp)));
+    }
     tint = vec3(cos(t / 20.0 * 3.1415 * 2.0) + 1.0,
                 cos(t / 20.0 * 3.1415 * 2.0 + 2.0 * 3.1415 / 3.0) + 1.0,
                 cos(t / 20.0 * 3.1415 * 2.0 + 4.0 * 3.1415 / 3.0) + 1.0) / 2.0;
+    tint *= uBodyColor;
 
     // アスペクト補正 (y 基準・原作の反転 orientation を維持)。1:1 では原作と同一。
     vec2 uv = -(2.0 * fragCoord - iResolution.xy) / iResolution.y;
-    vec3 ray = normalize(vec3(uv, 1.0)) * cameraMatrix;
+    if(uViewShiftX != 0.0 || uViewShiftY != 0.0){ uv -= vec2(uViewShiftX, uViewShiftY)/100.0; }
+    if(uCamRoll != 0.0){ float cr = uCamRoll*0.0174533; uv = mat2(cos(cr), -sin(cr), sin(cr), cos(cr))*uv; }
+    float rz = 1.0;
+    if(uFov != 100.0){ rz = 100.0/uFov; }
+    vec3 ray = normalize(vec3(uv, rz)) * cameraMatrix;
 
     vec3 col = trace(cameraPosition, ray);
     fragColor = vec4(col, gHit);   // 背景 alpha=0 → Slot B で透過
@@ -4793,6 +4906,25 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 // @param uWindowBand 40..120 = 100
 // @param uCamHeight 100..170 = 100
 // @param uLookPitch -60..60 = 0
+// @param uLightYaw -180..180 = 0
+// @param uLightHeight 20..300 = 100
+// @param uSunAmount 0..250 = 100
+// @param uAoPower 0..400 = 100
+// @param uBaseDark 0..100 = 0
+// @param uDistFade 0..100 = 0
+// @param uWarmShare 5..95 = 30
+// @param uGlassGloss 0..250 = 100
+// @param uGlassBase 0..200 = 100
+// @param uFrameShade 0..250 = 100
+// @param uPillarShade 0..300 = 100
+// @param uRoadLineDark 0..400 = 100
+// @param uFov 50..200 = 100
+// @param uCamRoll -45..45 = 0
+// @param uCamYaw -45..45 = 0
+// @param uWallColor color = #ffffff
+// @param uRoofColor color = #ffffff
+// @param uGlassColor color = #ffffff
+// @param uGroundColor color = #ffffff
 uniform float uSlotIsA;
 uniform float uTowerScale;    // ビルの高さの倍率 (%)
 uniform float uTowerVariance; // ビルの高さのばらつき (%)。小さいと揃い、大きいと高低差が出る
@@ -4804,6 +4936,25 @@ uniform float uPaneFill;      // 窓ガラスが枠を占める割合 (%)
 uniform float uWindowBand;    // 窓が並ぶ帯の幅 (%)
 uniform float uCamHeight;     // カメラの高さ (%)
 uniform float uLookPitch;     // カメラの上下の向き (%)
+uniform float uLightYaw;      // 光の向き (度)。壁の明暗の面が変わる
+uniform float uLightHeight;   // 光の高さ (%)。小さいと横から、大きいと真上から
+uniform float uSunAmount;     // 壁に当たる光の強さ (%)
+uniform float uAoPower;       // 建物の根元・隙間の陰の濃さ (%)。0 で陰なし
+uniform float uBaseDark;      // ビルの足元の暗がり (%)
+uniform float uDistFade;      // 遠くが暗く沈む度合い (%)
+uniform float uWarmShare;     // 赤茶色のビルの割合 (%)。残りは灰色
+uniform float uGlassGloss;    // 窓ガラスの映り込みの強さ (%)
+uniform float uGlassBase;     // 窓ガラスの地の明るさ (%)
+uniform float uFrameShade;    // 窓枠の影の明るさ (%)
+uniform float uPillarShade;   // 窓の帯のあいだの柱の暗さ (%)。小さいほど暗い
+uniform float uRoadLineDark;  // 路面の区画線の濃さ (%)
+uniform float uFov;           // 画角 (%)。大きいと望遠
+uniform float uCamRoll;       // カメラの傾き (度)
+uniform float uCamYaw;        // カメラの左右の向き (度)
+uniform vec3 uWallColor;      // ビルの壁の色 (ティント)
+uniform vec3 uRoofColor;      // 屋上の色 (ティント)
+uniform vec3 uGlassColor;     // 窓ガラスの色 (ティント)
+uniform vec3 uGroundColor;    // 路面の色 (ティント)
 
 #define M(x,y) res = mel(res,C(x,y))
 
@@ -4887,6 +5038,11 @@ float ao(vec3 p,vec3 n){
     return a * 0.5 + 0.5;
 }
 
+float aoPow(float a){
+    if(uAoPower != 100.0){ a = pow(max(a, 1e-4), uAoPower/100.0); }
+    return a;
+}
+
 vec3 color(vec3 p, vec3 v){
     float d = 0.001;
     C c=C(0.,-1);
@@ -4907,6 +5063,7 @@ vec3 color(vec3 p, vec3 v){
         gSky = 1.0;
     }else if(c.t == 0){
         vec3 light = normalize(vec3(1,1,1));
+        if(uLightYaw != 0.0 || uLightHeight != 100.0){ float ly = uLightYaw*0.0174533; light = normalize(vec3(cos(ly) - sin(ly), uLightHeight/100.0, sin(ly) + cos(ly))); }
         float bw = 0.3 * (uBuildingWidth / 100.0);
         float hei = random(floor(pos.xz))*(1.6 * (uTowerVariance / 100.0))+0.5;
         hei *= (uTowerScale / 100.0);
@@ -4922,9 +5079,17 @@ vec3 color(vec3 p, vec3 v){
         if((ap.x<bp.x && ap.y<bp.y) || (ap.z<bp.z && ap.y<bp.y) || (ap.x<bp.x && ap.z<bp.z))col1 *= 0.1;
         vec3 col2 = vec3(0);
         float rColor = random(floor(pos.xz)*2.);
-        if(rColor < 0.3)col2 = mix(vec3(0.7,0.3,0.2),vec3(0.8,0.7,0.6),rColor*10./3.);
-        else col2 = mix(vec3(0.3,0.3,0.3),vec3(0.8,0.8,0.8),(rColor-0.3)*10./7.);
-        col2 += max(0.,dot(light,n))*0.4;
+        if(uWarmShare != 30.0){
+            float wk = clamp(uWarmShare/100.0, 0.02, 0.98);
+            if(rColor < wk)col2 = mix(vec3(0.7,0.3,0.2),vec3(0.8,0.7,0.6),rColor/wk);
+            else col2 = mix(vec3(0.3,0.3,0.3),vec3(0.8,0.8,0.8),(rColor-wk)/(1.0-wk));
+        }else{
+            if(rColor < 0.3)col2 = mix(vec3(0.7,0.3,0.2),vec3(0.8,0.7,0.6),rColor*10./3.);
+            else col2 = mix(vec3(0.3,0.3,0.3),vec3(0.8,0.8,0.8),(rColor-0.3)*10./7.);
+        }
+        col2 *= uWallColor;
+        if(n.y > 0.9){ col2 *= uRoofColor; }
+        col2 += max(0.,dot(light,n))*0.4*(uSunAmount/100.0);
         vec3 col3 = col2;
         vec3 posi = abs(mod(pos+hdif+0.05,vec3(0.1,0.1,0.1))-0.05)*20.;
         if(uWindowPitch != 100.0){ float wk = uWindowPitch / 100.0; posi = abs(mod(pos+hdif+0.05*wk,vec3(0.1*wk))-0.05*wk)*(20./wk); }
@@ -4939,25 +5104,29 @@ vec3 color(vec3 p, vec3 v){
                 // 原作の iChannel1 反射cubemap → 手続き環境色
                 vec3 rfl = reflect(v,n);
                 vec3 env = mix(vec3(0.15,0.18,0.28), vec3(0.85,0.9,1.0), clamp(rfl.y*0.5+0.5,0.,1.));
-                col3 = env * 0.5 + 0.5;
+                col3 = (env * (0.5*(uGlassGloss/100.0)) + 0.5*(uGlassBase/100.0)) * uGlassColor;
                 col3 *= 2.0 - exp(ep-pf);
             }else if(ep < pf + 0.05){
-                col3 *= max(0.,dot(normalize(posi),light))*0.4;
+                col3 *= max(0.,dot(normalize(posi),light))*0.4*(uFrameShade/100.0);
             }
         }else if(ri.x > bl && ri.x < bh && ri.z > bl && ri.z < bh){
-            col3 *= 0.3;
+            col3 *= 0.3*(uPillarShade/100.0);
         }
         if(posi.y > 0.7)col3 *= 1. + (posi.y-1.)*3. * max(smoothstep(0.35,0.1,abs(ri.x-0.5)),smoothstep(0.35,0.1,abs(ri.z-0.5)));
         float level = smoothstep(-5.,9.,iTime*5.-floor(pos.x)+random(vec2(floor(pos.z),0.5))*6.-3.);
         float level2 = smoothstep(-1.,9.,iTime*5.-floor(pos.x)+random(vec2(floor(pos.z),0.5))*6.-3.);
         col2 = mix(col2,col3,level2);
         col = col2;   // 壁のノイズっぽいテクスチャ(col1 の noise ミックス)を除去。色(col2)と窓(col3)は残す。
-        col *= ao(pos,n);
+        if(uBaseDark != 0.0){ col *= 1.0 - (uBaseDark/100.0)*(1.0 - smoothstep(0.0, 3.0, pos.y)); }
+        col *= aoPow(ao(pos,n));
     }else if(c.t == 1){
-        col = vec3(0.8,0.8,0.8);
-        if(max(abs(mod(pos.x,1.)),abs(mod(pos.z,1.))) > 0.9)col *= 0.8;
-        col *= min(1.,ao(pos,n));
+        col = vec3(0.8,0.8,0.8)*uGroundColor;
+        float rk = 0.8;
+        if(uRoadLineDark != 100.0){ rk = max(1.0 - 0.2*(uRoadLineDark/100.0), 0.0); }
+        if(max(abs(mod(pos.x,1.)),abs(mod(pos.z,1.))) > 0.9)col *= rk;
+        col *= aoPow(min(1.,ao(pos,n)));
     }
+    if(uDistFade != 0.0){ col *= exp(-d*uDistFade*0.003); }
     // (棒のグロー cubeNearest と 太陽グレアはここから除去)
     return col;
 }
@@ -4970,11 +5139,14 @@ vec4 sampleImage(vec2 coord){
     vec3 rv=vec3(1,0,0);
     vec2 bi = vec2(random(vec2(iTime*256.,0.)),random(vec2(-iTime*256.,1.)));
     uv += bi/60.*800./iResolution.x;
+    if(uFov != 100.0){ uv /= (uFov/100.0); }
+    if(uCamRoll != 0.0){ float cr = uCamRoll*0.0174533; uv = mat2(cos(cr),-sin(cr),sin(cr),cos(cr))*uv; }
     vec3 v=vec3(1,uv.y-0.1,uv.x);
     if(uLookPitch != 0.0){ v.y += uLookPitch / 100.0; }
     v = normalize(v);
     float spd = 2.;
     float rot = (iTime*spd + sin(iTime*spd/2.))/8.+0.1;
+    if(uCamYaw != 0.0){ rot += uCamYaw*0.0174533; }
     v.xz *= mat2(cos(rot),-sin(rot),sin(rot),cos(rot));
     rv.xz *= mat2(cos(rot),-sin(rot),sin(rot),cos(rot));
     p -= rv;
@@ -6757,12 +6929,42 @@ uniform float uBands;      // グラデの階調の段数。0 でなめらか
 // @param blackPct 0..90 = 40
 // @param rows 4..24 = 10
 // @param ditherPct 0..100 = 55
+// @param uReverseBias -50..50 = 0
+// @param uGradOffset -50..50 = 0
+// @param uGradDrift 0..200 = 100
+// @param uLayoutShiftX -100..100 = 0
+// @param uLayoutShiftY -100..100 = 0
+// @param uBlackBlockGray 0..60 = 0
+// @param uBlockBrightVar 0..70 = 0
+// @param uBlinkAmount 0..70 = 0
+// @param uScanDepth 0..80 = 0
+// @param uRowGap 0..40 = 0
+// @param uBlockColorVar 0..100 = 0
+// @param uGrainAmount 0..100 = 0
+// @param uFrameVignette 0..100 = 0
+// @param uHighColor color = #ffffff
+// @param uShadowColor color = #000000
 uniform float speed;
 uniform float contrast;
 uniform float gain;
 uniform float blackPct;   // 黒ブロック率 (%) — 0..1 だと deadParam に潰されるため % 指定
 uniform float rows;       // 行数 — 同上 (BLOCK_HEIGHT = 1/rows)
 uniform float ditherPct;  // グラデを溶かす量 (0=素のグラデ)
+uniform float uReverseBias; // 明暗が反転するブロックの偏り (%)。正で反転が減り、負で増える
+uniform float uGradOffset;  // グラデの開始位置のずれ (%)。全ブロック共通
+uniform float uGradDrift;   // グラデが左右に流れる振れ幅 (%)
+uniform float uLayoutShiftX; // ブロック配置の横ずらし (%)
+uniform float uLayoutShiftY; // ブロック配置の縦ずらし (%)
+uniform float uBlackBlockGray; // 黒ブロックを灰色に持ち上げる明るさ (%)
+uniform float uBlockBrightVar; // ブロックごとの明るさのばらつき (%)
+uniform float uBlinkAmount; // ブロックの明滅の深さ (%)
+uniform float uScanDepth;   // ブロック内の走査線の濃さ (%)
+uniform float uRowGap;      // ブロックの上端の黒い目地の幅 (%)
+uniform float uBlockColorVar; // ブロックごとの色づきの量 (%)
+uniform float uGrainAmount; // 粒状ノイズの量 (%)
+uniform float uFrameVignette; // 周辺の暗がり (%)
+uniform vec3 uHighColor;    // 明部の色 (ティント)
+uniform vec3 uShadowColor;  // 暗部の色
 // Псевдорандом на основе координат
 float rand(vec2 co) {
     return fract(sin(dot(co, vec2(12.9898, 78.233)) ) * 43758.5453);
@@ -6788,6 +6990,8 @@ const float MAX_WIDTH = 0.18;
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     vec2 uv = fragCoord.xy / iResolution.xy;
+    if(uLayoutShiftX != 0.0){ uv.x = fract(uv.x + uLayoutShiftX/100.0); }
+    if(uLayoutShiftY != 0.0){ uv.y = fract(uv.y + uLayoutShiftY/100.0); }
 
     // Базовая высота блока
     
@@ -6847,12 +7051,13 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     // Градиент
     float randVal = rand(currentBlockID);
     float hasGradient = step(blackPct*0.01, randVal);
-    float reverse = step(0.5, rand(currentBlockID + 12.3));
+    float reverse = step(0.5 - uReverseBias/100.0, rand(currentBlockID + 12.3));
 
-    float gShift = getRandomByTime(currentBlockID * 8., .2) * getRandomByTime(currentBlockID * 0.2, .6);
+    float gShift = getRandomByTime(currentBlockID * 8., .2) * getRandomByTime(currentBlockID * 0.2, .6) * (uGradDrift/100.0);
     float g0 = localUV.x + gShift;
     if(uGradCurve != 100.0){ g0 = pow(clamp(localUV.x, 0.0, 1.0), uGradCurve*0.01) + gShift; }
     if(uSlant != 0.0){ g0 += (localUV.y - 0.5)*uSlant*0.01; }
+    if(uGradOffset != 0.0){ g0 += uGradOffset/100.0; }
 
     // ---- 内蔵 Dither Blur ----
     // Post FX 版と同じ構成 (ジッター付き 4-tap Kawase を 2 半径で平均 / 同じ指数カーブ)。
@@ -6878,8 +7083,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
         v = toneOf(g0, hasGradient, reverse);
     }
     if(uBands != 0.0){ v = floor(v*uBands + 0.5)/uBands; }
+    if(uBlackBlockGray != 0.0 && hasGradient < 0.5){ v = max(v, uBlackBlockGray/100.0); }
+    if(uBlockBrightVar != 0.0){ v *= 1.0 - (uBlockBrightVar/100.0)*rand(currentBlockID + 5.1); }
+    if(uBlinkAmount != 0.0){ v *= 1.0 - (uBlinkAmount/100.0)*(0.5 + 0.5*getRandomByTime(currentBlockID*3.0, 2.0)); }
+    if(uScanDepth != 0.0){ v *= 1.0 - (uScanDepth/100.0)*step(0.5, fract(localUV.y*4.0)); }
     if(uBlockGap != 0.0){ v *= step(uBlockGap*0.003, localUV.x) * step(uBlockGap*0.003, localUV.y); }
-    fragColor = vec4(vec3(v), 1.0);
+    if(uRowGap != 0.0){ v *= step(uRowGap*0.003, 1.0 - localUV.y); }
+    vec3 col = vec3(v);
+    if(uBlockColorVar != 0.0){ col *= mix(vec3(1.0), 0.5 + 0.5*cos(6.2832*(rand(currentBlockID + 3.7) + vec3(0.0, 0.33, 0.67))), uBlockColorVar/100.0); }
+    if(uShadowColor != vec3(0.0) || uHighColor != vec3(1.0)){ col = mix(uShadowColor, uHighColor, col); }
+    if(uGrainAmount != 0.0){ col = clamp(col + (rand(fragCoord*0.37 + 11.0) - 0.5)*(uGrainAmount/100.0)*0.5, 0.0, 1.0); }
+    if(uFrameVignette != 0.0){ col *= 1.0 - (uFrameVignette/100.0)*smoothstep(0.08, 0.6, length(fragCoord.xy/iResolution.xy - 0.5)); }
+    fragColor = vec4(col, 1.0);
 }`
 }
 ,
@@ -7620,6 +7835,20 @@ void mainImage(out vec4 finalColor, in vec2 pixelCoordinate) {
 // @param uZoomStep 0..200 = 100
 // @param uVignetteSize 0..400 = 100
 // @param uLineCut 30..300 = 100
+// @param uViewShiftX -100..100 = 0
+// @param uViewShiftY -100..100 = 0
+// @param uViewAngle -180..180 = 0
+// @param uPanAngle -180..180 = 0
+// @param uTileMirrorY 0..100 = 0
+// @param uEmblemShiftX -50..50 = 0
+// @param uEmblemShiftY -50..50 = 0
+// @param uTileSizeJitter 0..100 = 0
+// @param uTileDropout 0..90 = 0
+// @param uTileOffsetJitter 0..60 = 0
+// @param uSnapSharp 20..300 = 100
+// @param uVignetteCurve 40..300 = 100
+// @param uFrameLine 0..100 = 0
+// @param uLightColor color = #ffffff
 uniform float speed;
 uniform float tiles;    // 画面内のタイル数
 uniform float randPct;  // ランダム回転の量
@@ -7636,10 +7865,26 @@ uniform float uBrickShift;   // 段ごとの横ずらし (%)。100 でレンガ�
 uniform float uZoomStep;     // 段階ズームの振れ幅 (%)。0 で固定
 uniform float uVignetteSize; // 周辺の暗がりの強さ (%)。0 で消える
 uniform float uLineCut;      // 細線の抜け (%)。上げると細く淡くなる
+uniform float uViewShiftX;   // 構図全体の横ずらし (%)。回転と周辺の暗がりの中心も動く
+uniform float uViewShiftY;   // 構図全体の縦ずらし (%)
+uniform float uViewAngle;    // 構図全体の回転角 (度)
+uniform float uPanAngle;     // パンの向き (度)。0 で右上へ流れる
+uniform float uTileMirrorY;  // エンブレムの上下の鏡像 (%)
+uniform float uEmblemShiftX; // エンブレムをタイル内で横にずらす (%)。タイルと一緒に回る
+uniform float uEmblemShiftY; // エンブレムをタイル内で縦にずらす (%)
+uniform float uTileSizeJitter; // タイルごとのエンブレムの大小のばらつき (%)
+uniform float uTileDropout;  // 空になるタイルの割合 (%)
+uniform float uTileOffsetJitter; // タイルごとの中心ずれのばらつき (%)
+uniform float uSnapSharp;    // 回転スナップの急峻さ (%)。上げるとパッと切り替わる
+uniform float uVignetteCurve; // 周辺の暗がりの勾配の指数 (%)
+uniform float uFrameLine;    // タイルの縁取り線の太さ (%)。0 でなし
+uniform vec3 uLightColor;    // 明部の色。線 (黒モードでは紙) に掛けるティント
 float hash21(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453); }
 mat2 rot2(float a){ return mat2(cos(a),sin(a),-sin(a),cos(a)); }
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
     vec2 uv = (2.0*fragCoord - iResolution.xy)/iResolution.y;
+    if(uViewShiftX != 0.0 || uViewShiftY != 0.0){ uv += vec2(uViewShiftX, uViewShiftY)/50.0; }
+    if(uViewAngle != 0.0){ uv = rot2(uViewAngle*0.0174533)*uv; }
     float t = iTime*speed;
     // 全体のゆっくり回転 (原作の rotSpeed 相当)
     uv = rot2(0.08*t)*uv;
@@ -7648,6 +7893,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float zoom = max(0.8 + dz*(uZoomStep/100.0), 0.35);
     // パン (原作の pan_dir/pan_speed)
     vec2 pan = vec2(1.0, 1.0)*0.2*t;
+    if(uPanAngle != 0.0){ pan = rot2(uPanAngle*0.0174533)*pan; }
     vec2 w = uv*(tiles*0.5)/zoom*vec2(1.0, uTileAspect/100.0) + pan;
     if(uBrickShift != 0.0) w.x += floor(w.y)*0.5*(uBrickShift/100.0);
     vec2 cell = floor(w);
@@ -7658,6 +7904,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float ph = t*1.2 + idv;
     float k = floor(ph);
     float e = pow(fract(ph), 5.0);
+    if(uSnapSharp != 100.0){ e = pow(fract(ph), 5.0*(uSnapSharp/100.0)); }
     float r1 = hash21(cell + k*0.618);
     float r2 = hash21(cell + (k+1.0)*0.618);
     float snap = 6.2832*mix(r1, r2, e)*(snapPct*0.01);
@@ -7665,24 +7912,37 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     vec2 p = rot2(ang)*f;
     if(uTileTwist != 0.0) p = rot2(length(f)*uTileTwist/100.0)*p;
     if(uTileMirror != 0.0) p.x = mix(p.x, abs(p.x), uTileMirror/100.0);
+    if(uTileMirrorY != 0.0) p.y = mix(p.y, abs(p.y), uTileMirrorY/100.0);
+    if(uTileOffsetJitter != 0.0) p += (vec2(hash21(cell+31.0), hash21(cell+41.0)) - 0.5)*(uTileOffsetJitter/100.0);
+    float es = uEmblemScale/100.0;
+    if(uTileSizeJitter != 0.0) es *= mix(1.0, 0.5 + hash21(cell+23.0), uTileSizeJitter/100.0);
     // エンブレム画像をタイル充填 (等倍よりわずかに拡大してセルを埋める)
-    vec2 tuv = p*(0.92/(uEmblemScale/100.0)) + 0.5;
+    vec2 tuv = p*(0.92/es) + 0.5;
+    if(uEmblemShiftX != 0.0 || uEmblemShiftY != 0.0){ tuv += vec2(uEmblemShiftX, uEmblemShiftY)/100.0; }
     vec4 tx = texture(iChannel0, clamp(tuv, 0.0, 1.0));
     float v = tx.a*dot(tx.rgb, vec3(0.299,0.587,0.114));
     // mipmap 縮小で灰色化した細線をゲインで持ち上げる (max 膨張はジャギが出るので不使用)
     v = smoothstep(0.02*(uLineCut/100.0), 0.28*(uLineCut/100.0), v);
     // 原作風ビネット
     float vin = 1.0 - dot(uv/5.0, uv/5.0)*8.0*(uVignetteSize/100.0);
-    float ink = clamp(v*clamp(vin, 0.0, 1.0), 0.0, 1.0);
+    float vk = clamp(vin, 0.0, 1.0);
+    if(uVignetteCurve != 100.0){ vk = pow(vk, uVignetteCurve/100.0); }
+    float ink = clamp(v*vk, 0.0, 1.0);
+    if(uFrameLine != 0.0){
+        vec2 fe = 0.5 - abs(f);
+        float wl = uFrameLine*0.0008;
+        ink = max(ink, (1.0 - smoothstep(wl*0.5, wl, min(fe.x, fe.y)))*vk);
+    }
+    if(uTileDropout != 0.0){ ink *= step(uTileDropout/100.0, hash21(cell+11.0)); }
 
     vec3 col;
     if(black > 0.5){
         // Black: Slot A は紙 (uBgColor。黒のままなら白) に黒線 / Slot B は黒線のみで背景は透過
-        vec3 paper = (max(uBgColor.r, max(uBgColor.g, uBgColor.b)) < 0.004) ? vec3(1.0) : uBgColor;
+        vec3 paper = (max(uBgColor.r, max(uBgColor.g, uBgColor.b)) < 0.004) ? vec3(1.0)*uLightColor : uBgColor;
         vec3 bg = mix(vec3(0.0), paper, uSlotIsA);
         col = mix(bg, vec3(0.0), ink);
     } else {
-        col = vec3(ink) + uBgColor * (1.0 - ink) * uSlotIsA;   // Slot A の背景に uBgColor を敷く
+        col = vec3(ink)*uLightColor + uBgColor * (1.0 - ink) * uSlotIsA;   // Slot A の背景に uBgColor を敷く
     }
     // Slot A=不透明 / Slot B=線以外を透過 (濃さがそのまま不透明度)
     float a = mix(ink, 1.0, uSlotIsA);
