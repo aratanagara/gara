@@ -550,6 +550,26 @@ void mainImage(out vec4 fragColour, in vec2 fragCoord){
 // @param uBumpFreq 30..300 = 100
 // @param uBumpDepth 0..400 = 100
 // @param uFogDensity 0..250 = 100
+// @param uCamRoll -180..180 = 0
+// @param uFovWide 50..200 = 100
+// @param uLookX -100..100 = 0
+// @param uLookY -100..100 = 0
+// @param uCamShiftX -100..100 = 0
+// @param uCamShiftY -100..100 = 0
+// @param uLightAhead 0..300 = 100
+// @param uLightX -100..100 = 0
+// @param uLightY -100..100 = 0
+// @param uAmbient 0..160 = 100
+// @param uSpecPower 30..600 = 100
+// @param uSpecGain 0..300 = 100
+// @param uRimPower 30..600 = 100
+// @param uRimGain 0..300 = 100
+// @param uGlowTemp 50..250 = 100
+// @param uVignette 0..100 = 0
+// @param uGlowColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uFogColor color = #ffffff
 uniform float speed; uniform float wild; uniform float spike; uniform float bright;
 uniform float uPatternScale; // 結晶パターンの大きさ (%)。大きいほど目が粗い
 uniform float uPathSwing;    // トンネルのうねりの振れ幅 (%)。0 でまっすぐ
@@ -558,6 +578,26 @@ uniform float uFineScale;    // 細かい尖りの層の密度 (%)
 uniform float uBumpFreq;     // 針状バンプの細かさ (%)
 uniform float uBumpDepth;    // 針状バンプの深さ (%)。0 で滑らか
 uniform float uFogDensity;   // 奥の霞の濃さ (%)。0 で霞なし
+uniform float uCamRoll; // カメラのロール角 (度)。0 で水平
+uniform float uFovWide; // 画角 (%)。大きいほど広角
+uniform float uLookX; // 視線の左右の振り (%)
+uniform float uLookY; // 視線の上下の振り (%)
+uniform float uCamShiftX; // カメラ位置の左右ずれ (%)
+uniform float uCamShiftY; // カメラ位置の上下ずれ (%)
+uniform float uLightAhead; // 光源までの距離 (%)。0 でカメラ位置
+uniform float uLightX; // 光源の左右ずれ (%)
+uniform float uLightY; // 光源の上下ずれ (%)
+uniform float uAmbient; // 環境光の強さ (%)。影の底上げ
+uniform float uSpecPower; // きらめきの鋭さ (%)。大きいほど点に絞られる
+uniform float uSpecGain; // 鏡面のきらめきの強さ (%)
+uniform float uRimPower; // 縁の光の絞り (%)。大きいほど細い縁
+uniform float uRimGain; // 縁の光の強さ (%)
+uniform float uGlowTemp; // 内側の発光の色温度 (%)。上げると赤から橙・黄へ
+uniform float uVignette; // 周辺の暗がり (%)
+uniform vec3 uGlowColor; // 内側の発光の色 (掛け算)
+uniform vec3 uSpecColor; // きらめきの色 (掛け算)
+uniform vec3 uRimColor; // 縁の光の色 (掛け算)
+uniform vec3 uFogColor; // 奥の霞の色 (掛け算)
 mat3 getRotXMat(float a){return mat3(1.,0.,0.,0.,cos(a),-sin(a),0.,sin(a),cos(a));}
 mat3 getRotYMat(float a){return mat3(cos(a),0.,sin(a),0.,1.,0.,-sin(a),0.,cos(a));}
 mat3 getRotZMat(float a){return mat3(cos(a),-sin(a),0.,sin(a),cos(a),0.,0.,0.,1.);}
@@ -611,19 +651,29 @@ vec3 needleBump(vec3 p, vec3 n){
 vec4 shade(vec3 ro, vec3 rd, float d, vec3 lp){
   vec3 p = ro + rd*d;
   float sb = SubDensityDeep(p, 0.01, 0.1);
-  vec3 bb = blackbody(100.*sb + 100.);
+  vec3 bb = blackbody((100.*sb + 100.)*(uGlowTemp/100.0));
   vec3 ld = normalize(lp - p);
   vec3 n = nor(p, .01);
   n = needleBump(p, n);                        // 針状バンプ
   vec3 refl = reflect(rd, n);
-  float amb = 0.16;                            // 環境光UP(暗さ解消)
+  float amb = 0.16*(uAmbient/100.0);                            // 環境光UP(暗さ解消)
   float diff = clamp(dot(n, ld), 0.0, 1.0);
-  float fre = pow(clamp(1. + dot(n, rd), 0.0, 1.0), 10.);        // 宝石のエッジ光
-  float spe = pow(clamp(dot(refl, ld), 0.0, 1.0), 30.);         // 鋭い鏡面(宝石のきらめき)
+  float fb = clamp(1. + dot(n, rd), 0.0, 1.0);
+  float fre;
+  if(uRimPower == 100.0){ fre = pow(fb, 10.); } else { fre = pow(fb, 10.*(uRimPower/100.0)); }
+  fre *= (uRimGain/100.0);
+        // 宝石のエッジ光
+  float sb2 = clamp(dot(refl, ld), 0.0, 1.0);
+  float spe;
+  if(uSpecPower == 100.0){ spe = pow(sb2, 30.); } else { spe = pow(sb2, 30.*(uSpecPower/100.0)); }         // 鋭い鏡面(宝石のきらめき)
   float sss = 1. - SubDensity1(p*0.1, 0.1) * 0.5;
-  return vec4(
+  vec4 rr = vec4(
     (diff + fre + bb.x*sss)*amb + diff*0.6,
     (diff + fre*1.5 + bb*sb + sss*0.3)*amb + spe*1.4 + fre*0.5 - diff*sss*0.05);
+  if(uRimColor != vec3(1.0) || uGlowColor != vec3(1.0) || uSpecColor != vec3(1.0) || uSpecGain != 100.0){
+    rr.yzw += (fre*1.5*amb + fre*0.5)*(uRimColor.grb - 1.0) + bb*sb*amb*(uGlowColor.grb - 1.0) + spe*1.4*((uSpecGain/100.0)*uSpecColor.grb - 1.0);
+  }
+  return rr;
 }
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
   vec2 g = fragCoord.xy, si = iResolution.xy;
@@ -635,19 +685,27 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   // カメラ位置: 前進しつつ xy をランダムに漂わせる
   vec3 ro = vec3(0,0,time); ro.xy += path(ro.z);
   ro.xy += wild*3.0*vec2(sin(tt*0.6), sin(tt*0.8 + 1.0));
+  ro.xy += vec2(uCamShiftX, uCamShiftY)*0.006;
   // カメラ方向: +z 前方を基準に 3D でランダムに振る(look-at 構成なので特異点なし)
-  vec3 rov = normalize(vec3(wild*0.9*sin(tt*0.5), wild*0.9*sin(tt*0.7 + 2.0), 1.0));
+  vec3 rov = normalize(vec3(wild*0.9*sin(tt*0.5) + uLookX*0.01, wild*0.9*sin(tt*0.7 + 2.0) + uLookY*0.01, 1.0));
   vec3 camUp = normalize(vec3(wild*0.5*sin(tt*0.4 + 1.0), 1.0, wild*0.3*sin(tt*0.9)));
-  vec3 lp = vec3(path(ro.z + 3.), ro.z + 3.);
-  vec2 fov = vec2(0.75, 0.9);
+  float lz = 3.0*(uLightAhead/100.0);
+  vec3 lp = vec3(path(ro.z + lz), ro.z + lz);
+  if(uLightX != 0.0 || uLightY != 0.0){ lp.xy += vec2(uLightX, uLightY)*0.1; }
+  vec2 fov = vec2(0.75, 0.9)*(uFovWide/100.0);
   vec3 u = normalize(cross(camUp, rov));
   vec3 v = cross(rov, u);
+  float cr = uCamRoll*0.0174533;
+  vec3 u2 = u*cos(cr) + v*sin(cr);
+  v = v*cos(cr) - u*sin(cr);
+  u = u2;
   vec3 rd = normalize(rov + uv.x*u*fov.x + uv.y*v*fov.y);
   float s = 1., d = 0.;
   for(int i=0;i<52;i++){ if(d*d/s > 1e5) break; d += s = map(ro + rd*d).x * .6; }
   vec4 f = shade(ro, rd, d, lp);
   f = f.zyww + f.x*0.2;
-  f = mix(f, vec4(0.8), 1.0 - exp(-0.01*d*d*(uFogDensity/100.0)));
+  f = mix(f, vec4(vec3(0.8)*uFogColor, 0.8), 1.0 - exp(-0.01*d*d*(uFogDensity/100.0)));
+  if(uVignette != 0.0){ f *= max(1.0 - (uVignette/100.0)*0.3*dot(uv,uv), 0.0); }
   fragColor = sqrt(f*f*f*1.5*bright);
 }`
 }
@@ -4790,6 +4848,23 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 // @param uGrainCount 20..250 = 100
 // @param uFogDensity 0..300 = 100
 // @param uContactDark 0..300 = 100
+// @param uCellDensity 50..200 = 100
+// @param uCamPitch -180..180 = 0
+// @param uCamRoll -180..180 = 0
+// @param uFovWide 50..200 = 100
+// @param uAimX -100..100 = 0
+// @param uAimY -100..100 = 0
+// @param uCamHeight -50..50 = 0
+// @param uCamSide -50..50 = 0
+// @param uTrailGap 0..800 = 100
+// @param uLayerBias -100..100 = 0
+// @param uStripeAmt 0..300 = 100
+// @param uFacingShade -100..100 = 0
+// @param uHaze 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uBladeColor color = #ffffff
+// @param uEmberColor color = #ffffff
+// @param uHazeColor color = #ffffff
 uniform float uSpeed;
 uniform float uPetals;      // 花弁 (刃) の枚数。既定 10
 uniform float uPetalDepth;  // 花弁の波打ちの深さ (%)。0 で円盤
@@ -4803,6 +4878,23 @@ uniform float uEmber;       // 影側に出る赤い熾火の量 (%)
 uniform float uGrainCount;  // 刃の表面の縞模様の細かさ (%)
 uniform float uFogDensity;  // 奥へ向かって暗く沈む度合い (%)
 uniform float uContactDark; // 刃のすき間の暗がりの濃さ (%)
+uniform float uCellDensity; // 格子のセルの細かさ (%)。大きいほど花が小さく密
+uniform float uCamPitch; // カメラの俯仰角 (度)
+uniform float uCamRoll; // カメラのロール角 (度)
+uniform float uFovWide; // 画角 (%)。大きいほど広角
+uniform float uAimX; // 画面の中心の左右ずれ (%)
+uniform float uAimY; // 画面の中心の上下ずれ (%)
+uniform float uCamHeight; // カメラの高さ (%)。花の層から上下へ離れる
+uniform float uCamSide; // カメラの横位置 (%)
+uniform float uTrailGap; // 3 層の重ね描きの時間差 (%)。大きいほど残像が散る
+uniform float uLayerBias; // 残像の重み。正で速く回る層、負で遅い層を強く
+uniform float uStripeAmt; // 刃の縞模様が効く強さ (%)
+uniform float uFacingShade; // 刃の向きによる陰影 (%)。正で縁が暗く、負で平坦
+uniform float uHaze; // 奥の霞の色の乗り具合 (%)
+uniform float uVignette; // 周辺の暗がり (%)
+uniform vec3 uBladeColor; // 明るい面の色 (掛け算)
+uniform vec3 uEmberColor; // 影側の熾火の色 (掛け算)
+uniform vec3 uHazeColor; // 奥の霞の色
 
 const float pi = 3.14159;
 float T;   // = iTime * uSpeed
@@ -4823,6 +4915,7 @@ float texN(vec2 p){
 }
 
 float map(vec3 pos){
+    pos *= (uCellDensity / 100.0);
     float dir = 1.0;
     if(uStagger != 0.0){ pos.x += 0.5 * mod(floor(pos.z), 2.0) * (uStagger / 100.0); }
     vec3 id = floor(pos);
@@ -4838,7 +4931,7 @@ float map(vec3 pos){
     float p = mr * r;
     float e = 1.0 - s/p;
     vec3 c = vec3(pos.x, clamp(pos.y, -0.02*(uBladeThick / 100.0)*e, 0.02*(uBladeThick / 100.0)*e), pos.z);
-    return max(length(c-pos), s-p);   // 棒(中心の縦シリンダ s-0.1)を削除
+    return max(length(c-pos), s-p) / (uCellDensity / 100.0);   // 棒(中心の縦シリンダ s-0.1)を削除
 }
 
 vec3 normal(vec3 p){
@@ -4859,6 +4952,7 @@ float trace(vec3 o, vec3 r){
 }
 
 float pshade(vec3 p){
+    p *= (uCellDensity / 100.0);
     if(uStagger != 0.0){ p.x += 0.5 * mod(floor(p.z), 2.0) * (uStagger / 100.0); }
     vec3 id = floor(p);
     p.y += sin(T + id.x*10.0 + id.z*10.0) * (uBob / 100.0);
@@ -4874,25 +4968,30 @@ float pshade(vec3 p){
 
 vec4 surf(vec3 r, vec3 w, vec3 sn, float t){
     float prod = 0.55 + 0.45 * max(dot(sn,-r), 0.0);   // 刃の輪郭線(シルエットの暗縁)を除去
+    if(uFacingShade > 0.0){ prod = mix(prod, max(dot(sn,-r), 0.0), uFacingShade / 100.0); }
+    else if(uFacingShade < 0.0){ prod = mix(prod, 1.0, -uFacingShade / 100.0); }
     float off = 0.5 + 0.5 * sin(pshade(w)*pi*5.0*(uGrainCount / 100.0));
     float ao = map(w) * 20.0 * (uContactDark / 100.0);
-    float fog = prod / (1.0 + t * t * (uFogDensity / 100.0) + off + ao);
+    float fog = prod / (1.0 + t * t * (uFogDensity / 100.0) + off * (uStripeAmt / 100.0) + ao);
     return vec4(vec3(fog), off);
 }
 
 vec3 shade(vec3 r, float time){
-    r *= xrot(T) * zrot(time);
+    r *= xrot(T + uCamPitch * 0.0174533) * zrot(time + uCamRoll * 0.0174533);
     vec3 o = vec3(0.0);
     o.z += time;
+    if(uCamHeight != 0.0 || uCamSide != 0.0){ o.xy += vec2(uCamSide, uCamHeight) * 0.01; }
     float t = trace(o, r);
     vec3 w = o + r * t;
     vec3 sn = normal(w);
     vec4 ac = surf(r, w, sn, t);
-    vec3 from = vec3(0.8, 0.2, 0.1);
-    vec3 to = vec3(1.0, 1.0, 1.0);
+    vec3 from = vec3(0.8, 0.2, 0.1) * uEmberColor;
+    vec3 to = vec3(1.0, 1.0, 1.0) * uBladeColor;
     float fx = 1.0 - ac.w;
     if(uEmber != 100.0){ fx = clamp(1.0 - ac.w * (uEmber / 100.0), 0.0, 1.0); }
-    return ac.xyz * mix(from, to, fx);
+    vec3 oc = ac.xyz * mix(from, to, fx);
+    if(uHaze != 0.0){ oc += uHazeColor * (uHaze / 100.0) * 0.5 * (1.0 - 1.0 / (1.0 + t * t * 0.02)); }
+    return oc;
 }
 
 void mainImage( out vec4 fragColor, in vec2 fragCoord ){
@@ -4900,18 +4999,22 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     vec2 uv = fragCoord.xy / iResolution.xy;
     uv = uv * 2.0 - 1.0;
     uv.x *= iResolution.x / iResolution.y;
+    uv *= (uFovWide / 100.0);
+    uv += vec2(uAimX, uAimY) * 0.01;
 
     vec3 r = normalize(vec3(uv, 1.0 - dot(uv,uv) * 0.33 * (uLensBulge / 100.0)));
 
     btime = 2.0; bspeed = 10.0;
     vec3 sa = shade(r, T);
-    float of = 0.01;
+    float of = 0.01 * (uTrailGap / 100.0);
     btime = 4.0; bspeed = 20.0;
     vec3 sb = shade(r, T + of);
     btime = 6.0; bspeed = 20.0;
     vec3 sc = shade(r, T + of*2.0);
 
     vec3 f = sa * 0.2 + sb * 0.5 + sc * 0.3;
+    if(uLayerBias != 0.0){ vec3 lw = vec3(0.2, 0.5, 0.3) + vec3(-0.2, 0.0, 0.2) * (uLayerBias / 100.0); f = sa * lw.x + sb * lw.y + sc * lw.z; }
+    if(uVignette != 0.0){ f *= max(1.0 - (uVignette / 100.0) * 0.3 * dot(uv, uv), 0.0); }
     fragColor = vec4(f, 1.0);
 }
 `
@@ -4936,6 +5039,20 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 // @param uBandSlant -100..100 = 0
 // @param uBandGap 0..80 = 0
 // @param uBandShuffle 0..60 = 0
+// @param uStripeEdge 20..300 = 100
+// @param uBinSoft 0..100 = 0
+// @param uWaveShape -100..100 = 0
+// @param uScrollSpread 0..100 = 0
+// @param uBandTaper -100..100 = 0
+// @param uBandLine 0..8 = 0
+// @param uMirrorX 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uScanline 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uSoftTint color = #ffffff
+// @param uStripeTint color = #ffffff
+// @param uOddBandTint color = #ffffff
+// @param uBandLineColor color = #ffffff
 uniform float uMorph; uniform float uJitter; uniform float uSpeed;
 uniform float uBandMinH; // 帯の最小の高さ (%)
 uniform float uBandMaxH; // 帯の最大の高さ (%)
@@ -4947,11 +5064,26 @@ uniform float uBinThresh; // 2 値化の閾値 (%)。縞の白黒の比
 uniform float uBandSlant; // 帯内の縞の傾き (%)。符号で向きが変わる
 uniform float uBandGap; // 帯の下に空ける黒い隙間 (帯の高さの %)
 uniform float uBandShuffle; // 帯ごとの周波数・向きの組み合わせを入れ替える
+uniform float uStripeEdge; // 縞をソリッドな白黒にする傾きのしきい値 (%)。小さいほど多くが白黒、大きいほど階調が残る
+uniform float uBinSoft; // 白黒の境のにじみ (%)
+uniform float uWaveShape; // 波形の曲がり (%)。正で暗部が広がり、負で明部が広がる
+uniform float uScrollSpread; // 帯ごとの流れる速さのばらつき (%)
+uniform float uBandTaper; // 帯の高さの傾斜 (%)。正で上ほど高く、負で下ほど高い
+uniform float uBandLine; // 帯の下端に引く線の太さ (px)
+uniform float uMirrorX; // 左右対称にする度合い (%)
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform float uScanline; // 走査線の濃さ (%)
+uniform float uVignette; // 周辺の暗がり (%)
+uniform vec3 uSoftTint; // なだらかな階調部分の色 (掛け算)
+uniform vec3 uStripeTint; // ソリッドな縞の色 (掛け算)
+uniform vec3 uOddBandTint; // 奇数番の帯の色 (掛け算)
+uniform vec3 uBandLineColor; // 帯の下端の線の色
 
 float hash11(float n){ return fract(sin(n*127.1)*43758.5453); }
 
 void mainImage(out vec4 O, vec2 u){
     vec2 uv = u / iResolution.xy;
+    if(uMirrorX != 0.0){ uv.x = mix(uv.x, 1.0 - abs(uv.x * 2.0 - 1.0), uMirrorX / 100.0); }
     float t  = iTime * 0.02 * uSpeed;   // 信号スクロール
     float mt = iTime * uMorph;          // 高さ/位置の変化用
 
@@ -4962,6 +5094,7 @@ void mainImage(out vec4 O, vec2 u){
         float ph   = hash11(fi*3.1 + 0.5) * 6.2831;             // バンド固有の位相
         float rate = 0.35 + 0.85 * hash11(fi*1.7 + 2.0);        // バンド固有の脈動速度
         float h = mix(0.03 * (uBandMinH / 100.0), 0.17 * (uBandMaxH / 100.0), 0.5 + 0.5*sin(mt*rate + ph)); // 高さが常に伸縮
+        if(uBandTaper != 0.0){ h *= 1.0 + (uBandTaper * 0.008) * (fi / 15.0 * 2.0 - 1.0); }
         if(uv.y < cum + h || i >= int(uBandCount + 0.5) - 1){ bandSeed = fi; bandTop = cum; bandH = h; break; }
         cum += h;
     }
@@ -4971,7 +5104,9 @@ void mainImage(out vec4 O, vec2 u){
     float rate2 = 0.3 + 0.7 * hash11(bandSeed*4.7 + 3.0);
     float dir   = (hash11(bandSeed*5.9) < 0.5) ? 1.0 : -1.0;    // 各帯の流れる向き
     float xoff  = sin(mt*rate2 + ph2) * uJitter;                // 横位置が常にドリフト
-    float x = uv.x + dir * t + xoff;
+    float sp = 1.0;
+    if(uScrollSpread != 0.0){ sp = 1.0 + (uScrollSpread * 0.01) * (hash11(bandSeed * 7.7 + 1.3) * 2.0 - 1.0); }
+    float x = uv.x + dir * t * sp + xoff;
     if(uBandSlant != 0.0){ x += (uv.y - bandTop) * uBandSlant * 0.01; }
 
     vec4 a = sin(x * vec4(350.13 * (uFineStripe / 100.0), 2.5 * (uCoarseWave / 100.0), 10.0 * (uCoarseWave / 100.0), 0.3));
@@ -4990,9 +5125,19 @@ void mainImage(out vec4 O, vec2 u){
     //   変化の速さは横方向の微分だけで見る。帯内では v は x にしか依存しないので値は同じだが、
     //   fwidth だと帯の境界で縦方向の微分が跳ね上がり、その 1 行だけ 2 値化されて黒い隙間になる。
     float v = abs(k * j);
+    if(uWaveShape != 0.0){ v = pow(v, exp2(-uWaveShape * 0.02)); }
     float fw = abs(dFdx(v));
-    float isStripe = smoothstep(0.03, 0.12, fw);
-    O = vec4(mix(v, step(0.3 * (uBinThresh / 100.0), v), isStripe));
+    float isStripe = smoothstep(0.03 * (uStripeEdge / 100.0), 0.12 * (uStripeEdge / 100.0), fw);
+    float th = 0.3 * (uBinThresh / 100.0);
+    float bin = step(th, v);
+    if(uBinSoft != 0.0){ float e = uBinSoft * 0.006; bin = smoothstep(th - e, th + e, v); }
+    O = vec4(mix(v, bin, isStripe));
+    O.rgb *= uSoftTint + (uStripeTint - uSoftTint) * isStripe;
+    if(mod(bandSeed, 2.0) > 0.5){ O.rgb *= uOddBandTint; }
+    if(uScanline != 0.0){ O.rgb *= 1.0 - (uScanline / 100.0) * 0.6 * (0.5 + 0.5 * sin(u.y * 3.14159)); }
+    if(uGrain != 0.0){ O.rgb += (hash11(dot(u, vec2(12.9898, 78.233)) + iTime) - 0.5) * (uGrain / 100.0) * 0.5; }
+    if(uVignette != 0.0){ O.rgb *= max(1.0 - (uVignette / 100.0) * 0.8 * dot(uv - 0.5, uv - 0.5) * 2.0, 0.0); }
+    if(uBandLine != 0.0){ float ed = (uv.y - bandTop) * iResolution.y; O.rgb = mix(O.rgb, uBandLineColor, 1.0 - smoothstep(uBandLine - 1.0, uBandLine, ed)); }
     if(uBandGap != 0.0 && uv.y > bandTop + bandH * (1.0 - uBandGap / 100.0)) O = vec4(0.0);
 }
 `
@@ -5494,6 +5639,24 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 // @param uRim 0..300 = 100
 // @param uWarpPhase -300..300 = 0
 // @param uWarpPasses 2..4 = 4
+// @param uCamDist 50..200 = 100
+// @param uCamAngle -180..180 = 0
+// @param uCamHeight -100..100 = 0
+// @param uFocal 50..200 = 100
+// @param uCamRoll -180..180 = 0
+// @param uAimX -100..100 = 0
+// @param uAimY -100..100 = 0
+// @param uTexScale 30..300 = 100
+// @param uSmokeAmt 50..120 = 100
+// @param uRedLight 0..300 = 100
+// @param uTopLight 40..130 = 100
+// @param uSkyGradient 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uBaseColor color = #ffffff
+// @param uLightColor color = #ffffff
+// @param uRimColor color = #ffffff
+// @param uSpecColor color = #ffffff
+// @param uSkyColor color = #ffffff
 uniform float uSlotIsA;
 uniform float uWarpPhase; // くねりの位相のずれ (%)。形を切り替える (時間とは無関係)
 uniform float uWarpPasses; // くねりを重ねる段数。既定 4
@@ -5505,6 +5668,24 @@ uniform float uTubeSquare; // 断面の角張り (%)。0 で円 / 上げると�
 uniform float uTubeTwist; // 高さに応じた筒のねじれ (%)。0 でなし
 uniform float uShellThick; // 中空の殻の厚み (%)。0 で中身の詰まった筒
 uniform float uRim; // 縁の光の強さ (%)
+uniform float uCamDist; // カメラの距離 (%)。小さいほど寄る
+uniform float uCamAngle; // カメラの回り込み角 (度)
+uniform float uCamHeight; // カメラの高さ (%)
+uniform float uFocal; // 焦点距離 (%)。大きいほど望遠
+uniform float uCamRoll; // カメラのロール角 (度)
+uniform float uAimX; // 注視点の左右ずれ (%)
+uniform float uAimY; // 注視点の上下ずれ (%)
+uniform float uTexScale; // 表面のノイズ模様の大きさ (%)。大きいほど細かい
+uniform float uSmokeAmt; // 表面のかすれ模様の濃さ (%)
+uniform float uRedLight; // 照明の赤の成分 (%)。上げると水色から白・赤みへ
+uniform float uTopLight; // 上向きの面への光の偏り (%)
+uniform float uSkyGradient; // 背景の上下グラデーション (%)
+uniform float uVignette; // 周辺の暗がり (%)
+uniform vec3 uBaseColor; // 筒の地の色 (掛け算)
+uniform vec3 uLightColor; // 照明の色 (掛け算)
+uniform vec3 uRimColor; // 縁の光の色 (掛け算)
+uniform vec3 uSpecColor; // ハイライトの色 (掛け算)
+uniform vec3 uSkyColor; // 背景の色 (掛け算)
 
 float h31(vec3 p){ p = fract(p*0.1031); p += dot(p, p.yzx+33.33); return fract((p.x+p.y)*p.z); }
 float vnoise(vec3 x){
@@ -5656,15 +5837,17 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     vec2 p = -1.0 + 2.0 * q;
     p.x *= iResolution.x / iResolution.y;
 
-    float an = 0.1 * iTime - 25.0;
-    vec3 ro = vec3(4.5 * sin(an), 0.0, 4.5 * cos(an));
-    vec3 ta = vec3(1.0, 1.0, 0.0);
+    if(uCamRoll != 0.0){ float cr = radians(uCamRoll); p = mat2(cos(cr), -sin(cr), sin(cr), cos(cr)) * p; }
+    float an = 0.1 * iTime - 25.0 + uCamAngle * 0.0174533;
+    vec3 ro = vec3(4.5 * (uCamDist / 100.0) * sin(an), uCamHeight * 0.05, 4.5 * (uCamDist / 100.0) * cos(an));
+    vec3 ta = vec3(1.0, 1.0, 0.0) + vec3(uAimX, uAimY, 0.0) * 0.02;
     vec3 ww = normalize(ta - ro);
     vec3 uu = normalize(cross(ww, vec3(1.0, 2.0, 0.0)));
     vec3 vv = normalize(cross(uu, ww));
-    vec3 rd = normalize(p.x * uu + p.y * vv + 3.0 * ww);
+    vec3 rd = normalize(p.x * uu + p.y * vv + 3.0 * (uFocal / 100.0) * ww);
 
-    vec3 col = vec3(0.773,0.8,0.871);
+    vec3 col = vec3(0.773,0.8,0.871) * uSkyColor;
+    if(uSkyGradient != 0.0){ col *= 1.0 - (uSkyGradient / 100.0) * 0.6 * (0.5 - 0.5 * clamp(q.y * 1.0, 0.0, 1.0)) * 2.0; }
     float hit = 0.0;
 
     const float maxd = 8.0;
@@ -5675,18 +5858,22 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
         vec3 pos = ro + t * rd;
         vec3 nor = calcNormal(pos);
         col = 0.5 + 0.1 * cos(tra.y * 0.4 + vec3(0.6, 0.1, 0.2));
-        vec3 pat = texCubeP(0.1 * tra, nor, 10.0).xyz;
-        col *= pat;
+        col *= uBaseColor;
+        vec3 pat = texCubeP(0.1 * (uTexScale / 100.0) * tra, nor, 10.0).xyz;
+        col *= max(mix(vec3(1.0), pat, uSmokeAmt / 100.0), 0.0);
         float occ = calcOcc(pos, nor);
         float fre = pow(clamp(1.0 + dot(nor, rd), 0.0, 1.0), 5.0);
-        float spe = 0.3 * pat.x * max(0.0, pow(clamp(dot(-rd, nor), 0.0, 1.0), 10.0)) * occ;
+        vec3 spe = 0.3 * pat.x * max(0.0, pow(clamp(dot(-rd, nor), 0.0, 1.0), 10.0)) * occ * uSpecColor;
         vec3 lin = vec3(0.5, 11.5, 11.0);
         lin += vec3(0.5, 0.2, 0.2);
-        lin += (uRim/100.0) * fre * vec3(0.8, 0.3, 0.5);
-        lin *= 1.0 + nor.y;
+        lin *= uLightColor;
+        lin.x *= (uRedLight / 100.0);
+        lin += (uRim/100.0) * fre * vec3(0.8, 0.3, 0.5) * uRimColor;
+        lin *= 1.0 + nor.y * (uTopLight / 100.0);
         col = col * lin + spe;
         hit = 1.0;
     }
+    if(uVignette != 0.0){ col *= max(1.0 - (uVignette / 100.0) * 0.3 * dot(p, p), 0.0); }
     fragColor = vec4(col, mix(hit, 1.0, uSlotIsA));
 }`
 }
@@ -10058,6 +10245,19 @@ void mainImage(out vec4 fragColor,in vec2 fragCoord){
 // @param uBrushDriftY -300..300 = 0
 // @param uGain 30..120 = 100
 // @param uLacunarity 75..130 = 100
+// @param uBandWave 0..30 = 0
+// @param uBandTilt -100..100 = 0
+// @param uPaletteShift -25..25 = 0
+// @param uTempBase 300..3000 = 1000
+// @param uHueSat 0..150 = 100
+// @param uHueFloor 0..90 = 50
+// @param uPosterize 0..100 = 0
+// @param uGrain 0..100 = 0
+// @param uVignette 0..100 = 0
+// @param uTopTint color = #ffffff
+// @param uGreyTint color = #ffffff
+// @param uHueTint color = #ffffff
+// @param uLowTint color = #ffffff
 uniform float speed;
 uniform float warpPct;  // ノイズによる歪み量 (原作は 10)
 uniform float brush;    // 重ねるブラシストローク数
@@ -10076,6 +10276,19 @@ uniform float uBrushDriftX; // ブラシごとの横ずれ (%)。0 でなし
 uniform float uBrushDriftY; // ブラシごとの縦ずれ (%)。0 でなし
 uniform float uGain; // ノイズの細部の残り方 (%)
 uniform float uLacunarity; // ノイズの層ごとの細かくなり方 (%)
+uniform float uBandWave; // 帯の境目の波打ちの振れ幅 (%)
+uniform float uBandTilt; // 帯の境目の傾き (%)
+uniform float uPaletteShift; // グラデーションの横ずれ (%)
+uniform float uTempBase; // 最上段の色温度の始点 (K)。上げると黒から立ち上がる色が白寄りへ
+uniform float uHueSat; // 第 3 段の鮮やかさ (%)
+uniform float uHueFloor; // 第 3 段の暗部の持ち上げ (%)。0 で暗部は黒へ
+uniform float uPosterize; // 色の段階化 (%)。大きいほど階調が少ない
+uniform float uGrain; // 粒状ノイズの量 (%)
+uniform float uVignette; // 周辺の暗がり (%)
+uniform vec3 uTopTint; // 最上段 (熱色) の色 (掛け算)
+uniform vec3 uGreyTint; // 灰色の帯の色 (掛け算)
+uniform vec3 uHueTint; // 第 3 段 (虹色) の色 (掛け算)
+uniform vec3 uLowTint; // 最下段 (水色) の色 (掛け算)
 
 vec3 mod289(vec3 x) {
     return x - floor(x * (1.0 / 289.0)) * 289.0;
@@ -10243,6 +10456,9 @@ float scale(float v, float r)
 vec3 img(vec2 uv)
 {
     vec3 c = vec3(0.0);
+    if(uBandWave != 0.0){ uv.y += sin(uv.x * 37.6991) * uBandWave * 0.01; }
+    if(uBandTilt != 0.0){ uv.y += (uv.x - 0.5) * uBandTilt * 0.01; }
+    if(uPaletteShift != 0.0){ uv.x += uPaletteShift * 0.01; }
     float kn = uKnee/100.0;
     float hw = 280.0/360.0*(uHueSpan/100.0);
 
@@ -10251,20 +10467,24 @@ vec3 img(vec2 uv)
         if (uv.x < kn)
             c = cardinal(vec3(0.0), vec3(0.0), temp2rgb(1000.0), temp2rgb(2000.0), uv.x / kn, 0.0);
         else
-        	c = temp2rgb(1000.0 + scale(uv.x, kn) * (5500.0*(uTempRange/100.0)));
+        	c = temp2rgb(uTempBase + scale(uv.x, kn) * (5500.0*(uTempRange/100.0)));
+        c *= uTopTint;
     }
     else if (uv.y > uBandMid/100.0)
     {
         c = vec3(uv.x);
         if(uGreyCurve != 100.0){ c = vec3(pow(max(uv.x, 1e-4), uGreyCurve/100.0)); }
+        c *= uGreyTint;
     }
     else if (uv.y > uBandLow/100.0)
     {
-        c = hsv2rgb(vec3(hw - hw * uv.x, 1.0, 0.5 * uv.x + 0.5));
+        c = hsv2rgb(vec3(hw - hw * uv.x, uHueSat/100.0, (1.0 - uHueFloor/100.0) * uv.x + uHueFloor/100.0));
+        if(uHueSat > 100.0){ c = max(c, vec3(0.0)); }
+        c *= uHueTint;
     }
     else
     {
-		c = vec3(0.0, 0.98, 1.0) * uv.x;
+		c = vec3(0.0, 0.98, 1.0) * uv.x * uLowTint;
     }
     return c;
 }
@@ -10289,6 +10509,9 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 	vec2 uv = fragCoord.xy / iResolution.xy;
 
     vec3 c = painty(uv, iTime*speed);
+    if(uPosterize != 0.0){ float lv = 32.0 * exp2(-uPosterize * 0.04); c = floor(c * lv + 0.5) / lv; }
+    if(uGrain != 0.0){ c += (fract(sin(dot(fragCoord.xy + iTime, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * (uGrain / 100.0) * 0.4; }
+    if(uVignette != 0.0){ vec2 vq = uv - 0.5; c *= max(1.0 - (uVignette / 100.0) * 1.2 * dot(vq, vq), 0.0); }
 
 	fragColor = vec4(c, 1.0);
 }`
