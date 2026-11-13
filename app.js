@@ -496,8 +496,8 @@ uniform int   uBeatMode;   // 0=drone 1=beat
 uniform vec2  uRes;
 // post effects
 uniform float uGamma, uSat, uHue, uBri, uCon;
-uniform float uVig, uChr;
-uniform float uAScan, uARgb;  // 音声反応 Post FX 各効果の強度(0..1)
+uniform float uVig;
+uniform float uAScan;  // 音声反応 Post FX 各効果の強度(0..1)
 uniform vec3  uFxLineCol;      // Slice/Mondrian/Rings 線色: キャンバスの支配的な鮮やか色相(inkelly方式)
 uniform float uFxLineOn;       // 1=色相を採用 / 0=無彩色フォールバック(白黒)
 uniform float uAStrobe;   // 0..1 Audio Strobe: アタックで一瞬フラッシュ(発火ごとに白/反転ランダム)
@@ -507,12 +507,10 @@ uniform float uSlitScan;  // -1..1 Slit-scan(スクロール型): 符号=向き 
 uniform float uSlitBand;  // 走査帯の高さ(=1フレームの走査移動量。JS が実測して供給。隙間防止)
 uniform float uSlitFade;  // 0..1 Slit-scan フェード(0にしたときトレイルを流したまま生フレームへ溶かす)
 uniform float uSlitDecay; // Slit-scan 前フレーム減衰(<1: 明るいスジが伸びきらず輝度蓄積を防ぐ)
-uniform float uEnergy, uOnset; // 音量(平滑) / オンセット(立ち上がり)
-uniform float uAttack, uAttackEnv; // スペクトルフラックス由来の短いアタック / 少し長いアタック包絡
+uniform float uOnset; // オンセット(立ち上がり)
+uniform float uAttack; // スペクトルフラックス由来の短いアタック
 uniform float uHit, uHitSeed;  // AR エンベロープ(音中ホールド→減衰, 0..1) / 発火ごとに変わる乱数シード
 uniform sampler2D uFFT;        // 音声スペクトル(512x2 LUMINANCE: row0=FFT)
-uniform float uPix;       // 0 = off; >0 = block size (px)
-uniform int   uMir;       // mirror mode
 uniform float uScn, uGrn;
 uniform float uTexN;       // テクスチャノイズ強度 (Photoshop の「ノイズを加える」相当)
 uniform float uBKeyBlack;  // Slot B が黒背景エンジン(novel 等)のとき、黒をキーして透過(下の A を出す)
@@ -629,28 +627,6 @@ vec3 cosGradColor(float t){
 }
 float rnd(vec2 p){return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453);}
 float hash13(vec3 p3){ p3 = fract(p3 * 0.1031); p3 += dot(p3, p3.zyx + 31.32); return fract((p3.x + p3.y) * p3.z); }  // 無相関ハッシュ(斜め縞が出ない)
-
-vec2 applyMirror(vec2 uv, int mode){
-  if(mode==1){ // horizontal
-    uv.x = abs(uv.x - 0.5)*1.0 + 0.5; // not folding, just fold from center
-    uv.x = 0.5 + abs(uv.x - 0.5);
-  } else if(mode==2){
-    uv.y = 0.5 + abs(uv.y - 0.5);
-  } else if(mode==3){
-    uv = vec2(0.5) + abs(uv - 0.5);
-  } else if(mode>=4){
-    // kaleido
-    float seg = (mode==4) ? 3.0 : (mode==5) ? 4.0 : (mode==6) ? 6.0 : 8.0;
-    vec2 p = uv - 0.5;
-    float a = atan(p.y, p.x);
-    float r = length(p);
-    float s = 3.14159265/seg;
-    a = mod(a, 2.0*s);
-    a = abs(a - s);
-    uv = vec2(cos(a), sin(a)) * r + 0.5;
-  }
-  return uv;
-}
 
 vec3 _blendOverlay(vec3 a, vec3 b){
   return mix(2.0*a*b, 1.0 - 2.0*(1.0-a)*(1.0-b), step(0.5, a));
@@ -1497,15 +1473,6 @@ void main(){
 
   vec2 uv = vUv;
 
-  // mirror / kaleido
-  if(uMir > 0) uv = applyMirror(uv, uMir);
-
-  // pixelate (uPix in pixels)
-  if(uPix > 0.5){
-    vec2 g = uRes / uPix;
-    uv = (floor(uv * g) + 0.5) / g;
-  }
-
   // beat-driven UV warps (Twist は後段パスへ移設)
   vec2 sliceLineUv = uv;
   uv = applySlice(uv);
@@ -1536,17 +1503,9 @@ void main(){
     glassFrost = clamp(0.45 + gh*0.45 + glassPulse*0.45, 0.0, 1.0);
   }
 
-  // chromatic aberration: separate R / G / B sampling (motion-blur aware)
   vec3 col;
   float srcA = 1.0;   // @gradmask 用: サンプル時の α (背景 α=0 のシェーダで grad map をマスク)
-  float chrAmt = uChr + uARgb*max(uEnergy, uAttackEnv)*0.06;   // 音量/アタックで色収差(RGB分離)を加算
-  if(chrAmt > 0.0001){
-    vec2 d = (uv - 0.5);
-    col.r = sampleAB_mblur(uv + d*chrAmt).r;
-    vec4 sg_ = sampleAB_mblur(uv);
-    col.g = sg_.g; srcA = sg_.a;
-    col.b = sampleAB_mblur(uv - d*chrAmt).b;
-  } else {
+  {
     vec4 s0_ = sampleAB_mblur(uv);
     col = s0_.rgb; srcA = s0_.a;
   }
@@ -2308,6 +2267,58 @@ void main(){
   float fres=pow(1.0-max(0.0,n.z),2.0);
   metal+=fres*vec3(0.25,0.35,0.6)*0.55;
   frag=vec4(mix(col,metal,clamp(uAmount,0.0,1.0)),1.0);
+}`);
+
+    // Lens: Mirror → Pixelate → Chroma Ab を 1 パスにまとめた Post (合成シェーダから独立)。
+    //   uv を鏡像/ケイレイド → ピクセル化の順で変換し、その座標で R/B をずらしてサンプルする。
+    this._linkDeferred('lensProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uChr;
+uniform float uPix;
+uniform int   uMir;
+// 領域外 (ケイレイドの隅・色収差のはみ出し) は上下左右ミラーでタイル化 (合成シェーダの sampleAB と同じ)
+vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
+vec2 applyMirror(vec2 uv, int mode){
+  if(mode==1){ // horizontal
+    uv.x = abs(uv.x - 0.5)*1.0 + 0.5; // not folding, just fold from center
+    uv.x = 0.5 + abs(uv.x - 0.5);
+  } else if(mode==2){
+    uv.y = 0.5 + abs(uv.y - 0.5);
+  } else if(mode==3){
+    uv = vec2(0.5) + abs(uv - 0.5);
+  } else if(mode>=4){
+    // kaleido
+    float seg = (mode==4) ? 3.0 : (mode==5) ? 4.0 : (mode==6) ? 6.0 : 8.0;
+    vec2 p = uv - 0.5;
+    float a = atan(p.y, p.x);
+    float r = length(p);
+    float s = 3.14159265/seg;
+    a = mod(a, 2.0*s);
+    a = abs(a - s);
+    uv = vec2(cos(a), sin(a)) * r + 0.5;
+  }
+  return uv;
+}
+void main(){
+  vec2 uv = vUv;
+  if(uMir > 0) uv = applyMirror(uv, uMir);
+  if(uPix > 0.5){
+    vec2 g = uRes / uPix;
+    uv = (floor(uv * g) + 0.5) / g;
+  }
+  vec3 col;
+  if(uChr > 0.0001){
+    vec2 d = uv - 0.5;
+    col.r = texture(uTex, fl_mirror(uv + d*uChr)).r;
+    col.g = texture(uTex, fl_mirror(uv)).g;
+    col.b = texture(uTex, fl_mirror(uv - d*uChr)).b;
+  } else {
+    col = texture(uTex, fl_mirror(uv)).rgb;
+  }
+  frag = vec4(col, 1.0);
 }`);
 
     // Gloss: Relief と同じ輝度勾配の起伏に、濡れたクリアコート (ラッカー) を一枚かける。
@@ -5115,23 +5126,17 @@ void main(){
     gl.uniform1f(U('uBri'),       0);
     gl.uniform1f(U('uCon'),       1);
     gl.uniform1f(U('uVig'),       p.vig);
-    gl.uniform1f(U('uChr'),       p.chr);
     gl.uniform1f(U('uAScan'),  p.aScan  || 0);
-    gl.uniform1f(U('uARgb'),   p.aRgb   || 0);
     { const c = this._fxLineRGB || [1,1,1]; gl.uniform3f(U('uFxLineCol'), c[0], c[1], c[2]); gl.uniform1f(U('uFxLineOn'), this._fxLineOn ? 1 : 0); }
     gl.uniform1f(U('uAStrobe'),  p.aStrobe  || 0);
     gl.uniform1f(U('uAShock'),   p.aShock   || 0);
     gl.uniform1f(U('uAExplode'), p.aExplode || 0);
     // Slit-scan(時間差スライス)は _applySlitScan で適用(履歴バッファ使用)。ここでは何もしない。
-    gl.uniform1f(U('uEnergy'),    (typeof Audio!=='undefined') ? (Audio.energy||0) : 0);
     gl.uniform1f(U('uOnset'),     (typeof Audio!=='undefined') ? (Audio.onset||0) : 0);
     gl.uniform1f(U('uAttack'),    (typeof Audio!=='undefined') ? (Audio.attack||0) : 0);
-    gl.uniform1f(U('uAttackEnv'), (typeof Audio!=='undefined') ? (Audio.attackEnv||0) : 0);
     gl.uniform1f(U('uHit'),       (typeof Audio!=='undefined') ? (Audio.hit||0) : 0);
     gl.uniform1f(U('uHitSeed'),   (typeof Audio!=='undefined') ? (Audio.hitSeed||0) : 0);
     if(this.audioTex){ gl.activeTexture(gl.TEXTURE0 + 5); gl.bindTexture(gl.TEXTURE_2D, this.audioTex); gl.uniform1i(U('uFFT'), 5); }
-    gl.uniform1f(U('uPix'),       p.pix);
-    gl.uniform1i(U('uMir'),       p.mir|0);
     gl.uniform1f(U('uScn'),       p.scn);
     gl.uniform1f(U('uGrn'),       p.grn);
     gl.uniform1f(U('uTexN'),      p.texNoise || 0);
@@ -5272,16 +5277,17 @@ void main(){
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
 
-    // ── Post FX パス順 (グループ順。composite 内のものは括弧で明記) ──
-    //   1) Rain(合成内) + Water + Boltzmann
-    //   2) Mondrian/Rings(合成内) + Slit-scan
-    //   3) Barcode + Voxel(合成内) + Datamosh + Pixelsort
-    //   4) マチエール: Relief + Bleed + Impasto + Chrome
-    //   4.5) IMAGON (Overlay の筆跡)
-    //   5) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
-    //   6) 折り紙系: Needle → Origami → Kaiser (+Flames)
-    //   7) Twist + FB Add/Multiply
-    //   8) FXAA + Outline + Ink Bleed + Dither Blur + Gaussian Blur + Film Blur
+    // ── Post FX パス順 (composite 内のものは括弧で明記) ──
+    //   0) 合成シェーダ: Grad/Auto Map・Tunnel・Rain・Mondrian/Rings・Voxel ほか
+    //   1) Water → Boltzmann
+    //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
+    //   2.5) プリセット切替トランジション → IMAGON (Overlay の筆跡)
+    //   3) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
+    //   4) 3D 段 (折り紙系): Needle → Origami → Kaiser → Flames → Uzumaki
+    //   5) Glitch 段: Slit-scan → Waveform → Barcode → Datamosh → Pixelsort
+    //   6) Lens 段: Mirror → Pixelate → Chroma Ab
+    //   7) Twist → FB Add/Multiply
+    //   8) FXAA → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
 
     // 1) Water (Ballpoint Sketch) / Boltzmann
@@ -5292,21 +5298,7 @@ void main(){
     }
     this._applyBoltzmannFinal(p);
 
-    // 2) Slit-scan (境界線は Slice / Rings の線と同様この段階で乗る)
-    this._applySlitScan(p, _safe);
-    this._applyWaveformPost(p, _safe);
-
-    // 3) Barcode / Datamosh / Pixelsort (グリッチ系)
-    this._applyBarcodePost(p, _safe);
-    this._applyGlitchTrail(p);
-    if(typeof PixelSortFX !== 'undefined' && p && (p.pixsort || 0) > 0.001 && !(App.safeMode)){
-      const psHit = (typeof Audio !== 'undefined') ? (Audio.hit || 0) : 0;
-      const psTime = this.clock || 0;
-      PixelSortFX.apply(gl, this._finalFBO, p.pixsort, psHit, psTime);
-      gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
-    }
-
-    // 4) マチエール系: 質感を乗せた画に、後段の色調補正を掛ける
+    // 2) マチエール系: 質感を乗せた画に、後段の色調補正を掛ける
     this._applyReliefPost(p, _safe);
     this._applyBleedPost(p, _safe);
     this._applyImpastoPost(p, _safe);
@@ -5316,10 +5308,10 @@ void main(){
     this._applyPresetTrans();   // プリセット切替の全画面トランジション
     this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (色調補正以降の Post FX が筆跡にも掛かる)
 
-    // 5) 色調補正 (Sat/Hue/Brightness/Contrast)
+    // 3) 色調補正 (Sat/Hue/Brightness/Contrast)
     this._applyFinalColorGrade();
 
-    // 6) 折り紙系 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
+    // 4) 3D 段 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
     const _stacked = this._applyFoldStack(p, _safe);
     if(!_stacked){
       this._applyOrigamiPost(p, _safe);      // 表示: Needle
@@ -5329,11 +5321,26 @@ void main(){
     this._applyFlamesPost(p, _safe);
     this._applyUzumakiPost(p, _safe);   // 渦巻き展開 (折り紙系と同じ幾何変形枠)
 
+    // 5) Glitch 段: 折った結果にグリッチを掛ける (Slit-scan → Waveform → Barcode → Datamosh → Pixelsort)
+    this._applySlitScan(p, _safe);
+    this._applyWaveformPost(p, _safe);
+    this._applyBarcodePost(p, _safe);
+    this._applyGlitchTrail(p);
+    if(typeof PixelSortFX !== 'undefined' && p && (p.pixsort || 0) > 0.001 && !(App.safeMode)){
+      const psHit = (typeof Audio !== 'undefined') ? (Audio.hit || 0) : 0;
+      const psTime = this.clock || 0;
+      PixelSortFX.apply(gl, this._finalFBO, p.pixsort, psHit, psTime);
+      gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
+    }
+
+    // 6) Lens 段: Mirror → Pixelate → Chroma Ab (全 0 / Off ならパスごとスキップ)
+    this._applyLensPost(p, _safe);
+
     // 7) Twist / Feedback (折った結果ごとうねらせ、トレイルを残す)
     this._applyTwistPost(p, _safe);
     this._applyFeedbackBlend(p, _safe);
 
-    // 8) 仕上げの線とブラー (FXAA → Outline → Ink Bleed → Dither Blur → Gaussian Blur → Film Blur)
+    // 8) 仕上げの線とブラー (FXAA → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur)
     if(App.post && App.post.fxaa){ this._applyFXAA(); }
     this._applyOutlinePost(p, _safe);
     this._applyInkBleedPost(p, _safe);
@@ -6518,6 +6525,20 @@ void main(){
       gl.uniform1f(u('uShine'), v('glossShine', 0.6));
       gl.uniform1f(u('uWet'),   v('glossWet', 0.4));
       gl.uniform1f(u('uLight'), v('glossLight', 0.3));
+    });
+  },
+  _applyLensPost(p, safe){
+    if(!p || !this.lensProg || !this._finalFBO) return;
+    const au = (typeof Audio !== 'undefined') ? Audio : null;
+    const chr = (+p.chr || 0) + (+p.aRgb || 0) * Math.max(au ? (au.energy || 0) : 0, au ? (au.attackEnv || 0) : 0) * 0.06;   // 音量/アタックで色収差を加算
+    const pix = +p.pix || 0;
+    const mir = p.mir | 0;
+    if(chr <= 0.0001 && pix <= 0.5 && mir <= 0) return;
+    this._runFinalPost(this.lensProg, '_lensTmp', (P)=>{
+      const gl = this.gl;
+      gl.uniform1f(gl.getUniformLocation(P, 'uChr'), chr);
+      gl.uniform1f(gl.getUniformLocation(P, 'uPix'), pix);
+      gl.uniform1i(gl.getUniformLocation(P, 'uMir'), mir);
     });
   },
   _applyChromePost(p, safe){
