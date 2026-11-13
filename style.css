@@ -310,7 +310,6 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   #slotPrevRow{flex:0 0 76px}
   #topbar{gap:4px;padding:0 6px}
   #topbar button{min-width:48px}
-  #topbar .stat:not([data-stat="fps"]){display:none}
   .toast{max-width:calc(100vw - 24px)}
 }
 /* スマホ横: 2 カラムのまま、トップバーを薄く・サイドを可変幅に */
