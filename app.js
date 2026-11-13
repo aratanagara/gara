@@ -41,7 +41,45 @@ const isTextEntryTarget = el=>{
   return /^(text|search|number|password|email|url|tel|date|datetime-local|month|time|week)$/.test(type);
 };
 
-function toast(msg, t=1500){
+// 端末ごとの設定 (localStorage 'vj.<key>')。設定ペインが書き、各機能が読む。サーバーには送らない。
+const Prefs = {
+  _c: {},
+  get(k, d){
+    if(k in this._c) return this._c[k];
+    let v = d;
+    try{ const r = localStorage.getItem('vj.' + k); if(r !== null) v = r; }catch(_){}
+    return this._c[k] = v;
+  },
+  on(k, d){ return this.get(k, d) !== '0'; },
+  set(k, v){
+    this._c[k] = String(v);
+    try{ localStorage.setItem('vj.' + k, String(v)); }catch(_){}
+  }
+};
+
+// 起動時のサーバー取得 (defaults.json / defs / sids.json / プリセット / グラデ) の待ち時間。
+//   Prefs 'syncTimeout' = none (待つ) / 5 / 10 (秒で打ち切り) / offline (store.php の取得・書き込みをしない)
+const Net = {
+  mode(){ return Prefs.get('syncTimeout', 'none'); },
+  offline(){ return this.mode() === 'offline'; },
+  _sec(){ const n = +this.mode(); return n > 0 ? n : 0; },
+  fetch(url, opts){
+    const sec = this._sec();
+    if(!sec) return fetch(url, opts);
+    const ac = new AbortController();
+    setTimeout(()=>ac.abort(), sec * 1000);   // 本文の読み込みまで含めて打ち切る (取得後に鳴っても無害)
+    return fetch(url, Object.assign({}, opts, {signal: ac.signal}));
+  },
+  race(p){
+    const sec = this._sec();
+    if(!sec) return p;
+    return Promise.race([p, new Promise((_, rej)=>setTimeout(()=>rej(new Error('timeout')), sec * 1000))]);
+  }
+};
+
+// force=true は Toasts を「出さない」にしていても出す (Live Lock の警告など)
+function toast(msg, t=1500, force=false){
+  if(!force && Prefs.get('toasts', 'all') === 'off') return;
   const el = $('#toast'); if(!el) return;
   el.textContent = msg; el.classList.add('show');
   clearTimeout(toast._t); toast._t = setTimeout(()=>el.classList.remove('show'), t);
@@ -83,17 +121,6 @@ const Inputs = {
       img.onerror = ()=>rej(new Error('image load failed: ' + src));
     });
   },
-  async addImageFile(file){
-    const url = URL.createObjectURL(file);
-    const img = new Image();
-    img.src = url;
-    await this._awaitImage(img, file.name || url);
-    const id = this.add('image', file.name || 'image', {img, width:img.naturalWidth, height:img.naturalHeight});
-    const e = this.reg.get(id);
-    e.tex = GL.makeTexFromImage(img);
-    UI.refreshInputs();
-    return id;
-  },
   async addImageURL(url, label){
     // 同じ URL は再利用 (プリセット再ロードで増殖させない)
     const existing = this.list().find(x=>x.kind==='image' && x.label===(label||url));
@@ -105,17 +132,6 @@ const Inputs = {
     const e = this.reg.get(id);
     e.tex = GL.makeTexFromImage(img);
     UI.refreshInputs();
-    return id;
-  },
-  async addVideoFile(file){
-    const url = URL.createObjectURL(file);
-    const v = document.createElement('video');
-    v.src = url; v.loop = true; v.muted = true; v.playsInline = true;
-    await new Promise(r=>{ v.onloadeddata = r; });
-    await v.play();
-    const id = this.add('video', file.name || 'video', {video:v, width:v.videoWidth, height:v.videoHeight});
-    const e = this.reg.get(id);
-    e.tex = GL.makeTexEmpty();
     return id;
   },
   async addWebcam(){
@@ -8951,7 +8967,13 @@ const Audio = {
         }
       } else {
         try{
-          stream = await navigator.mediaDevices.getUserMedia({audio:true});
+          // 既定は生の音 (自動ゲイン・ノイズ抑制・エコー除去なし。System 入力と同じ)。Settings の Mic Processing で ON にできる
+          const proc = Prefs.on('micProcessing', '0');
+          const dev = Prefs.get('micDevice', '');
+          stream = await navigator.mediaDevices.getUserMedia({audio:{
+            echoCancellation:proc, noiseSuppression:proc, autoGainControl:proc,
+            ...(dev ? {deviceId:{ideal:dev}} : {})
+          }});
         }catch(e){
           if(e && e.name === 'NotAllowedError'){
             throw new Error('マイク権限が拒否されました (ブラウザの URL 横の鍵アイコンから許可してください)');
@@ -9327,8 +9349,9 @@ const BPM = {
       ints.sort((a,b)=>a-b);
       const med = ints[ints.length>>1];
       let cand = 60/med;
-      while(cand < 60 && cand > 0) cand *= 2;
-      while(cand > 180) cand *= 0.5;
+      const [lo, hi] = Prefs.get('tapRange', '60-180').split('-').map(Number);
+      while(cand < lo && cand > 0) cand *= 2;
+      while(cand > hi) cand *= 0.5;
       if(cand>=40 && cand<=300) this.bpm = this.bpm*0.3 + cand*0.7;
       this.origin = this.taps[this.taps.length-1];
       if(typeof App !== 'undefined' && App.resetBeatScalePhase) App.resetBeatScalePhase();
@@ -9663,31 +9686,10 @@ const MIDI = {
     return this._relAbs(key, v, initial);   // 相対つまみは _relAbs 内で刻みを適用
   },
   syncRelativeUi(){ if(typeof UI !== 'undefined' && UI.refreshMidiRelative) UI.refreshMidiRelative(); this._relUiDirty = false; },
+  // Settings で変えた値を起動時の値 (vj.def.midiRelative) として残す。起動時はこれだけを読む
   saveRelativeDefault(){
     const d = { relative:!!this.relative, relMode:this.relMode, relStep:this.relStep };
-    try{
-      localStorage.setItem('vj.def.midiRelative', JSON.stringify(d));
-      toast('デフォルト保存: MIDI Relative');
-    }catch(e){ toast('保存失敗'); }
-  },
-  resetRelativeDefault(){
-    const d = { relative:true, relMode:'absdelta', relStep:48 };
-    this.relative = d.relative;
-    this.relMode = d.relMode;
-    this.relStep = d.relStep;
-    this._relVal = {}; this._relRaw = {};
-    try{
-      localStorage.setItem('vj.def.midiRelative', JSON.stringify(d));
-      localStorage.setItem('vj.midiRel', '1');
-      localStorage.setItem('vj.midiRelMode', d.relMode);
-      localStorage.setItem('vj.midiRelStep', String(d.relStep));
-    }catch(e){}
-    this._configureLCXL3Relative(false);
-    const rel = $('#midiRelative'); if(rel) rel.checked = true;
-    const mode = $('#midiRelMode'); if(mode) mode.value = d.relMode;
-    const step = $('#midiRelStep'); if(step) step.value = String(d.relStep);
-    const stepVal = $('#midiRelStepVal'); if(stepVal) stepVal.textContent = String(d.relStep);
-    toast('デフォルトをリセット: MIDI Relative');
+    try{ localStorage.setItem('vj.def.midiRelative', JSON.stringify(d)); }catch(e){}
   },
   // ── 逆回転フェード ──
   //   MIDI つまみを速く逆方向へ切り返したら、ガクッと飛ばさず Param Fade の時間をかけて中立値へ
@@ -9706,7 +9708,7 @@ const MIDI = {
   //   そのままだと次に触った瞬間に飛ぶ/ズレたまま動くので、
   //   「つまみが基準点(-1..1 なら中央 0 / 0..1 なら下端)を通過するまで反映しない」状態にする。
   //   通過したら解除して、以後は通常どおり動く。
-  pickup: true,
+  pickup: Prefs.on('midiPickup', '1'),   // 端末設定 (Settings の Pickup)
   _pickupArmed: {},          // mapKey → {ref, side} 取り込み待ち
   // 正規化 0..127 での基準点。両極性(min<0<max)は中央、それ以外は下端。
   _pickupRef(r){
@@ -9832,7 +9834,7 @@ const MIDI = {
     // 直近の CC 値(ノブ位置)の復元は「復元モード」に従う。OFFならクリーン起動(前回値を適用しない)。
     const _restore = (typeof App === 'undefined') || (App._restoreOn !== false);
     try{ this.values = _restore ? JSON.parse(localStorage.getItem('vj.midivals')||'{}') : {}; }catch(e){ this.values = {}; }
-    // 相対(エンドレス)エンコーダ設定。保存済みデフォルトを優先し、旧個別キーは未保存時の互換用。
+    // 相対(エンドレス)エンコーダ設定。Settings で変えた値 (vj.def.midiRelative) を読む。
     let relDef = null;
     try{
       // MIDI Relativeの既定値を一度だけ確定。プリセット復元や旧保存値で初期化されないようにする。
@@ -9850,13 +9852,6 @@ const MIDI = {
       if(relDef.relMode==='lcxl3'||relDef.relMode==='absdelta'||relDef.relMode==='twos'||relDef.relMode==='offset'||relDef.relMode==='signed') this.relMode = relDef.relMode;
       const rs = parseInt(relDef.relStep, 10);
       if(rs) this.relStep = Math.max(4, Math.min(960, rs));
-    }else{
-      try{ this.relative = (localStorage.getItem('vj.midiRel') === '1'); }catch(_){}
-      try{ const rm = localStorage.getItem('vj.midiRelMode'); if(rm==='lcxl3'||rm==='absdelta'||rm==='twos'||rm==='offset'||rm==='signed') this.relMode = rm; }catch(_){}
-      try{
-        const rs = parseInt(localStorage.getItem('vj.midiRelStep')||'',10);
-        if(rs) this.relStep = Math.max(4, Math.min(960, rs < 8 ? Math.round(127 / Math.max(1, rs)) : rs));
-      }catch(_){}
     }
     // 復元した値を UI へ反映。MIDI.init はパネル構築より先/後どちらもあり得るので
     //   直後と次のタスクの両方で試す (どちらかで UI が存在する)。
@@ -9895,7 +9890,7 @@ const MIDI = {
         if(this.ledEnabled){ this.resetLeds(); this.refreshLeds(); }
       };
       _midiStat();
-      if(![...this.access.inputs.values()].length) toast('MIDI 入力デバイスが見つかりません (接続すると自動認識します)', 3500);
+      if(![...this.access.inputs.values()].length && Prefs.on('midiNoDeviceToast', '1')) toast('MIDI 入力デバイスが見つかりません (接続すると自動認識します)', 3500);
     }catch(e){
       const md = $('#statMidi'); if(md) md.textContent = 'MIDI ×';
       toast('MIDI アクセス失敗: ' + e, 4000);
@@ -9942,9 +9937,9 @@ const MIDI = {
   // Componentsの現在設定: On value=127 / Off value=3。
   // Custom ModeへCCを返す場合はパレット番号ではなく、この値で状態を保持する。
   lcxl3ButtonOn:127, lcxl3ButtonOff:3,
-  // 既定で LED 出力は無効 (無印 Launch Control 等で明滅/点灯トラブルが出るため)。
-  // フィードバックが欲しい場合のみ MIDI.ledEnabled=true にする。
-  ledEnabled:true,
+  // LED 出力は既定で有効。無印 Launch Control 等で明滅/点灯トラブルが出る場合は
+  // Settings の LED Feedback を OFF にする (端末設定)。
+  ledEnabled: Prefs.on('midiLed', '1'),
   // 全 LED リセット(消灯 + フラッシュ/二重バッファ状態を解除)。Launchpad/Launch Control 共通: CC0=0。
   // 無印 Launch Control はテンプレ毎にチャンネルが違うため、全 16ch へ送って確実に当てる。
   resetLeds(){
@@ -10466,7 +10461,7 @@ const Record = {
     output.addVideoTrack(videoSource);
     let hasAudio = false;
     let audioSource = null;
-    if(typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio._stream){
+    if(Prefs.on('recAudio', '1') && typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio._stream){
       const at = Audio._stream.getAudioTracks().find(t => t && t.readyState === 'live' && t.enabled !== false);
       if(at){
         audioSource = new Mediabunny.MediaStreamAudioTrackSource(at, { codec: 'aac', bitrate: 256_000 });
@@ -10613,7 +10608,7 @@ const Record = {
     // 揺れた瞬間に mp4 muxer が H.264 ストリームを壊す (Chromium バグ。切替時点以降デコード不能になる。
     // 実測で再現・特定)。WebAudio (MediaStreamAudioDestinationNode) を経由してクロックを揃えた
     // トラックを渡すことで回避する。
-    if(typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio.ctx && Audio.src){
+    if(Prefs.on('recAudio', '1') && typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio.ctx && Audio.src){
       try{
         this._audioDest = Audio.ctx.createMediaStreamDestination();
         Audio.src.connect(this._audioDest);
@@ -11406,7 +11401,7 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
 
     // hovered → シェーダ単体の素の絵をライブプレビュー
     //   (スロットへはめたときの合成結果は出さない = 元シェーダが判別できるように)
-    if(this.hoveredIdx >= 0 && this.hoveredIdx < PRESETS.length){
+    if(this.hoveredIdx >= 0 && this.hoveredIdx < PRESETS.length && Prefs.on('hoverPreview', '1')){
       const p = PRESETS[this.hoveredIdx];
       if(!this._isLive(p)) return;
       const c = grid[this.hoveredIdx];
@@ -11654,6 +11649,7 @@ const App = {
   // Visual タイルをスロットプレビューへドロップ: 指定スロットへ (トランジション付きで) ロードし操作対象に
   loadPresetInto(idx, slotKey){
     const p = PRESETS[idx]; if(!p) return;
+    if(this._deferPreset(()=>this.loadPresetInto(idx, slotKey), `Slot ${slotKey} ← ${p.name}`)) return;
     if(p.kind === 'none'){
       const N = this.transBeats || 0;
       if(N > 0 && typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(N, this.transStyle||0);
@@ -11669,6 +11665,7 @@ const App = {
     toast(`Slot ${slotKey} ← ${p.name}`);
   },
   transitionTo(idx){
+    if(PRESETS[idx] && this._deferPreset(()=>this.transitionTo(idx), PRESETS[idx].name)) return;
     const k = this.activeSlot;
     // 同じスロットで同じシェーダを再クリック → 「なし(透明)」に戻す(トグル)
     if(typeof UI !== 'undefined' && UI.activePresetIdx && UI.activePresetIdx[k] === idx && idx !== 0){
@@ -11962,7 +11959,50 @@ const App = {
     toast('Slot ' + slot + ': ' + (!visible ? 'ON' : 'OFF'));
   },
   // アクティブスロットを「なし(透明)」にする (Backspace)
+  // フルスクリーン中だけステージのカーソルを隠す (Hide Cursor。#stage.locked canvas{cursor:none})
+  applyHideCursor(){
+    const st = $('#stage'); if(!st) return;
+    st.classList.toggle('locked', !!document.fullscreenElement && Prefs.on('hideCursor', '0'));
+  },
+  // 画面のスリープ抑止 (Wake Lock。ブラウザ版のみ。アプリ版は desktop/main.js の powerSaveBlocker が抑止済み)
+  async applyWakeLock(){
+    if(/Electron/i.test(navigator.userAgent || '') || !navigator.wakeLock) return;
+    if(!Prefs.on('wakeLock', '0')){
+      if(this._wakeLock){ try{ this._wakeLock.release(); }catch(e){} this._wakeLock = null; }
+      return;
+    }
+    if(this._wakeLock || this._wakeBusy || document.visibilityState !== 'visible') return;
+    this._wakeBusy = true;
+    try{
+      const wl = await navigator.wakeLock.request('screen');
+      this._wakeLock = wl;
+      wl.addEventListener('release', ()=>{ if(this._wakeLock === wl) this._wakeLock = null; });
+    }catch(e){}
+    this._wakeBusy = false;
+  },
+  // 起動時に Audio を自動開始 (Audio Auto Start = off / mic / display)。ブラウザはユーザー操作が要るので最初の操作で開始する
+  _audioAutoStart(){
+    const mode = Prefs.get('audioAutoStart', 'off');
+    if(mode !== 'mic' && mode !== 'display') return;
+    const go = async ()=>{
+      if(Audio.mode !== 'off') return;
+      await Audio.start(mode);
+      UI.refreshAudioButtons();
+    };
+    if(/Electron/i.test(navigator.userAgent || '') || (navigator.userActivation && navigator.userActivation.hasBeenActive)){ go(); return; }
+    const once = ()=>{ window.removeEventListener('pointerdown', once, true); window.removeEventListener('keydown', once, true); go(); };
+    window.addEventListener('pointerdown', once, true);
+    window.addEventListener('keydown', once, true);
+  },
+  // ライブロック ON の間は破壊的な操作を止めて知らせる。止めたら true
+  liveLocked(what){
+    if(!Prefs.on('liveLock', '0')) return false;
+    toast('Live Lock: ' + what + ' は無効 (Settings で解除)', 1800, true);
+    return true;
+  },
   clearActiveSlot(){
+    if(this.liveLocked('Backspace')) return;
+    if(!Prefs.on('backspaceClear', '1')) return;
     const ni = PRESETS.findIndex(p => p && p.kind === 'none');
     if(ni < 0) return;
     this.loadPreset(ni, this.activeSlot);
@@ -12011,6 +12051,7 @@ const App = {
   // Slot A と B の中身(シェーダ/種別/パラメータ等)をまるごと入れ替える
   swapSlots(){
     if(typeof GL === 'undefined' || !GL.slots) return;
+    if(this.liveLocked('Slot A ⇄ B 交換')) return;
     const t = GL.slots.A; GL.slots.A = GL.slots.B; GL.slots.B = t;
     if(typeof UI !== 'undefined' && UI.activePresetIdx){
       const ti = UI.activePresetIdx.A; UI.activePresetIdx.A = UI.activePresetIdx.B; UI.activePresetIdx.B = ti;
@@ -12715,7 +12756,7 @@ const App = {
     hueRotSpeed:0.0, // 自動色相ローテート速度 (0..2 cycles/sec、方向はランダムに揺れる)
   };},
   mouse:{x:0,y:0,dx:0,dy:0, down:false},
-  mouseCapture:false,   // M キーで iMouse 取得を ON/OFF(既定=拾わない)
+  mouseCapture:false,   // M キーで iMouse 取得を ON/OFF。起動時の値は設定パネルの iMouse (vj.mouseCapture、既定=拾わない)
   paused:false,
 
   async init(){
@@ -12816,6 +12857,7 @@ const App = {
     // 復元モード(既定ON)。OFFなら前回状態を復元せずクリーン起動。
     this._restoreOn = true;
     try{ this._restoreOn = (localStorage.getItem('vj.restore') !== '0'); }catch(_){}
+    try{ this.mouseCapture = (localStorage.getItem('vj.mouseCapture') === '1'); }catch(_){}
     this.applyMixDefault();                    // Mix のデフォルト値をベースに適用(Save復元があれば上書きされる)
     this.applyTransDefault();                   // Transition のデフォルト値をベースに適用
     this.applyAudioTransportDefault();          // Audio Transport のデフォルト値をベースに適用
@@ -12826,6 +12868,11 @@ const App = {
     this.applyAudioTransportDefault();
     this.applyAudioDetectDefault();
     MIDI.init();
+    this._audioAutoStart();
+    this.applyHideCursor();
+    this.applyWakeLock();
+    document.addEventListener('fullscreenchange', ()=>this.applyHideCursor());
+    document.addEventListener('visibilitychange', ()=>{ if(document.visibilityState === 'visible') this.applyWakeLock(); });
     if(this.safeMode){
       // 重い FX を確実に無効化 (復元/MIDI 値より優先)
       if(this.post){ this.post.voxel = 0; this.post.slit2 = 0; this.post.outline = 0; this.post.mblur = 0; }
@@ -13240,9 +13287,8 @@ ${outBlock}
       else if(k==='p'){ this.toggleMixPreviews(); }   // P: Grad / Blend プレビューの表示トグル (重いとき用)
       else if(e.key === 'Escape'){
         // Esc: 全スロットを「なし(透明)」にし、各パラメータを保存値/初期値へリセットする。
-        // ColorWheelPopup / Help モーダル等が開いている間はそちらの Esc(閉じる)を優先しスキップ。
+        // ColorWheelPopup が開いている間はそちらの Esc(閉じる)を優先しスキップ (Settings / Help パネルの Esc は ui-settings.js が先に拾う)。
         if(typeof ColorWheelPopup !== 'undefined' && ColorWheelPopup.popEl && ColorWheelPopup.popEl.classList.contains('show')) return;
-        { const hm = document.getElementById('helpModal'); if(hm && hm.style.display === 'flex') return; }
         // MIDI Learn 待ちの解除を優先。MIDI コンが繋がっていないと CC が来ず、
         // 学習待ちのまま抜けられなくなる (割当ボタンを覚えていないと解除不能)。
         if(typeof MIDI !== 'undefined' && MIDI.learn){
@@ -13366,7 +13412,7 @@ ${outBlock}
       }
       else if((e.ctrlKey||e.metaKey) && k==='enter'){ UI.compileFromEditor(); }
       // 状態の手動保存は Cmd/Ctrl+Shift+S へ退避 (Cmd+S はスクリーンショットに割当)。
-      // 3秒ごとの自動保存と Save ボタンもあるため、通常は使わなくてよい。
+      // 3秒ごとの自動保存 (Settings の Restore) もあるため、通常は使わなくてよい。
       else if((e.ctrlKey||e.metaKey) && e.shiftKey && k==='s'){ e.preventDefault(); this.saveLocal(); toast('Saved'); }
       this._undoSchedule();   // ホットキー操作後に状態をスナップショット(変化があれば履歴に積む)
     });
@@ -13734,7 +13780,7 @@ ${outBlock}
     else el.requestFullscreen();
   },
 
-  _fpsCap: 24,   // 描画フレームレートの上限 (fps)
+  _fpsCap: +Prefs.get('fpsCap', '24'),   // 描画フレームレートの上限 (fps)。0 = 無制限
   frameBudgetMs(){
     const cap = +this._fpsCap || 0;
     if(cap > 0) return 1000 / cap;
@@ -13826,16 +13872,18 @@ ${outBlock}
     requestAnimationFrame(()=>this.tick());
   },
 
-  // 拍ベース予約: 次拍の境界 (= 整数 beatCount を跨いだ瞬間) で loadPreset を発火
-  queuePreset(idx, slotKey){
-    const p = PRESETS[idx]; if(!p) return;
-    const slotName = slotKey || this.activeSlot;
-    const beatNow = (typeof BPM !== 'undefined' ? BPM.beatCount() : 0);
+  // 拍ベース予約: Preset Quantize が「次の拍 / 次の小節」のとき、プリセット切替を拍の境界まで遅らせる
+  //   (整数 beatCount を跨いだ瞬間に fn を発火。小節は 4 拍)
+  _deferPreset(fn, label){
+    const q = Prefs.get('presetQuantize', 'now');
+    if(q === 'now' || this._quantFiring) return false;
+    const b = Math.floor(typeof BPM !== 'undefined' ? BPM.beatCount() : 0);
     this._pendingPreset = {
-      idx, slotKey: slotName,
-      armBeat: Math.floor(beatNow),  // この拍を超えたら発火
+      armBeat: q === 'bar' ? (Math.floor(b / 4) + 1) * 4 - 1 : b,   // この拍を超えたら発火
+      fn: ()=>{ this._quantFiring = true; try{ fn(); } finally { this._quantFiring = false; } },
     };
-    toast(`Queue ${slotName} ← ${p.name} (next beat)`);
+    toast(`Queue ${label} (${q === 'bar' ? 'next bar' : 'next beat'})`);
+    return true;
   },
   _checkPendingPreset(){
     if(!this._pendingPreset) return;
@@ -13843,8 +13891,7 @@ ${outBlock}
     if(Math.floor(beatNow) > this._pendingPreset.armBeat){
       const pp = this._pendingPreset;
       this._pendingPreset = null;
-      if(typeof pp.fn === 'function') pp.fn();           // 汎用アクション (動画切替など)
-      else this.loadPreset(pp.idx, pp.slotKey);
+      pp.fn();
     }
   },
   // 動画切替も Transition (transBeats) でフェード。
@@ -14605,6 +14652,18 @@ ${outBlock}
     if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
   },
   escResetAll(){
+    if(this.liveLocked('Esc 全リセット')) return;
+    const escMode = Prefs.get('escReset', 'one');
+    if(escMode === 'off') return;
+    if(escMode === 'double'){
+      const t = now();
+      if(!this._escArmedAt || t - this._escArmedAt > 1){
+        this._escArmedAt = t;
+        toast('もう一度 Esc で全リセット (1 秒以内)', 1000, true);
+        return;
+      }
+      this._escArmedAt = 0;
+    }
     // リセットは 3 秒後の autosave で vj.state に焼き付くため、直前状態を undo へ確定させる
     this._undoPushNow();
     this.gradAuto.mode = 0;
@@ -14974,6 +15033,7 @@ ${outBlock}
   // サーバーへ非同期保存。thumb 欠けがある一覧をそのまま POST するとサーバーの
   // サムネを消してしまうため、初回はサーバー一覧から thumb をマージしてから送る。
   _savePresetLibServer(json){
+    if(Net.offline()) return;
     const needMerge = !this._presetThumbMerged
                    && (this._presetLib||[]).some(p => p && p.state && !p.thumb);
     if(needMerge){
@@ -15105,6 +15165,12 @@ ${outBlock}
   },
   // サーバーの墓標と統合してから mutate を適用し、ローカル保存 + サーバーへ書き戻す
   _syncTombsServer(mutate){
+    if(Net.offline()){
+      let merged = this._loadTombs();
+      if(mutate) merged = mutate(merged) || merged;
+      this._saveTombsLocal(merged);
+      return;
+    }
     const apply = (serverTombs)=>{
       let merged = this._mergeTombs(this._loadTombs(), serverTombs || []);
       if(mutate) merged = mutate(merged) || merged;
@@ -15132,9 +15198,10 @@ ${outBlock}
   // 墓標に載っているものは「オフライン追加」ではなく「削除済み」なので復元しない。
   async _syncPresetsFromServer(){
     if(this._presetSynced) return; this._presetSynced = true;
+    if(Net.offline()) return;   // ローカルのまま
     let remote = null, offline = false;
     try{
-      const res = await fetch(this._presetApiUrl(), {cache:'no-store'});
+      const res = await Net.fetch(this._presetApiUrl(), {cache:'no-store'});
       if(res.ok) remote = await res.json();
     }catch(e){
       // サーバー到達不可 → 同梱の静的スナップショット (presets/presets.json) へフォールバック。
@@ -15153,7 +15220,7 @@ ${outBlock}
     // 墓標を取得・統合し、削除済みを両側から除外 (復活防止)
     let tombs = this._loadTombs();
     try{
-      const tr = await fetch(this._presetApiUrl() + '?name=presetTombstones', {cache:'no-store'});
+      const tr = await Net.fetch(this._presetApiUrl() + '?name=presetTombstones', {cache:'no-store'});
       if(tr.ok){ const ta = await tr.json(); if(Array.isArray(ta)) tombs = this._mergeTombs(tombs, ta); }
     }catch(e){}
     this._saveTombsLocal(tombs);
@@ -15673,6 +15740,7 @@ ${outBlock}
   },
   // Enter=OK / Esc=キャンセル に対応した確認モーダル (フルスクリーン/VJ でも確実に動作)
   _confirm(message, onOk){
+    if(this.liveLocked('上書き・削除')) return;
     if(this._confirmClose) this._confirmClose();   // 既存があれば閉じる
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:1000000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
@@ -15782,10 +15850,11 @@ ${outBlock}
   _defsSyncSkip: ['midiRelative', 'ctlDefaults'],
   _defsUrl(){ return this._storeBase() + '?name=defs'; },
   async _loadServerDefs(){
+    if(Net.offline() || !Prefs.on('shareDefaults', '1')) return;
     try{
       let server = null;
       try{
-        const r = await fetch(this._defsUrl(), {cache:'no-store'});
+        const r = await Net.fetch(this._defsUrl(), {cache:'no-store'});
         if(r.ok){ const d = await r.json(); if(d && typeof d === 'object' && !Array.isArray(d)) server = d; }
       }catch(e){}
       if(!server) return;   // 到達不可/形式不正 → 何もしない (誤アップロードでサーバーを潰さない)
@@ -15816,7 +15885,7 @@ ${outBlock}
   _shaderSids: {},
   async _loadShaderSids(){
     try{
-      const reg = JSON.parse(await this.fetchTextCached('shaders/sids.json'));
+      const reg = JSON.parse(await Net.race(this.fetchTextCached('shaders/sids.json')));
       const m = {};
       for(const k in reg){
         const n = /^S(\d+)$/.test(k) ? parseInt(k.slice(1), 10) : 0;
@@ -15828,6 +15897,7 @@ ${outBlock}
   // defs の 1 キーだけをサーバーへ反映する (GET → そのキーだけ差し替え → POST)。
   //   uploadDefs はこの端末の vj.def.* 一式で全体を置き換えるため、読込後に別端末が保存した値を戻してしまう。
   async _putServerDef(k, v){
+    if(Net.offline() || !Prefs.on('shareDefaults', '1')) return;
     try{
       const r = await fetch(this._defsUrl(), {cache:'no-store'});
       if(!r.ok) return;
@@ -15838,6 +15908,7 @@ ${outBlock}
     }catch(e){}
   },
   uploadDefs(){
+    if(Net.offline() || !Prefs.on('shareDefaults', '1')) return;
     try{
       const out = {};
       for(let i = 0; i < localStorage.length; i++){
@@ -15851,11 +15922,40 @@ ${outBlock}
       fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(out)}).catch(()=>{});
     }catch(e){}
   },
+  // Visual ごとのデフォルト (Mix のエンジン別パラメータ・Shader Params) を defaults_visual.json の基準値へ戻す。
+  //   基準に無い Visual キーは削除 (= 工場出荷値)。Mix / Transition / Post / Audio / 並び順などは触らない。
+  _isVisualDefKey(k){
+    return k.indexOf('sparam.') === 0 || k === 'image' || k.indexOf('image.') === 0 || /Md$/.test(k) || k === 'slicerImg'
+        || this.modeStateKinds.includes(k);
+  },
+  resetVisualDefaults(){
+    this._confirm('Visual ごとのデフォルト (Mix のパラメータ・Shader Params) を基準値に戻して再読み込みしますか？ (全端末共通)', async ()=>{
+      let base;
+      try{ const r = await fetch('defaults_visual.json', {cache:'no-cache'}); base = await r.json(); }catch(e){ toast('基準値を読めませんでした'); return; }
+      if(!base || typeof base !== 'object' || Array.isArray(base)){ toast('基準値が不正です'); return; }
+      const keys = [];
+      for(let i = 0; i < localStorage.length; i++){ const key = localStorage.key(i); if(key && key.indexOf('vj.def.') === 0) keys.push(key.slice(7)); }
+      for(const k of keys) if(this._isVisualDefKey(k)) localStorage.removeItem('vj.def.' + k);
+      for(const k in base) localStorage.setItem('vj.def.' + k, JSON.stringify(base[k]));
+      if(!Net.offline() && Prefs.on('shareDefaults', '1')){
+        try{
+          const r = await fetch(this._defsUrl(), {cache:'no-store'});
+          const server = r.ok ? await r.json() : null;
+          if(server && typeof server === 'object' && !Array.isArray(server)){
+            for(const k of Object.keys(server)) if(this._isVisualDefKey(k)) delete server[k];
+            Object.assign(server, base);
+            await fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)});
+          }
+        }catch(e){ toast('サーバーへの反映に失敗 (この端末だけ戻しました)'); }
+      }
+      location.reload();
+    });
+  },
   // 全オリジン共通の既定値を defaults.json から適用 (JS 既定 → defaults.json → localStorage の順で上書き)
   async applyServerDefaults(){
     let d = null;
     try{
-      const r = await fetch('defaults.json', {cache:'no-cache'});
+      const r = await Net.fetch('defaults.json', {cache:'no-cache'});
       if(r.ok) d = await r.json();
     }catch(e){}
     if(!d || typeof d !== 'object') return;
@@ -16604,11 +16704,11 @@ void mainImage(out vec4 o, in vec2 f){
     { const rel = $('#midiRelative'), stp = $('#midiRelStep'), stpV = $('#midiRelStepVal'), mode = $('#midiRelMode');
       if(rel){
         rel.checked = !!MIDI.relative;
-        rel.addEventListener('change', ()=>{ MIDI.relative = rel.checked; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); try{ localStorage.setItem('vj.midiRel', rel.checked?'1':'0'); }catch(_){} toast('MIDI 相対モード: ' + (rel.checked?'ON (エンドレスエンコーダ)':'OFF (絶対)')); });
+        rel.addEventListener('change', ()=>{ MIDI.relative = rel.checked; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); MIDI.saveRelativeDefault(); toast('MIDI 相対モード: ' + (rel.checked?'ON (エンドレスエンコーダ)':'OFF (絶対)')); });
       }
       if(mode){
         mode.value = MIDI.relMode;
-        mode.addEventListener('change', ()=>{ MIDI.relMode = mode.value; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); try{ localStorage.setItem('vj.midiRelMode', mode.value); }catch(_){} toast('MIDI 相対エンコーダ方式: ' + mode.options[mode.selectedIndex].text); });
+        mode.addEventListener('change', ()=>{ MIDI.relMode = mode.value; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); MIDI.saveRelativeDefault(); toast('MIDI 相対エンコーダ方式: ' + mode.options[mode.selectedIndex].text); });
       }
       if(stp){
         const showStep = ()=>{
@@ -16620,7 +16720,7 @@ void mainImage(out vec4 o, in vec2 f){
           showStep();
           MIDI._relVal = {};
           MIDI._relRaw = {};
-          try{ localStorage.setItem('vj.midiRelStep', String(MIDI.relStep)); }catch(_){}
+          MIDI.saveRelativeDefault();
         });
       } }
     { const b = $('#tapMidiLearn'); if(b) b.addEventListener('click',()=>{ MIDI.learn = '*:__tap__'; toast('MIDI Learn → Tap: midiコンのボタンを押して'); }); }
@@ -16638,15 +16738,6 @@ void mainImage(out vec4 o, in vec2 f){
     this.refreshAudioButtons();
 
     // channels
-    $('#btnLoadImg').addEventListener('click',()=>$('#fileImg').click());
-    $('#fileImg').addEventListener('change', async e=>{
-      for(const f of e.target.files){
-        if(/^image\//.test(f.type)) await Inputs.addImageFile(f);
-        else if(/^video\//.test(f.type)) await Inputs.addVideoFile(f);
-      }
-      e.target.value='';
-    });
-    $('#btnWebcam').addEventListener('click', ()=>Inputs.addWebcam());
 
     // output (Fullscreen ボタンは撤去。F キーで代替)
     $('#btnProj').addEventListener('click',()=>Projector.open());
@@ -16674,6 +16765,8 @@ void mainImage(out vec4 o, in vec2 f){
         App.fullCacheEnabled=on;
         if(typeof Movie !== 'undefined' && Movie.setFullCacheEnabled) Movie.setFullCacheEnabled(on);
         lb.classList.toggle('on', on);
+        const idleLabel=()=>setLoadLabel(App.fullCacheEnabled ? 'On' : 'Off');   // 実行中以外は状態を出す (進行中は Cache n/m など)
+        idleLabel();
         const runFullCache = async ()=>{
           if(lb.dataset.busy === '1') return;   // 実行中は多重起動しない
           lb.dataset.busy = '1';
@@ -16739,11 +16832,11 @@ void mainImage(out vec4 o, in vec2 f){
                 if(failed) throw new Error(`${failed} video buffers failed to persist`);
               }
             }
-            setLoadLabel('Load');
+            idleLabel();
             lb.classList.toggle('on', App.fullCacheEnabled);
             toast('全素材・動画バッファのフルキャッシュが完了しました');
           }catch(e){
-            setLoadLabel('Load');
+            idleLabel();
             lb.classList.toggle('on', App.fullCacheEnabled);
             toast('フルキャッシュ中にエラーが発生しました');
           } finally {
@@ -16756,23 +16849,11 @@ void mainImage(out vec4 o, in vec2 f){
           App.fullCacheEnabled=on;
           try{ localStorage.setItem('vj.fullCache', on?'1':'0'); }catch(_){}
           if(typeof Movie !== 'undefined' && Movie.setFullCacheEnabled) Movie.setFullCacheEnabled(on);
-          lb.classList.toggle('on', on);
+          lb.classList.toggle('on', on); idleLabel();
           if(on) await runFullCache();
           else toast('フルキャッシュ OFF（保存済みデータは保持）');
         });
         if(on) setTimeout(()=>runFullCache(), 800);
-      } }
-    { const rb=$('#btnRestore');
-      if(rb){
-        let on=true; try{ on=(localStorage.getItem('vj.restore')!=='0'); }catch(_){}
-        rb.classList.toggle('on', on);
-        rb.addEventListener('click', ()=>{
-          on=!on;
-          try{ localStorage.setItem('vj.restore', on?'1':'0'); }catch(_){}
-          rb.classList.toggle('on', on);
-          App._restoreOn = on;
-          toast(on ? '復元 ON (次回起動から前回状態を復元)' : '復元 OFF (次回起動はクリーン)');
-        });
       } }
     $('#side').addEventListener('mouseover', (e) => {
       const label = e.target.closest('.row label, .params .par label');
@@ -16780,15 +16861,6 @@ void mainImage(out vec4 o, in vec2 f){
         label.title = label.textContent.trim();
       }
     });
-    { const hb=$('#btnHelp'), hm=$('#helpModal'), hc=$('#btnHelpClose');
-      if(hb && hm){
-        const open = ()=>{ hm.style.display='flex'; };
-        const close = ()=>{ hm.style.display='none'; };
-        hb.addEventListener('click', open);
-        if(hc) hc.addEventListener('click', close);
-        hm.addEventListener('click', (e)=>{ if(e.target===hm) close(); });
-        window.addEventListener('keydown', (e)=>{ if(e.key==='Escape' && hm.style.display==='flex') close(); });
-      } }
 
     this.bindPostFx();
     this.bindCollapse();
@@ -16841,6 +16913,7 @@ void mainImage(out vec4 o, in vec2 f){
     const tag = (el)=>{
       if(!el || el.dataset.midiKey) return;
       if(el.type !== 'range' && el.type !== 'checkbox') return;
+      if(el.closest('#settingsPane')) return;   // 設定パネル (UI 設定 / 他パネルのミラー) は MIDI 割当の対象外
       // 左のラベル文字列をキーに使う (dom~id~pxAGain のような機械的表記を避ける)。
       const row = el.closest('.row') || el.parentElement;
       const lb = row ? row.querySelector('label') : null;
@@ -16994,7 +17067,6 @@ void mainImage(out vec4 o, in vec2 f){
           else if(kind === 'transition') App.resetTransDefault();
           else if(kind === 'audioTransport') App.resetAudioTransportDefault();
           else if(kind === 'audioDetect') App.resetAudioDetectDefault();
-          else if(kind === 'midiRelative') MIDI.resetRelativeDefault();
           else if(kind === 'fb') App.resetFbDefault();
           else if(kind && kind.indexOf('post:') === 0) App.resetPostGroupDefault(kind.slice(5));
           else if(kind === 'sparam') App.clearShaderParamDefaults(App.activeSlot);
@@ -17016,7 +17088,6 @@ void mainImage(out vec4 o, in vec2 f){
         else if(kind === 'transition') App.saveTransDefault();
         else if(kind === 'audioTransport') App.saveAudioTransportDefault();
         else if(kind === 'audioDetect') App.saveAudioDetectDefault();
-        else if(kind === 'midiRelative') MIDI.saveRelativeDefault();
         else if(kind === 'fb') App.saveFbDefault();
         else if(kind && kind.indexOf('post:') === 0) App.savePostGroupDefault(kind.slice(5));
         else if(kind === 'sparam') App.saveShaderParamDefaults(App.activeSlot);
@@ -18261,14 +18332,14 @@ void mainImage(out vec4 o, in vec2 f){
     const GradStore = {
       list: [],
       url(){ return App._storeBase() + '?name=grads'; },
-      async load(){ let fetchedOk=false; try{ const res = await fetch(this.url(), {cache:'no-store'}); if(res.ok){ const a = await res.json(); fetchedOk=true; if(Array.isArray(a) && a.length) this.list = a; } }catch(e){}
+      async load(){ let fetchedOk=false; try{ const res = await (Net.offline() ? Promise.reject(new Error('offline')) : Net.fetch(this.url(), {cache:'no-store'})); if(res.ok){ const a = await res.json(); fetchedOk=true; if(Array.isArray(a) && a.length) this.list = a; } }catch(e){}
         // store.php 不通時は同梱スナップショット (presets/grads.json) を読み取り専用で使う (fetchedOk=false のままなので save() はしない)
         if(!fetchedOk && !this.list.length){ try{ const res = await fetch('presets/grads.json', {cache:'no-store'}); if(res.ok){ const a = await res.json(); if(Array.isArray(a) && a.length) this.list = a; } }catch(e){} }
         // builtins 種まきは fetch が「確実に成功して空」のときだけ save() する。fetch 失敗/不通時はメモリ表示のみで
         // サーバーを上書きしない(失敗のたびに保存済みグラデが builtins で潰れる事故を防ぐ)。
         if(!this.list.length){ this.list = BUILTIN_GRADS.map(g=>{ if(g.stops) return {name:g.name, stops:g.stops.map(s=>({t:s.t, rgb:s.rgb.slice()}))}; const a=g.hex.split(',').map(s=>s.trim()).filter(Boolean); return {name:g.name, stops:a.map((h,i)=>({t:i/Math.max(a.length-1,1), rgb:hexToRGB(h)}))}; }); if(fetchedOk) this.save(); }
         UI._refreshGradList && UI._refreshGradList(); },
-      save(){ try{ if(App._storeWritable && !App._storeWritable()) return; fetch(this.url(), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(this.list)}).catch(()=>{}); }catch(e){} },
+      save(){ if(Net.offline()) return; try{ if(App._storeWritable && !App._storeWritable()) return; fetch(this.url(), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(this.list)}).catch(()=>{}); }catch(e){} },
       add(name, stops){ this.list.push({name, stops}); this.save(); UI._refreshGradList && UI._refreshGradList(); },
       remove(i){ this.list.splice(i,1); this.save(); UI._refreshGradList && UI._refreshGradList(); },
       update(i, stops){ if(this.list[i]){ this.list[i].stops = stops; this.save(); UI._refreshGradList && UI._refreshGradList(); } },
@@ -18794,8 +18865,8 @@ void mainImage(out vec4 o, in vec2 f){
     grid.innerHTML = '';
     this.thumbCanvases = new Array(PRESETS.length);
 
-    // 遅延ローディング: サムネ JPG が無いシェーダは、タイルが画面に入って初めて live コンパイルする。
-    //   (全プリセットを起動時に一括コンパイルすると、重いレイマーチャで初回ロードが固まるため)
+    // サムネ JPG が無いシェーダは、最初の 1 フレームだけを 1 フレームに 1 本ずつ先読みで描く。
+    //   画面に入ったタイルは observer が先頭へ回す (一括コンパイルで初回ロードが固まらないよう 1 本ずつ)。
     if(this._thumbObserver){ try{ this._thumbObserver.disconnect(); }catch(_){} }
     if(typeof IntersectionObserver !== 'undefined'){
       this._thumbObserver = new IntersectionObserver((entries)=>{
@@ -18870,11 +18941,11 @@ void mainImage(out vec4 o, in vec2 f){
         };
         tImg.onerror = ()=>{
           if(!(p.src && (!p.kind || p.kind === 'shader'))) return;
-          c.__needsLive = true;   // JPG 無し → live コンパイルが必要
-          // observer 非対応、または既に画面内なら即キュー。画面外は observer がスクロール時に拾う。
-          if(!UI._thumbObserver){ if(Preview.staticQueue.indexOf(i) < 0) Preview.staticQueue.push(i); return; }
+          c.__needsLive = true;   // JPG 無し → 最初の 1 フレームを先読み (1 フレームに 1 本ずつ描いて止める)
+          if(Preview.staticQueue.indexOf(i) < 0) Preview.staticQueue.push(i);
+          if(!UI._thumbObserver) return;
           const r = tile.getBoundingClientRect(), vh = window.innerHeight || 0;
-          if(r.top < vh + 300 && r.bottom > -300) UI._queueThumb(tile);
+          if(r.top < vh + 300 && r.bottom > -300) UI._queueThumb(tile);   // 画面内は先頭へ
         };
         tImg.src = 'shaders/thumbs/' + tf + '.jpg';
       }
@@ -19059,8 +19130,10 @@ void mainImage(out vec4 o, in vec2 f){
     if(!c){ return; }
     if(c.__hasThumb){ if(this._thumbObserver) this._thumbObserver.unobserve(tile); return; }  // JPG 取得済み
     if(!c.__needsLive) return;   // JPG 読込中 → onerror 後に再評価される
-    if(Preview.staticQueue.indexOf(idx) < 0) Preview.staticQueue.push(idx);
-    if(this._thumbObserver) this._thumbObserver.unobserve(tile);   // compile は一度きり
+    const q = Preview.staticQueue, at = q.indexOf(idx);
+    if(at > 0) q.splice(at, 1);
+    if(at !== 0) q.unshift(idx);   // 画面に入ったタイルを先読みの先頭へ
+    if(this._thumbObserver) this._thumbObserver.unobserve(tile);
   },
 
   refreshActiveThumb(){
@@ -19233,13 +19306,7 @@ void mainImage(out vec4 o, in vec2 f){
     // 下段 Slot A/B プレビューに編集中マーカーを反映
     $$('.slotPrev').forEach(tile=>tile.classList.toggle('editing', tile.dataset.slot === App.activeSlot));
     this.refreshSlotVisibility();
-    $('#slotPill') && ($('#slotPill').textContent = App.activeSlot);
     const slot = GL.slots[App.activeSlot];
-    const kindPill = $('#slotKindPill');
-    if(kindPill){
-      kindPill.textContent = slot.kind || 'shader';
-      kindPill.style.color = slot.kind === 'layer' ? 'var(--acc)' : 'var(--dim)';
-    }
     // mode 別の UI セクションを切り替え
     const isLayer = slot.kind === 'layer';
     const isManga = slot.kind === 'manga';
@@ -19256,6 +19323,7 @@ void mainImage(out vec4 o, in vec2 f){
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
     $$('.video-mode').forEach(el  => el.style.display = isVideo  ? '' : 'none');
     $$('.slicer-mode').forEach(el => el.style.display = isSlicer ? '' : 'none');
+    $$('.image-mode').forEach(el => el.style.display = slot.kind === 'image' ? '' : 'none');
     $$('.inkelly-mode').forEach(el => el.style.display = isInkelly ? '' : 'none');
     $$('.textdeform-mode').forEach(el => el.style.display = isTextDeform ? '' : 'none');
     $$('.ugomeki-mode').forEach(el => el.style.display = isUgomeki ? '' : 'none');
@@ -22502,12 +22570,10 @@ void mainImage(out vec4 o, in vec2 f){
         ph.textContent = ((r && r.kind) ? r.kind.toUpperCase()+'\n' : '') + '(呼出でサムネ生成)';
       }
       this._presetThumbs.push(entry);
-      // プリセット名ラベル(P001〜)/ キー
+      // プリセット名ラベル(P001〜)。数字キーは Grad Preset 用なので、全体プリセットはクリックで呼ぶ
       const psid = 'P' + String(i+1).padStart(3, '0');
       const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = psid + ' ' + (p.name || ('Preset '+(i+1)));
       tile.appendChild(lbl);
-      const key = (i < 9) ? String(i+1) : '';   // 数字キーはGrad Preset用。全体Presetはクリックで呼出
-      if(key){ const k = document.createElement('div'); k.className = 'key'; k.textContent = key; tile.appendChild(k); }
       // 削除 / 名前変更 (左上の小ボタン)
       const mkBtn = (icon, slot, title, fn)=>{
         const b = document.createElement('div'); b.className = 'ico-btn'; b.title = title;
@@ -22660,7 +22726,7 @@ void mainImage(out vec4 o, in vec2 f){
 
 window.addEventListener('DOMContentLoaded', ()=>App.init());
 // ページロードが一通り終わったら、アイドル時に動画を1つずつプリフェッチ(遅延ローディング/キャッシュ)
-window.addEventListener('load', ()=>{ setTimeout(()=>{ try{ if(typeof Movie!=='undefined' && Movie.startPreload) Movie.startPreload(); }catch(e){} }, 3000); });
+window.addEventListener('load', ()=>{ setTimeout(()=>{ try{ if(Prefs.on('videoPreload', '1') && typeof Movie!=='undefined' && Movie.startPreload) Movie.startPreload(); }catch(e){} }, 3000); });
 
 /* dt tracking */
 let _lastT = now();
