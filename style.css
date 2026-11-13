@@ -27,22 +27,38 @@
   unicode-range:U+10000-10FFFF;
 }
 :root{
-  --bg:#0a0a0c; --panel:#15151a; --panel2:#1d1d24; --line:#2a2a33;
-  --fg:#e8e8ee; --dim:#8a8a96; --acc:#3f00ff; --acc2:#5be1ff; --warn:#ffb84d; --err:#ff5c5c;
+  color-scheme:dark;
+  --bg:#0f0f0f; --panel:#0f0f0f; --panel2:#151515; --surface:#0f0f0f;
+  --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.22);
+  --hover:rgba(255,255,255,.06); --mute:#4f4f4f;
+  --on-bg:var(--fg); --on-fg:var(--bg);
+  --fs:11px; --fs-sm:10px; --fs-xs:9px;
+  --ctl-h:24px; --row-h:24px; --row-gap:4px;
+  --gap:8px; --label-w:100px; --val-w:48px; --midi-w:38px;
+  --check:14px; --thumb:10px; --track:2px; --pad:10px; --radius:0;
+  --side-w:420px; --sb-w:8px; --acc-fg:#fff; --btn-gap:4px; --midi-h:14px; --thumb-cols:3;
+  --fg:#dfdfcf; --dim:#8f8f86; --acc:#3f00ff; --acc2:#5be1ff; --warn:#ffb84d; --err:#ff5c5c;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
-  --sans: "Aratana", -apple-system, "Helvetica Neue", "Hiragino Sans", system-ui, sans-serif;
+  --sans: "Aratana", "Helvetica Neue", "Arial", "dnp-shuei-gothic-gin-std", "Yu Gothic", "YuGothic", "游ゴシック", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Segoe UI", "Arial Unicode MS", "Noto Sans", sans-serif;
 }
+html[data-theme="light"]{
+  color-scheme:light;
+  --bg:#efefef; --panel:#efefef; --panel2:#fff; --surface:#fff;
+  --line:rgba(0,0,0,.08); --line2:rgba(0,0,0,.24);
+  --fg:#1f1f1f; --dim:#6f6f6f; --mute:#afafaf; --hover:rgba(0,0,0,.05);
+}
+#stage,.thumb-tile{--line:#2a2a33;--dim:#8a8a96}
 *{box-sizing:border-box}
 html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.4 var(--sans);overflow:hidden;user-select:none;-webkit-user-select:none}
 button,select,input,textarea{font:inherit;color:inherit}
-button{background:var(--panel2);border:1px solid var(--line);color:var(--fg);padding:5px 9px;border-radius:6px;cursor:pointer}
-button:hover{background:#262630}
-button.acc{background:var(--acc);border-color:var(--acc);color:#fff}
-button.on{background:var(--acc2);border-color:var(--acc2);color:#000}
+button{background:transparent;border:1px solid var(--line2);color:var(--fg);padding:4px 8px;border-radius:var(--radius);cursor:pointer}
+button:hover{background:var(--hover);border-color:var(--fg)}
+button.acc{background:var(--acc);border-color:var(--acc);color:var(--acc-fg)}
+button.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg)}
 button.audio-on{background:#1db954;border-color:#1db954;color:#fff}
 button.audio-on:hover{background:#1ed760}
-input[type=text],input[type=number],select,textarea{background:#0d0d12;border:1px solid var(--line);color:var(--fg);border-radius:6px;padding:4px 7px;outline:none}
-input[type=text]:focus,input[type=number]:focus,select:focus,textarea:focus{border-color:var(--acc2)}
+input[type=text],input[type=number],input[type=search],select,textarea{background:var(--surface);border:1px solid var(--line2);color:var(--fg);border-radius:var(--radius);padding:4px 6px}
+input[type=text]:focus,input[type=number]:focus,input[type=search]:focus,select:focus,textarea:focus{border-color:var(--fg)}
 input[type=range]{accent-color:var(--acc);width:100%}
 /* 色相環スライダー: トラックをカラースペクトラムに */
 input[type=range].huebar{-webkit-appearance:none;appearance:none;height:14px;border-radius:7px;cursor:pointer;
@@ -52,7 +68,7 @@ input[type=range].huebar::-moz-range-thumb{width:12px;height:18px;border-radius:
 input[type=range].huebar::-moz-range-track{height:14px;border-radius:7px;background:linear-gradient(90deg,#fff 0%,#f00 3%,#ff0 19%,#0f0 36%,#0ff 52%,#00f 68%,#f0f 84%,#f00 100%)}
 input[type=color]{background:transparent;border:1px solid var(--line);width:34px;height:24px;padding:0;border-radius:4px;cursor:pointer}
 
-#app{display:grid;grid-template-columns:1fr 420px;grid-template-rows:42px 1fr;height:100%;width:100%}
+#app{display:grid;grid-template-columns:1fr var(--side-w);grid-template-rows:42px 1fr;height:100%;width:100%}
 #topbar{grid-column:1/3;display:flex;align-items:center;gap:8px;padding:0 10px;border-bottom:1px solid var(--line);background:var(--panel);z-index:5}
 #topbar .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
 #topbar .title-logo{height:22px;width:auto;display:block;align-self:center}
@@ -66,9 +82,12 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #topbar #statMidi{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
 /* トップバーのボタン: アイコン(上)+ラベル(下)の縦2段。幅を詰めて統一。
    高さは topbar(42px)より少し大きくして上下に少しはみ出させる(元デザイン踏襲) */
-#topbar button{min-width:58px;height:46px;box-sizing:border-box;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px 6px;line-height:1.02;font-size:10px}
-#topbar button .ic{display:block;width:auto;margin:0;font-size:14px;line-height:1}
-#topbar button .lb{position:relative;top:5px}
+#topbar button{min-width:58px;height:46px;background:var(--panel);box-sizing:border-box;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px 6px;line-height:1.02;font-size:10px}
+#topbar button .ic{display:block;width:auto;margin:0;font-size:14px;line-height:1;filter:grayscale(1)}
+#topbar button .lb{position:relative;top:5px;font-size:var(--fs-sm)}
+/* はみ出した下端からステージが透けないよう、hover も不透明な地の上に重ねる */
+#topbar button:hover{background:linear-gradient(var(--hover),var(--hover)),var(--panel)}
+#topbar button.on{background:var(--on-bg)}
 /* ステータス類は右端に寄せる */
 #topbar .grow{flex:1 1 auto}
 #topbar #lblRestore{display:inline-flex;align-items:center;gap:4px;font:12px var(--mono);color:var(--dim);cursor:pointer;user-select:none}
@@ -136,46 +155,51 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .tabs{display:flex;border-bottom:1px solid var(--line);background:var(--panel2);flex-shrink:0}
 .tab{flex:1;padding:8px 4px;text-align:center;cursor:pointer;font-size:11px;color:var(--dim);border-right:1px solid var(--line)}
 .tab:last-child{border-right:none}
-.tab.on{color:var(--fg);background:var(--panel);box-shadow:inset 0 -2px 0 var(--acc)}
+.tab.on{color:var(--fg);background:var(--panel);box-shadow:inset 0 -2px 0 var(--fg)}
 .panes{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 .pane{flex:1;overflow:auto;padding:10px;display:none;min-height:0}
 .pane.on{display:block}
 .pane.code{padding:0;display:none;overflow:hidden}
 .pane.code.on{display:flex;flex-direction:column}
 
-.row{display:flex;align-items:center;gap:6px;margin:6px 0}
-.row label{flex:0 0 92px;color:var(--dim);font-size:11px}
-.row .val{flex:0 0 50px;text-align:right;font:11px var(--mono);color:var(--fg)}
-.row input[type=range]{flex:1}
-.section{border:1px solid var(--line);background:var(--panel2);border-radius:8px;padding:8px 10px;margin-bottom:10px}
-.section h3{margin:0 0 6px 0;font-size:11px;letter-spacing:.5px;text-transform:uppercase;color:var(--dim);display:flex;align-items:center;gap:6px}
-.section h3 .pill{font-size:10px;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1px 6px;color:var(--fg)}
+.row{display:flex;align-items:center;gap:var(--gap);min-height:var(--row-h);margin:0 0 var(--row-gap)}
+.row label{flex:0 0 var(--label-w);color:var(--dim);font-size:var(--fs)}
+/* 上寄せの行 (一覧・エディタ) でもラベルが先頭の部品と同じ高さの中央に来るように */
+.row > label{line-height:var(--ctl-h)}
+/* 親の項目に従う小項目 (Grad Map の Preset など): 先頭の点を文字の天地中央に描く */
+.row > label.sub-label::before{content:"";display:inline-block;width:3px;height:3px;border-radius:50%;background:currentColor;vertical-align:middle;margin:0 5px 2px 3px}
+.row > label:first-child:not(:has(input)),.params .par label{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .val{flex:0 0 var(--val-w);text-align:right;font:var(--fs-sm) var(--mono);color:var(--fg)}
+.row input[type=range],.row > label + :is(select,input[type=text]){flex:1;min-width:0}
+.section{border:1px solid var(--line);background:var(--panel2);border-radius:var(--radius);padding:8px var(--pad);margin-bottom:8px}
+.section h3{margin:0 0 6px 0;font-size:var(--fs);font-weight:400;min-height:var(--ctl-h);color:var(--fg);display:flex;align-items:center;gap:6px}
+.section h3 .pill{background:transparent;border:1px solid var(--line);border-radius:var(--radius);padding:0 5px;color:var(--dim);font-size:var(--fs-xs)}
 .section h3 .section-tag{font-size:9px}
-.default-actions{display:inline-flex;align-items:center;gap:4px;margin-left:auto;flex:0 0 auto}
-.default-actions button{min-height:22px;padding:2px 8px;font-size:10px;line-height:1;letter-spacing:0;text-transform:none;white-space:nowrap}
+.default-actions{display:inline-flex;align-items:center;gap:var(--btn-gap);margin-left:auto;flex:0 0 auto}
+.default-actions button{min-height:var(--ctl-h);height:var(--ctl-h);padding:0 6px;font-size:var(--fs-sm);line-height:1;letter-spacing:0;text-transform:none;white-space:nowrap}
 .default-actions .randDefBtn{background:transparent;color:var(--dim)}
-.default-actions .randDefBtn:hover{color:#9be;border-color:#9be}
+.default-actions .randDefBtn:hover{color:var(--fg);border-color:var(--fg)}
 .default-actions .resetDefBtn{background:transparent;color:var(--dim)}
 .default-actions .resetDefBtn:hover{color:var(--fg);border-color:var(--dim)}
 
-#slotSel{display:flex;gap:4px;padding:6px;border-bottom:1px solid var(--line);background:var(--panel2);flex-shrink:0}
-#slotSel button{flex:1}
+#slotSel{display:flex;gap:0;padding:6px;border-bottom:1px solid var(--line);background:var(--panel2);flex-shrink:0}
+#slotSel button{flex:1;height:26px}
 
 /* Color wheel swatch + popup */
 .cw-swatch{width:28px;height:24px;border:1px solid var(--line);padding:0;cursor:pointer;background:#000;border-radius:3px}
 .cw-swatch:hover{border-color:var(--acc)}
-#cw-pop{position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:10px;box-shadow:0 6px 24px rgba(0,0,0,0.5);display:none}
+#cw-pop{position:fixed;z-index:9999;background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);padding:10px;box-shadow:0 6px 24px rgba(0,0,0,0.5);display:none}
 #cw-pop.show{display:block}
 #cw-pop .cw-hex{margin-top:8px;display:flex;align-items:center;gap:6px;font:11px var(--mono)}
 #cw-pop .cw-hex input{flex:1;font:11px var(--mono);background:var(--panel2);color:var(--fg);border:1px solid var(--line);padding:3px 6px;border-radius:3px}
 /* shown = 表示中(Crossfade で決まる) → 青背景 / editing = 編集中(activeSlot) → マゼンタ枠 */
-#slotSel button.shown{background:var(--acc);color:#fff;border-color:var(--acc)}
+#slotSel button.shown{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
 #slotSel button.slot-hidden{opacity:.45;color:var(--dim);text-decoration:line-through}
 #slotSel button.slot-hidden.shown{background:#24384e;border-color:#37506b;color:#b6c5d6}
 #slotSel button.editing{outline:2px solid #ff00aa;outline-offset:-2px}
 
 /* Shader thumbnail grid */
-#thumbGrid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:4px}
+#thumbGrid{display:grid;grid-template-columns:repeat(var(--thumb-cols),1fr);gap:6px;margin-top:4px}
 .thumb-tile{position:relative;cursor:pointer;border:2px solid var(--line);border-radius:4px;overflow:hidden;background:#000;aspect-ratio:4/3;transition:border-color .12s, transform .12s}
 .thumb-tile:hover{border-color:var(--acc2);transform:scale(1.02);z-index:1}
 .thumb-tile.on{border-color:var(--acc)}
@@ -186,8 +210,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 /* 遅延ロード中のダミー箱: シマー(スケルトン)で「読込中」を示す */
 .thumb-tile .placeholder.loading{color:#7a7a88;background:linear-gradient(100deg,#141419 30%,#24242f 50%,#141419 70%);background-size:200% 100%;animation:thumbShimmer 1.35s ease-in-out infinite}
 @keyframes thumbShimmer{0%{background-position:200% 0}100%{background-position:-200% 0}}
-.visFilter,.preFilter{background:#222;border:1px solid #444;border-radius:4px;color:#bbb;cursor:pointer}
-.visFilter.on,.preFilter.on{background:var(--acc);border-color:var(--acc);color:#fff}
+.visFilter,.preFilter{background:transparent;border:1px solid var(--line2);color:var(--dim);cursor:pointer}
+.visFilter.on,.preFilter.on,.toggle-btns button[aria-pressed="true"]{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg)}
 
 /* Editor details (collapsible) */
 #editorDetails > summary{cursor:pointer;font:11px var(--mono);color:var(--dim);text-transform:uppercase;letter-spacing:.5px;padding:4px 0;list-style:none;user-select:none}
@@ -200,65 +224,73 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .ch .thumb{width:56px;height:42px;background:#000;border:1px solid var(--line);border-radius:4px;background-size:cover;background-position:center;font-size:9px;color:var(--dim);display:flex;align-items:center;justify-content:center;overflow:hidden;position:relative}
 .ch .thumb canvas,.ch .thumb video,.ch .thumb img{width:100%;height:100%;object-fit:cover;display:block}
 .ch .cfg{display:flex;flex-direction:column;gap:3px;min-width:0}
-.ch .cfg .top{display:flex;gap:4px}
+.ch .cfg .top{display:flex;gap:var(--btn-gap)}
 .ch .cfg select{flex:1;min-width:0}
 .ch .cfg .name{font:10px var(--mono);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .ch .cfg button{padding:3px 6px;font-size:11px}
 
-#editor{flex:1;display:flex;min-height:0;background:#0d0d12}
-.gutter{flex:0 0 38px;text-align:right;padding:8px 6px 8px 4px;font:12px/1.45 var(--mono);color:#444;background:#0a0a0e;border-right:1px solid var(--line);user-select:none;overflow:hidden;white-space:pre;pointer-events:none}
+#editor{flex:1;display:flex;min-height:0;background:var(--surface)}
+.gutter{flex:0 0 38px;text-align:right;padding:8px 6px 8px 4px;font:12px/1.45 var(--mono);color:var(--dim);background:var(--panel2);border-right:1px solid var(--line);user-select:none;overflow:hidden;white-space:pre;pointer-events:none}
 .gutter .errline{color:var(--err);font-weight:700}
-#code{flex:1;background:transparent;border:none;color:#cfd0d6;font:12px/1.45 var(--mono);padding:8px 8px 8px 8px;resize:none;outline:none;tab-size:2;white-space:pre;overflow:auto;min-height:0;width:100%}
-.codebar{display:flex;gap:6px;padding:6px;border-bottom:1px solid var(--line);background:var(--panel2);align-items:center;flex-shrink:0}
+#code{flex:1;background:transparent;border:none;color:var(--fg);font:12px/1.45 var(--mono);padding:8px 8px 8px 8px;resize:none;outline:none;tab-size:2;white-space:pre;overflow:auto;min-height:0;width:100%}
+.codebar{display:flex;gap:var(--btn-gap);padding:6px;border-bottom:1px solid var(--line);background:var(--panel2);align-items:center;flex-shrink:0}
 .codebar .grow{flex:1}
 .codebar select{max-width:160px}
 
-.params .par{display:grid;grid-template-columns:90px 1fr 50px 38px;gap:6px;align-items:center;margin:4px 0}
-.params .par label{font-size:11px;color:var(--fg);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.params .par .val{font:10px var(--mono);color:var(--dim);text-align:right;overflow:hidden;white-space:nowrap}
-.params .par .midi{font:9px var(--mono);background:#2a1a2a;color:var(--acc);border:1px solid var(--acc);border-radius:3px;padding:0 2px;cursor:pointer;width:38px;box-sizing:border-box;text-align:center;overflow:hidden;white-space:nowrap}
-.params .par .midi.learn{background:var(--acc);color:#fff;animation:blink 1s infinite}
+.params .par{display:grid;grid-template-columns:var(--label-w) minmax(0,1fr) var(--val-w) var(--midi-w);gap:var(--gap);align-items:center;min-height:var(--row-h);margin:0 0 var(--row-gap)}
+.params .par label{font-size:var(--fs);color:var(--dim);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.params .par .val{font:var(--fs-sm) var(--mono);color:var(--fg);text-align:right;overflow:hidden;white-space:nowrap}
+.params .par .midi{height:var(--midi-h);line-height:calc(var(--midi-h) - 2px);font:9px/calc(var(--midi-h) - 2px) var(--mono);background:var(--surface);color:var(--fg);border:1px solid var(--line2);border-radius:var(--radius);padding:0 2px;cursor:pointer;width:var(--midi-w);box-sizing:border-box;text-align:center;overflow:hidden;white-space:nowrap}
+/* 色 (Mix / FX): 横幅いっぱいのカラーバーにカラーコードを重ねる (UI.initColorBars が input を .colorbar で包む) */
+#side .colorbar{position:relative;display:block;flex:1 1 0;min-width:0;height:var(--ctl-h)}
+#side .colorbar input[type=color]{display:block;width:100%;height:100%;cursor:pointer}
+#side .colorbar-hex{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:var(--fs-xs) var(--mono);letter-spacing:.04em;color:#fff;pointer-events:none}
+#side .colorbar-hex.dark{color:#000}
+/* Shader Params: スライダー列から値の列の右端まで (列 2〜3)。高さは右の MIDI ボタンと同じ */
+#side .params .par .colorbar{grid-column:2 / span 2;width:100%;height:var(--midi-h);align-self:center}
+.params .par .midi.learn{background:var(--acc);color:var(--acc-fg);animation:blink 1s infinite}
 @keyframes blink{50%{opacity:.4}}
 
 .bpmBig{font:600 28px var(--mono);text-align:center;color:var(--acc);margin:4px 0;cursor:text}
 .bpmBigEdit{display:block;width:100%;box-sizing:border-box;padding:0;background:transparent;border:0;outline:1px solid var(--acc);border-radius:3px}
 .bpmDots{display:flex;justify-content:center;gap:6px;margin:6px 0}
-.bpmDots div{width:14px;height:14px;border-radius:50%;background:#222;border:1px solid var(--line);transition:background .05s}
+.bpmDots div{width:14px;height:14px;border-radius:50%;background:var(--surface);border:1px solid var(--line2);transition:background .05s}
 .bpmDots div.on{background:var(--acc);box-shadow:0 0 8px var(--acc)}
 
-#presetList{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px}
+#presetList{display:grid;grid-template-columns:repeat(var(--thumb-cols),1fr);gap:6px;margin-top:6px}
 #presetList button{text-align:left;font-size:11px;padding:6px 8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-.btnrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:4px}
+.btnrow{display:flex;flex-wrap:wrap;gap:0;margin-top:4px}
 .btnrow button{flex:1}
 /* 種類を選ぶトグルボタン列 (Datamosh Type / FB Mode)。選んでいるボタンは aria-pressed="true" */
-.toggle-btns{flex:1;display:flex;gap:3px}
-.toggle-btns button{flex:1;font-size:10px;padding:2px 0;background:#1a1a1a;color:#ccc;border:1px solid #444;border-radius:3px;cursor:pointer;opacity:.4}
-.toggle-btns button[aria-pressed="true"]{opacity:1;border-color:var(--acc, #7c4dff)}
+.toggle-btns{flex:1;display:flex;gap:0;min-width:0}
+.toggle-btns button{flex:1;min-width:0;padding:0;color:var(--dim)}
 
-kbd{background:#222;border:1px solid var(--line);border-radius:3px;padding:0 4px;font:10px var(--mono);color:var(--fg)}
 
-.help{font-size:11px;color:var(--dim);line-height:1.6}
-.help code{font:11px var(--mono);background:#0a0a10;padding:1px 4px;border-radius:3px;color:#fbd}
+kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;padding:0 4px;font:10px var(--mono);color:var(--fg)}
+
+.help{font-size:var(--fs-sm);color:var(--dim);line-height:1.5}
+.help code{font:11px var(--mono);background:var(--surface);padding:1px 4px;border-radius:var(--radius);color:var(--fg)}
 .help h4{color:var(--fg);margin:10px 0 4px;font-size:12px}
 
-.toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:rgba(0,0,0,.85);border:1px solid var(--acc);color:#fff;padding:8px 14px;border-radius:6px;font-size:12px;z-index:99;pointer-events:none;opacity:0;transition:opacity .2s}
+.toast{position:fixed;left:50%;top:60px;transform:translateX(-50%);background:var(--panel);border:1px solid var(--line2);color:var(--fg);padding:8px 14px;border-radius:var(--radius);font-size:12px;z-index:99;pointer-events:none;opacity:0;transition:opacity .2s}
 .toast.show{opacity:1}
 
 
 /* Gradient map editor (Post → Grad Edit) */
-#pxGradBar{background:#1a1a1a}
-.grad-handle{position:absolute;top:0;width:12px;height:13px;margin-left:-6px;cursor:ew-resize;
-  border:1px solid rgba(0,0,0,.75);border-radius:2px;box-shadow:0 0 0 1px rgba(255,255,255,.3)}
+#pxGradBar{background:#1a1a1a;height:var(--ctl-h);border:1px solid var(--line2)}
+#pxGradAdd{flex:0 0 var(--ctl-h);align-self:flex-start;width:var(--ctl-h);height:var(--ctl-h);min-height:0;padding:0;font-size:13px;line-height:1}
+.grad-handle{position:absolute;top:0;width:12px;height:12px;margin-left:-6px;cursor:ew-resize;
+  border:1px solid var(--line2);border-radius:0;box-shadow:none}
+/* Grad Preset 一覧の行 (色の行と同じ高さ・罫線) */
+.grad-row{position:relative;flex:0 0 var(--ctl-h);height:var(--ctl-h);cursor:pointer;border:1px solid var(--line2);overflow:hidden}
+.grad-row-no{position:absolute;left:5px;top:0;line-height:calc(var(--ctl-h) - 2px);font-size:var(--fs);color:#fff;text-shadow:0 0 2px #000,0 0 4px #000}
 .grad-handle::after{content:'';position:absolute;top:-5px;left:50%;margin-left:-3px;width:0;height:0;
   border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:5px solid #cfd0d6}
-.grad-handle.sel{box-shadow:0 0 0 2px var(--acc2);z-index:3}
-.grad-handle.sel::after{border-bottom-color:var(--acc2)}
+.grad-handle.sel{box-shadow:0 0 0 1px var(--fg);z-index:3}
+.grad-handle.sel::after{border-bottom-color:var(--fg)}
 
-/* モバイル/狭幅: サムネ(Visual / Preset)を小さく = 列数を増やす */
-@media (max-width: 1024px){
-  #thumbGrid,#presetList{grid-template-columns:repeat(3,1fr)}
-}
+/* サムネ(Visual / Preset)の列数は設定パネルの Thumb Columns (--thumb-cols)。スマホ幅だけ 2 列に固定 */
 @media (max-width: 600px){
   #thumbGrid,#presetList{grid-template-columns:repeat(2,1fr)}
 }
@@ -268,20 +300,24 @@ kbd{background:#222;border:1px solid var(--line);border-radius:3px;padding:0 4px
   /* minmax(0,1fr): トップバーの min-content(ボタン群) に列幅を引きずられないように */
   #app{grid-template-columns:minmax(0,1fr);grid-template-rows:42px auto 1fr}
   #topbar{grid-column:1;overflow-x:auto}   /* 2カラム用の 1/3 指定のままだと暗黙の2列目ができる。ボタンは横スクロール */
+  #topbar button{height:36px}   /* 横スクロール時ははみ出しが切れるのでバー内に収める */
+  #topbar button .lb{top:0}
   #stage{height:42vh;min-height:180px}
   #side{border-left:none;border-top:1px solid var(--line)}
 }
 
 /* セクション見出しの折りたたみ (h3 クリックでトグル) */
 #side .section > h3{cursor:pointer; user-select:none}
-#side .section > h3::before{content:'▾'; font-size:8px; color:var(--dim); margin-right:5px; display:inline-block; vertical-align:1px}
-#side .section.collapsed > h3::before{content:'▸'}
+/* 開閉の印は CSS の細い山形 (開 = ∨ / 閉 = ＞)。文字の天地中央に置く */
+#side .section > h3::before{content:''; flex:none; width:6px; height:6px; border:solid currentColor; border-width:0 1px 1px 0; transform:translateY(-2px) rotate(45deg); margin:0 4px 0 3px; transition:transform .15s}
+#side .section.collapsed > h3::before{transform:translateX(-2px) rotate(-45deg)}
+@media (min-resolution:2dppx){ #side .section > h3::before{border-width:0 .5px .5px 0} }
 #side .section.collapsed > *:not(h3){display:none !important}
 #side .section.collapsed > h3{margin-bottom:0}
 
 /* Help モーダル (ホットキー一覧) */
 .modal-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
-.modal-box{background:var(--panel);border:1px solid var(--line);border-radius:8px;width:min(560px,92vw);max-height:82vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6)}
+.modal-box{background:var(--panel);border:1px solid var(--line);border-radius:var(--radius);width:min(560px,92vw);max-height:82vh;display:flex;flex-direction:column;box-shadow:0 12px 40px rgba(0,0,0,.6)}
 .modal-head{display:flex;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);font-size:13px}
 .modal-close{background:transparent;border:0;color:var(--dim);font-size:18px;line-height:1;padding:2px 6px;cursor:pointer}
 .modal-close:hover{color:var(--fg)}
@@ -289,6 +325,7 @@ kbd{background:#222;border:1px solid var(--line);border-radius:3px;padding:0 4px
 .help-table{width:100%;border-collapse:collapse;font-size:12px}
 .help-table td{padding:5px 8px 5px 0;border-bottom:1px solid var(--line);vertical-align:top}
 .help-table td:first-child{white-space:nowrap;color:var(--acc2);width:1%}
+html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 .help-table td:last-child{color:var(--fg)}
 
 /* Grad Preset クイックバー (プレビュー欄の上。1〜9/0 の順に並べる) */
@@ -309,3 +346,105 @@ kbd{background:#222;border:1px solid var(--line);border-radius:3px;padding:0 4px
 /* 録画ウォッチドッグ: フレーム供給停止中は Record ボタンを点滅させる */
 #btnRec.rec-stall{background:#a11 !important;color:#fff !important;animation:recStallBlink 1s steps(2) infinite}
 @keyframes recStallBlink{50%{background:#5c0c0c !important}}
+
+/* Shared controls in the editing panels. Stage previews and hue tracks keep their own treatment. */
+:is(#side,#settingsModal) :where(button,select,input[type=text],input[type=number],input[type=search]){
+  min-height:var(--ctl-h);font-size:var(--fs);border-radius:var(--radius);
+}
+/* ボタンは文字の行の高さで伸びないよう高さを固定 (上下の余白なし、文字は中央) */
+:is(#side,#settingsModal) :where(button){height:var(--ctl-h);padding-top:0;padding-bottom:0;line-height:1}
+:is(#side,#settingsModal) :where(.default-actions button){min-height:var(--ctl-h);font-size:var(--fs-sm)}
+:is(#side,#settingsModal) :where(input[type=color],.cw-swatch){width:34px;height:var(--ctl-h);border-radius:var(--radius)}
+:is(#side,#settingsModal) input[type=range]{margin:0;min-width:0}
+:is(#side,#settingsModal) input[type=range]:not(.huebar){
+  appearance:none;height:16px;background:transparent;cursor:pointer;
+}
+:is(#side,#settingsModal) input[type=range]:not(.huebar)::-webkit-slider-runnable-track{height:var(--track);background:var(--line2)}
+:is(#side,#settingsModal) input[type=range]:not(.huebar)::-moz-range-track{height:var(--track);background:var(--line2)}
+:is(#side,#settingsModal) input[type=range]:not(.huebar)::-webkit-slider-thumb{
+  appearance:none;width:var(--thumb);height:var(--thumb);border:0;background:var(--fg);
+  margin-top:calc((var(--track) - var(--thumb)) / 2);
+}
+:is(#side,#settingsModal) input[type=range]:not(.huebar)::-moz-range-thumb{
+  width:var(--thumb);height:var(--thumb);border:0;border-radius:0;background:var(--fg);
+}
+:is(#side,#settingsModal) input[type=range]:not(.huebar):hover{--thumb:12px}
+:is(#side,#settingsModal) input[type=range]:not(.huebar):active::-webkit-slider-thumb{background:var(--acc)}
+:is(#side,#settingsModal) input[type=range]:not(.huebar):active::-moz-range-thumb{background:var(--acc)}
+:is(#side,#settingsModal) input[type=checkbox]{
+  appearance:none;flex:none;width:var(--check);height:var(--check);margin:0;
+  border:1px solid var(--line2);border-radius:0;background:transparent;cursor:pointer;
+}
+:is(#side,#settingsModal) input[type=checkbox]:checked{background:var(--fg);box-shadow:inset 0 0 0 2px var(--panel2)}
+:is(#side,#settingsModal) input:is([type=range],[type=checkbox]):disabled{opacity:.55;cursor:default}
+:is(#side,#settingsModal) .toggle-btns button{min-height:var(--ctl-h);font-size:var(--fs-sm)}
+:where(button,select,input,textarea):focus-visible{outline:1px solid var(--fg);outline-offset:1px}
+
+:is(#side,#settingsModal) :where(select,input[type=text],input[type=number],input[type=search]){padding:0 6px}
+#topbar{min-width:0}
+#topbar button{flex-shrink:0}
+
+/* 疑似スクロールバー (ui-scrollbar.js)。anon-press 準拠: 地 = --fg / つまみ = --bg の矩形 */
+.pscroll-host{scrollbar-width:none}
+.pscroll-host::-webkit-scrollbar{display:none}
+.pscroll{position:absolute;z-index:4;cursor:pointer;touch-action:none}
+.pscroll::before,.pscroll-thumb::before{content:'';position:absolute;pointer-events:none}
+.pscroll-y::before{top:0;bottom:0;right:0;width:var(--sb-w);background:var(--fg)}
+.pscroll-x::before{left:0;right:0;bottom:0;height:calc(var(--sb-w) / 2);background:var(--fg)}
+.pscroll-thumb{position:absolute;touch-action:none;cursor:grab}
+.pscroll-y .pscroll-thumb{left:0;right:0}
+.pscroll-x .pscroll-thumb{top:0;bottom:0}
+.pscroll-y .pscroll-thumb::before{top:0;bottom:0;right:0;width:var(--sb-w);background:var(--bg)}
+.pscroll-x .pscroll-thumb::before{left:0;right:0;bottom:0;height:calc(var(--sb-w) / 2);background:var(--bg)}
+.pscroll.is-dragging .pscroll-thumb{cursor:grabbing}
+
+/* 設定モーダル (ui-settings.js) */
+#settingsModal .modal-box{width:min(420px,92vw)}
+#settingsModal .modal-head{gap:8px}
+#settingsModal .modal-head .default-actions button{min-height:var(--ctl-h);height:var(--ctl-h);font-size:var(--fs-sm)}
+#settingsModal .set-dirty{font-size:var(--fs-xs);color:var(--warn)}
+#settingsModal .set-group{margin:4px 0 10px;color:var(--dim);font-size:var(--fs-sm);border-bottom:1px solid var(--line);padding-bottom:2px}
+#settingsModal .set-group:not(:first-child){margin-top:14px;padding-top:10px;border-top:1px solid var(--fg)}
+#settingsModal .set-swatches{display:flex;gap:var(--btn-gap);flex:none}
+#settingsModal .set-swatches button{width:18px;min-width:0;height:var(--ctl-h);padding:0;border:1px solid var(--line2)}
+#settingsModal .row input[type=color]{flex:0 0 var(--ctl-h);width:var(--ctl-h);height:var(--ctl-h);padding:0}
+#settingsModal .row input[type=text]{flex:1 1 0;min-width:0;font-family:var(--mono)}
+
+/* 色入力の枠は内側 (色見本の枠) 1 本だけ。外側の枠と余白は消す */
+input[type=color]{padding:0;border:0;border-radius:0;background:transparent}
+input[type=color]::-webkit-color-swatch-wrapper{padding:0}
+input[type=color]::-webkit-color-swatch{border:1px solid var(--line2);border-radius:0}
+input[type=color]::-moz-color-swatch{border:1px solid var(--line2);border-radius:0}
+
+/* ボタンの並び: 操作ボタン (見出し右上の Save / Reset / Random など) は --btn-gap で離し、
+   均等幅に並ぶボタン (toggle-btns / btnrow / Slot A・B) は間隔なしで罫線を共有して連結する */
+.row > button + button{margin-left:calc(var(--btn-gap) - var(--gap))}
+:is(.toggle-btns,.btnrow,#slotSel) > button + button{margin-left:-1px}
+:is(.toggle-btns,.btnrow,#slotSel) > button{position:relative}
+:is(.toggle-btns,.btnrow,#slotSel) > button:is(:hover,[aria-pressed="true"],.on,.shown,.editing){z-index:1}
+
+/* Preset / Visual タブのヘッダー (スクロールしても上に残る)。両タブで同じ寸法にそろえる */
+.pane-head{position:sticky;top:-10px;margin:-10px -10px 0;z-index:5;background:var(--panel);padding:10px 10px 8px;border-bottom:1px solid var(--line)}
+.pane-head h3{display:flex;align-items:center;gap:var(--btn-gap);min-height:var(--ctl-h);margin:0 0 8px;font-size:15px;font-weight:400;color:var(--fg)}
+.pane-head h3 .pill{border:1px solid var(--line);padding:0 5px;font-size:var(--fs-xs);color:var(--dim)}
+.pane-head h3 > :is(.grow,[style*="flex:1"]){flex:1}
+
+/* 線アイコン (ui-icons.js)。見出しの開閉の山形と同じ線幅 (1px / 高解像度 0.5px)・同じくらいの大きさ */
+.ico{display:block;width:10px;height:10px;margin:auto;fill:none;stroke:currentColor;stroke-linecap:square;stroke-linejoin:miter;overflow:visible}
+.ico path{vector-effect:non-scaling-stroke;stroke-width:1px}
+@media (min-resolution:2dppx){ .ico path{stroke-width:.5px} }
+/* 画像・グラデの上に置く小ボタン: 半透明の黒地に白い線。影なし・角なし */
+.ico-btn{position:absolute;z-index:3;display:flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
+.ico-btn:hover{background:rgba(0,0,0,.8)}
+.grad-row-btn{top:0;width:calc(var(--ctl-h) - 2px);height:calc(var(--ctl-h) - 2px)}
+/* アイコンだけのボタン (パネル内): 正方形 */
+:is(#side,#settingsModal) button.ico-only{flex:0 0 var(--ctl-h);width:var(--ctl-h);min-width:0;padding:0;display:inline-flex;align-items:center;justify-content:center}
+.modal-close{display:inline-flex;align-items:center;justify-content:center;width:var(--ctl-h);height:var(--ctl-h);padding:0}
+/* セレクトの矢印もフォントや OS の描画ではなく同じ線の山形に (テーマ × 解像度で線色・線幅を切替) */
+:is(#side,#settingsModal,#topbar) select{appearance:none;-webkit-appearance:none;padding-right:22px;background-repeat:no-repeat;background-position:right 7px center;background-size:10px 10px;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5L5 7L8.5 3.5' fill='none' stroke='%23dfdfcf' stroke-width='1'/%3E%3C/svg%3E")}
+html[data-theme="light"] :is(#side,#settingsModal,#topbar) select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5L5 7L8.5 3.5' fill='none' stroke='%231f1f1f' stroke-width='1'/%3E%3C/svg%3E")}
+@media (min-resolution:2dppx){
+  :is(#side,#settingsModal,#topbar) select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5L5 7L8.5 3.5' fill='none' stroke='%23dfdfcf' stroke-width='.5'/%3E%3C/svg%3E")}
+  html[data-theme="light"] :is(#side,#settingsModal,#topbar) select{background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10'%3E%3Cpath d='M1.5 3.5L5 7L8.5 3.5' fill='none' stroke='%231f1f1f' stroke-width='.5'/%3E%3C/svg%3E")}
+}
