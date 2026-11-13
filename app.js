@@ -16358,6 +16358,10 @@ const UI = {
       on('mixZoomOut',   ()=>App.zoomSlot(App.activeSlot, 1/1.25));
       on('mixZoomIn',    ()=>App.zoomSlot(App.activeSlot, 1.25));
       on('mixZoomReset', ()=>App.resetUserPanZoom());
+      on('tmReverse', ()=>{ App.timeDir = -1; toast('◀ Reverse'); this.refreshTimeDir(); });
+      on('tmForward', ()=>{ App.timeDir = 1;  toast('▶ Forward'); this.refreshTimeDir(); });
+      on('tmBeatDown', ()=>App.stepBeatScale(-1));
+      on('tmBeatUp',   ()=>App.stepBeatScale(1));
     }
     // メインプレビューのクリックではアクティブスロットを変えない。
     // (以前は Slot A へ切り替えていたが、パン操作 / iMouse / フォーカスクリックのたびに
@@ -19416,7 +19420,28 @@ void mainImage(out vec4 o, in vec2 f){
     for(const k of ['A','B']){ const b = $('#mixShow' + k); if(b) b.setAttribute('aria-pressed', v[k] !== false ? 'true' : 'false'); }
   },
 
+  // Params タブの各エンジン欄 (Save/Reset を持つ見出し) と Shader Params に、どのスロットの設定かを示す pill (A / B) を付けて更新する
+  refreshSlotPills(){
+    $$('.pane[data-pane="mix"] .section[class*="-mode"] > h3, #shaderParamsSec > h3').forEach(h=>{
+      let pill = h.querySelector('.slotPill');
+      if(!pill){
+        const anchor = h.querySelector('.default-actions');
+        if(!anchor) return;
+        pill = document.createElement('span'); pill.className = 'pill slotPill'; pill.title = '操作中のスロット';
+        h.insertBefore(pill, anchor);
+      }
+      pill.textContent = App.activeSlot;
+    });
+  },
+  // Timing タブの再生方向ボタンの点灯 (App.timeDir に追従)
+  refreshTimeDir(){
+    const rev = (App.timeDir || 1) < 0;
+    const r = document.getElementById('tmReverse'), f = document.getElementById('tmForward');
+    if(r) r.setAttribute('aria-pressed', rev ? 'true' : 'false');
+    if(f) f.setAttribute('aria-pressed', rev ? 'false' : 'true');
+  },
   refreshSlot(){
+    this.refreshSlotPills();
     // editing = 操作中 (activeSlot) → マゼンタ枠 / shown = A 固定(ベース)。Mix は B の重ね具合。
     const shown = 'A';
     $$('#slotSel button').forEach(b=>{
@@ -22391,7 +22416,6 @@ void mainImage(out vec4 o, in vec2 f){
     const slot = GL.slots[App.activeSlot];
     const root = $('#params'); if(!root) return; root.innerHTML='';
     const sec = $('#shaderParamsSec');
-    const pill = $('#paramsSlotPill'); if(pill) pill.textContent = App.activeSlot;
     // シェーダ(kind='shader' or 未設定) かつ @param があるときだけ表示。
     //   モード/エンジン系(none/layer/video 等)は旧 params が残っていても非表示にする。
     const isShaderKind = (!slot.kind || slot.kind === 'shader');
@@ -22785,6 +22809,7 @@ void mainImage(out vec4 o, in vec2 f){
     const phase = BPM.beatPhase();
     const beatIdx = Math.floor(BPM.beatCount()) % 4;
     $$('#bpmDots div').forEach((d,i)=>d.classList.toggle('on', i===beatIdx && phase<0.25));
+    this.refreshTimeDir();
     $('#statFps').textContent = (1/Math.max(0.001, GL.lastDt||0.016)).toFixed(0);
     { const e=$('#statBpm'); if(e) e.textContent = (typeof BPM!=='undefined') ? Math.round(BPM.bpm) : '—'; }
     { const e=$('#autoBpmStat'); if(e){
