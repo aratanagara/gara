@@ -495,8 +495,6 @@ uniform float uBeatPhase;  // fract(beat) 0..1
 uniform int   uBeatMode;   // 0=drone 1=beat
 uniform vec2  uRes;
 // post effects
-uniform float uGamma, uSat, uHue, uBri, uCon;
-uniform float uVig;
 uniform float uAScan;  // 音声反応 Post FX 各効果の強度(0..1)
 uniform vec3  uFxLineCol;      // Slice/Mondrian/Rings 線色: キャンバスの支配的な鮮やか色相(inkelly方式)
 uniform float uFxLineOn;       // 1=色相を採用 / 0=無彩色フォールバック(白黒)
@@ -527,12 +525,9 @@ uniform float uGradPos[8];    // 停止点の位置 (0..1)
 uniform int   uGradN;         // 有効な停止点数 (2..8)
 uniform float uCosGrad;    // Cos Grad (in-shader 未処理スロット向けの汎用マッピング強度)
 uniform int   uCosPalette; // cosineGradient パレット選択 (0=浅葱5/1=Rainbow)
-uniform float uHueRot;     // 自動色相ローテートの累積位相 (0..1, JS 側で計算)
-uniform float uPos;       // posterize levels (0=off)
 uniform float uBlm;
 uniform float uUnsharp;       // アンシャープマスク強度 (0=off)
 uniform float uUnsharpRadius; // 半径 (px, 4-tap オフセット)
-uniform float uInv;
 // glitch-style FX (ported from hinotori-vj visual.frag)
 uniform float uGlass;     // 0..1 Hipass (旧Glass / Liquid Glass)
 uniform float uSlice;     // 0..1
@@ -554,7 +549,6 @@ uniform sampler2D uCandyTex; // 前段パスで描いたトンネル
 uniform float uClarity;   // 0..1 CAS 風の適応シャープ (局所コントラストに応じて輪郭を立てる)
 uniform float uDenoise;   // 0..1 エッジ保存平滑 (バイラテラル風。輪郭を残して面のノイズを均す)
 uniform float uDeband;    // 0..1 バンディング除去 (グラデ段差を溶かす + 微細ディザ)
-uniform float uVibrance;  // -1..1 自然な彩度 (低彩度ほど強く持ち上げ / ハイライト保護。負で控えめに脱色)
 uniform int   uGradMask;  // 1=@gradmask シェーダ: grad map をサンプル α でマスク (背景 α=0 は元色のまま)
 uniform int   uEmptyAB;   // 1=両スロットが空(なし)。Tex Noise を warp 可能な土台スタティックにする
 uniform float uFbAdd;      // 0..1 明るい残像
@@ -564,45 +558,6 @@ uniform float uFbRot;     // -1..1 フィードバックの回転
 uniform float uGlitchTrail; // 0..1 Datamosh トレイル (ctVGWw): 方向性ワープ蓄積グリッチ
 uniform sampler2D uFbTex; // 前フレームの最終出力 (Feedback 用)
 
-vec3 hueShift(vec3 c, float h){
-  const mat3 toYIQ = mat3(0.299,0.596,0.211,  0.587,-0.274,-0.523,  0.114,-0.322,0.312);
-  const mat3 toRGB = mat3(1.0,1.0,1.0,        0.956,-0.272,-1.106,  0.621,-0.647,1.703);
-  vec3 yiq = toYIQ * c;
-  float a = h * 6.2831853;
-  float ca = cos(a), sa = sin(a);
-  vec2 iq = yiq.yz;
-  yiq.y = ca*iq.x - sa*iq.y;
-  yiq.z = sa*iq.x + ca*iq.y;
-  return toRGB * yiq;
-}
-// RGB <-> HSL (invert で明度だけ反転するのに使用。hue/saturation は保持)
-vec3 _rgb2hsl(vec3 c){
-  float mx = max(max(c.r, c.g), c.b), mn = min(min(c.r, c.g), c.b);
-  float l = (mx + mn) * 0.5, h = 0.0, s = 0.0, d = mx - mn;
-  if(d > 1e-5){
-    s = l > 0.5 ? d / (2.0 - mx - mn) : d / (mx + mn);
-    if(mx == c.r)      h = (c.g - c.b) / d + (c.g < c.b ? 6.0 : 0.0);
-    else if(mx == c.g) h = (c.b - c.r) / d + 2.0;
-    else               h = (c.r - c.g) / d + 4.0;
-    h /= 6.0;
-  }
-  return vec3(h, s, l);
-}
-float _hue2rgb(float p, float q, float t){
-  if(t < 0.0) t += 1.0;
-  if(t > 1.0) t -= 1.0;
-  if(t < 1.0/6.0) return p + (q - p) * 6.0 * t;
-  if(t < 0.5)     return q;
-  if(t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
-  return p;
-}
-vec3 _hsl2rgb(vec3 hsl){
-  float h = hsl.x, s = hsl.y, l = hsl.z;
-  if(s <= 1e-5) return vec3(l);
-  float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
-  float p = 2.0 * l - q;
-  return vec3(_hue2rgb(p, q, h + 1.0/3.0), _hue2rgb(p, q, h), _hue2rgb(p, q, h - 1.0/3.0));
-}
 // cosineGradient 共有パレット (perBg 側 palette.frag と同一。回転は uBeat*0.04 で同期)
 vec3 cosGradColor(float t){
   t = fract(t + uBeat * 0.04);
@@ -1644,50 +1599,16 @@ void main(){
   }
 
 
-  // === Voxel Pillars: 構造系 FX の後・色 FX の前に適用 → 色変化(Bri/Con/Sat/Grad/Cos/Hue)が角柱に乗る ===
+  // === Voxel Pillars: 構造系 FX。色 (Color 段) は最後に掛かるので角柱にも乗る ===
   if(uVoxel > 0.001){
     col = vxRender();
   }
 
-  // invert: 明度(lightness)だけ反転。hue / saturation は保持。
-  // uInv は 0..1 の連続量 (Param Fade でなめらかに ON/OFF できるよう閾値の代わりに mix)。
-  if(uInv > 0.001){ vec3 hsl = _rgb2hsl(col); hsl.z = mix(hsl.z, 1.0 - hsl.z, uInv); col = _hsl2rgb(hsl); }
+  // Color 段 (Invert / Bri / Con / Sat / Vibrance / Grad Map / Hue / Posterize / Vignette / Gamma) は Post FX 連鎖の最後 (GL._applyFinalColorGrade) で掛ける。
+  // @gradmask シェーダだけは Grad Map をサンプル α でマスクする必要があるので、ここで掛ける (最後の段では掛けない)。
+  if(uGradMask == 1 && abs(uGradMix) > 0.0001) col = mix(col, _gradMap(col), clamp(srcA, 0.0, 1.0));
 
-  // ── Color pipeline: Brightness → Contrast → Saturation → Grad Map → Hue Shift ──(Auto Palette は Slot B 側で適用済み)
-  // brightness
-  if(abs(uBri) > 0.0001) col = col + uBri;
-  // contrast
-  if(abs(uCon - 1.0) > 0.001) col = (col - 0.5) * uCon + 0.5;
-  // saturation
-  if(abs(uSat - 1.0) > 0.001){
-    float L = dot(col, vec3(0.299,0.587,0.114));
-    col = mix(vec3(L), col, uSat);
-  }
-  // Vibrance: 自然な彩度。低彩度ほど強く持ち上げ、既に鮮やかな色とハイライトは保護(負で控えめに脱色)
-  if(abs(uVibrance) > 0.001){
-    float vmx = max(col.r, max(col.g, col.b));
-    float vsat = vmx - min(col.r, min(col.g, col.b));
-    float vL = dot(col, vec3(0.299,0.587,0.114));
-    float boost = uVibrance * (1.0 - clamp(vsat, 0.0, 1.0)) * (1.0 - smoothstep(0.75, 1.0, vL));
-    col = mix(vec3(vL), col, 1.0 + boost);
-  }
-  // Grad Map (INVERT の後に適用。両スロット合成後の col にかける)。
-  // @gradmask シェーダはサンプル α でマスク: 背景(α=0)は grad が乗らず白/グレーのまま。
-  if(abs(uGradMix) > 0.0001){
-    vec3 gmc = _gradMap(col);
-    col = (uGradMask == 1) ? mix(col, gmc, clamp(srcA, 0.0, 1.0)) : gmc;
-  }
-  // hue shift (手動 + 自動ローテートの累積位相を加算)
-  float hueTotal = uHue + uHueRot;
-  if(abs(hueTotal) > 0.001) col = hueShift(col, hueTotal);
-
-
-  // posterize
-  if(uPos >= 1.5){
-    col = floor(col * uPos) / uPos;
-  }
-
-  // Texture Noise: 正=黒みがかった / 負=白みがかった粒ノイズ。色調補正の直後・他 Post FX の前に適用。
+  // Texture Noise: 正=黒みがかった / 負=白みがかった粒ノイズ。
   if(abs(uTexN) > 0.0001 && uVoxel < 0.001 && uEmptyAB == 0){   // voxel時と空スロット(土台スタティック)時は乗せない
     float blk = 1.0;                                   // 1px 単位(最細粒度の粒ノイズ)
     vec2 g = floor(vUv * uRes / blk);                  // ピクセル単位
@@ -1709,13 +1630,6 @@ void main(){
     col = mix(col, m, mosStr);
   }
 
-
-  // vignette
-  if(uVig > 0.0001){
-    float d = distance(vUv, vec2(0.5));
-    float v = 1.0 - smoothstep(0.3, 0.85, d) * uVig;
-    col *= v;
-  }
 
   // scanlines: 中央0=無効。正値は黒線、負値は同じ位置に白線を出す。
   if(abs(uScn) > 0.0001){
@@ -1744,8 +1658,7 @@ void main(){
     col = max(col, vec3(0.0));
   }
 
-  // gamma
-  col = pow(max(col, 0.0), vec3(1.0/uGamma));
+  col = max(col, 0.0);
 
   // Feedback トレイル: 明るい残像と暗い残像を独立して合成する。
   if(max(uFbAdd,uFbMultiply) > 0.001){
@@ -3390,63 +3303,12 @@ void main(){
       const FVS = `#version 300 es
 precision highp float;
 uniform vec2 uRes, uGrid;
-uniform float uMode, uTwist, uWarp2, uWt2, uNeedleAmt, uNt, uFitScale;
-uniform float uBeat, uBeatMode, uHit;
+uniform float uMode;
 uniform mat4 uView, uProj;
-uniform vec3 uCenter;
-uniform int uFoldN;
 uniform float uUzN, uUzTH, uUzSpin, uUzShr, uUzZStep, uUzCard, uUzOrbR;
 uniform vec2 uUzCw;
-uniform vec2 uCreaseP[28];
-uniform vec2 uCreaseN[28];
-uniform float uTheta[28];
-uniform float uEps[28];
-uniform vec3 uAxisO[28];
-uniform vec3 uAxisD[28];
 out vec2 vUv; out vec3 vWorld;
-float h1(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-// Needle: 格子状に丘 + 針(尖ったコーン)。針座標を max 合成 → 鋭い先端
-float needleH(vec2 q, float t){
-  vec2 g = q * 3.0, gi = floor(g);
-  float hill = 0.0, C = 0.0;   // hill=緩やかな起伏, C=最も突出した凹凸(山/谷)
-  // Beat モード: 単体 Needle と同じく拍ごとの乱数目標へ Ease Out で変形 (拍頭で大きく動く)
-  float bid = floor(uBeat);
-  float ease = 1.0 - pow(1.0 - clamp(fract(uBeat) / 0.24, 0.0, 1.0), 3.0);
-  for(int dy = -1; dy <= 1; dy++){
-    for(int dx = -1; dx <= 1; dx++){
-      vec2 cell = gi + vec2(float(dx), float(dy));
-      float r1 = h1(cell + 0.13), r2 = h1(cell + 7.7), r3 = h1(cell + 3.3);
-      vec2 c = (cell + vec2(0.2 + 0.6 * r1, 0.2 + 0.6 * r3)) / 3.0;
-      // Each nucleus drifts continuously at its own rate. Moving the height-field center in VS keeps
-      // facets, normals and depth coherent when Needle is combined with Origami / Kaiser.
-      float driftRate = mix(0.16,0.38,h1(cell+19.4));
-      float driftAmp = mix(0.055,0.125,h1(cell+31.7));
-      vec2 drift = vec2(
-        sin(t*driftRate+r1*6.2831),
-        cos(t*driftRate*0.83+r3*6.2831)
-      )*driftAmp;
-      c += drift;
-      float d = length(q - c);
-      hill += 0.04 * exp(-d * d * 6.0) * (0.4 * sin(t * 0.32 + r1 * 6.2831));
-      if(r2 < 0.5){
-        // 高さを二極化: 低い針と高い針が隣り合う極端なギザギザ (単体 Needle と同じ)
-        float jr = h1(cell + 9.9);
-        float amp = (jr < 0.45) ? mix(0.05, 0.35, jr / 0.45) : mix(1.05, 1.9, pow(h1(cell + 1.1), 3.0));
-        // osc の符号で 山(+)/谷(-)。時間で行き来し、山が急に谷にもなる。
-        float osc = sin(t * (0.22 + 0.26 * r1) + h1(cell + 5.5) * 6.2831);
-        osc = sign(osc) * pow(abs(osc), 0.5);              // 中間を素早く通り山/谷に長く留まる = 急な反転
-        float bA = h1(cell + bid * 7.7 + 11.3) * 2.0 - 1.0;
-        float bB = h1(cell + (bid + 1.0) * 7.7 + 11.3) * 2.0 - 1.0;
-        float bosc = mix(bA, bB, ease);
-        bosc = sign(bosc) * pow(abs(bosc), 0.5);
-        osc = mix(osc, bosc, uBeatMode);                   // beat: 拍ごとの目標 / drone: 連続サイン
-        float cone = osc * amp * max(0.0, 1.0 - d * 6.0);  // 山も谷も同じ鋭い円錐
-        if(abs(cone) > abs(C)) C = cone;                   // 最も突出した凹凸を採用
-      }
-    }
-  }
-  return C + hill;
-}
+${this._foldPaperGLSL('u')}
 void main(){
   if(uMode < 0.5){
     vec2 c = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -3467,35 +3329,7 @@ void main(){
   vUv = uv;
   float asp = uRes.x / max(uRes.y, 1.0);
   vec2 q = (uv - 0.5) * 2.0 * vec2(asp, 1.0);
-  // Needle 変位を折り前に足す。ヒット増幅は単体 Needle の depth 係数と同じ (beat 0.46 / drone 0.10)
-  float nHitBoost = 1.0 + mix(0.10, 0.46, uBeatMode) * pow(clamp(uHit, 0.0, 1.0), 0.65);
-  float nz = uNeedleAmt > 0.001 ? needleH(q, uNt) * uNeedleAmt * nHitBoost : 0.0;
-  // 蛇腹プリーツ (三角波): Kaiser 固有の折り前変形 (単体 Kaiser と同じ)
-  float jab = uWarp2 * 0.30 * (abs(fract(q.x * 1.5 + uWt2 * 0.055) - 0.5) * 4.0 - 1.0);
-  vec3 P = vec3(q, nz + jab);
-  for(int i = 0; i < 28; i++){
-    if(i >= uFoldN) break;
-    float s = dot(q - uCreaseP[i], uCreaseN[i]);   // 側判定は元の紙座標
-    float k = clamp(-s / uEps[i], 0.0, 1.0);
-    if(k > 0.0){
-      float th = uTheta[i] * k;
-      vec3 ax = uAxisD[i];
-      vec3 rel = P - uAxisO[i];
-      float ct = cos(th), st = sin(th);
-      P = uAxisO[i] + rel * ct + cross(ax, rel) * st + ax * dot(ax, rel) * (1.0 - ct);
-    }
-  }
-  P -= uCenter;
-  // ひねりは折り前の紙座標基準 (静的レバー): 折りの運動が P.y 経由で高速回転に増幅されるのを防ぐ
-  float ang = q.y * uTwist + uWt2 * 0.3;
-  float cs = cos(ang), sn = sin(ang);
-  P.xz = mat2(cs, -sn, sn, cs) * P.xz;
-  // 直交ひねり (雑巾絞り): x に沿った第2のねじり軸 (単体 Kaiser と同じ)
-  float ang2 = q.x * uTwist * 0.45 - uWt2 * 0.22;
-  float c2 = cos(ang2), s2 = sin(ang2);
-  P.yz = mat2(c2, -s2, s2, c2) * P.yz;
-  P.z += uWarp2 * sin(P.x * 0.8 + uWt2) + uWarp2 * 0.7 * cos(P.y * 0.6 - uWt2 * 0.8);
-  P *= uFitScale;                    // 折り上がりの大きさを一定化 (サイズがまちまちにならない)
+  vec3 P = f3Paper(q, 0.0);
   // Uzumaki 統合: 折り上がりの紙をカードとして複製し、対数螺旋 (らせん階段) に配置
   if(uUzN > 0.5){
     float ufi = float(cardI + 1);
@@ -4671,6 +4505,97 @@ void main(){
       document.body.appendChild(d);
     }catch(_){}
   },
+  // 折り (Needle 変位 + 蛇腹 + 折り線 + ひねり) の GLSL。統合パスの頂点シェーダと、3D のまま掛ける頂点フック (fx3dApply) が共有する。
+  // pre='u' は統合パスの uniform 名そのまま。他は 'uF3' に付け替える。
+  _foldPaperGLSL(pre){
+    const src = `uniform float uNeedleAmt, uNt, uWarp2, uWt2, uTwist, uFitScale;
+uniform float uBeat, uBeatMode, uHit;
+uniform vec3 uCenter;
+uniform int uFoldN;
+uniform vec2 uCreaseP[28];
+uniform vec2 uCreaseN[28];
+uniform float uTheta[28];
+uniform float uEps[28];
+uniform vec3 uAxisO[28];
+uniform vec3 uAxisD[28];
+float f3h1(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+// Needle: 格子状に丘 + 針(尖ったコーン)。針座標を max 合成 → 鋭い先端
+float f3NeedleH(vec2 q, float t){
+  vec2 g = q * 3.0, gi = floor(g);
+  float hill = 0.0, C = 0.0;   // hill=緩やかな起伏, C=最も突出した凹凸(山/谷)
+  // Beat モード: 単体 Needle と同じく拍ごとの乱数目標へ Ease Out で変形 (拍頭で大きく動く)
+  float bid = floor(uBeat);
+  float ease = 1.0 - pow(1.0 - clamp(fract(uBeat) / 0.24, 0.0, 1.0), 3.0);
+  for(int dy = -1; dy <= 1; dy++){
+    for(int dx = -1; dx <= 1; dx++){
+      vec2 cell = gi + vec2(float(dx), float(dy));
+      float r1 = f3h1(cell + 0.13), r2 = f3h1(cell + 7.7), r3 = f3h1(cell + 3.3);
+      vec2 c = (cell + vec2(0.2 + 0.6 * r1, 0.2 + 0.6 * r3)) / 3.0;
+      // Each nucleus drifts continuously at its own rate. Moving the height-field center in VS keeps
+      // facets, normals and depth coherent when Needle is combined with Origami / Kaiser.
+      float driftRate = mix(0.16,0.38,f3h1(cell+19.4));
+      float driftAmp = mix(0.055,0.125,f3h1(cell+31.7));
+      vec2 drift = vec2(
+        sin(t*driftRate+r1*6.2831),
+        cos(t*driftRate*0.83+r3*6.2831)
+      )*driftAmp;
+      c += drift;
+      float d = length(q - c);
+      hill += 0.04 * exp(-d * d * 6.0) * (0.4 * sin(t * 0.32 + r1 * 6.2831));
+      if(r2 < 0.5){
+        // 高さを二極化: 低い針と高い針が隣り合う極端なギザギザ (単体 Needle と同じ)
+        float jr = f3h1(cell + 9.9);
+        float amp = (jr < 0.45) ? mix(0.05, 0.35, jr / 0.45) : mix(1.05, 1.9, pow(f3h1(cell + 1.1), 3.0));
+        // osc の符号で 山(+)/谷(-)。時間で行き来し、山が急に谷にもなる。
+        float osc = sin(t * (0.22 + 0.26 * r1) + f3h1(cell + 5.5) * 6.2831);
+        osc = sign(osc) * pow(abs(osc), 0.5);              // 中間を素早く通り山/谷に長く留まる = 急な反転
+        float bA = f3h1(cell + bid * 7.7 + 11.3) * 2.0 - 1.0;
+        float bB = f3h1(cell + (bid + 1.0) * 7.7 + 11.3) * 2.0 - 1.0;
+        float bosc = mix(bA, bB, ease);
+        bosc = sign(bosc) * pow(abs(bosc), 0.5);
+        osc = mix(osc, bosc, uBeatMode);                   // beat: 拍ごとの目標 / drone: 連続サイン
+        float cone = osc * amp * max(0.0, 1.0 - d * 6.0);  // 山も谷も同じ鋭い円錐
+        if(abs(cone) > abs(C)) C = cone;                   // 最も突出した凹凸を採用
+      }
+    }
+  }
+  return C + hill;
+}
+vec3 f3Paper(vec2 q, float lift){
+  // Needle 変位を折り前に足す。ヒット増幅は単体 Needle の depth 係数と同じ (beat 0.46 / drone 0.10)
+  float nHitBoost = 1.0 + mix(0.10, 0.46, uBeatMode) * pow(clamp(uHit, 0.0, 1.0), 0.65);
+  float nz = uNeedleAmt > 0.001 ? f3NeedleH(q, uNt) * uNeedleAmt * nHitBoost : 0.0;
+  // 蛇腹プリーツ (三角波): Kaiser 固有の折り前変形 (単体 Kaiser と同じ)
+  float jab = uWarp2 * 0.30 * (abs(fract(q.x * 1.5 + uWt2 * 0.055) - 0.5) * 4.0 - 1.0);
+  vec3 P = vec3(q, nz + jab + lift);
+  for(int i = 0; i < 28; i++){
+    if(i >= uFoldN) break;
+    float s = dot(q - uCreaseP[i], uCreaseN[i]);   // 側判定は元の紙座標
+    float k = clamp(-s / uEps[i], 0.0, 1.0);
+    if(k > 0.0){
+      float th = uTheta[i] * k;
+      vec3 ax = uAxisD[i];
+      vec3 rel = P - uAxisO[i];
+      float ct = cos(th), st = sin(th);
+      P = uAxisO[i] + rel * ct + cross(ax, rel) * st + ax * dot(ax, rel) * (1.0 - ct);
+    }
+  }
+  P -= uCenter;
+  // ひねりは折り前の紙座標基準 (静的レバー): 折りの運動が P.y 経由で高速回転に増幅されるのを防ぐ
+  float ang = q.y * uTwist + uWt2 * 0.3;
+  float cs = cos(ang), sn = sin(ang);
+  P.xz = mat2(cs, -sn, sn, cs) * P.xz;
+  // 直交ひねり (雑巾絞り): x に沿った第2のねじり軸 (単体 Kaiser と同じ)
+  float ang2 = q.x * uTwist * 0.45 - uWt2 * 0.22;
+  float c2 = cos(ang2), s2 = sin(ang2);
+  P.yz = mat2(c2, -s2, s2, c2) * P.yz;
+  P.z += uWarp2 * sin(P.x * 0.8 + uWt2) + uWarp2 * 0.7 * cos(P.y * 0.6 - uWt2 * 0.8);
+  P *= uFitScale;                    // 折り上がりの大きさを一定化 (サイズがまちまちにならない)
+  return P;
+}
+`;
+    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
+  },
   _compile(type, src){
     const gl = this.gl;
     const sh = gl.createShader(type);
@@ -5116,16 +5041,10 @@ void main(){
     this._fbFade = Math.max(0, Math.min(1, p.fbFade == null ? 0.5 : p.fbFade));
     this._fbCaptureInterval = 1 + Math.round((1-this._fbFade)*7);
     this._fbCaptureTick = ((this._fbFrameCounter = (this._fbFrameCounter || 0) + 1) % this._fbCaptureInterval === 0);
-    // Sketch 有効時は合成側の色調補正を中立化し、SketchFX 出力側で適用(二重適用回避)
+    // Water (SketchFX) の有無: Tunnel などを止める判定に使う (色は Water でなく最後の Color 段が掛ける)
     const _sk = (typeof SketchFX !== 'undefined') && p && (p.sketch || 0) > 0.001 && !(App.safeMode);
     const _safe = (typeof App !== 'undefined' && App.safeMode);
-    gl.uniform1f(U('uGamma'),     _sk ? 1 : p.gamma);
-    // Sat/Hue/Brightness/Contrast は最終段で一括適用する。
-    gl.uniform1f(U('uSat'),       1);
-    gl.uniform1f(U('uHue'),       0);
-    gl.uniform1f(U('uBri'),       0);
-    gl.uniform1f(U('uCon'),       1);
-    gl.uniform1f(U('uVig'),       p.vig);
+    // Color 段 (Grad Map / Hue / Bri / Con / Sat / Gamma / Invert / Posterize / Vignette / Vibrance) は連鎖の最後で掛ける (_applyFinalColorGrade)。
     gl.uniform1f(U('uAScan'),  p.aScan  || 0);
     { const c = this._fxLineRGB || [1,1,1]; gl.uniform3f(U('uFxLineCol'), c[0], c[1], c[2]); gl.uniform1f(U('uFxLineOn'), this._fxLineOn ? 1 : 0); }
     gl.uniform1f(U('uAStrobe'),  p.aStrobe  || 0);
@@ -5150,19 +5069,16 @@ void main(){
       const ac = App._autoColor;
       gl.uniform1f(U('uAutoColorful'), ac ? ac.w : 0);
       if(ac){ gl.uniform4fv(U('uAutoHueLut'), ac.lut); gl.uniform1f(U('uAutoChromaK'), ac.chromaK); } }
-    gl.uniform1f(U('uHueRot'),    0);
     _uploadGradStops(gl, U, p);
-    // Grad Map は sampleAB 内で全スロットにスロット単位で適用(両スロット均一)。シェーダの in-shader cosGrad は廃止。
-    gl.uniform1f(U('uGradMix'),   p.gradMix || 0);
+    // Grad Map は最後の Color 段で掛ける。@gradmask シェーダ (サンプル α でマスクが要る) だけ合成内で掛ける。
+    gl.uniform1f(U('uGradMix'),   (this.slots.A.gradMask || this.slots.B.gradMask) ? (p.gradMix || 0) : 0);
     gl.uniform1f(U('uCosGrad'),   0.0);                 // Cos Grad は廃止(composite では常に 0)
     gl.uniform1i(U('uCosPalette'), p.cosPalette || 0);
     gl.uniform1f(U('uBKeyBlack'), this.slots.B.bKey ? 1.0 : 0.0);   // @bkey シェーダ(保存プリセットの焼き込み src 互換)のみ黒キー。novel/ribbon は実 alpha に移行
     gl.uniform1f(U('uBKeyWhite'), this.slots.B.bKeyWhite ? 1.0 : 0.0);   // ribbon 等を Slot B で白キー透過
-    gl.uniform1f(U('uPos'),       p.pos);
     gl.uniform1f(U('uBlm'),       p.blm);
     gl.uniform1f(U('uUnsharp'),       p.unsharp || 0);
     gl.uniform1f(U('uUnsharpRadius'), App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(p.unsharp) : (p.unsharpRadius || 1.5));
-    gl.uniform1f(U('uInv'),       _sk ? 0 : (p.inv === true ? 1 : (Number(p.inv) || 0)));
     gl.uniform1f(U('uSlice'),     p.slice);
     gl.uniform1f(U('uRingSlice'), p.ringSlice || 0);
     // Ring Slice の回転位相: 値 (= 速さ。1.0 で最大 0.8 rad/s) × 時間を積分。0 で止まる (角度は保持、次に上げると続きから)
@@ -5233,7 +5149,6 @@ void main(){
     gl.uniform1f(U('uClarity'),   p.clarity || 0);
     gl.uniform1f(U('uDenoise'),   _safe ? 0 : (p.denoise || 0));
     gl.uniform1f(U('uDeband'),    _safe ? 0 : (p.deband || 0));
-    gl.uniform1f(U('uVibrance'),  p.vibrance || 0);
     gl.uniform1i(U('uGradMask'),  (this.slots.A.gradMask || this.slots.B.gradMask) ? 1 : 0);
     gl.uniform1i(U('uEmptyAB'),   (this.slots.A.kind === 'none' && this.slots.B.kind === 'none') ? 1 : 0);
     const _feedbackSafe = _safe || Math.abs(p.river || 0) > 0.001;
@@ -5278,11 +5193,10 @@ void main(){
     gl.bindVertexArray(null);
 
     // ── Post FX パス順 (composite 内のものは括弧で明記) ──
-    //   0) 合成シェーダ: Grad/Auto Map・Tunnel・Rain・Mondrian/Rings・Voxel ほか
+    //   0) 合成シェーダ: Auto Map・Tunnel・Rain・Mondrian/Rings・Voxel ほか (Grad Map は @gradmask シェーダだけここ)
     //   1) Water → Boltzmann
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
     //   2.5) プリセット切替トランジション → IMAGON (Overlay の筆跡)
-    //   3) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
     //   3.5) 3D FX: Photo → Slicer → Layers
     //   4) 3D 段 (折り紙系): Needle → Origami → Kaiser → Flames → Uzumaki
     //   5) Glitch 段: Slit-scan → Waveform → Barcode → Datamosh → Pixelsort
@@ -5290,16 +5204,17 @@ void main(){
     //   7) Twist → FB Add/Multiply
     //   8) FXAA → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
+    //  10) Color (最後): Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
 
     // 1) Water (Ballpoint Sketch) / Boltzmann
     if(typeof SketchFX !== 'undefined' && p && (p.sketch || 0) > 0.001 && !(App.safeMode)){
-      const sketchPost = Object.assign({}, p, { bri:0, con:1, sat:1, hue:0 });
+      const sketchPost = Object.assign({}, p, { bri:0, con:1, sat:1, hue:0, gamma:1, inv:0 });
       SketchFX.apply(gl, this._finalFBO, p.sketch, sketchPost);
       gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
     }
     this._applyBoltzmannFinal(p);
 
-    // 2) マチエール系: 質感を乗せた画に、後段の色調補正を掛ける
+    // 2) マチエール系
     this._applyReliefPost(p, _safe);
     this._applyBleedPost(p, _safe);
     this._applyImpastoPost(p, _safe);
@@ -5307,16 +5222,16 @@ void main(){
     this._applyGlossPost(p, _safe);
 
     this._applyPresetTrans();   // プリセット切替の全画面トランジション
-    this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (色調補正以降の Post FX が筆跡にも掛かる)
-
-    // 3) 色調補正 (Sat/Hue/Brightness/Contrast)
-    this._applyFinalColorGrade();
+    this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (以降の Post FX・最後の Color 段が筆跡にも掛かる)
 
     // 3.5) 3D FX (Photo → Slicer → Layers): 画面を切り抜いて 3D 空間に浮かせる。後段の Needle / Origami / Kaiser はその結果ごと折る
     this._apply3dFx(p, _safe);
 
     // 4) 3D 段 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
-    const _stacked = this._applyFoldStack(p, _safe);
+    // 3D のまま掛けているフレーム (g > 0) は、折りを対象スロットの頂点で掛け済み。画面段の折りは飛ばす
+    const _fx3dDone = !!this._fx3dFrame;
+    if(_fx3dDone){ this._foldStackActive = false; this._foldStackTookUzumaki = false; }
+    const _stacked = _fx3dDone || this._applyFoldStack(p, _safe);
     if(!_stacked){
       this._applyOrigamiPost(p, _safe);      // 表示: Needle
       this._applyKaiserPost(p, _safe);       // 表示: Origami
@@ -5372,6 +5287,10 @@ void main(){
       this._deleteFbEcho(this._fbTrail);
       this._fbTrail = null;
     }
+
+    // 10) Color 段 (最後): Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma。
+    //     FB のトレイルは上で色を掛ける前の絵から採るので、残像にも Color が一度だけ掛かる
+    this._applyFinalColorGrade();
 
     // _finalFBO → default FB に blit (toDefault=true のとき)
     if(toDefault){
@@ -5593,7 +5512,13 @@ void main(){
     const sat = (p.sat != null ? p.sat : 1);
     const bri = p.bri || 0;
     const con = (p.con != null ? p.con : 1);
-    if(Math.abs(bri) <= 0.0001 && Math.abs(con - 1) <= 0.0001 && Math.abs(sat - 1) <= 0.0001 && Math.abs(hueImage) <= 0.0001) return;
+    // Color 段の残り (旧: 合成シェーダ内)。@gradmask シェーダの Grad Map だけは合成内で掛け済み
+    const gradMix = (this.slots.A.gradMask || this.slots.B.gradMask) ? 0 : (p.gradMix || 0);
+    const gamma = p.gamma != null ? p.gamma : 1;
+    const inv = p.inv === true ? 1 : (Number(p.inv) || 0);
+    const pos = p.pos || 0, vig = p.vig || 0, vibrance = p.vibrance || 0;
+    if(Math.abs(bri) <= 0.0001 && Math.abs(con - 1) <= 0.0001 && Math.abs(sat - 1) <= 0.0001 && Math.abs(hueImage) <= 0.0001
+       && Math.abs(gradMix) <= 0.0001 && gamma === 1 && inv <= 0.001 && pos < 1.5 && vig <= 0.0001 && Math.abs(vibrance) <= 0.001) return;
     const w = this._finalFBO.w, h = this._finalFBO.h;
     if(!this._finalGradeTmp || this._finalGradeTmp.w !== w || this._finalGradeTmp.h !== h){
       if(this._finalGradeTmp){ gl.deleteTexture(this._finalGradeTmp.tex); gl.deleteFramebuffer(this._finalGradeTmp.fbo); }
@@ -5601,8 +5526,10 @@ void main(){
     }
     const post = {
       bri, con, sat, hue: hueManual, hueAuto, hueImage,
-      gradMix:0,
+      gradMix:0,                      // gradMix / gamma はヘルパのデッドゾーンを二重に掛けないよう下で実効値を直接入れる
+      gradA: p.gradA, gradB: p.gradB, gradStops: p.gradStops,
       gamma:1,
+      inv, pos, vig, vibrance,
       unsharp:0,
       unsharpRadius:1.5,
       slit2:0,
@@ -5615,6 +5542,8 @@ void main(){
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
     _applyMiniFxUniforms(gl, this.pipProg, w, h, false, post);
+    gl.uniform1f(gl.getUniformLocation(this.pipProg, 'uGradMix'), gradMix);
+    gl.uniform1f(gl.getUniformLocation(this.pipProg, 'uGamma'), gamma);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._finalGradeTmp.fbo);
@@ -6791,43 +6720,9 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
   // Needle(origami) / Origami(kaiser) / Kaiser(kaiserOld) を1メッシュの頂点で重ねがけ。
   // 2つ以上が有効なときだけ起動し、各単体パスはスキップ(this._foldStackActive)。
   // 戻り値 true = このパスで処理した(呼び出し側は個別パスを飛ばす)。
-  _applyFoldStack(p, safe){
-    const gl = this.gl;
-    const aN = safe ? 0 : Math.max(0, Math.min(1, +(p && p.origami) || 0));   // Needle
-    const aO = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiser) || 0));    // Origami
-    const aK = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiserOld) || 0)); // Kaiser
-    const aU = safe ? 0 : Math.max(0, Math.min(1, +(p && p.uzumaki) || 0));   // Uzumaki
-    const active = (aN > 0.001 ? 1 : 0) + (aO > 0.001 ? 1 : 0) + (aK > 0.001 ? 1 : 0);
-    // fold 2 系以上、または fold 1 系以上 + Uzumaki で統合パス起動 (折った紙そのものを螺旋に複製)
-    const uzOn = aU > 0.001;
-    this._foldStackTookUzumaki = false;
-    if((active < 2 && !(uzOn && active >= 1)) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
-    this._foldStackActive = true;
-    if(uzOn) this._foldStackTookUzumaki = true;
-    // Uzumaki 統合時はグリッドを粗く (頂点数 = カード枚数 × セル数 を抑える)
-    const GRID = uzOn ? [36, 21] : this._foldStackGrid;
-    const UZ = uzOn ? this._uzuParams(aU, this._finalFBO.w, this._finalFBO.h) : null;
-    const w = this._finalFBO.w, h = this._finalFBO.h;
-    if(!this._foldStackTmp || this._foldStackTmp.w !== w || this._foldStackTmp.h !== h){
-      const old = this._foldStackTmp;
-      if(old){ if(old.tex) gl.deleteTexture(old.tex); if(old.color) gl.deleteRenderbuffer(old.color); if(old.depth) gl.deleteRenderbuffer(old.depth); gl.deleteFramebuffer(old.fbo); }
-      // MSAA: 細いトゲや折り目のエッジのちらつき(時間的エイリアス)を抑える
-      const samples = Math.min(8, gl.getParameter(gl.MAX_SAMPLES) || 0);
-      const color = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, color);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
-      const depth = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
-      const fbo = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      this._foldStackTmp = { fbo, color, depth, w, h };
-    }
-    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
-
+  // 統合折りの状態 (折り線・カメラ・フィット) を 1 フレーム分進めて組み立てる。_applyFoldStack と 3D のまま掛けるフック (fx3dApply) の共用。
+  // 内部の積分 (_foldPh* / _foldClock / _foldCtr / _foldFit) は呼ぶたびに進むので、1 フレーム 1 回だけ呼ぶこと。
+  _foldBuild(p, aN, aO, aK, uzOn, w, h){
     const asp = w / Math.max(1, h);
     const hit = (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0;
     const tn = now();
@@ -6988,6 +6883,270 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
     const shade = Math.min(1, Math.max(0, Math.max(aO, aK, aN) / 0.22));
     const bgDark = Math.max(onF, 1 - hs);   // 吸い込み(hs→0)で背景を黒へ → ブラックホールに呑まれる
 
+    return { foldsU, aN, aO, aK, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5 };
+  },
+  // 統合折りの uniform を prog へ送る。pre は _foldPaperGLSL の接頭辞 ('u' = 統合パス / 'uF3' = フック)
+  _foldUpload(prog, pre, F){
+    const gl = this.gl;
+    const U = (n)=>gl.getUniformLocation(prog, pre + n);
+    gl.uniform1f(U('Twist'), F.twist);
+    gl.uniform1f(U('Warp2'), F.warp2);
+    gl.uniform1f(U('Wt2'), F.wt2);
+    gl.uniform1f(U('NeedleAmt'), F.aN * F.onF);          // needle 変位も onset で 0 から立ち上げ
+    gl.uniform1f(U('Nt'), F.nt);   // 統合時は needle の動きを控えめに
+    gl.uniform1f(U('Beat'), F.beatId);
+    gl.uniform1f(U('BeatMode'), F.beatMode ? 1 : 0);
+    gl.uniform1f(U('Hit'), F.hit);
+    gl.uniform1f(U('FitScale'), F.fitScale);
+    gl.uniform3f(U('Center'), F.ctr[0], F.ctr[1], F.ctr[2]);
+    gl.uniform1i(U('FoldN'), F.foldsU.length);
+    for(let i = 0; i < F.foldsU.length; i++){
+      const fd = F.foldsU[i];
+      gl.uniform2f(U('CreaseP['+i+']'), fd.C[0], fd.C[1]);
+      gl.uniform2f(U('CreaseN['+i+']'), fd.N[0], fd.N[1]);
+      gl.uniform1f(U('Theta['+i+']'), fd.th);
+      gl.uniform1f(U('Eps['+i+']'), fd.eps);
+      gl.uniform3f(U('AxisO['+i+']'), fd.axO[0], fd.axO[1], fd.axO[2]);
+      gl.uniform3f(U('AxisD['+i+']'), fd.axD[0], fd.axD[1], fd.axD[2]);
+    }
+  },
+  // ── 3D のまま掛ける判定 (毎フレーム、スロット描画の前に render() から呼ぶ) ──
+  // 3D のまま掛けられるエンジン (頂点フック fx3dApply を持つもの)。fx3dVertex === true のものだけ。
+  _fx3dEngine(kind){
+    if(kind === 'tower4149') return (typeof Tower4149 !== 'undefined' && Tower4149.fx3dVertex === true) ? Tower4149 : null;
+    return null;
+  },
+  // 合成から 3D FX 段までの Post FX が (3D のまま掛ける対象スロットの絵に) 何も効いていないか。
+  // 効いていると、折りを画面段でなくスロットの中で掛ける 3D 方式は絵が変わる = 平面方式にする。
+  // ★ 新しい Post FX を足したら、画面を変形・加工するもの (色調補正は除く) はここにも入れる。
+  _fx3dChainIdle(p){
+    if(!p) return true;
+    // 合成シェーダ内の画面変形・加工 (Tunnel / Slice / Ring Slice / Mondrian / Rings / Voxel / Rain / Auto Map)、
+    // Water・Boltzmann、マチエール (Relief / Bleed / Impasto / Chrome / Gloss)、3D 欄の Photo / Slicer / Layers (画面段)。
+    // Color 段 (Grad Map / Bri / Con / Hue / Gamma / Invert / Posterize / Vignette / Vibrance) は連鎖の最後に掛かるのでここには入れない。
+    const keys = ['candy','slice','ringSlice','split','rings','voxel','rain','paletteAmt','sketch','boltz',
+                  'sdfChrome','bleed','impasto','chrome','gloss','fx3dPhoto','fx3dSlicer','fx3dLayer'];
+    for(const k of keys) if(Math.abs(+p[k] || 0) > 0.001) return false;
+    if(typeof Overlay !== 'undefined' && Overlay.initialized && Overlay.P.enabled && Overlay.strokes.length) return false;   // IMAGON 描画中
+    if(this._presetTr && this._presetTr.on) return false;                                                              // プリセット切替トランジション中
+    for(const k of ['A','B']){                                                                                         // スロットのズームアウト・パン
+      const sl = this.slots[k];
+      if(sl.userZoom != null && sl.userZoom !== 1) return false;
+      if(sl.userPan && (sl.userPan.x || sl.userPan.y)) return false;
+    }
+    return true;
+  },
+  // g (立体の度合い 0..1) を更新する。_fx3dFrame = {g, F, target} が立っているフレームだけ 3D 方式。
+  //   gate (離散: 折りが効く・idle・対象スロットがある) と bw (B の表示) は 0.35 秒で追従、Opacity (cf) は値に直結。
+  _fx3dUpdate(p, realDt, w, h){
+    const slew = (cur, tgt)=>{ const st = realDt / 0.35; return cur < tgt ? Math.min(tgt, cur + st) : Math.max(tgt, cur - st); };
+    const W = 0.12;
+    const sstep = (a, b, x)=>{ const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
+    const ov = (k)=>Math.max(0, Math.min(1, +(p && p[k]) || 0));
+    const foldOn = !App.safeMode && (ov('origami') > 0.001 || ov('kaiser') > 0.001 || ov('kaiserOld') > 0.001);
+    const shown = (k)=>this.slots[k].kind !== 'none' && App.slotVisibleAmount(k) > 0;
+    const mesh = (k)=>shown(k) && !!this._fx3dEngine(this.slots[k].kind);
+    const candA = mesh('A'), candB = !shown('A') && mesh('B');
+    const cf = App.crossfade;
+    const force = this._fx3dForceG;                       // 検証用: 数値を入れると g をその値に固定 (3D 方式を強制)
+    if(!Prefs.on('fx3dNative', '0') && force == null){    // 試験機能 (3D Native) が OFF: 平面方式だけ (g = 0・統合パスの先取りもなし)
+      this._fx3dGate = 0; this._fx3dBw = shown('B') ? 1 : 0; this._fx3dG = 0; this._fx3dFlatStack = false; this._fx3dFrame = null;
+      return;
+    }
+    let want = foldOn && (candA || candB) && this._fx3dChainIdle(p);
+    let tgt = candA ? 'A' : (candB ? 'B' : this._fx3dTarget);
+    if(force != null){ want = true; tgt = mesh('A') ? 'A' : (mesh('B') ? 'B' : tgt); }
+    // 対象スロットが変わるときは、いったん gate を 0 まで下げてから切り替える
+    if(this._fx3dTarget && tgt && tgt !== this._fx3dTarget && (this._fx3dGate || 0) > 0) want = false;
+    this._fx3dGate = slew(this._fx3dGate || 0, want ? 1 : 0);
+    if(this._fx3dGate <= 0 && tgt) this._fx3dTarget = tgt;
+    this._fx3dBw = slew(this._fx3dBw == null ? 0 : this._fx3dBw, shown('B') ? 1 : 0);
+    const cfTerm = this._fx3dTarget === 'B' ? sstep(1 - W, 1, cf) : 1 - sstep(0, W, cf * this._fx3dBw);
+    let g = this._fx3dGate * cfTerm;
+    if(force != null) g = force;
+    this._fx3dG = g;
+    // 3D 方式の候補なのに g = 0 (Opacity で B が混ざっている間など) の平面方式は、単体の折りも統合パスで描く
+    //   (g が 0 をまたぐ瞬間に、単体パスとの折り・カメラの違いで絵が跳ばないように)
+    this._fx3dFlatStack = want && g <= 0;
+    if((g > 0 || force != null) && this._fx3dTarget && mesh(this._fx3dTarget)){
+      const aN = ov('origami'), aO = ov('kaiser'), aK = ov('kaiserOld');
+      if(!this._fx3dFrame || this._fx3dFrame.frame !== this.frame){
+        const F = this._foldBuild(p, aN, aO, aK, false, w, h);
+        if(this._fx3dDebugOrbit){ this._fx3dDebugCam(F, this._fx3dDebugOrbit); }
+        this._fx3dFrame = { g, F, target: this._fx3dTarget, frame: this.frame };
+      }
+    } else {
+      this._fx3dFrame = null;
+    }
+  },
+  // 検証用: 3D FX 用カメラを軌道回転させる (折った形が立体で見えるかの確認用)
+  _fx3dDebugCam(F, o){
+    const D = o.d || 2.0, az = o.az || 0, el = o.el || 0;
+    const eye = [D*Math.cos(el)*Math.sin(az), D*Math.sin(el), D*Math.cos(el)*Math.cos(az)];
+    const n3 = (v)=>{ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
+    const zc = n3(eye), xc = n3([zc[2], 0, -zc[0]]);
+    const yc = [ zc[1]*xc[2]-zc[2]*xc[1], zc[2]*xc[0]-zc[0]*xc[2], zc[0]*xc[1]-zc[1]*xc[0] ];
+    const dt = (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    F.view = [ xc[0],yc[0],zc[0],0, xc[1],yc[1],zc[1],0, xc[2],yc[2],zc[2],0, -dt(xc,eye),-dt(yc,eye),-dt(zc,eye),1 ];
+    F.eye = eye;
+  },
+  // 3D 方式のフレームで、対象スロットの FBO を黒でクリアし、エンジンの背景を貼った「紙」(折りの格子メッシュ) を先に描く。
+  // fbo = エンジンが物体を描く先 (深度付き)。paperTex = 背景を描いたテクスチャ (null = 紙なし = 透明背景の Slot B)。
+  fx3dBegin(fbo, w, h, paperTex){
+    const gl = this.gl, fr = this._fx3dFrame, P = this.foldStackProg;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.viewport(0, 0, w, h);
+    gl.disable(gl.BLEND); gl.depthMask(true);
+    gl.clearColor(0, 0, 0, paperTex ? 1 : 0); gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if(!paperTex || !fr || !P) return;
+    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
+    const F = fr.F, GRID = this._foldStackGrid;
+    gl.useProgram(P);
+    gl.bindVertexArray(this._emptyVAO);
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, paperTex);
+    const U = (n)=>gl.getUniformLocation(P, n);
+    gl.uniform1i(U('uTex'), 0);
+    gl.uniform2f(U('uRes'), w, h);
+    gl.uniform2f(U('uGrid'), GRID[0], GRID[1]);
+    gl.uniformMatrix4fv(U('uView'), false, F.view);
+    gl.uniformMatrix4fv(U('uProj'), false, F.proj);
+    gl.uniform1f(U('uShade'), F.shade);
+    gl.uniform1f(U('uBgDark'), F.bgDark);
+    gl.uniform1f(U('uNeedleMix'), F.aN / Math.max(F.aN + F.aO + F.aK, 1e-6));
+    gl.uniform3f(U('uEye'), F.eye[0], F.eye[1], F.eye[2]);
+    gl.uniform1f(U('uUzN'), 0);
+    this._foldUpload(P, 'u', F);
+    // 紙の外側: 折りが浅いうちは元の背景が (1 - bgDark) で見える (平面方式と同じ onset)。深度は書かない
+    gl.disable(gl.DEPTH_TEST);
+    gl.uniform1f(U('uMode'), 0.0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.DEPTH_TEST);
+    gl.uniform1f(U('uMode'), 1.0);
+    gl.drawArrays(gl.TRIANGLES, 0, GRID[0] * GRID[1] * 6);
+    gl.bindVertexArray(null);
+  },
+  // 紙の背景テクスチャ用 FBO (RGBA16F。スロット FBO と同じ形式)
+  fx3dPaperTarget(w, h){
+    const gl = this.gl;
+    let T = this._fx3dPaper;
+    if(T && T.w === w && T.h === h) return T;
+    if(T){ gl.deleteTexture(T.tex); gl.deleteFramebuffer(T.fbo); }
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return (this._fx3dPaper = { fbo, tex, w, h });
+  },
+  // ── 3D のまま掛ける頂点フック (第 1 段: 41/49 Tower) ──
+  // エンジンの頂点シェーダ末尾で `gl_Position = fx3dApply(gl_Position);` を呼ぶ。ビュー空間を「紙」の空間とみなし、
+  // 各頂点を紙の座標へ移して折り (f3Paper) を掛け、3D FX 用カメラ (uFx3dView / uFx3dProj) で再投影する。
+  // g (uFx3dG) = 0 では各頂点が元の透視で映る位置の紙に乗る (平面方式と同じ絵)、1 で完全な立体。
+  fx3dHookGLSL(){
+    return this._foldPaperGLSL('uF3') + `
+uniform float uFx3dOn, uFx3dG, uFx3dD, uFx3dTan, uFx3dNear;
+uniform mat4 uFx3dInvProj, uFx3dView, uFx3dProj;
+vec4 fx3dApply(vec4 clip){
+  if(uFx3dOn < 0.5) return clip;
+  vec3 pv = (uFx3dInvProj * clip).xyz;
+  float s = uFx3dD * uFx3dTan;
+  float zc = max(-pv.z, uFx3dNear);
+  // xy は紙へ映した倍率 (D / zc) を指数で 1 へ戻す (線形に混ぜると、カメラの近くの頂点が g ≈ 1 で急に飛ぶ)。z は線形
+  vec3 Pm = vec3(pv.xy * pow(uFx3dD / zc, 1.0 - uFx3dG), mix(0.002 * s / (1.0 + zc), pv.z + uFx3dD, uFx3dG)) / s;
+  vec3 P = f3Paper(Pm.xy, Pm.z);
+  return uFx3dProj * (uFx3dView * vec4(P, 1.0));
+}
+`;
+  },
+  _mat4Inv(m){
+    const inv = new Array(16);
+    inv[0] = m[5]*m[10]*m[15] - m[5]*m[11]*m[14] - m[9]*m[6]*m[15] + m[9]*m[7]*m[14] + m[13]*m[6]*m[11] - m[13]*m[7]*m[10];
+    inv[4] = -m[4]*m[10]*m[15] + m[4]*m[11]*m[14] + m[8]*m[6]*m[15] - m[8]*m[7]*m[14] - m[12]*m[6]*m[11] + m[12]*m[7]*m[10];
+    inv[8] = m[4]*m[9]*m[15] - m[4]*m[11]*m[13] - m[8]*m[5]*m[15] + m[8]*m[7]*m[13] + m[12]*m[5]*m[11] - m[12]*m[7]*m[9];
+    inv[12] = -m[4]*m[9]*m[14] + m[4]*m[10]*m[13] + m[8]*m[5]*m[14] - m[8]*m[6]*m[13] - m[12]*m[5]*m[10] + m[12]*m[6]*m[9];
+    inv[1] = -m[1]*m[10]*m[15] + m[1]*m[11]*m[14] + m[9]*m[2]*m[15] - m[9]*m[3]*m[14] - m[13]*m[2]*m[11] + m[13]*m[3]*m[10];
+    inv[5] = m[0]*m[10]*m[15] - m[0]*m[11]*m[14] - m[8]*m[2]*m[15] + m[8]*m[3]*m[14] + m[12]*m[2]*m[11] - m[12]*m[3]*m[10];
+    inv[9] = -m[0]*m[9]*m[15] + m[0]*m[11]*m[13] + m[8]*m[1]*m[15] - m[8]*m[3]*m[13] - m[12]*m[1]*m[11] + m[12]*m[3]*m[9];
+    inv[13] = m[0]*m[9]*m[14] - m[0]*m[10]*m[13] - m[8]*m[1]*m[14] + m[8]*m[2]*m[13] + m[12]*m[1]*m[10] - m[12]*m[2]*m[9];
+    inv[2] = m[1]*m[6]*m[15] - m[1]*m[7]*m[14] - m[5]*m[2]*m[15] + m[5]*m[3]*m[14] + m[13]*m[2]*m[7] - m[13]*m[3]*m[6];
+    inv[6] = -m[0]*m[6]*m[15] + m[0]*m[7]*m[14] + m[4]*m[2]*m[15] - m[4]*m[3]*m[14] - m[12]*m[2]*m[7] + m[12]*m[3]*m[6];
+    inv[10] = m[0]*m[5]*m[15] - m[0]*m[7]*m[13] - m[4]*m[1]*m[15] + m[4]*m[3]*m[13] + m[12]*m[1]*m[7] - m[12]*m[3]*m[5];
+    inv[14] = -m[0]*m[5]*m[14] + m[0]*m[6]*m[13] + m[4]*m[1]*m[14] - m[4]*m[2]*m[13] - m[12]*m[1]*m[6] + m[12]*m[2]*m[5];
+    inv[3] = -m[1]*m[6]*m[11] + m[1]*m[7]*m[10] + m[5]*m[2]*m[11] - m[5]*m[3]*m[10] - m[9]*m[2]*m[7] + m[9]*m[3]*m[6];
+    inv[7] = m[0]*m[6]*m[11] - m[0]*m[7]*m[10] - m[4]*m[2]*m[11] + m[4]*m[3]*m[10] + m[8]*m[2]*m[7] - m[8]*m[3]*m[6];
+    inv[11] = -m[0]*m[5]*m[11] + m[0]*m[7]*m[9] + m[4]*m[1]*m[11] - m[4]*m[3]*m[9] - m[8]*m[1]*m[7] + m[8]*m[3]*m[5];
+    inv[15] = m[0]*m[5]*m[10] - m[0]*m[6]*m[9] - m[4]*m[1]*m[10] + m[4]*m[2]*m[9] + m[8]*m[1]*m[6] - m[8]*m[2]*m[5];
+    const det = m[0]*inv[0] + m[1]*inv[4] + m[2]*inv[8] + m[3]*inv[12];
+    const id = Math.abs(det) > 1e-30 ? 1 / det : 0;
+    return new Float32Array(inv.map(v => v * id));
+  },
+  // fx3dHookGLSL を組み込んだエンジンのプログラムへ uniform を一括で送る。engineProj = エンジンの proj (列優先)、
+  // paperD = 紙までの距離 (ビュー空間の奥行き)。3D 方式のフレーム (this._fx3dFrame が立っている) 以外は uFx3dOn = 0。
+  fx3dUniforms(prog, engineProj, paperD){
+    const gl = this.gl;
+    const U = (n)=>gl.getUniformLocation(prog, n);
+    const fr = this._fx3dFrame;
+    if(!fr || !engineProj){ gl.uniform1f(U('uFx3dOn'), 0); return; }
+    gl.uniform1f(U('uFx3dOn'), 1);
+    gl.uniform1f(U('uFx3dG'), fr.g);
+    gl.uniform1f(U('uFx3dD'), paperD);
+    gl.uniform1f(U('uFx3dTan'), 1 / engineProj[5]);
+    gl.uniform1f(U('uFx3dNear'), engineProj[14] / (engineProj[10] - 1));
+    gl.uniformMatrix4fv(U('uFx3dInvProj'), false, this._mat4Inv(engineProj));
+    gl.uniformMatrix4fv(U('uFx3dView'), false, fr.F.view);
+    gl.uniformMatrix4fv(U('uFx3dProj'), false, fr.F.proj);
+    this._foldUpload(prog, 'uF3', fr.F);
+  },
+  _applyFoldStack(p, safe){
+    const gl = this.gl;
+    const aN = safe ? 0 : Math.max(0, Math.min(1, +(p && p.origami) || 0));   // Needle
+    const aO = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiser) || 0));    // Origami
+    const aK = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiserOld) || 0)); // Kaiser
+    const aU = safe ? 0 : Math.max(0, Math.min(1, +(p && p.uzumaki) || 0));   // Uzumaki
+    const active = (aN > 0.001 ? 1 : 0) + (aO > 0.001 ? 1 : 0) + (aK > 0.001 ? 1 : 0);
+    // fold 2 系以上、または fold 1 系以上 + Uzumaki で統合パス起動 (折った紙そのものを螺旋に複製)
+    const uzOn = aU > 0.001;
+    this._foldStackTookUzumaki = false;
+    if((active < 2 && !(uzOn && active >= 1) && !((this._foldStackForce || this._fx3dFlatStack) && active >= 1)) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
+    this._foldStackActive = true;
+    if(uzOn) this._foldStackTookUzumaki = true;
+    // Uzumaki 統合時はグリッドを粗く (頂点数 = カード枚数 × セル数 を抑える)
+    const GRID = uzOn ? [36, 21] : this._foldStackGrid;
+    const UZ = uzOn ? this._uzuParams(aU, this._finalFBO.w, this._finalFBO.h) : null;
+    const w = this._finalFBO.w, h = this._finalFBO.h;
+    if(!this._foldStackTmp || this._foldStackTmp.w !== w || this._foldStackTmp.h !== h){
+      const old = this._foldStackTmp;
+      if(old){ if(old.tex) gl.deleteTexture(old.tex); if(old.color) gl.deleteRenderbuffer(old.color); if(old.depth) gl.deleteRenderbuffer(old.depth); gl.deleteFramebuffer(old.fbo); }
+      // MSAA: 細いトゲや折り目のエッジのちらつき(時間的エイリアス)を抑える
+      const samples = Math.min(8, gl.getParameter(gl.MAX_SAMPLES) || 0);
+      const color = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, color);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
+      const depth = gl.createRenderbuffer();
+      gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
+      const fbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
+      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      this._foldStackTmp = { fbo, color, depth, w, h };
+    }
+    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
+
+    const F = this._foldBuild(p, aN, aO, aK, uzOn, w, h);
+    const { foldsU, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale } = F;
+    const beatMode = F.beatMode, beatId = F.beatId, hit = F.hit;
+
     const P = this.foldStackProg;
     gl.useProgram(P);
     gl.bindVertexArray(this._emptyVAO);
@@ -7007,20 +7166,10 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
     gl.uniformMatrix4fv(U('uProj'), false, uzOn ? UZ.proj : proj);
     gl.uniform1f(U('uShade'), shade);
     gl.uniform1f(U('uBgDark'), bgDark);
-    gl.uniform1f(U('uTwist'), twist);
-    gl.uniform1f(U('uWarp2'), warp2);
-    gl.uniform1f(U('uWt2'), wt2);
-    gl.uniform1f(U('uNeedleAmt'), aN * onF);          // needle 変位も onset で 0 から立ち上げ
-    gl.uniform1f(U('uNt'), this._foldClock * 0.5);   // 統合時は needle の動きを控えめに
-    gl.uniform1f(U('uBeat'), beatId);
-    gl.uniform1f(U('uBeatMode'), beatMode ? 1 : 0);
-    gl.uniform1f(U('uHit'), hit);
+    this._foldUpload(P, 'u', F);
     gl.uniform1f(U('uNeedleMix'), aN / Math.max(aN + aO + aK, 1e-6));   // 結晶シェーディングの寄与比
-    gl.uniform1f(U('uFitScale'), fitScale);
-    gl.uniform3f(U('uCenter'), ctr[0], ctr[1], ctr[2]);
     const eyeU = uzOn ? UZ.eye : eye;
     gl.uniform3f(U('uEye'), eyeU[0], eyeU[1], eyeU[2]);
-    gl.uniform1i(U('uFoldN'), foldsU.length);
     gl.uniform1f(U('uUzN'), uzOn ? UZ.N : 0);
     if(uzOn){
       gl.uniform1f(U('uUzTH'), UZ.TH);
@@ -7030,15 +7179,6 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
       gl.uniform1f(U('uUzCard'), UZ.card);
       gl.uniform1f(U('uUzOrbR'), UZ.orbR);
       gl.uniform2f(U('uUzCw'), UZ.cw[0], UZ.cw[1]);
-    }
-    for(let i = 0; i < foldsU.length; i++){
-      const fd = foldsU[i];
-      gl.uniform2f(U('uCreaseP['+i+']'), fd.C[0], fd.C[1]);
-      gl.uniform2f(U('uCreaseN['+i+']'), fd.N[0], fd.N[1]);
-      gl.uniform1f(U('uTheta['+i+']'), fd.th);
-      gl.uniform1f(U('uEps['+i+']'), fd.eps);
-      gl.uniform3f(U('uAxisO['+i+']'), fd.axO[0], fd.axO[1], fd.axO[2]);
-      gl.uniform3f(U('uAxisD['+i+']'), fd.axD[0], fd.axD[1], fd.axD[2]);
     }
     gl.uniform1f(U('uMode'), 0.0);
     if(!uzOn) gl.drawArrays(gl.TRIANGLES, 0, 3);   // Uzumaki 統合時は背景を描かない = 透過
@@ -8292,6 +8432,7 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
       this._pkCaptureWait--;
       if(this._pkCaptureWait === 0) this._pkCapture = true;
     }
+    if(!frozen) this._fx3dUpdate(post, realDt, this.slots[this._fx3dTarget || 'A'].fbos[0].w, this.slots[this._fx3dTarget || 'A'].fbos[0].h);
     if(frozen){
       this._freezeSources(realDt);                 // シェーダ/mode/video の更新を停止(前フレーム保持)
     } else {
@@ -11051,6 +11192,7 @@ uniform float uBri, uCon, uSat, uHue;
 uniform float uGradMix; uniform vec3 uGradStops[8]; uniform float uGradPos[8]; uniform int uGradN;
 uniform float uCosGrad;
 uniform float uGamma;
+uniform float uInv, uVibrance, uPos, uVig;   // Color 段 (最終出力) 用。他の呼び出しは 0 = なし
 uniform float uUnsharp, uUnsharpR;
 uniform float uBlurAmt;
 vec3 hueShift(vec3 c, float h){
@@ -11064,6 +11206,34 @@ vec3 hueShift(vec3 c, float h){
   yiq.y = ca*iq.x - sa*iq.y;
   yiq.z = sa*iq.x + ca*iq.y;
   return toRGB * yiq;
+}
+// RGB <-> HSL (invert で明度だけ反転するのに使用。hue/saturation は保持)
+vec3 _rgb2hsl(vec3 c){
+  float mx = max(max(c.r, c.g), c.b), mn = min(min(c.r, c.g), c.b);
+  float l = (mx + mn) * 0.5, h = 0.0, s = 0.0, d = mx - mn;
+  if(d > 1e-5){
+    s = l > 0.5 ? d / (2.0 - mx - mn) : d / (mx + mn);
+    if(mx == c.r)      h = (c.g - c.b) / d + (c.g < c.b ? 6.0 : 0.0);
+    else if(mx == c.g) h = (c.b - c.r) / d + 2.0;
+    else               h = (c.r - c.g) / d + 4.0;
+    h /= 6.0;
+  }
+  return vec3(h, s, l);
+}
+float _hue2rgb(float p, float q, float t){
+  if(t < 0.0) t += 1.0;
+  if(t > 1.0) t -= 1.0;
+  if(t < 1.0/6.0) return p + (q - p) * 6.0 * t;
+  if(t < 0.5)     return q;
+  if(t < 2.0/3.0) return p + (q - p) * (2.0/3.0 - t) * 6.0;
+  return p;
+}
+vec3 _hsl2rgb(vec3 hsl){
+  float h = hsl.x, s = hsl.y, l = hsl.z;
+  if(s <= 1e-5) return vec3(l);
+  float q = l < 0.5 ? l * (1.0 + s) : l + s - l * s;
+  float p = 2.0 * l - q;
+  return vec3(_hue2rgb(p, q, h + 1.0/3.0), _hue2rgb(p, q, h), _hue2rgb(p, q, h - 1.0/3.0));
 }
 vec2 _uv(vec2 v){ return vec2(v.x, mix(v.y, 1.0 - v.y, uFlipY)); }
 vec3 sampleBlur(vec2 uv, float radPx){
@@ -11100,12 +11270,22 @@ void main(){
     col = (uUnsharp > 0.0) ? max(col + uUnsharp*(col - blur), vec3(0.0))
                            : mix(col, blur, clamp(-uUnsharp, 0.0, 1.0));
   }
-  // 3) Color
+  // 3) Color: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
+  //    Invert は明度 (HSL の L) だけ反転して色相を保つ。uInv は 0..1 の連続量 (Param Fade でなめらかに反転できる)
+  if(uInv > 0.001){ vec3 hsl = _rgb2hsl(col); hsl.z = mix(hsl.z, 1.0 - hsl.z, uInv); col = _hsl2rgb(hsl); }
   if(abs(uBri) > 0.0001) col += uBri;
   if(abs(uCon - 1.0) > 0.001) col = (col-0.5)*uCon + 0.5;
   if(abs(uSat - 1.0) > 0.001){
     float L = dot(col, vec3(0.299,0.587,0.114));
     col = mix(vec3(L), col, uSat);
+  }
+  // Vibrance: 自然な彩度。低彩度ほど強く持ち上げ、既に鮮やかな色とハイライトは保護 (負で控えめに脱色)
+  if(abs(uVibrance) > 0.001){
+    float vmx = max(col.r, max(col.g, col.b));
+    float vsat = vmx - min(col.r, min(col.g, col.b));
+    float vL = dot(col, vec3(0.299,0.587,0.114));
+    float boost = uVibrance * (1.0 - clamp(vsat, 0.0, 1.0)) * (1.0 - smoothstep(0.75, 1.0, vL));
+    col = mix(vec3(vL), col, 1.0 + boost);
   }
   if(abs(uGradMix) > 0.0001){
     float L = dot(col, vec3(0.299,0.587,0.114));
@@ -11123,6 +11303,11 @@ void main(){
     col = mix(col, mapped, abs(uGradMix));
   }
   if(abs(uHue) > 0.001) col = hueShift(col, uHue);
+  if(uPos >= 1.5) col = floor(col * uPos) / uPos;
+  if(uVig > 0.0001){
+    float vd = distance(vUv, vec2(0.5));
+    col *= 1.0 - smoothstep(0.3, 0.85, vd) * uVig;
+  }
   // 4) Gamma
   col = pow(max(col, 0.0), vec3(1.0/uGamma));
   frag = vec4(col, src0.a);          // alpha は素通し (スロットプレビューの実 alpha を保つ)
@@ -11165,6 +11350,10 @@ function _applyMiniFxUniforms(gl, prog, W, H, flipY, postOverride){
   _uploadGradStops(gl, U, p);
   gl.uniform1f(U('uCosGrad'),   0.0);   // Cos Grad 廃止
   gl.uniform1f(U('uGamma'),     dz(p.gamma != null ? p.gamma : 1));
+  gl.uniform1f(U('uInv'),       p.inv === true ? 1 : (Number(p.inv) || 0));   // Color 段の分は呼び出し側が実効値 (デッドゾーン後) を渡す
+  gl.uniform1f(U('uVibrance'),  p.vibrance || 0);
+  gl.uniform1f(U('uPos'),       p.pos || 0);
+  gl.uniform1f(U('uVig'),       p.vig || 0);
   gl.uniform1f(U('uUnsharp'),   dz(p.unsharp || 0));
   gl.uniform1f(U('uUnsharpR'),  dz(App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(p.unsharp) : (p.unsharpRadius != null ? p.unsharpRadius : 1.5)));
   gl.uniform1f(U('uBlurAmt'),   dz(p.slit2 || 0));
@@ -17164,7 +17353,7 @@ void mainImage(out vec4 o, in vec2 f){
     const side = document.getElementById('side');
     if(!side || side._midiTagObs) return;
     const tag = (el)=>{
-      if(!el || el.dataset.midiKey) return;
+      if(!el || el.dataset.midiKey || el.dataset.noMidi) return;
       if(el.type !== 'range' && el.type !== 'checkbox') return;
       if(el.closest('#settingsPane')) return;   // 設定パネル (UI 設定 / 他パネルのミラー) は MIDI 割当の対象外
       // 左のラベル文字列をキーに使う (dom~id~pxAGain のような機械的表記を避ける)。
@@ -18803,6 +18992,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dLayer','fx3dLayer', f2);
     slid('pxFx3dLayerCount','fx3dLayerCount', fi);
     slid('pxFx3dLayerSize','fx3dLayerSize', v=>(v|0)+'%');
+    { const nt = $('#pxFx3dNative'); if(nt){ nt.checked = Prefs.on('fx3dNative', '0'); nt.addEventListener('change', ()=>{ Prefs.set('fx3dNative', nt.checked ? '1' : '0'); }); } }
     { const sc = $('#pxFx3dScale'); if(sc){ sc.value = String(App.post.fx3dScale); sc.addEventListener('change', ()=>{ App.post.fx3dScale = parseFloat(sc.value); }); } }
     slid('pxShake','shake',f2);
     slid('pxMblur','mblur',f2);
