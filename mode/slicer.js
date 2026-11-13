@@ -14,6 +14,18 @@ const SL_IMG_KEYS = ['pieces','seed','sides','maxSides','explode','bend','curl',
   'tiltAmt','depthAmt','curlFreqAmt','texZoom','texRotate','drift','pieceTint','pieceSat','depthShade',
   'camRoll','camAz','lookX','lookY','reshuffle'];
 
+/* Object.create(Slicer) で派生インスタンス (3D FX 等) を作るとき、own プロパティにしなければならないもの:
+     P, PDefaults, cam   (in-place 更新される。deep copy を渡す)
+     posBuf, uvBuf, seedBuf, idxBuf, numIdx   (buildScene が delete→createBuffer で代入)
+     sceneFbo, sceneColorTex, sceneDepthTex, postFbo, postColorTex, fboW, fboH   (_ensureSceneTargets が作り直す)
+     imgTex, imgW, imgH, imgAsp, imageReady, bgFromImage   (loadFromUrl 系が delete→create。FX 側は imgTex=ソース, imgAsp=w/h, imageReady=true)
+     _needsRebuild, _t, _autoBase, _autoEpoch, _imgEpoch, _imgLoading, curName, library, _skipImgParams
+       (update/loadRandomImage が代入するので自然に own になるが、初期値は明示しておく)
+   buildScene が画像に依存するのは imgAsp のみ。FX 側は imgAsp=w/h → markDirty() で組み直せる。
+   プロトタイプ共有でよいもの: gl, prog, postProg, locs, pLocs, quadBuf, m4, VS/FS, initialized, startTime。
+   FX 用: this._meta3d=true で update() がスロットの userPan/userZoom を無視 (pan=0, zoom=1)。
+          update(beat, dt, clock) の clock (数値) を時刻に使う。
+          imgMode は 'fixed'、bgMode は 'color' 等に (random 切替・loadRandomImage を呼ばせない)。 */
 const Slicer = {
   gl:null,
   initialized:false,
@@ -820,15 +832,15 @@ void main(){
   },
 
   // 毎フレーム呼ぶ
-  update(beatCount, dt){
+  update(beatCount, dt, clock){
     if(!this.initialized) return;
     // 全体 speed 反映済みクロック (GL.clock) を使用。利用不可なら従来の実時刻。
-    this._t = (typeof GL !== 'undefined' && typeof GL.clock === 'number') ? GL.clock : (performance.now() - this.startTime) / 1000;
+    this._t = (typeof clock === 'number') ? clock : ((typeof GL !== 'undefined' && typeof GL.clock === 'number') ? GL.clock : (performance.now() - this.startTime) / 1000);
     // ズームアウト(<1)はカメラに適用せず base 描画 → 合成段で画面全体をミラータイル化する
-    const _uz = (typeof App !== 'undefined' && App.userZoom != null) ? App.userZoom : 1;
+    const _uz = (!this._meta3d && typeof App !== 'undefined' && App.userZoom != null) ? App.userZoom : 1;
     const _zoomedOut = _uz < 1.0;
-    const userPanX  = (typeof App !== 'undefined' && !_zoomedOut) ? App.userPan.x : 0;
-    const userPanY  = (typeof App !== 'undefined' && !_zoomedOut) ? App.userPan.y : 0;
+    const userPanX  = (!this._meta3d && typeof App !== 'undefined' && !_zoomedOut) ? App.userPan.x : 0;
+    const userPanY  = (!this._meta3d && typeof App !== 'undefined' && !_zoomedOut) ? App.userPan.y : 0;
     const userZoom  = Math.max(1.0, _uz);
     const beatMode  = (typeof App !== 'undefined' ? App.beatMode : 'drone');
 

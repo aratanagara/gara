@@ -68,7 +68,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794560028">
+<link rel="stylesheet" href="style.css?v=1794560176">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1269,12 +1269,15 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div class="row"><label>Tunnel</label><input type="range" id="pxCandy" min="0" max="1" step="0.01" value="0" title="Tunnel: 映像をトンネル壁にマップ。値=分割数(タイル反復)。0=OFF"><div class="val" id="pxCandyVal">0.00</div></div>
           <div class="row"><label>Twist</label><input type="range" id="pxTwist" min="0" max="1" step="0.01" value="0" title="ランダム方向・長周期サイン波のうねり変位。1/X拍(beat×X)で上限→シード変更で別パターン。指数カーブ"><div class="val" id="pxTwistVal">0.00</div></div>
+          <div class="row"><label>Boltzmann</label><input type="range" id="pxBoltz" min="0" max="1" step="0.01" value="0" title="0=off。値で運動の強弱・速さ。攪拌の向きはランダム"><div class="val" id="pxBoltzVal">0.0</div></div>
+        </div>
+        <div class="section">
+          <h3>3D <span class="default-actions"><button class="saveDefBtn" data-kind="post:fx3d" title="3Dの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:fx3d" title="保存した3Dの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label>Needle</label><input type="range" id="pxOrigami" min="0" max="1" step="0.01" value="0" title="三角錐主峰が拍頭のEase Outで大きく変形し、重なった裾野だけが峰間のブリッジを形成。Droneでは緩やかに成長し、元映像を内部反射へ使用"><div class="val" id="pxOrigamiVal">0.00</div></div>
           <div class="row"><label>Origami</label><input type="range" id="pxKaiser" min="0" max="1" step="0.01" value="0" title="Origami: 一枚のキャンバスを実際の折り紙のように層ごと折りたたむ(ベクター折り)。周期で平面へ戻り再抽選。高パラメータで引き"><div class="val" id="pxKaiserVal">0.00</div></div>
           <div class="row"><label>Kaiser</label><input type="range" id="pxKaiserOld" min="0" max="1" step="0.01" value="0" title="Kaiser: 折り線が前の折りを横切りフラップがリボン状に裂けるダイナミックな折り紙(旧Origami)。鋭い折り目"><div class="val" id="pxKaiserOldVal">0.00</div></div>
-          <div class="row"><label>Uzumaki</label><input type="range" id="pxUzumaki" min="0" max="1" step="0.01" value="0" title="Uzumaki: 画面をカードの束として3D空間で対数螺旋状にファン展開。値=展開量 (0=元画像→1=全開の渦)。カードは面と面が平行のまま一枚ごとに浮かび、渦は徐々に逆回転、カメラが渦の周りを公転。Needle/Origami/Kaiser と重ねがけすると折った紙だけがカードに乗って渦巻く。背景は透過(黒抜け)"><div class="val" id="pxUzumakiVal">0.00</div></div>
           <div class="row"><label>Flames</label><input type="range" id="pxRiver" min="0" max="1" step="0.01" value="0" title="Flames (VitalRiverFlames l3sXW4): 映像をねじれた3D構造にマップ。マウス/キー操作は除去済み。重め"><div class="val" id="pxRiverVal">0.00</div></div>
-          <div class="row"><label>Boltzmann</label><input type="range" id="pxBoltz" min="0" max="1" step="0.01" value="0" title="0=off。値で運動の強弱・速さ。攪拌の向きはランダム"><div class="val" id="pxBoltzVal">0.0</div></div>
+          <div class="row"><label>Uzumaki</label><input type="range" id="pxUzumaki" min="0" max="1" step="0.01" value="0" title="Uzumaki: 画面をカードの束として3D空間で対数螺旋状にファン展開。値=展開量 (0=元画像→1=全開の渦)。カードは面と面が平行のまま一枚ごとに浮かび、渦は徐々に逆回転、カメラが渦の周りを公転。Needle/Origami/Kaiser と重ねがけすると折った紙だけがカードに乗って渦巻く。背景は透過(黒抜け)"><div class="val" id="pxUzumakiVal">0.00</div></div>
         </div>
         <div class="section">
           <h3>Blur / Feedback <span class="default-actions"><button class="saveDefBtn" data-kind="post:blur" title="Blurの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:blur" title="保存したBlurの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
@@ -1858,47 +1861,47 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794560028"></script>
-<script src="mode/layer.js?v=1794560028"></script>
-<script src="vendor/iro.min.js?v=1794560028"></script>
-<script src="vendor/mediabunny.min.js?v=1794560028"></script>
-<script src="mode/textdeform.js?v=1794560028"></script>
-<script src="mode/textdeform-comp.js?v=1794560028"></script>
-<script src="mode/ugomeki.js?v=1794560028"></script>
-<script src="mode/slicer.js?v=1794560028"></script>
-<script src="mode/video.js?v=1794560028"></script>
-<script src="mode/aratanagara.js?v=1794560028"></script>
-<script src="vendor/p5.min.js?v=1794560028"></script>
-<script src="mode/cyberui.js?v=1794560028"></script>
-<script src="mode/novel.js?v=1794560028"></script>
-<script src="shaders/inkelly.js?v=1794560028"></script>
-<script src="sketchfx.js?v=1794560028"></script>
-<script src="pixelsortfx.js?v=1794560028"></script>
-<script src="shaders/boltzmann.js?v=1794560028"></script>
-<script src="mode/pen.js?v=1794560028"></script>
-<script src="shaders/caverns.js?v=1794560028"></script>
-<script src="mode/shelf.js?v=1794560028"></script>
-<script src="shaders/ribbon.js?v=1794560028"></script>
-<script src="mode/photoplane.js?v=1794560028"></script>
-<script src="mode/shredder.js?v=1794560028"></script>
-<script src="mode/transflock.js?v=1794560028"></script>
-<script src="mode/liquidpeel.js?v=1794560028"></script>
-<script src="mode/windflock.js?v=1794560028"></script>
-<script src="mode/rhizome.js?v=1794560028"></script>
-<script src="mode/surrealfloat.js?v=1794560028"></script>
-<script src="mode/chrometype.js?v=1794560028"></script>
-<script src="mode/tower4149.js?v=1794560028"></script>
-<script src="mode/fude.js?v=1794560028"></script>
-<script src="mode/image.js?v=1794560028"></script>
-<script src="mode/spacetype.js?v=1794560028"></script>
-<script src="pollockfx.js?v=1794560028"></script>
-<script src="overlay.js?v=1794560028"></script>
-<script src="gif.js?v=1794560028"></script>
-  <script src="ui-icons.js?v=1794560028"></script>
-  <script src="app.js?v=1794560028"></script>
-  <script src="ui-scrollbar.js?v=1794560028"></script>
-  <script src="ui-settings.js?v=1794560028"></script>
-<script src="camroll.js?v=1794560028" defer></script>
-<script src="dbltap.js?v=1794560028" defer></script>
+<script src="presets.js?v=1794560176"></script>
+<script src="mode/layer.js?v=1794560176"></script>
+<script src="vendor/iro.min.js?v=1794560176"></script>
+<script src="vendor/mediabunny.min.js?v=1794560176"></script>
+<script src="mode/textdeform.js?v=1794560176"></script>
+<script src="mode/textdeform-comp.js?v=1794560176"></script>
+<script src="mode/ugomeki.js?v=1794560176"></script>
+<script src="mode/slicer.js?v=1794560176"></script>
+<script src="mode/video.js?v=1794560176"></script>
+<script src="mode/aratanagara.js?v=1794560176"></script>
+<script src="vendor/p5.min.js?v=1794560176"></script>
+<script src="mode/cyberui.js?v=1794560176"></script>
+<script src="mode/novel.js?v=1794560176"></script>
+<script src="shaders/inkelly.js?v=1794560176"></script>
+<script src="sketchfx.js?v=1794560176"></script>
+<script src="pixelsortfx.js?v=1794560176"></script>
+<script src="shaders/boltzmann.js?v=1794560176"></script>
+<script src="mode/pen.js?v=1794560176"></script>
+<script src="shaders/caverns.js?v=1794560176"></script>
+<script src="mode/shelf.js?v=1794560176"></script>
+<script src="shaders/ribbon.js?v=1794560176"></script>
+<script src="mode/photoplane.js?v=1794560176"></script>
+<script src="mode/shredder.js?v=1794560176"></script>
+<script src="mode/transflock.js?v=1794560176"></script>
+<script src="mode/liquidpeel.js?v=1794560176"></script>
+<script src="mode/windflock.js?v=1794560176"></script>
+<script src="mode/rhizome.js?v=1794560176"></script>
+<script src="mode/surrealfloat.js?v=1794560176"></script>
+<script src="mode/chrometype.js?v=1794560176"></script>
+<script src="mode/tower4149.js?v=1794560176"></script>
+<script src="mode/fude.js?v=1794560176"></script>
+<script src="mode/image.js?v=1794560176"></script>
+<script src="mode/spacetype.js?v=1794560176"></script>
+<script src="pollockfx.js?v=1794560176"></script>
+<script src="overlay.js?v=1794560176"></script>
+<script src="gif.js?v=1794560176"></script>
+  <script src="ui-icons.js?v=1794560176"></script>
+  <script src="app.js?v=1794560176"></script>
+  <script src="ui-scrollbar.js?v=1794560176"></script>
+  <script src="ui-settings.js?v=1794560176"></script>
+<script src="camroll.js?v=1794560176" defer></script>
+<script src="dbltap.js?v=1794560176" defer></script>
 </body>
 </html>
