@@ -5189,7 +5189,24 @@ vec3 f3Paper(vec2 q, float lift){
     } else {
       gl.uniform1i(U('uCandyMode'), 0);
     }
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    // 3D Native の切り替わり (0 < g < 1): 平面の絵 F を _finalFBO へ (以降は平面方式と同じ経路)、3D の絵 N を補助 FBO へ合成する
+    const _fr3 = this._fx3dFrame, _fl3 = this._fx3dFlat;
+    const _blend = !!(_fr3 && _fr3.blend && _fl3 && _fl3.frame === _fr3.frame && _fl3.slot === _fr3.target);
+    this._fx3dBlendNow = _blend;
+    if(_blend){
+      const NA = this._fx3dNAuxTarget(this._finalFBO.w, this._finalFBO.h);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, NA.fbo);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
+      const _sl = this.slots[_fr3.target].fbos[this.slots[_fr3.target].fbIdx ^ 1];
+      const _unit = _fr3.target === 'A' ? 0 : 1;
+      gl.activeTexture(gl.TEXTURE0 + _unit); gl.bindTexture(gl.TEXTURE_2D, _fl3.tex);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.bindTexture(gl.TEXTURE_2D, _sl.tex);
+      gl.activeTexture(gl.TEXTURE0);
+    } else {
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
     gl.bindVertexArray(null);
 
     // ── Post FX パス順 (composite 内のものは括弧で明記) ──
@@ -5229,14 +5246,18 @@ vec3 f3Paper(vec2 q, float lift){
 
     // 4) 3D 段 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
     // 3D のまま掛けているフレーム (g > 0) は、折りを対象スロットの頂点で掛け済み。画面段の折りは飛ばす
-    const _fx3dDone = !!this._fx3dFrame;
+    // 切り替わり (_blend) のフレームは、_finalFBO の平面の絵を平面方式と同じ折りで折り、そこへ 3D の絵を重ねる
+    const _fx3dDone = !!this._fx3dFrame && !_blend;
     if(_fx3dDone){ this._foldStackActive = false; this._foldStackTookUzumaki = false; }
+    this._foldPrebuilt = _blend ? this._fx3dFrame.F : null;
     const _stacked = _fx3dDone || this._applyFoldStack(p, _safe);
+    this._foldPrebuilt = null;
     if(!_stacked){
       this._applyOrigamiPost(p, _safe);      // 表示: Needle
       this._applyKaiserPost(p, _safe);       // 表示: Origami
       this._applyKaiserOldPost(p, _safe);    // 表示: Kaiser
     }
+    if(_blend) this._fx3dBlendOver(this._fx3dFrame.a);
     this._applyFlamesPost(p, _safe);
     this._applyUzumakiPost(p, _safe);   // 渦巻き展開 (折り紙系と同じ幾何変形枠)
 
@@ -6614,19 +6635,7 @@ vec3 f3Paper(vec2 q, float lift){
       if(!ok) continue;
       // 合成: エンジンは透明背景 (rgb=色, a=被覆) で描いてある。元の画面を (1 - bgDim) に暗くした上に重ねる
       //   結果 = fx + src * (1 - bgDim) * (1 - a)。_finalFBO を読まずに書くのでフィードバックにならない
-      if(!this._fx3dOverProg){
-        const vsh = this._compile(gl.VERTEX_SHADER, `#version 300 es
-out vec2 vUv;
-void main(){ vec2 q = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = q; gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0); }`);
-        const fsh = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
-precision highp float;
-in vec2 vUv; uniform sampler2D uTex; uniform float uDim, uMix; out vec4 frag;
-void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 - t.a)) * uMix; }`);
-        const pr = this._link(vsh, fsh);
-        this._fx3dOverProg = (pr && !pr.err) ? pr : null;
-        if(!this._fx3dOverProg) console.error('fx3d over program failed:', pr && pr.err);
-      }
-      if(!this._fx3dOverProg) continue;
+      if(!this._fx3dOverProgram()) continue;
       if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
       gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
       gl.useProgram(this._fx3dOverProg);
@@ -6645,6 +6654,66 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
       gl.bindVertexArray(null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
+  },
+  _fx3dOverProgram(){
+    if(this._fx3dOverProg) return this._fx3dOverProg;
+    const gl = this.gl;
+    const vsh = this._compile(gl.VERTEX_SHADER, `#version 300 es
+out vec2 vUv;
+void main(){ vec2 q = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = q; gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0); }`);
+    const fsh = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uTex; uniform float uDim, uMix; out vec4 frag;
+void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 - t.a)) * uMix; }`);
+    const pr = this._link(vsh, fsh);
+    this._fx3dOverProg = (pr && !pr.err) ? pr : null;
+    if(!this._fx3dOverProg) console.error('fx3d over program failed:', pr && pr.err);
+    return this._fx3dOverProg;
+  },
+  // 3D Native の切り替わりで 3D の絵 N を合成して置く補助 FBO (_finalFBO と同じ形式。切り替わりのフレームで初めて確保)
+  _fx3dNAuxTarget(w, h){
+    const gl = this.gl;
+    let T = this._fx3dNAux;
+    if(T && T.w === w && T.h === h) return T;
+    if(T){ gl.deleteTexture(T.tex); gl.deleteFramebuffer(T.fbo); }
+    gl.activeTexture(gl.TEXTURE0 + 15);   // composite の最中に呼ばれるので、合成が使っているユニットを汚さない
+    const tex = gl.createTexture();
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return (this._fx3dNAux = { fbo, tex, w, h });
+  },
+  // 切り替わりのフレームで、折ったあとの _finalFBO (平面方式の絵 F) へ 3D の絵 N (補助 FBO) を a の割合で重ねる: 出力 = mix(F, N, a)
+  _fx3dBlendOver(a){
+    const gl = this.gl, T = this._fx3dNAux, P = this._fx3dOverProgram();
+    if(!T || !P) return;
+    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
+    gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
+    gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(P);
+    gl.bindVertexArray(this._emptyVAO);
+    gl.enable(gl.BLEND);
+    gl.blendColor(a, a, a, a);
+    gl.blendFuncSeparate(gl.CONSTANT_COLOR, gl.ONE_MINUS_CONSTANT_COLOR, gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, T.tex);
+    gl.uniform1i(gl.getUniformLocation(P, 'uTex'), 0);
+    gl.uniform1f(gl.getUniformLocation(P, 'uDim'), 0);
+    gl.uniform1f(gl.getUniformLocation(P, 'uMix'), 1);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
   _applyUzumakiPost(p, safe){
     const gl = this.gl;
@@ -6973,8 +7042,13 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
       if(!this._fx3dFrame || this._fx3dFrame.frame !== this.frame){
         const F = this._foldBuild(p, aN, aO, aK, false, w, h);
         if(this._fx3dDebugOrbit){ this._fx3dDebugCam(F, this._fx3dDebugOrbit); }
-        this._fx3dFrame = { g, F, target: this._fx3dTarget, frame: this.frame };
+        // 切り替わり (g < 1): 平面方式の絵 (F) と 3D の絵 (N) を両方描いて a で混ぜる。a = 0 で平面方式と一致、g >= 0.6 で a = 1。
+        //   idle (want) で a = 1 のときは、混ぜずに N だけ (idle なら途中の Post FX が無いので同じ絵)。Uzumaki は統合パスに入る折りが F と合わないので混ぜない
+        const a = (this._fx3dForceA != null) ? this._fx3dForceA : sstep(0, 0.6, g);
+        const blend = g < 1 && !(want && a >= 1) && !(ov('uzumaki') > 0.001);
+        this._fx3dFrame = { g, F, a, blend, target: this._fx3dTarget, frame: this.frame };
       }
+      if(this._fx3dFrame.blend) this._fx3dFlatStack = want;
     } else {
       this._fx3dFrame = null;
     }
@@ -7143,7 +7217,7 @@ vec4 fx3dApply(vec4 clip){
     }
     if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
 
-    const F = this._foldBuild(p, aN, aO, aK, uzOn, w, h);
+    const F = this._foldPrebuilt || this._foldBuild(p, aN, aO, aK, uzOn, w, h);   // 3D Native の切り替わりは、このフレームの _fx3dUpdate で作った F を使う (1 フレーム 1 回)
     const { foldsU, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale } = F;
     const beatMode = F.beatMode, beatId = F.beatId, hit = F.hit;
 
@@ -8814,7 +8888,17 @@ vec4 fx3dApply(vec4 clip){
       if(!Tower4149.initialized) Tower4149.init(this.gl);
       Tower4149.update();
       const target = slot.fbos[slot.fbIdx];
-      Tower4149.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      const t4Opts = { fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' };
+      Tower4149.render(t4Opts);
+      const fr3 = this._fx3dFrame;
+      if(fr3 && fr3.blend && fr3.target === slotKey){   // 3D Native の切り替わり: 同じフレームを平面 (通常の描画) でも描く (composite が F として使う)
+        let FT = this._fx3dFlatFBO;
+        if(!FT) FT = this._fx3dFlatFBO = this._mkFBO(target.w, target.h); else this._resizeFBO(FT, target.w, target.h);
+        this._fx3dFrame = null;
+        Tower4149.render(Object.assign({}, t4Opts, { fbo: FT.fbo }));
+        this._fx3dFrame = fr3;
+        this._fx3dFlat = { tex: FT.tex, frame: this.frame, slot: slotKey };
+      }
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
