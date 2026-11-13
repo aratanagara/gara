@@ -68,7 +68,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794555535">
+<link rel="stylesheet" href="style.css?v=1794556387">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -246,20 +246,31 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button class="visFilter"    data-cat="shader">Shader</button>
           </div>
         </div>
-        <div class="section">
-          <div id="thumbGrid"></div>
-          <div class="help" style="margin-top:6px;font-size:10px">
-            Code / Movie / Shader をまとめて表示。ホバーでライブプレビュー / クリックで現スロットにロード。<br>
-            画像 / 動画はこのタブへ<b>ドラッグ&amp;ドロップ</b>でも読み込めます (ローカル起動時は images/drop/ ・ movies/ へ取り込み、次回以降も残ります)。
+        <!-- Code / Movie / Shader: 欄ごとに独立した section (タイルは app.js populatePresets が .visGrid へ入れる) -->
+        <div id="thumbGrid">
+          <div class="section visSec" data-cat="mode">
+            <h3>Code</h3>
+            <div class="visGrid"></div>
+            <div class="help" style="margin-top:6px;font-size:10px">ホバーでライブプレビュー / クリックで現スロットにロード。</div>
+          </div>
+          <div class="section visSec" data-cat="movie">
+            <h3>Movie</h3>
+            <div class="visGrid"></div>
+            <div class="help" style="margin-top:6px;font-size:10px">クリックで現スロットにロード。動画ファイルをこのタブへ<b>ドラッグ&amp;ドロップ</b>するか「＋ 動画」タイルで読み込み (ローカル起動時は movies/ へ取り込み、次回以降も残ります)。</div>
+          </div>
+          <div class="section visSec" data-cat="shader">
+            <h3>Shader</h3>
+            <div class="visGrid"></div>
+            <div class="help" style="margin-top:6px;font-size:10px">ホバーでライブプレビュー / クリックで現スロットにロード。</div>
           </div>
         </div>
 
         <!-- IMAGE: images/ 傘下のフォルダをスライドショー表示 -->
-        <div class="section" id="imageSection" style="margin-top:8px">
+        <div class="section" id="imageSection">
           <h3>Image <span class="pill">folder</span></h3>
           <input type="file" id="fileImageImport" accept="image/*" multiple hidden>
           <input type="file" id="fileMovieImport" accept="video/*" multiple hidden>
-          <div id="imageFolderGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px"></div>
+          <div id="imageFolderGrid" class="visGrid"></div>
           <div class="help" style="margin-top:6px;font-size:10px">フォルダをクリックで Slot にロード。サムネは中身を 3×2 表示。beat モードで自動送り / <kbd>C</kbd> で次へ。drone は送りなし。<br>画像ファイルをここへドラッグ&ドロップするか「＋ 画像」タイルで読み込むと<b>臨時フォルダ</b>として追加 (セッション限り。リロードで消える)。</div>
         </div>
 
@@ -667,8 +678,10 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <select id="mtFont" style="flex:1"></select>
           </div>
           <div class="row"><label>Direction</label>
-            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="mtVertical">Vertical</label>
-            <label style="display:flex;align-items:center;gap:4px"><input type="checkbox" id="mtBold">Bold</label>
+            <div class="toggles">
+              <label><input type="checkbox" id="mtVertical">Vertical</label>
+              <label><input type="checkbox" id="mtBold">Bold</label>
+            </div>
           </div>
           <div class="row"><label>Align</label>
             <select id="mtAlign" style="flex:1">
@@ -717,13 +730,18 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <label style="display:flex;align-items:center;gap:4px;min-width:auto"><input type="checkbox" id="stBold">Bold</label>
           </div>
           <div class="row"><label>Auto</label>
-            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="所定の拍数ごとにシーンとmdを自動で送る (beat モード限定。drone モードでは切り替わらない)"><input type="checkbox" id="stAutoCycle">Cycle</label>
-            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="カメラを自動で周回させる (tunnelでは視線の揺れ)"><input type="checkbox" id="stCamOrbit">Orbit</label>
-            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="ON=サイクルでmdを送るたび、初期値へ戻してからそのmdの保存デフォルトを適用(保存が無いmdは初期値) / OFF=保存デフォルトがあるmdだけ読み込み、無いmdは今のパラメータを維持"><input type="checkbox" id="stCycleReload">Reload</label>          </div>
+            <div class="toggles">
+              <label title="所定の拍数ごとにシーンとmdを自動で送る (beat モード限定。drone モードでは切り替わらない)"><input type="checkbox" id="stAutoCycle">Cycle</label>
+              <label title="カメラを自動で周回させる (tunnelでは視線の揺れ)"><input type="checkbox" id="stCamOrbit">Orbit</label>
+              <label title="ON=サイクルでmdを送るたび、初期値へ戻してからそのmdの保存デフォルトを適用(保存が無いmdは初期値) / OFF=保存デフォルトがあるmdだけ読み込み、無いmdは今のパラメータを維持"><input type="checkbox" id="stCycleReload">Reload</label>
+            </div>
+</div>
           <div class="row"><label>Look</label>
-            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="tunnel/cylinderでも文字を常にカメラへ向ける"><input type="checkbox" id="stBillboard">Billboard</label>
-            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="奥/端で文字をフェード (tunnel/fall)"><input type="checkbox" id="stDepthFade">Fade</label>
-            <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="Slot Aでも背景を透過 (下のレイヤーが透ける)"><input type="checkbox" id="stTransBg">BG透過</label>
+            <div class="toggles">
+              <label title="tunnel/cylinderでも文字を常にカメラへ向ける"><input type="checkbox" id="stBillboard">Billboard</label>
+              <label title="奥/端で文字をフェード (tunnel/fall)"><input type="checkbox" id="stDepthFade">Fade</label>
+              <label title="Slot Aでも背景を透過 (下のレイヤーが透ける)"><input type="checkbox" id="stTransBg">BG透過</label>
+            </div>
           </div>
           <div class="row"><label>Emoji</label>
             <label style="display:flex;align-items:center;gap:4px;min-width:auto" title="絵文字を元の色のまま描く (OFF=Ink色のシルエット)"><input type="checkbox" id="stEmojiColor">カラー絵文字</label>
@@ -1070,7 +1088,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
               <option value="image" selected>Image (平均色)</option>
               <option value="color">Color</option>
             </select>
-            <input type="color" id="slBgColor" value="#000000" title="BG=Color のときの背景色 (Slot A で敷く / Slot B は透過)" style="margin-left:6px">
+            <input type="color" id="slBgColor" value="#000000" title="BG=Color のときの背景色 (Slot A で敷く / Slot B は透過)">
           </div>
           <div class="row"><label>Render Scale</label><input type="range" id="slPostScale" min="0.25" max="1.0" step="0.05" value="0.75" title="低いほど高速 (0.5=1/4 pixel)"><div class="val" id="slPostScaleVal">0.75</div></div>
           <div class="help" style="margin-top:6px">画像は images/slicer/ から自動列挙。カーソルキーでオービット、&lt;&gt;でズーム。</div>
@@ -1814,46 +1832,46 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794555535"></script>
-<script src="mode/layer.js?v=1794555535"></script>
-<script src="vendor/iro.min.js?v=1794555535"></script>
-<script src="vendor/mediabunny.min.js?v=1794555535"></script>
-<script src="mode/textdeform.js?v=1794555535"></script>
-<script src="mode/textdeform-comp.js?v=1794555535"></script>
-<script src="mode/ugomeki.js?v=1794555535"></script>
-<script src="mode/slicer.js?v=1794555535"></script>
-<script src="mode/video.js?v=1794555535"></script>
-<script src="mode/aratanagara.js?v=1794555535"></script>
-<script src="vendor/p5.min.js?v=1794555535"></script>
-<script src="mode/cyberui.js?v=1794555535"></script>
-<script src="mode/novel.js?v=1794555535"></script>
-<script src="shaders/inkelly.js?v=1794555535"></script>
-<script src="sketchfx.js?v=1794555535"></script>
-<script src="pixelsortfx.js?v=1794555535"></script>
-<script src="shaders/boltzmann.js?v=1794555535"></script>
-<script src="mode/pen.js?v=1794555535"></script>
-<script src="shaders/caverns.js?v=1794555535"></script>
-<script src="mode/shelf.js?v=1794555535"></script>
-<script src="shaders/ribbon.js?v=1794555535"></script>
-<script src="mode/photoplane.js?v=1794555535"></script>
-<script src="mode/shredder.js?v=1794555535"></script>
-<script src="mode/transflock.js?v=1794555535"></script>
-<script src="mode/liquidpeel.js?v=1794555535"></script>
-<script src="mode/windflock.js?v=1794555535"></script>
-<script src="mode/rhizome.js?v=1794555535"></script>
-<script src="mode/surrealfloat.js?v=1794555535"></script>
-<script src="mode/chrometype.js?v=1794555535"></script>
-<script src="mode/tower4149.js?v=1794555535"></script>
-<script src="mode/fude.js?v=1794555535"></script>
-<script src="mode/image.js?v=1794555535"></script>
-<script src="mode/spacetype.js?v=1794555535"></script>
-<script src="pollockfx.js?v=1794555535"></script>
-<script src="overlay.js?v=1794555535"></script>
-<script src="gif.js?v=1794555535"></script>
-  <script src="ui-icons.js?v=1794555535"></script>
-  <script src="app.js?v=1794555535"></script>
-  <script src="ui-scrollbar.js?v=1794555535"></script>
-  <script src="ui-settings.js?v=1794555535"></script>
-<script src="camroll.js?v=1794555535" defer></script>
+<script src="presets.js?v=1794556387"></script>
+<script src="mode/layer.js?v=1794556387"></script>
+<script src="vendor/iro.min.js?v=1794556387"></script>
+<script src="vendor/mediabunny.min.js?v=1794556387"></script>
+<script src="mode/textdeform.js?v=1794556387"></script>
+<script src="mode/textdeform-comp.js?v=1794556387"></script>
+<script src="mode/ugomeki.js?v=1794556387"></script>
+<script src="mode/slicer.js?v=1794556387"></script>
+<script src="mode/video.js?v=1794556387"></script>
+<script src="mode/aratanagara.js?v=1794556387"></script>
+<script src="vendor/p5.min.js?v=1794556387"></script>
+<script src="mode/cyberui.js?v=1794556387"></script>
+<script src="mode/novel.js?v=1794556387"></script>
+<script src="shaders/inkelly.js?v=1794556387"></script>
+<script src="sketchfx.js?v=1794556387"></script>
+<script src="pixelsortfx.js?v=1794556387"></script>
+<script src="shaders/boltzmann.js?v=1794556387"></script>
+<script src="mode/pen.js?v=1794556387"></script>
+<script src="shaders/caverns.js?v=1794556387"></script>
+<script src="mode/shelf.js?v=1794556387"></script>
+<script src="shaders/ribbon.js?v=1794556387"></script>
+<script src="mode/photoplane.js?v=1794556387"></script>
+<script src="mode/shredder.js?v=1794556387"></script>
+<script src="mode/transflock.js?v=1794556387"></script>
+<script src="mode/liquidpeel.js?v=1794556387"></script>
+<script src="mode/windflock.js?v=1794556387"></script>
+<script src="mode/rhizome.js?v=1794556387"></script>
+<script src="mode/surrealfloat.js?v=1794556387"></script>
+<script src="mode/chrometype.js?v=1794556387"></script>
+<script src="mode/tower4149.js?v=1794556387"></script>
+<script src="mode/fude.js?v=1794556387"></script>
+<script src="mode/image.js?v=1794556387"></script>
+<script src="mode/spacetype.js?v=1794556387"></script>
+<script src="pollockfx.js?v=1794556387"></script>
+<script src="overlay.js?v=1794556387"></script>
+<script src="gif.js?v=1794556387"></script>
+  <script src="ui-icons.js?v=1794556387"></script>
+  <script src="app.js?v=1794556387"></script>
+  <script src="ui-scrollbar.js?v=1794556387"></script>
+  <script src="ui-settings.js?v=1794556387"></script>
+<script src="camroll.js?v=1794556387" defer></script>
 </body>
 </html>
