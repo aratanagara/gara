@@ -263,11 +263,19 @@ void main(){
 
   // ドラッグ&ドロップの臨時フォルダ (セッション限り。blob URL なのでリロードで消える)
   DROP_DIR: '(drop)',
-  addDroppedFiles(files){
-    let f = this._folderByDir(this.DROP_DIR);
-    if(!f){
-      f = { name:'ドロップ (臨時)', dir:this.DROP_DIR, count:0, images:[], _urls:[] };
+  // 臨時フォルダへ blob で追加し、そのフォルダの dir を返す。asFolder = まとめて投げた画像を新しい臨時フォルダにする
+  addDroppedFiles(files, asFolder){
+    let f;
+    if(asFolder){
+      const n = this.folders.filter(x => x && x._urls).length + 1;
+      f = { name:'ドロップ ' + n + ' (臨時)', dir:this.DROP_DIR + n, count:0, images:[], _urls:[] };
       this.folders.unshift(f);
+    } else {
+      f = this._folderByDir(this.DROP_DIR);
+      if(!f){
+        f = { name:'ドロップ (臨時)', dir:this.DROP_DIR, count:0, images:[], _urls:[] };
+        this.folders.unshift(f);
+      }
     }
     let added = 0;
     for(const file of (files || [])){
@@ -277,8 +285,8 @@ void main(){
       added++;
     }
     f.count = f._urls.length;
-    if(added) this.setFolder(this.DROP_DIR);   // アクティブスロットへ
-    return added;
+    if(added) this.setFolder(f.dir);   // アクティブスロットへ
+    return f.dir;
   },
 
   // フォルダ内の特定の画像を選んで表示 (ローカル取り込み直後に、取り込んだ 1 枚を出す)

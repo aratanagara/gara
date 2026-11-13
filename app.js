@@ -198,8 +198,8 @@ const MediaImport = {
     return '';
   },
 
-  async put(file){
-    const r = await fetch('__media?name=' + encodeURIComponent(file.name || ''), { method:'POST', body:file });
+  async put(file, folder){
+    const r = await fetch('__media?name=' + encodeURIComponent(file.name || '') + (folder ? '&folder=' + encodeURIComponent(folder) : ''), { method:'POST', body:file });
     const d = await r.json().catch(()=>null);
     if(!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
     return d;   // {kind, dir, name, url}
@@ -213,11 +213,18 @@ const MediaImport = {
     return this._importBlob(list);
   },
 
+  // 画像を 2 枚以上まとめて投げたら 1 つのフォルダにする (images/drop-YYYYMMDD-HHMMSS/)。1 枚なら images/drop/
+  _batchFolder(list){
+    if(list.filter(f => this.kindOf(f) === 'image').length < 2) return '';
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    return 'drop-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+  },
+
   async _importLocal(list){
-    const done = [];
+    const done = [], folder = this._batchFolder(list);
     for(const f of list){
       toast('取り込み中… ' + f.name);
-      try{ done.push(await this.put(f)); }
+      try{ done.push(await this.put(f, this.kindOf(f) === 'image' ? folder : '')); }
       catch(e){ console.warn('media import failed:', f.name, e); toast('取り込み失敗: ' + f.name); }
     }
     if(!done.length) return 0;
@@ -244,7 +251,7 @@ const MediaImport = {
       if(UI.refreshImageMode) UI.refreshImageMode();
       if(UI.refreshMix) UI.refreshMix();
     }
-    toast(done.length + ' 件を取り込みました (' + (vids.length ? 'movies/ ' : '') + (imgs.length ? 'images/drop/' : '') + ')');
+    toast(done.length + ' 件を取り込みました (' + (vids.length ? 'movies/ ' : '') + (imgs.length ? imgs[0].dir + '/' : '') + ')');
     return done.length;
   },
 
@@ -255,9 +262,10 @@ const MediaImport = {
     let n = 0;
     if(imgs.length && typeof ImageMode !== 'undefined'){
       if(!ImageMode.initialized && GL.gl) ImageMode.init(GL.gl);
-      n += ImageMode.addDroppedFiles(imgs);
-      const f = ImageMode._folderByDir(ImageMode.DROP_DIR);
-      if(!vids.length && f) this._toImageSlot(ImageMode.DROP_DIR, f.images[f.images.length - 1] || '');
+      const dir = ImageMode.addDroppedFiles(imgs, imgs.length >= 2);   // 2 枚以上は新しい臨時フォルダ
+      const f = ImageMode._folderByDir(dir);
+      n += imgs.length;
+      if(!vids.length && f) this._toImageSlot(dir, f.images[f.images.length - 1] || '');
     }
     if(vids.length && typeof Movie !== 'undefined'){
       if(!Movie.initialized && GL.gl) Movie.init(GL.gl);
@@ -17926,14 +17934,14 @@ void mainImage(out vec4 o, in vec2 f){
     // ── チェックボックス ──
     {
       const row = mkRow('Layers');
+      const grp = document.createElement('div'); grp.className = 'toggles'; row.appendChild(grp);   // 並ぶチェックはトグルボタン (共通部品 .toggles)
       const mkCb = (key, name, title)=>{
         const lab = document.createElement('label');
-        lab.style.cssText = 'display:flex;align-items:center;gap:4px;min-width:auto';
         if(title) lab.title = title;
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = P[key] !== false;
         cb.addEventListener('change', ()=>{ P[key] = cb.checked; App._undoSchedule(); });
         lab.appendChild(cb); lab.appendChild(document.createTextNode(name));
-        row.appendChild(lab);
+        grp.appendChild(lab);
       };
       mkCb('vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー');
       mkCb('holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー');
@@ -18857,13 +18865,16 @@ void mainImage(out vec4 o, in vec2 f){
       if(this.applyVisualFilter) this.applyVisualFilter();
     });
   },
-  // Visual タブ: Mode > Movie > Shader の順でグリッド表示 (Movie は動画ファイルを統合)
+  // Visual タブ: Code / Movie / Shader を欄 (.visSec) ごとのグリッドへ表示 (Movie は動画ファイルを統合)
   populatePresets(){
-    const grid = $('#thumbGrid');
-    if(!grid) return;
+    const root = $('#thumbGrid');
+    if(!root) return;
+    const grids = {};
+    root.querySelectorAll('.visSec').forEach(sec => { grids[sec.dataset.cat] = sec.querySelector('.visGrid'); });
+    const gen = this._visGen = (this._visGen || 0) + 1;
     this._syncVisualNamesFromServer();   // 初回のみ Visual 表示名をサーバーと同期(完了後に再描画)
     if(!App._modeGifFetched){ App._modeGifFetched = true; App._loadModeGifs(); }   // 共通GIFを一度だけ取得
-    grid.innerHTML = '';
+    for(const k in grids) grids[k].innerHTML = '';
     this.thumbCanvases = new Array(PRESETS.length);
 
     // サムネ JPG が無いシェーダは、最初の 1 フレームだけを 1 フレームに 1 本ずつ先読みで描く。
@@ -18908,16 +18919,6 @@ void mainImage(out vec4 o, in vec2 f){
         }
       }
     }
-
-    const addLabel = (text)=>{
-      const h = document.createElement('div');
-      h.textContent = text;
-      h.className = 'visLabel';
-      h.dataset.lbl = text.toLowerCase();
-      h.style.cssText = 'grid-column:1/-1;font:600 10px var(--mono);color:var(--dim);letter-spacing:1px;margin:7px 0 1px;border-bottom:1px solid var(--line);padding-bottom:2px';
-      grid.appendChild(h);
-      return h;
-    };
 
     // 1 プリセット分のタイル (thumbCanvases[i] に canvas を割当)。クリックで現スロットにロード。
     const makeTile = (i, catOverride)=>{
@@ -19030,7 +19031,7 @@ void mainImage(out vec4 o, in vec2 f){
       // Code / Shader は同じ区分の中でドラッグ並べ替え可 (各見出しの先頭に置く「なし」は除く)
       const rcat = catOverride ? null : App._presetCat(p);
       if(rcat) UI._bindReorder(tile, rcat, i, (from, to, before)=> App.catalogReorder(from, to, before));
-      grid.appendChild(tile);
+      grids[tile.dataset.cat].appendChild(tile);
       this.thumbCanvases[i] = c;
       c.addEventListener('__drawn__', ()=>{ if(ph.parentNode) ph.parentNode.removeChild(ph); });
       // 遅延ローディング対象として監視 (シェーダ系のみ。可視時に _queueThumb で compile)
@@ -19084,14 +19085,10 @@ void mainImage(out vec4 o, in vec2 f){
 
     // 「なし(透明)」は各セクションの先頭に置く (どのカテゴリで絞っても選べるように)
     const noneIdx = PRESETS.findIndex(p => p && p.kind === 'none');
-    // Mode / Shader は同期描画、Movie はフォルダ走査後に Mode と Shader の間へ挿入
-    // Code エントリが「なし」以外に無ければセクションごと出さない (VIDEO はタイル非表示なので除外)
-    const codeCount = modeIdx.filter(i => PRESETS[i].kind !== 'none' && PRESETS[i].kind !== 'video').length;
-    if(codeCount){ addLabel('Code');   modeIdx.forEach(i => makeTile(i)); }
-    const movieLbl  = addLabel('Movie');
+    // Code / Shader は同期描画、Movie はフォルダ走査後に Movie 欄へ追加
+    modeIdx.forEach(i => makeTile(i));
+    grids.movie.appendChild(this._importTile('動画', '#fileMovieImport', 'movie'));   // ドロップできない環境 (スマホ) 向けの読み込み (欄の先頭 1 行)
     if(noneIdx >= 0) makeTile(noneIdx, 'movie');            // Movie セクションの先頭
-    grid.appendChild(this._importTile('動画', '#fileMovieImport', 'movie'));   // ドロップできない環境 (スマホ) 向けの読み込み
-    const shaderLbl = addLabel('Shader');
     if(noneIdx >= 0) makeTile(noneIdx, 'shader');           // Shader セクションの先頭
     shaderIdx.forEach(i => makeTile(i));
 
@@ -19105,21 +19102,21 @@ void mainImage(out vec4 o, in vec2 f){
       try{ if(typeof Movie !== 'undefined'){ if(!Movie.initialized && typeof GL !== 'undefined' && GL.gl) Movie.init(GL.gl); movies = await Movie.scanFolder(); } }catch(e){}
       // 書き込み不可配信でブラウザ保存 (IndexedDB) した取り込み動画も一覧へ足す
       movies = (movies || []).concat((typeof MediaImport !== 'undefined') ? MediaImport.storedVideos : []);
-      if(shaderLbl.parentNode !== grid) return;   // await 中に再ビルドされたら旧ラベルは detach 済み → insertBefore 例外を防ぐ
-      if(!movies || !movies.length) return;   // 見出しと「＋ 動画」タイルは残す
+      if(gen !== UI._visGen) return;   // await 中に再ビルドされたら、古い一覧を足さない
+      if(!movies || !movies.length) return;   // Movie 欄と「＋ 動画」タイルは残す
       // 保存済みの並び順で並べ (M 番号は表示順)、Movie の中でドラッグ並べ替え可
       movies = App._sortByOrder(movies, 'movie', m => m.name);
       const mnames = movies.map(m => m.name);
       movies.forEach((item, i)=>{
         const tile = makeMovieTile(item, i + 1);
         UI._bindReorder(tile, 'movie', item.name, (from, to, before)=> App._reorderNames('movie', mnames, from, to, before));
-        grid.insertBefore(tile, shaderLbl);
+        grids.movie.appendChild(tile);
       });
       UI.applyVisualFilter();
     })();
   },
 
-  // 画像 / 動画の読み込みタイル (サムネと同じ大きさ。クリックで file input を開き、ドロップと同じ MediaImport で取り込む)
+  // 画像 / 動画の読み込みタイル (欄の先頭 1 行、高さはサムネ 1 枚ぶん。クリックで file input を開き、ドロップと同じ MediaImport で取り込む)
   _importTile(what, inputSel, cat){
     const tile = document.createElement('div');
     tile.className = 'thumb-tile import-tile';
@@ -19156,17 +19153,17 @@ void mainImage(out vec4 o, in vec2 f){
     const q = (inp ? inp.value : '').toLowerCase().trim();
     const onBtn = document.querySelector('.visFilter.on');
     const cat = onBtn ? onBtn.dataset.cat : 'all';
-    $$('#thumbGrid .thumb-tile').forEach(t=>{
-      const name = ((t.querySelector('.label')||{}).textContent || t.title || '').toLowerCase();
-      const okQ = !q || name.includes(q);
-      const okCat = (cat === 'all') || (t.dataset.cat === cat);
-      t.style.display = (okQ && okCat) ? '' : 'none';
-    });
-    $$('#thumbGrid .visLabel').forEach(l=>{
-      let show = true;
-      if(q) show = false;                          // 検索中は見出しを隠す(結果が混在)
-      else if(cat !== 'all') show = (l.dataset.lbl === cat);
-      l.style.display = show ? '' : 'none';
+    $$('#thumbGrid .visSec').forEach(sec=>{
+      const okCat = (cat === 'all') || (sec.dataset.cat === cat);
+      let hits = 0;
+      sec.querySelectorAll('.thumb-tile').forEach(t=>{
+        const imp = t.classList.contains('import-tile');   // 読み込みタイルは検索結果ではないので、検索中は隠す
+        const name = ((t.querySelector('.label')||{}).textContent || t.title || '').toLowerCase();
+        const okQ = !q || (!imp && name.includes(q));
+        t.style.display = okQ ? '' : 'none';
+        if(okQ) hits++;
+      });
+      sec.style.display = (okCat && (!q || hits)) ? '' : 'none';   // 検索中は 1 件もヒットしない欄を隠す
     });
   },
 

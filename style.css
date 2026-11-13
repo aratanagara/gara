@@ -199,7 +199,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #slotSel button.editing{outline:2px solid #ff00aa;outline-offset:-2px}
 
 /* Shader thumbnail grid */
-#thumbGrid{display:grid;grid-template-columns:repeat(var(--thumb-cols),1fr);gap:6px;margin-top:4px}
+#thumbGrid{margin-top:8px}
+.visGrid{--vis-cols:var(--thumb-cols);display:grid;grid-template-columns:repeat(var(--vis-cols),1fr);gap:6px;margin-top:6px;container-type:inline-size}
 .thumb-tile{position:relative;cursor:pointer;border:2px solid var(--line);border-radius:4px;overflow:hidden;background:#000;aspect-ratio:4/3;transition:border-color .12s, transform .12s}
 @media (hover:hover){ .thumb-tile:hover{border-color:var(--acc2);transform:scale(1.02);z-index:1} }
 .thumb-tile.on{border-color:var(--acc)}
@@ -291,7 +292,8 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
 
 /* サムネ(Visual / Preset)の列数は --thumb-cols。スマホ幅だけ 2 列に固定 */
 @media (max-width: 600px){
-  #thumbGrid,#presetList{grid-template-columns:repeat(2,1fr)}
+  #presetList{grid-template-columns:repeat(2,1fr)}
+  .visGrid{--vis-cols:2}
 }
 
 /* スマホ縦 / 狭幅: 縦積み。高さは fr で配分 (vh は使わない)。
@@ -493,5 +495,20 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
   #side input[type=range]:not(.huebar){height:var(--ctl-h)}
   .ico-btn{width:28px;height:28px}
 }
-.thumb-tile.import-tile{display:flex;align-items:center;justify-content:center;background:transparent;border-style:dashed;color:var(--dim);font:600 11px var(--mono)}
+/* 読み込みタイル: 欄の先頭で 1 行ぶんの幅。高さは同じ欄のサムネ 1 枚 (列幅 × 3/4) に合わせる */
+.thumb-tile.import-tile{grid-column:1/-1;aspect-ratio:auto;height:calc((100cqw - (var(--vis-cols) - 1)*6px)/var(--vis-cols)*.75);display:flex;align-items:center;justify-content:center;background:transparent;border-style:dashed;color:var(--dim);font:600 11px var(--mono)}
 @media (hover:hover){ .thumb-tile.import-tile:hover{color:var(--fg)} }
+/* 共通部品 .toggles: 横に並ぶチェックボックスをトグルボタンにする (並ぶと幅が足りず溢れるため。単独のチェックはそのまま)。
+   <div class="toggles"><label><input type="checkbox" id="…">名前</label>…</div>。input は残すので状態とイベントは従来どおり。
+   toggle-btns と同じく罫線を共有して連結する */
+.toggles{flex:1;display:flex;min-width:0}
+.toggles > label{flex:1 1 0;min-width:0;display:flex;align-items:center;justify-content:center;height:var(--ctl-h);padding:0 6px;border:1px solid var(--line2);border-radius:var(--radius);color:var(--dim);font-size:var(--fs);cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;position:relative}
+.toggles > label + label{margin-left:-1px}
+.toggles > label > input[type=checkbox]{position:absolute;opacity:0;width:0;height:0;margin:0;pointer-events:none}
+.toggles > label:has(> input:checked){background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg);z-index:1}
+.toggles > label:has(> input:checked) + label:has(> input:checked){border-left-color:var(--panel)}
+@media (hover:hover){ .toggles > label:not(:has(> input:checked)):hover{color:var(--fg);border-color:var(--fg);z-index:1} }
+.toggles > label:has(> input:focus-visible){outline:1px solid var(--acc);outline-offset:1px}
+/* 行の select は縮めてよい (既定の min-width:auto だと狭い画面で行から溢れる) */
+#side .row > select{min-width:0}
+#cfAutoMode{flex:1}

@@ -151,7 +151,9 @@ function importMedia(root, req, res, u){
   const name = path.basename(raw).replace(/[\\/:*?"<>|]/g, '_').replace(/[\u0000-\u001f]/g, '');
   const isVid = VID_RE.test(name), isImg = IMG_RE.test(name);
   if(!name || (!isVid && !isImg)){ sendJson(res, 400, { ok:false, error:'unsupported file: ' + raw }); return; }
-  const relDir = isVid ? 'movies' : ('images/' + DROP_FOLDER);
+  // folder = まとめて投げた画像の取り込み先 (images/<folder>/)。英数と - _ だけ許す。無ければ images/drop/
+  const folder = String(u.searchParams.get('folder') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
+  const relDir = isVid ? 'movies' : ('images/' + (folder || DROP_FOLDER));
   const dir = path.join(root, relDir);
   let target;
   try{
