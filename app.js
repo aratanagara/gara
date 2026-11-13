@@ -5049,7 +5049,7 @@ void main(){
     // 数十秒〜数分かかることがあり、待っている間ステージが黒くなるのを防ぐ)。完成したら自動で切替。
     const P = this.compositeProg || this.compositeFallbackProg;
     if(!P) return;   // 両方とも未完成 (ローディング画面が出ている)
-    // Overlay でテクスチャとして再利用するため、まず中間 FBO に composite
+    // 中間 FBO (_finalFBO) に composite し、Post FX を順に掛けてから最後に画面へ blit
     this._ensureFinalFBO();
     if(P===this.compositeProg && !this._candyWarmed) this._warmCandyProgram();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
@@ -5277,6 +5277,7 @@ void main(){
     //   2) Mondrian/Rings(合成内) + Slit-scan
     //   3) Barcode + Voxel(合成内) + Datamosh + Pixelsort
     //   4) マチエール: Relief + Bleed + Impasto + Chrome
+    //   4.5) IMAGON (Overlay の筆跡)
     //   5) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
     //   6) 折り紙系: Needle → Origami → Kaiser (+Flames)
     //   7) Twist + FB Add/Multiply
@@ -5312,7 +5313,8 @@ void main(){
     this._applyChromePost(p, _safe);
     this._applyGlossPost(p, _safe);
 
-    this._applyPresetTrans();   // プリセット切替の全画面トランジション (色調補正の直前)
+    this._applyPresetTrans();   // プリセット切替の全画面トランジション
+    this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (色調補正以降の Post FX が筆跡にも掛かる)
 
     // 5) 色調補正 (Sat/Hue/Brightness/Contrast)
     this._applyFinalColorGrade();
@@ -5551,6 +5553,24 @@ void main(){
 
   // 最終カラーグレード: Sat/Hue/Brightness/Contrast は通常 Post FX / Transition の後にだけ適用する。
   // Boltzmann / Pollock はこの後に描くので、カラーグレードや Audio FX を被らない。
+  _applyImagonPost(){
+    if(typeof Overlay === 'undefined' || !Overlay.initialized || !Overlay.P.enabled || !Overlay.strokes.length || !this._finalFBO) return;
+    const gl = this.gl, fb = this._finalFBO;
+    // pickup ソース = _finalFBO のコピー (同一テクスチャの read/write 衝突を避ける)
+    if(!this._ovSrcFBO) this._ovSrcFBO = this._mkFBO(fb.w, fb.h); else this._resizeFBO(this._ovSrcFBO, fb.w, fb.h);
+    const os = this._ovSrcFBO;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, os.fbo);
+    gl.blitFramebuffer(0,0,fb.w,fb.h, 0,0,os.w,os.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fb.fbo);
+    gl.viewport(0,0,fb.w,fb.h);
+    gl.bindVertexArray(null);
+    Overlay.sourceTex = os.tex;
+    Overlay.render(fb.w, fb.h);
+    for(const loc of [Overlay.locs.pos, Overlay.locs.uv, Overlay.locs.soft]) if(loc >= 0) gl.disableVertexAttribArray(loc);   // 後段の無 VAO パスへ属性配列を持ち越さない
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  },
+
   _applyFinalColorGrade(){
     const gl = this.gl;
     if(!this.pipProg || !this._finalFBO) return;
@@ -8175,34 +8195,11 @@ void main(){
       this._renderVisibleSlot('B', dt, realDt);
     }
     this._wasFrozen = frozen || freezeRequested;
-    // Overlay は _finalFBO に焼き込んでから画面へ present する。
-    //   こうしないと Overlay がキャンバス(デフォルトFBO)にだけ乗り、_finalFBO から読む
-    //   screenshot / サムネ / 録画に反映されない。
+    // Overlay (IMAGON) は composite 内 (_applyImagonPost) で _finalFBO に焼き込まれる。
+    //   色調補正・折り紙・FB などの後段 Post FX が筆跡にも掛かり、screenshot / サムネ / 録画にも反映される。
     const ovOn = (typeof Overlay !== 'undefined' && Overlay.initialized);
     if(ovOn) Overlay.update(BPM.beatCount(), realDt * App.speed);   // フリーズ中も動く(Post FX 扱い)
-    const drawOv = ovOn && Overlay.P.enabled && Overlay.strokes.length > 0 && this._finalFBO;
-    this.composite(!drawOv);                        // Overlay を描くフレームは _finalFBO に留める(まだ画面に出さない)
-    if(drawOv){
-      const gl = this.gl, fb = this._finalFBO;
-      // pickup ソース = _finalFBO のコピー (同一テクスチャの read/write 衝突を避ける)
-      if(!this._ovSrcFBO) this._ovSrcFBO = this._mkFBO(fb.w, fb.h); else this._resizeFBO(this._ovSrcFBO, fb.w, fb.h);
-      const os = this._ovSrcFBO;
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb.fbo);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, os.fbo);
-      gl.blitFramebuffer(0,0,fb.w,fb.h, 0,0,os.w,os.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      // Overlay を _finalFBO に上描き
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fb.fbo);
-      gl.viewport(0,0,fb.w,fb.h);
-      Overlay.sourceTex = os.tex;
-      Overlay.render(fb.w, fb.h);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      // 画面へ present (Overlay 込み)
-      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, fb.fbo);
-      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-      gl.blitFramebuffer(0,0,fb.w,fb.h, 0,0,this.canvas.width,this.canvas.height, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0,0,this.canvas.width,this.canvas.height);
-    }
+    this.composite(true);
     this._pollAsyncReads();                             // 非同期 readPixels (PBO) の完了分を回収
     // 録画中はプレビュー類の更新を間引いて描画・エンコードに帯域を譲る
     const recActive = (typeof Record !== 'undefined' && Record.active);
@@ -12702,12 +12699,13 @@ const App = {
     material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','pollockGloss','pollockMatt','pollockFlat'],
     texture:    ['scn','grn','texNoise','texNoiseScale','pos','blm','voxel'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','split','pixsort','rings','gain'],
-    distortion: ['chr','pix','mir','candy','twist','origami','kaiser','kaiserOld','uzumaki','river','boltz'],
+    distortion: ['chr','pix','mir','candy','twist','boltz'],
+    fx3d:       ['origami','kaiser','kaiserOld','uzumaki','river'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','outline'],
     glitch:     ['slice','ringSlice','ringBlur','slitScan','barcode','glitchTrail','glitchTrailType'],
   },
   // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
-  POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch' },
+  POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion' },
   // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
   INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper'],
   postGroupSaved(group){

@@ -7,6 +7,16 @@
    IF: init(gl) / update() / render({fbo,w,h,slot,beat,clock}) / P(params)
 */
 
+/* Object.create(PhotoPlane) で派生インスタンス (3D FX 等) を作るとき、own プロパティにしなければならないもの:
+     P, cam             (P は deep copy。cam は render が in-place 更新する)
+     textures, texAspects   (FX 側は textures=[srcTex]; texAspects=[w/h])
+     planes             (generateLayout が代入)
+     depthRBO, depthW, depthH   (_ensureDepth が作り直す。opts.keepDepth を渡せば不要)
+     _lastT, _lastCamT, _lastBeatC, _lastBeatInt, _retargetT, _layoutSalt   (render が代入するので自然に own。初期値は未定義のまま)
+     texFlipY           (true にすると generateLayout の crop の v を反転。FBO テクスチャ用。既定 undefined)
+   プロトタイプ共有でよいもの: gl, prog, vao, vbo, ibo, idxCount, loc, defaultTex, ok, initialized, m4, startTime。
+   FX 用: render(opts) に clock (数値) / keepDepth:true (呼び出し側 FBO の深度を使い、RBO の付け外しをしない)。
+          P.softFocus は 0 にする (texture(uTex,uv,bias) はミップ前提。FBO テクスチャはミップ無し)。 */
 const PhotoPlane = {
   gl:null, initialized:false,
   prog:null, vao:null, vbo:null, ibo:null, idxCount:0,
@@ -287,7 +297,7 @@ void main(){
         aspect,
         bend:[(rng()-.5)*2, (rng()-.5)*2],
         seed:rng()*10,
-        crop:[u0, v0, u0+cw, v0+ch],
+        crop:this.texFlipY ? [u0, 1-v0, u0+cw, 1-(v0+ch)] : [u0, v0, u0+cw, v0+ch],
         texIdx:tIdx,
       };
     });
@@ -353,9 +363,9 @@ void main(){
     const view=this.m4.lookAt(eye,look,up);
     const vp=this.m4.mul(proj,view);
 
-    this._ensureDepth(w,h);
+    if(!opts.keepDepth) this._ensureDepth(w,h);
     gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,this.depthRBO);
+    if(!opts.keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,this.depthRBO);
     gl.viewport(0,0,w,h);
     const isB = (opts.slot === 'B');
     gl.clearColor(P.bg[0],P.bg[1],P.bg[2], isB ? 0.0 : 1.0);   // Slot B は背景透過(下の Slot A が透ける)
@@ -434,7 +444,7 @@ void main(){
     }
 
     gl.bindVertexArray(null);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,null);
+    if(!opts.keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,null);
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   },
 };

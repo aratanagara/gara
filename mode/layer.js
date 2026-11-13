@@ -6,6 +6,16 @@
    - Drone/Beat モード切替対応 (BPM/iBeatPhase に同期)
 */
 
+/* Object.create(Layer) で派生インスタンス (3D FX 等) を作るとき、own プロパティにしなければならないもの:
+     P            (render/generateLayout が in-place 参照。deep copy を渡す)
+     cam          ({az,el,dist,target}。render が this.cam.az += で in-place 更新する)
+     textures, texAspects, texKeyColors  (配列ごと own。FX 側は textures=[srcTex]; texAspects=[w/h]; texKeyColors=[])
+     planes       (generateLayout が代入。sp.autoAngle/floatY を render が in-place 更新)
+     _ar, _tintPl (render が毎フレーム代入するので自然に own になる)
+   プロトタイプ共有でよいもの: gl, programs, locs, geo, defaultTex, shadowMap/shadowRBO/shadowFBO (同フレーム内で逐次使用),
+     v3/m4, SHADOW_SZ, initialized, startTime。
+   texIdx は textures.length 非依存 (texKeyColors[tIdx] が undefined でも keyA=0 で安全)。
+   render(opts.clock が数値なら時刻として使う) */
 const Layer = {
   gl:null,
   initialized:false,
@@ -678,7 +688,8 @@ void main(){
     // 時間／拍数からアニメ駆動
     const sp = (typeof App !== 'undefined' && App.speed) ? App.speed : 1.0;
     // 全体 speed 反映済みクロック (GL.clock) を使用。利用不可なら従来の実時刻。
-    const t = (typeof GL !== 'undefined' && typeof GL.clock === 'number') ? GL.clock : (performance.now()/1000 - this.startTime);
+    // opts.clock (数値) があればそれを優先 (3D FX 用インスタンスが時刻を外から渡す)
+    const t = (typeof opts.clock === 'number') ? opts.clock : ((typeof GL !== 'undefined' && typeof GL.clock === 'number') ? GL.clock : (performance.now()/1000 - this.startTime));
 
     // motion: beat モードなら拍ベース、それ以外は時間ベース
     let motionT;
