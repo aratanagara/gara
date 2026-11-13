@@ -15,6 +15,7 @@
 */
 
 const Tower4149 = {
+  fx3dVertex: true,   // 3D FX (Needle / Origami / Kaiser) を 3D のまま掛けられる (頂点フック fx3dApply を持つ)
   gl:null, initialized:false, ok:false,
   progMesh:null, progBg:null, vaoMesh:null, vaoBg:null, nVert:0,
   msaa:null, startTime:0,
@@ -174,7 +175,8 @@ vec3 env(vec3 r){
   return c;
 }`;
 
-    this.progMesh = this._link(`#version 300 es
+    // hook = true の版は 3D FX を 3D のまま掛けるフレームだけ使う (フック分岐を足した頂点シェーダは浮動小数の並びが変わり、通常の絵が 1 階調ずれるため別プログラムにする)
+    const mkMesh = (hook)=>this._link(`#version 300 es
 precision highp float;
 in vec3 aP0;             // 単位球の頂点 (この頂点)
 in vec3 aP1;             // 同じ三角形の残り 2 点 (面法線用。巻き順はこの頂点から反時計回り)
@@ -195,6 +197,7 @@ uniform float uLump;      // 核のデコボコ
 uniform float uWrink;     // しわの空間周波数
 out vec3 vW;
 out vec3 vN;
+${hook ? 'out vec3 vClip0;' + GL.fx3dHookGLSL() : ''}
 float h31(vec3 p){ p = fract(p*0.1031); p += dot(p, p.zyx + 31.32); return fract((p.x + p.y)*p.z); }
 float vnoise(vec3 p){
   vec3 i = floor(p), f = fract(p);
@@ -226,11 +229,12 @@ void main(){
   vec3 p0 = deform(aP0), p1 = deform(aP1), p2 = deform(aP2);
   vN = uRot*cross(p1 - p0, p2 - p0);
   vW = uRot*p0 + uCenter;
-  gl_Position = uVP*vec4(vW, 1.0);
+  ${hook ? 'vec4 c0 = uVP*vec4(vW, 1.0); vClip0 = c0.xyw; gl_Position = fx3dApply(c0);' : 'gl_Position = uVP*vec4(vW, 1.0);'}   // 3D のまま掛ける版だけ折り空間へ移す (元の画面の外は FS で切る)。影・別パスにはフックなし
 }`, `#version 300 es
 precision highp float;
 in vec3 vW;
 in vec3 vN;
+${hook ? 'in vec3 vClip0; uniform float uFx3dClip;' : ''}
 out vec4 frag;
 uniform vec3 uCam;
 uniform float uRefl;
@@ -238,6 +242,7 @@ uniform float uRimPow;
 uniform float uTint;
 ${ENV}
 void main(){
+  ${hook ? 'vec2 n0 = vClip0.xy / vClip0.z; if(max(abs(n0.x), abs(n0.y)) > 1.0 + uFx3dClip) discard;   // 元の画面の外は g = 0 で切り、g が上がるほど広げる' : ''}
   vec3 N = normalize(vN);
   vec3 V = normalize(vW - uCam);
   if(dot(N, V) > 0.0) N = -N;
@@ -247,6 +252,8 @@ void main(){
   col += vec3(1.0)*pow(max(dot(R, normalize(vec3(-0.4, 0.8, 0.45))), 0.0), 120.0)*1.2;
   frag = vec4(col, 1.0);
 }`);
+    this.progMesh = mkMesh(false);
+    this._mkMesh = mkMesh;
 
     this.progBg = this._link(`#version 300 es
 precision highp float;
@@ -457,14 +464,7 @@ void main(){
     const bc = Array.isArray(P.bgColor) ? P.bgColor : this.PDefaults.bgColor;
     const opaque = opts.opaque !== false;
     const M = this._ensureMSAA(w, h);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
-    gl.viewport(0, 0, w, h);
-    gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
-    gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
-    gl.depthMask(true);
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-
-    if(opaque){
+    const drawBg = ()=>{
       gl.disable(gl.DEPTH_TEST);
       gl.useProgram(this.progBg);
       gl.uniform3f(gl.getUniformLocation(this.progBg, 'uTop'), bc[0], bc[1], bc[2]);
@@ -473,10 +473,35 @@ void main(){
       gl.uniform1f(gl.getUniformLocation(this.progBg, 'uBgGlow'), 0.25*Math.max(0, dz(P.skyGlow)*0.01));
       gl.bindVertexArray(this.vaoBg);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+    };
+    // 3D のまま掛けるフレーム: 背景 (空) を紙のテクスチャに描き、紙 (折りの格子) を先に描いてから物体を重ねる。Slot B は紙なし
+    const fr3 = (typeof GL !== 'undefined') ? GL._fx3dFrame : null;
+    const on3d = !!(fr3 && fr3.target === opts.slot);
+    if(on3d){
+      let paperTex = null;
+      if(opaque){
+        const PT = GL.fx3dPaperTarget(w, h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, PT.fbo);
+        gl.viewport(0, 0, w, h);
+        gl.disable(gl.BLEND);
+        drawBg();
+        paperTex = PT.tex;
+      }
+      GL.fx3dBegin(M.fbo, w, h, paperTex);
+    } else {
+      gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
+      gl.viewport(0, 0, w, h);
+      gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
+      gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
+      gl.depthMask(true);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      if(opaque) drawBg();
     }
+    gl.disable(gl.CULL_FACE);
 
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
-    const pm = this.progMesh, U = (n)=>gl.getUniformLocation(pm, n);
+    if(on3d && !this.progMesh3d) this.progMesh3d = this._mkMesh(true);
+    const pm = (on3d && this.progMesh3d) ? this.progMesh3d : this.progMesh, U = (n)=>gl.getUniformLocation(pm, n);
     gl.useProgram(pm);
     gl.uniformMatrix4fv(U('uVP'), false, VP);
     gl.uniformMatrix3fv(U('uRot'), false, new Float32Array(R));
@@ -499,6 +524,7 @@ void main(){
     gl.uniform1f(U('uRefl'), dz(P.reflect)/100);
     gl.uniform1f(U('uRimPow'), Math.max(0.5, dz(P.rimPow)));
     gl.uniform1f(U('uTint'), Math.max(0, dz(P.tint)*0.01));
+    if(pm === this.progMesh3d){ GL.fx3dUniforms(pm, proj, camZ + 1.5*persK); gl.uniform1f(U('uFx3dClip'), fr3.g >= 0.9999 ? 1e6 : 0.6*fr3.g/(1.0 - fr3.g)); }   // 紙 = 物体の奥側 (全部が紙より手前に来る)
     gl.bindVertexArray(this.vaoMesh);
     gl.drawArrays(gl.TRIANGLES, 0, this.nVert);
     gl.bindVertexArray(null);
