@@ -123,6 +123,7 @@
       if(window.PseudoScroll) PseudoScroll.refresh();
     };
     defs.forEach(d => d.btn.addEventListener('click', () => cur === d ? back() : open(d)));
+    defs.forEach(d => { const x = d.pane.querySelector('.modal-close'); if(x) x.addEventListener('click', back); });
     document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', leave));
     // 開いている間: Esc = 閉じるだけ (全スロットのリセットへ流さない) / Tab = 開く前のタブを起点に送る
     window.addEventListener('keydown', (e) => {
@@ -146,6 +147,7 @@
     const fnChecks = [...pane.querySelectorAll('input[type=checkbox][data-fn]')];
     const prefs = [...pane.querySelectorAll('[data-pref]')];
     const micSel = $('#setMicDev');
+    $('#setWakeLock').dataset.def = Prefs.touch ? '1' : '0';   // Wake Lock の既定はタッチ端末だけ ON
     let saved = VJUI.load();
     let cur = { ...saved };
 
@@ -227,6 +229,12 @@
       const f = (n) => { const k = (n + h / 30) % 12, a = s / 100 * Math.min(l / 100, 1 - l / 100);
         return Math.round(255 * (l / 100 - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)))).toString(16).padStart(2, '0'); };
       change({ acc: '#' + f(0) + f(8) + f(4) });
+    });
+
+    // 説明は title 属性にしか無いのでタップでは読めない: ラベルのタップでトーストに出す
+    pane.addEventListener('click', (e) => {
+      const lb = e.target.closest('.row[title] > label');
+      if(lb && App._coarse()) toast(lb.parentElement.title);   // タッチ端末だけ (PC はホバーで読める)
     });
 
     const isOpen = () => pane.classList.contains('on');

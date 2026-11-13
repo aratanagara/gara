@@ -51,6 +51,7 @@ const Prefs = {
     return this._c[k] = v;
   },
   on(k, d){ return this.get(k, d) !== '0'; },
+  touch: !!(window.matchMedia && matchMedia('(pointer: coarse)').matches),   // タッチ端末か
   set(k, v){
     this._c[k] = String(v);
     try{ localStorage.setItem('vj.' + k, String(v)); }catch(_){}
@@ -11543,7 +11544,7 @@ const Diag = {
     // 前回が clean shutdown でなければ異常終了の可能性を通知
     const last = this.events[this.events.length-1];
     if(last && last.type !== 'shutdown'){
-      try{ if(typeof toast === 'function') toast('前回異常終了の可能性。Tempo→Diagnostics でログ確認', 4000); }catch(e){}
+      try{ if(typeof toast === 'function') toast('前回異常終了の可能性。Settings→Diagnostics でログ確認', 4000); }catch(e){}
     }
     this.log('boot', (navigator.userAgent||'').slice(0,160));
     window.addEventListener('error', (e)=>{
@@ -11976,7 +11977,7 @@ const App = {
   // 画面のスリープ抑止 (Wake Lock。ブラウザ版のみ。アプリ版は desktop/main.js の powerSaveBlocker が抑止済み)
   async applyWakeLock(){
     if(/Electron/i.test(navigator.userAgent || '') || !navigator.wakeLock) return;
-    if(!Prefs.on('wakeLock', '0')){
+    if(!Prefs.on('wakeLock', Prefs.touch ? '1' : '0')){
       if(this._wakeLock){ try{ this._wakeLock.release(); }catch(e){} this._wakeLock = null; }
       return;
     }
@@ -12165,7 +12166,7 @@ const App = {
     return fmt(v);
   },
   // ── Audio → Post FX: 音でエフェクト全般を揺らす ────────────────────────
-  //   対象外: 色調補正 (Post FX 見出し配下) と Grad / Auto Map、および Audio FX 見出し配下
+  //   対象外: 色調補正 (Color 見出し配下。Vignette は除く) と Grad / Auto Map、および Audio FX 見出し配下
   //   (後者は元から音駆動なので二重に掛けない)。設定値・離散値も対象外。
   AUDIO_MOD_EXCLUDE: {
     inkBleedSpread:1, inkBleedFiber:1, inkBleedEdge:1, inkBleedNode:1, inkBleedSeed:1,
@@ -12290,7 +12291,7 @@ const App = {
   },
   // プリセットの post を適用: 数値はフェード / bool・配列・enum(palette 等)は即時
   // Param Fade で補間せず常に瞬時反映するキー。
-  //   離散値(palette/cosPalette/mir)に加えて、Post FX 見出し配下の色調補正
+  //   離散値(palette/cosPalette/mir)に加えて、Color 見出し配下の色調補正
   //   (色の基調そのものは切り替え時に一気に変わってほしい)と、
   //   Audio FX 見出し配下(音/拍に対して瞬時に反応する必要があり、フェードすると
   //   トリガーが鈍る)を対象外にする。
@@ -12696,15 +12697,19 @@ const App = {
   // Post FX のグループ既定値: 各見出し (Quality / Material / …) の Save で現在値を
   // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
   POST_GROUPS: {
-    color:      ['inv','gamma','bri','con','sat','gradMix','hue','hueRotSpeed'],
+    color:      ['inv','gamma','bri','con','sat','gradMix','hue','hueRotSpeed','vig'],
     quality:    ['clarity','denoise','deband','vibrance','unsharp','unsharpRadius','fxaa'],
     material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','pollockGloss','pollockMatt','pollockFlat'],
     texture:    ['scn','grn','texNoise','texNoiseScale','pos','blm','voxel'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','split','pixsort','rings','gain'],
-    distortion: ['vig','chr','pix','mir','candy','twist','origami','kaiser','kaiserOld','uzumaki','river','boltz'],
-    blur:       ['slit2','filmBlur','glass','dither','mblur'],
-    glitch:     ['slice','ringSlice','ringBlur','slitScan','outline','inkBleed','barcode','glitchTrail','glitchTrailType'],
+    distortion: ['chr','pix','mir','candy','twist','origami','kaiser','kaiserOld','uzumaki','river','boltz'],
+    blur:       ['slit2','filmBlur','glass','dither','mblur','outline'],
+    glitch:     ['slice','ringSlice','ringBlur','slitScan','barcode','glitchTrail','glitchTrailType'],
   },
+  // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
+  POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch' },
+  // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
+  INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper'],
   postGroupSaved(group){
     try{ const d = JSON.parse(localStorage.getItem('vj.def.post.' + group) || 'null'); return (d && typeof d === 'object') ? d : null; }
     catch(e){ return null; }
@@ -12712,18 +12717,33 @@ const App = {
   postDefaults(){
     const d = this.postFactoryDefaults();
     for(const group in this.POST_GROUPS){
-      const saved = this.postGroupSaved(group);
-      if(!saved) continue;
+      const saved = this.postGroupSaved(group) || {};
       for(const key of this.POST_GROUPS[group]){
-        if(saved[key] === undefined || typeof saved[key] !== typeof d[key]) continue;
-        d[key] = saved[key];
+        let value = saved[key];
+        if(value === undefined && this.POST_KEY_FROM[key]){ const old = this.postGroupSaved(this.POST_KEY_FROM[key]); value = old && old[key]; }
+        if(value === undefined || typeof value !== typeof d[key]) continue;
+        d[key] = value;
       }
     }
+    this._overlayInkBleed(d);
     return d;
+  },
+  // Ink Bleed 欄の保存 (vj.def.inkBleed) を d へ重ねる。amount (inkBleed) は旧 Glitch 欄の保存を引き継ぐ
+  _overlayInkBleed(d){
+    let saved; try{ saved = JSON.parse(localStorage.getItem('vj.def.inkBleed')); }catch(_){}
+    for(const key of this.INK_BLEED_KEYS){
+      let value = saved && saved[key];
+      if(value === undefined && this.POST_KEY_FROM[key]){ const old = this.postGroupSaved(this.POST_KEY_FROM[key]); value = old && old[key]; }
+      const fallback = d[key];
+      const valid = typeof fallback === 'number'
+        ? Number.isFinite(value) && value >= 0 && value <= (key === 'inkBleedSeed' ? 999 : 1)
+        : typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
+      if(valid) d[key] = key === 'inkBleedSeed' ? Math.round(value) : value;
+    }
   },
   savePostGroupDefault(group){
     const keys = this.POST_GROUPS[group]; if(!keys) return;
-    const values = {};
+    const values = Object.assign({}, this.postGroupSaved(group));   // 他欄へ移したキーの旧保存値 (POST_KEY_FROM の引き継ぎ元) を消さない
     for(const k of keys) if(this.post[k] !== undefined) values[k] = this.post[k];
     try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs(); toast('デフォルト保存: ' + group); }
     catch(e){ toast('保存失敗'); }
@@ -12857,7 +12877,7 @@ const App = {
     // 保存デフォルト (vj.def.*) をサーバーから同期 (別端末でも同じデフォルトになる)
     await this._loadServerDefs();
     await this._loadShaderSids();   // S 番号の登録簿 (最初の採番 = UI.init より先に)
-    this.applyInkBleedDefault();
+    this.applyInkBleedDefault(true);
     // プリセットで欠落している項目を戻す基準を、保存状態の復元前に確定する。
     this._capturePresetDefaults();
     // 前回起動でコンテキストロスト(GPU過負荷)が起きていたらセーフモードで起動
@@ -13147,12 +13167,76 @@ ${outBlock}
 `;
   },
 
+  // Space キーとクイック行の Freeze: Draw フリーズ (シェーダ類の時間更新 ON/OFF。描画は継続)
+  toggleDrawFreeze(){
+    this._drawFrozen = !this._drawFrozen;
+    const b = $('#qFreeze'); if(b) b.classList.toggle('on', this._drawFrozen);
+    toast('Draw: ' + (this._drawFrozen ? 'FREEZE (フレーム更新OFF)' : 'ON'));
+  },
+
+  // C キーとクイック行の Clear: 描画系のリセットを集約 + 初期フレームに戻す(shader / mode / 動画)
+  resetDraw(){
+    // リセットの飛びを緩めるため、プリセット扱いで視覚トランジションを掛ける
+    if(typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(this.transBeats||0, this.transStyle||0);
+    const parts = [];
+    if(typeof Overlay !== 'undefined' && Overlay.initialized){ Overlay.clear(); parts.push('overlay'); }
+    this.resetUserPanZoom(); parts.push('cam');
+    if(typeof Manga !== 'undefined' && Manga.initialized){ Manga.clear(); parts.push('manga'); }
+    // ── 初期フレームに戻す ──
+    if(typeof GL !== 'undefined'){
+      GL.clock = 0; GL.lastTime = 0;                                      // shader iTime / GL.clock 系 mode
+      if(GL._resetSlotClock){ GL._resetSlotClock('A', 0); GL._resetSlotClock('B', 0); }
+    }
+    const tS = performance.now()/1000;
+    [ typeof NovelTerminal!=='undefined'?NovelTerminal:0,
+      typeof Caverns!=='undefined'?Caverns:0,
+      typeof Shelf!=='undefined'?Shelf:0,
+      typeof Ribbon!=='undefined'?Ribbon:0,
+      typeof Inkelly!=='undefined'?Inkelly:0,
+      typeof Layer!=='undefined'?Layer:0,
+      typeof Manga!=='undefined'?Manga:0
+    ].forEach(E=>{ if(E && typeof E.startTime==='number') E.startTime = tS; });   // 秒単位 startTime
+    if(typeof CyberUI!=='undefined' && CyberUI.reset) CyberUI.reset(tS);
+    if(typeof Slicer!=='undefined' && typeof Slicer.startTime==='number') Slicer.startTime = performance.now();  // slicer は ms
+    if(typeof Aratanagara!=='undefined'){ Aratanagara._flowTime = 0; Aratanagara._ftPrev = undefined; }
+    if(typeof Pen!=='undefined' && Pen.initialized){ Pen.clock = 0; if(Pen.strokes){ Pen.strokes.length = 0; for(let i=0;i<(Pen.P.count||0);i++) Pen.strokes.push(Pen.makeRandomStroke(-Pen._rand(0,1.5))); } }
+    if(typeof Boltzmann!=='undefined' && Boltzmann.initialized) Boltzmann.seeded = false;   // 次フレームで再シード
+    if(typeof Fude!=='undefined' && Fude.initialized) Fude.restart();   // 書き順を一画目へ
+    if(typeof GrayScott!=='undefined' && GrayScott.initialized && GrayScott.reseed) GrayScott.reseed();
+    if(typeof Ugomeki!=='undefined' && Ugomeki.initialized && Ugomeki.reseed){ Ugomeki.reseed(); Ugomeki._typeT = 0; Ugomeki._mdStartBeat = null; }   // 文字ごとの揺れを再ランダム化＋書き出しを先頭へ
+    if(typeof TextDeform!=='undefined' && TextDeform.initialized){   // 変形を全解除して組版し直し(初期フレーム)
+      TextDeform._t = 0; TextDeform._bloomUntil = 0; TextDeform._nextBloomCheck = 0;
+      TextDeform.setText(TextDeform.P.text);
+    }
+    if(typeof TDComp!=='undefined' && TDComp.get) TDComp.get().phase = 0;                     // Composition のループ位相を先頭へ
+    if(typeof SpaceType!=='undefined' && SpaceType.initialized) SpaceType._cycleAcc = 0;      // 自動サイクルの経過を先頭へ(動き自体は GL.clock リセットで戻る)
+    if(typeof Movie!=='undefined' && Movie._slots){ for(const kk of ['A','B']){ const vs=Movie._slots[kk]; if(vs && vs.videoEl){ try{ vs.videoEl.currentTime = 0; vs._revT = 0; }catch(e){} } } }   // 動画を先頭へ
+    if(typeof ImageMode!=='undefined' && ImageMode.initialized){
+      // C で次の画像へ 1 枚だけ送る (image スロットごと)。拍スケジュールはリセット後の拍から再計算
+      // (クロックリセットで拍が跳ぶと、差分消化の連続送りで一周して見えるため)
+      let advanced = false;
+      for(const kk of ['A','B']){
+        const s2 = GL.slots[kk];
+        if(!s2 || s2.kind !== 'image') continue;
+        const st2 = ImageMode._slot(kk);
+        if(!st2.list.length) continue;
+        ImageMode.advance(1, kk);
+        st2.nextAdvanceBeat = null;
+        advanced = true;
+      }
+      if(advanced) parts.push('image');
+    }
+    if(typeof GL !== 'undefined' && GL.forceRenderOnce) GL.forceRenderOnce();   // Pause / Draw Freeze 中でもリセット結果を即反映
+    parts.push('frame');
+    toast(parts.length ? `Reset: ${parts.join(' / ')}` : 'Nothing to reset');
+  },
+
   bindGlobal(){
     window.addEventListener('keydown', e=>{
       // Shift 単押し検出: Shift の down〜up の間に他のキー/クリックが無ければ keyup で発火
       if(e.key === 'Shift'){ if(!e.repeat) this._shiftSolo = true; }
       else this._shiftSolo = false;
-      // Tab: パネルのタブを Preset → Visual → Mix → … の順に送る (Shift+Tab で逆順)。
+      // Tab: パネルのタブを Preset → Visual → Params → … の順に送る (Shift+Tab で逆順)。
       // 他要素へのタブ送りは無効化。検索バーへのフォーカスは Enter に割り当てている。
       if(e.key === 'Tab'){
         e.preventDefault();
@@ -13261,7 +13345,7 @@ ${outBlock}
       const k = e.key.toLowerCase();
       if(k==='f' && e.shiftKey){ this.toggleFullscreen(); }                       // Shift+F = フルスクリーン
       else if(k==='f'){ if(!e.repeat) this.cycleAudioDirMode(); }                 // F = Audio Direction 切替 (flip → flipAcc → off)
-      else if(k===' '){ e.preventDefault(); App._drawFrozen = !App._drawFrozen; toast('Draw: ' + (App._drawFrozen ? 'FREEZE (フレーム更新OFF)' : 'ON')); }   // Space = Draw フリーズ (シェーダ類の時間更新 ON/OFF)
+      else if(k===' '){ e.preventDefault(); this.toggleDrawFreeze(); }   // Space = Draw フリーズ (シェーダ類の時間更新 ON/OFF)
       else if(k==='t'){ BPM.tap(); }
       // 録画 = Cmd/Ctrl+R / スクショ = Cmd/Ctrl+S
       else if(k==='r' && (e.metaKey||e.ctrlKey) && !e.altKey && !e.shiftKey){
@@ -13326,62 +13410,7 @@ ${outBlock}
         this.mouseCapture = !this.mouseCapture;
         toast('iMouse: ' + (this.mouseCapture ? 'ON (マウスで操作)' : 'OFF (凍結)'));
       }
-      else if(k==='c'){
-        // C: 描画系のリセットを集約 + 初期フレームに戻す(shader / mode / 動画)
-        //    リセットの飛びを緩めるため、プリセット扱いで視覚トランジションを掛ける
-        if(typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(this.transBeats||0, this.transStyle||0);
-        const parts = [];
-        if(typeof Overlay !== 'undefined' && Overlay.initialized){ Overlay.clear(); parts.push('overlay'); }
-        this.resetUserPanZoom(); parts.push('cam');
-        if(typeof Manga !== 'undefined' && Manga.initialized){ Manga.clear(); parts.push('manga'); }
-        // ── 初期フレームに戻す ──
-        if(typeof GL !== 'undefined'){
-          GL.clock = 0; GL.lastTime = 0;                                      // shader iTime / GL.clock 系 mode
-          if(GL._resetSlotClock){ GL._resetSlotClock('A', 0); GL._resetSlotClock('B', 0); }
-        }
-        const tS = performance.now()/1000;
-        [ typeof NovelTerminal!=='undefined'?NovelTerminal:0,
-          typeof Caverns!=='undefined'?Caverns:0,
-          typeof Shelf!=='undefined'?Shelf:0,
-          typeof Ribbon!=='undefined'?Ribbon:0,
-          typeof Inkelly!=='undefined'?Inkelly:0,
-          typeof Layer!=='undefined'?Layer:0,
-          typeof Manga!=='undefined'?Manga:0
-        ].forEach(E=>{ if(E && typeof E.startTime==='number') E.startTime = tS; });   // 秒単位 startTime
-        if(typeof CyberUI!=='undefined' && CyberUI.reset) CyberUI.reset(tS);
-        if(typeof Slicer!=='undefined' && typeof Slicer.startTime==='number') Slicer.startTime = performance.now();  // slicer は ms
-        if(typeof Aratanagara!=='undefined'){ Aratanagara._flowTime = 0; Aratanagara._ftPrev = undefined; }
-        if(typeof Pen!=='undefined' && Pen.initialized){ Pen.clock = 0; if(Pen.strokes){ Pen.strokes.length = 0; for(let i=0;i<(Pen.P.count||0);i++) Pen.strokes.push(Pen.makeRandomStroke(-Pen._rand(0,1.5))); } }
-        if(typeof Boltzmann!=='undefined' && Boltzmann.initialized) Boltzmann.seeded = false;   // 次フレームで再シード
-        if(typeof Fude!=='undefined' && Fude.initialized) Fude.restart();   // 書き順を一画目へ
-        if(typeof GrayScott!=='undefined' && GrayScott.initialized && GrayScott.reseed) GrayScott.reseed();
-        if(typeof Ugomeki!=='undefined' && Ugomeki.initialized && Ugomeki.reseed){ Ugomeki.reseed(); Ugomeki._typeT = 0; Ugomeki._mdStartBeat = null; }   // 文字ごとの揺れを再ランダム化＋書き出しを先頭へ
-        if(typeof TextDeform!=='undefined' && TextDeform.initialized){   // 変形を全解除して組版し直し(初期フレーム)
-          TextDeform._t = 0; TextDeform._bloomUntil = 0; TextDeform._nextBloomCheck = 0;
-          TextDeform.setText(TextDeform.P.text);
-        }
-        if(typeof TDComp!=='undefined' && TDComp.get) TDComp.get().phase = 0;                     // Composition のループ位相を先頭へ
-        if(typeof SpaceType!=='undefined' && SpaceType.initialized) SpaceType._cycleAcc = 0;      // 自動サイクルの経過を先頭へ(動き自体は GL.clock リセットで戻る)
-        if(typeof Movie!=='undefined' && Movie._slots){ for(const kk of ['A','B']){ const vs=Movie._slots[kk]; if(vs && vs.videoEl){ try{ vs.videoEl.currentTime = 0; vs._revT = 0; }catch(e){} } } }   // 動画を先頭へ
-        if(typeof ImageMode!=='undefined' && ImageMode.initialized){
-          // C で次の画像へ 1 枚だけ送る (image スロットごと)。拍スケジュールはリセット後の拍から再計算
-          // (クロックリセットで拍が跳ぶと、差分消化の連続送りで一周して見えるため)
-          let advanced = false;
-          for(const kk of ['A','B']){
-            const s2 = GL.slots[kk];
-            if(!s2 || s2.kind !== 'image') continue;
-            const st2 = ImageMode._slot(kk);
-            if(!st2.list.length) continue;
-            ImageMode.advance(1, kk);
-            st2.nextAdvanceBeat = null;
-            advanced = true;
-          }
-          if(advanced) parts.push('image');
-        }
-        if(typeof GL !== 'undefined' && GL.forceRenderOnce) GL.forceRenderOnce();   // Pause / Draw Freeze 中でもリセット結果を即反映
-        parts.push('frame');
-        toast(parts.length ? `Reset: ${parts.join(' / ')}` : 'Nothing to reset');
-      }
+      else if(k==='c'){ this.resetDraw(); }
       else if(k==='-'){
         // -: Gradient Map を反転(+↔-)。OFF のときは反転(−)で ON (Param Fade 対応: 0 を通って反転)
         const cur = this.post.gradMix || 0;
@@ -13768,6 +13797,27 @@ ${outBlock}
       }
       this._mouse(e, true);
     });
+    // タッチ: 指のドラッグを mouse イベントと同じ経路 (iMouse / Manga の照準) へ流す (マウスの経路は変えない)
+    c.addEventListener('pointerdown', e=>{
+      if(e.pointerType !== 'touch') return;
+      if(mangaSlotActive()){ _mangaDrag = true; mangaAim(e); }
+      this.mouse.down = true; this._mouse(e, false);
+    });
+    c.addEventListener('pointermove', e=>{
+      if(e.pointerType !== 'touch') return;
+      if(_mangaDrag && mangaSlotActive()) mangaAim(e);
+      this._mouse(e, true);
+    });
+    for(const ev of ['pointerup', 'pointercancel']){
+      c.addEventListener(ev, e=>{
+        if(e.pointerType !== 'touch') return;
+        if(_mangaDrag){
+          _mangaDrag = false;
+          if(typeof Manga !== 'undefined' && Manga.stopBurst) Manga.stopBurst();
+        }
+        this.mouse.down = false;
+      });
+    }
     // 右クリックメニュー抑制 (右ドラッグパン用)
     c.addEventListener('contextmenu', e=>{ if(e.button===2 || _panDrag) e.preventDefault(); });
     // メインステージ (A+B) のホイールズームは無効。ズームは下段 A/B タイルのホイール
@@ -13853,6 +13903,7 @@ ${outBlock}
         }
         UI.refreshMix(true);
       }
+      UI._refreshStageHint();
       this._tickGradAuto();
       this._tickParamFades();   // Param Fade: post 数値パラメータの補間を進める
       this._syncHuePreview();   // Hue Shift の変化をグラデバー / パレット一覧へ即反映
@@ -14544,25 +14595,16 @@ ${outBlock}
       while(Pen.strokes.length < (Pen.P.count||0)) Pen.strokes.push(Pen.makeRandomStroke((Pen.clock||0) - Pen._rand(0,1.5)));
     }
   },
-  applyInkBleedDefault(){
-    let saved;
-    try{ saved = JSON.parse(localStorage.getItem('vj.def.inkBleed')); }catch(_){}
+  applyInkBleedDefault(detailOnly){   // detailOnly = 起動時: 量 (inkBleed) は他の Post FX と同じく起動時は初期値のまま
     const defaults = this.postDefaults();
-    for(const key of ['inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper']){
-      const value = saved && saved[key];
-      const fallback = defaults[key];
-      const valid = typeof fallback === 'number'
-        ? Number.isFinite(value) && value >= 0 && value <= (key === 'inkBleedSeed' ? 999 : 1)
-        : typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
-      this.post[key] = valid ? (key === 'inkBleedSeed' ? Math.round(value) : value) : fallback;
-      if(this._presetDefaults) this._presetDefaults.post[key] = this.post[key];
+    for(const key of (detailOnly ? this.INK_BLEED_KEYS.slice(1) : this.INK_BLEED_KEYS)){
+      this.post[key] = defaults[key];
+      if(this._presetDefaults) this._presetDefaults.post[key] = defaults[key];
     }
   },
   saveInkBleedDefault(){
     const values = {};
-    for(const key of ['inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper']){
-      values[key] = this.post[key];
-    }
+    for(const key of this.INK_BLEED_KEYS) values[key] = this.post[key];
     try{
       localStorage.setItem('vj.def.inkBleed', JSON.stringify(values));
       Object.assign(this._presetDefaults.post, values);
@@ -15747,6 +15789,7 @@ ${outBlock}
       toast('Bank '+n+' に保存');
     });
   },
+  _coarse(){ return window.matchMedia('(pointer:coarse)').matches; },
   // Enter=OK / Esc=キャンセル に対応した確認モーダル (フルスクリーン/VJ でも確実に動作)
   _confirm(message, onOk){
     if(this.liveLocked('上書き・削除')) return;
@@ -15757,9 +15800,9 @@ ${outBlock}
     box.style.cssText = 'background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:18px 20px;max-width:360px;color:var(--fg);font:13px/1.5 var(--sans);box-shadow:0 8px 30px rgba(0,0,0,.6)';
     const p = document.createElement('div'); p.textContent = message; p.style.marginBottom = '14px';
     const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:var(--btn-gap);justify-content:flex-end';
-    const cancel = document.createElement('button'); cancel.textContent = 'キャンセル (Esc)';
+    const cancel = document.createElement('button'); cancel.textContent = this._coarse() ? 'キャンセル' : 'キャンセル (Esc)';
     cancel.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);cursor:pointer';
-    const ok = document.createElement('button'); ok.textContent = 'OK (Enter)';
+    const ok = document.createElement('button'); ok.textContent = this._coarse() ? 'OK' : 'OK (Enter)';
     ok.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer';
     row.appendChild(cancel); row.appendChild(ok); box.appendChild(p); box.appendChild(row); ov.appendChild(box);
     document.body.appendChild(ov);
@@ -15789,9 +15832,9 @@ ${outBlock}
     input.type = 'text'; input.value = defValue == null ? '' : String(defValue);
     input.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:14px;padding:6px 8px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--surface);color:var(--fg);font:13px var(--sans)';
     const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:var(--btn-gap);justify-content:flex-end';
-    const cancel = document.createElement('button'); cancel.textContent = 'キャンセル (Esc)';
+    const cancel = document.createElement('button'); cancel.textContent = this._coarse() ? 'キャンセル' : 'キャンセル (Esc)';
     cancel.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);cursor:pointer';
-    const ok = document.createElement('button'); ok.textContent = 'OK (Enter)';
+    const ok = document.createElement('button'); ok.textContent = this._coarse() ? 'OK' : 'OK (Enter)';
     ok.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer';
     row.appendChild(cancel); row.appendChild(ok);
     box.appendChild(p); box.appendChild(input); box.appendChild(row); ov.appendChild(box);
@@ -15931,14 +15974,14 @@ ${outBlock}
       fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(out)}).catch(()=>{});
     }catch(e){}
   },
-  // Visual ごとのデフォルト (Mix のエンジン別パラメータ・Shader Params) を defaults_visual.json の基準値へ戻す。
+  // Visual ごとのデフォルト (Params のエンジン別パラメータ・Shader Params) を defaults_visual.json の基準値へ戻す。
   //   基準に無い Visual キーは削除 (= 工場出荷値)。Mix / Transition / Post / Audio / 並び順などは触らない。
   _isVisualDefKey(k){
     return k.indexOf('sparam.') === 0 || k === 'image' || k.indexOf('image.') === 0 || /Md$/.test(k) || k === 'slicerImg'
         || this.modeStateKinds.includes(k);
   },
   resetVisualDefaults(){
-    this._confirm('Visual ごとのデフォルト (Mix のパラメータ・Shader Params) を基準値に戻して再読み込みしますか？ (全端末共通)', async ()=>{
+    this._confirm('Visual ごとのデフォルト (Params のパラメータ・Shader Params) を基準値に戻して再読み込みしますか？ (全端末共通)', async ()=>{
       let base;
       try{ const r = await fetch('defaults_visual.json', {cache:'no-cache'}); base = await r.json(); }catch(e){ toast('基準値を読めませんでした'); return; }
       if(!base || typeof base !== 'object' || Array.isArray(base)){ toast('基準値が不正です'); return; }
@@ -16301,6 +16344,21 @@ const UI = {
       this.refreshSlot();
       if(typeof MIDI !== 'undefined') MIDI.refreshLeds();
     }));
+    // クイック行 (#quickRow) と Mix 欄の Show / Zoom 行: キーボードしか入口が無い操作のボタン。各キーと同じ関数を呼ぶ
+    { const on = (id, fn)=>{ const b = document.getElementById(id); if(b) b.addEventListener('click', ()=>{ fn(); b.blur(); }); };
+      on('qFreeze', ()=>App.toggleDrawFreeze());
+      on('qUndo',   ()=>App.undo());
+      on('qRedo',   ()=>App.redo());
+      on('qReset',  ()=>App.resetParamsAll());
+      on('qClear',  ()=>{ App.resetDraw(); App._undoSchedule(); });
+      on('qAllOff', ()=>App.escResetAll());
+      on('mixShowA', ()=>{ App.toggleSlotVisible('A'); App._undoSchedule(); });
+      on('mixShowB', ()=>{ App.toggleSlotVisible('B'); App._undoSchedule(); });
+      on('mixSwap',  ()=>{ App.swapSlots(); App._undoSchedule(); });
+      on('mixZoomOut',   ()=>App.zoomSlot(App.activeSlot, 1/1.25));
+      on('mixZoomIn',    ()=>App.zoomSlot(App.activeSlot, 1.25));
+      on('mixZoomReset', ()=>App.resetUserPanZoom());
+    }
     // メインプレビューのクリックではアクティブスロットを変えない。
     // (以前は Slot A へ切り替えていたが、パン操作 / iMouse / フォーカスクリックのたびに
     //  気づかず切り替わり「選択が正しくない」事故になるため撤去。
@@ -16749,7 +16807,15 @@ void mainImage(out vec4 o, in vec2 f){
     // channels
 
     // output (Fullscreen ボタンは撤去。F キーで代替)
-    $('#btnProj').addEventListener('click',()=>Projector.open());
+    { const b = $('#btnProj');
+      if(!Prefs.touch) b.addEventListener('click',()=>Projector.open());
+      else if(!document.documentElement.requestFullscreen) b.style.display = 'none';   // スマホは別ウィンドウ出力の代わりにフルスクリーン
+      else{
+        b.title = 'フルスクリーン (Shift+F)';
+        b.querySelector('.lb').textContent = 'Full';
+        b.addEventListener('click',()=>App.toggleFullscreen());
+      }
+    }
     $('#btnRec').addEventListener('click',()=>{
       if(Record.mr){ Record.stop(); $('#btnRec').innerHTML='<span class="ic">⏺</span><span class="lb">Record</span>'; $('#btnRec').classList.remove('on'); }
       else if(Record.start()){ $('#btnRec').innerHTML='<span class="ic">⏹</span><span class="lb">Stop</span>'; $('#btnRec').classList.add('on'); }
@@ -16889,8 +16955,35 @@ void mainImage(out vec4 o, in vec2 f){
     this.refreshPost();
     this._bindSliderResetOnDblclick();
     this._bindSliderMidiLearn();
+    this._applyCapabilities();
 
     this.refreshSlot();
+  },
+
+  // 端末にできないことの UI を隠す (Web MIDI = iOS など / フォルダ選択・画面音声 = スマホ)
+  _applyCapabilities(){
+    document.body.classList.toggle('no-midi', !navigator.requestMIDIAccess);
+    if(window.matchMedia('(pointer:coarse)').matches){
+      for(const id of ['#btnLayerLoadDir', '#btnMangaLoadDir']){ const b = $(id); if(b) b.style.display = 'none'; }
+    }
+    if(!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia)){
+      const b = $('#btnAudioDisp'); if(b) b.hidden = true;
+    }
+  },
+
+  // 両スロットが「なし」のとき、ステージに読み込みの案内を DOM で重ねる (録画・Projector の canvas には写らない)
+  _refreshStageHint(){
+    const empty = GL.slots.A.kind === 'none' && GL.slots.B.kind === 'none';
+    if(empty === this._stageHintOn) return;
+    this._stageHintOn = empty;
+    let el = $('#stageHint');
+    if(!el){
+      el = document.createElement('div');
+      el.id = 'stageHint';
+      el.textContent = 'Visual タブでタイルをタップ (クリック) して読み込み';
+      $('#stageInner').appendChild(el);
+    }
+    el.hidden = !empty;
   },
 
   // 右クリック MIDI Learn: data-midi-key 付きスライダーを右クリック → 直後に動かした CC/Note を割当。
@@ -16899,6 +16992,7 @@ void mainImage(out vec4 o, in vec2 f){
     // #side 内のスライダー / チェックボックスを自動的に MIDI 割当可能にする (data-midi-key 付与)。
     this._midiAutoTag();
     document.addEventListener('contextmenu', (e)=>{
+      if(!navigator.requestMIDIAccess) return;
       const el = (e.target && e.target.closest) ? e.target.closest('input[data-midi-key]') : null;
       if(!el || (el.type !== 'range' && el.type !== 'checkbox')) return;
       e.preventDefault();
@@ -16981,6 +17075,22 @@ void mainImage(out vec4 o, in vec2 f){
       const el = document.getElementById(id);
       if(el) el.dataset.default = stored0[id];
     });
+    // タッチでスライダー上から縦スクロールを始めると、押した位置へ値が飛ぶ。スクロールとして取り消されたら (pointercancel) 値を戻す
+    { const downVal = new WeakMap();
+      document.addEventListener('pointerdown', e=>{
+        const el = e.target;
+        if(e.pointerType === 'touch' && el && el.tagName === 'INPUT' && el.type === 'range') downVal.set(el, el.value);
+      }, true);
+      document.addEventListener('pointercancel', e=>{
+        const el = e.target;
+        if(!el || !downVal.has(el)) return;
+        const v = downVal.get(el); downVal.delete(el);
+        if(el.value === v) return;
+        el.value = v;
+        el.dispatchEvent(new Event('input', {bubbles:true}));
+      }, true);
+      document.addEventListener('pointerup', e=>{ if(e.target && downVal.has(e.target)) downVal.delete(e.target); }, true);
+    }
     // グローバル dblclick リスナ (動的生成にも有効)
     document.addEventListener('dblclick', e=>{
       const el = e.target;
@@ -17844,7 +17954,7 @@ void mainImage(out vec4 o, in vec2 f){
     // ── Random 🎲 (パラメータのみランダム化。scene 選択は変えない) ──
     {
       const row = mkRow('Randomize');
-      const b = document.createElement('button'); b.style.flex = '1'; b.textContent = 'Random 🎲';
+      const b = document.createElement('button'); b.style.flex = '1'; b.textContent = 'Random Params';
       b.title = '動き・密度・色などのパラメータをランダム生成 (Scene の選択は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         const R = (a, bb)=> a + Math.random()*(bb - a);
@@ -18277,14 +18387,18 @@ void mainImage(out vec4 o, in vec2 f){
           const isTouch = !!e.touches, i = +ht.dataset.i;
           self.sel = i; self.render();
           const d = self._startDrag(i);
+          // タッチは render() で作り直す前のつまみ (e.target) に付ける (DOM から外れた要素のタッチは window へ届かない)
+          const tgt = isTouch ? e.target : window;
           const move = (ev)=>{ d.move(xOf(ev), yOf(ev)); if(ev.cancelable) ev.preventDefault(); };
           const up = ()=>{
-            window.removeEventListener(isTouch?'touchmove':'mousemove', move);
-            window.removeEventListener(isTouch?'touchend':'mouseup', up);
+            tgt.removeEventListener(isTouch?'touchmove':'mousemove', move);
+            tgt.removeEventListener(isTouch?'touchend':'mouseup', up);
+            if(isTouch) tgt.removeEventListener('touchcancel', up);
             d.end();
           };
-          window.addEventListener(isTouch?'touchmove':'mousemove', move, {passive:false});
-          window.addEventListener(isTouch?'touchend':'mouseup', up);
+          tgt.addEventListener(isTouch?'touchmove':'mousemove', move, {passive:false});
+          tgt.addEventListener(isTouch?'touchend':'mouseup', up);
+          if(isTouch) tgt.addEventListener('touchcancel', up);
         };
         this.handles.addEventListener('mousedown', handleDown);
         this.handles.addEventListener('touchstart', handleDown, {passive:false});
@@ -18653,12 +18767,12 @@ void mainImage(out vec4 o, in vec2 f){
       fxa.addEventListener('change', ()=>{ App.post.fxaa = fxa.checked; });
     }
     const reset = $('#btnPostReset');
-    if(reset) reset.addEventListener('click', ()=>{
+    if(reset) reset.addEventListener('click', ()=>App._confirm('Post FX をすべて既定値へ戻しますか？', ()=>{
       App.post = App.postDefaults();
       App.applyInkBleedDefault();
       this.refreshPost();
       toast('Post FX reset');
-    });
+    }));
   },
 
   refreshPost(){
@@ -19299,6 +19413,7 @@ void mainImage(out vec4 o, in vec2 f){
       b.title = `Slot ${slot}: ${visible ? '表示中' : '非表示'} (${slot === 'A' ? '[' : ']'} で切替)`;
     });
     $$('.slotPrev').forEach(tile=>tile.classList.toggle('slot-hidden', v[tile.dataset.slot] === false));
+    for(const k of ['A','B']){ const b = $('#mixShow' + k); if(b) b.setAttribute('aria-pressed', v[k] !== false ? 'true' : 'false'); }
   },
 
   refreshSlot(){
@@ -19444,31 +19559,10 @@ void mainImage(out vec4 o, in vec2 f){
       this.refreshImageMode();
     });
     // 画像の見た目 (Look)
-    const slid = (id, key, fmt)=>{
-      const el = $('#'+id), val = $('#'+id+'Val'); if(!el) return;
+    for(const [id, key, fmt] of this._imgFx()){
+      const el = $('#'+id), val = $('#'+id+'Val'); if(!el) continue;
       el.addEventListener('input', ()=>{ const m = ensure(); if(!m) return; m.P[key] = parseFloat(el.value); if(val) val.textContent = fmt(m.P[key]); });
-    };
-    slid('imgRotate', 'rotate', v=>String(Math.round(v)));
-    slid('imgSway', 'sway', v=>String(Math.round(v)));
-    slid('imgSkewX', 'skewX', v=>String(Math.round(v)));
-    slid('imgSkewY', 'skewY', v=>String(Math.round(v)));
-    slid('imgKeystone', 'keystone', v=>String(Math.round(v)));
-    slid('imgStretch', 'stretch', v=>String(Math.round(v)));
-    slid('imgTiles', 'tiles', v=>String(Math.round(v)));
-    slid('imgKaleido', 'kaleido', v=>String(Math.round(v)));
-    slid('imgBulge', 'bulge', v=>String(Math.round(v)));
-    slid('imgTwirl', 'twirl', v=>String(Math.round(v)));
-    slid('imgWaveAmp', 'waveAmp', v=>String(Math.round(v)));
-    slid('imgWaveCount', 'waveCount', v=>String(Math.round(v)));
-    slid('imgPixelate', 'pixelate', v=>String(Math.round(v)));
-    slid('imgChroma', 'chroma', v=>String(Math.round(v)));
-    slid('imgChromaAngle', 'chromaAngle', v=>String(Math.round(v)));
-    slid('imgCorner', 'corner', v=>String(Math.round(v)));
-    slid('imgEdgeFade', 'edgeFade', v=>String(Math.round(v)));
-    slid('imgDroneBase', 'droneBase', v=>String(Math.round(v)));
-    slid('imgDroneDepth', 'droneDepth', v=>String(Math.round(v)));
-    slid('imgDroneDrift', 'droneDrift', v=>String(Math.round(v)));
-    slid('imgFadeMs', 'fadeMs', v=>String(Math.round(v)));
+    }
     const mir = $('#imgMirror');
     if(mir) mir.addEventListener('change', ()=>{ const m = ensure(); if(m) m.P.mirror = parseInt(mir.value, 10); });
     const tmir = $('#imgTileMirror');
@@ -19561,6 +19655,16 @@ void mainImage(out vec4 o, in vec2 f){
     });
   },
 
+  _imgFx(){
+    const n = v=>String(Math.round(v)), pct = v=>Math.round(v)+'%', deg = v=>Math.round(v)+'°';
+    return [['imgRotate','rotate',deg], ['imgSway','sway',deg], ['imgSkewX','skewX',deg], ['imgSkewY','skewY',deg],
+            ['imgKeystone','keystone',pct], ['imgStretch','stretch',pct], ['imgTiles','tiles',n], ['imgKaleido','kaleido',n],
+            ['imgBulge','bulge',pct], ['imgTwirl','twirl',deg], ['imgWaveAmp','waveAmp',pct], ['imgWaveCount','waveCount',n],
+            ['imgPixelate','pixelate',pct], ['imgChroma','chroma',pct], ['imgChromaAngle','chromaAngle',deg],
+            ['imgCorner','corner',pct], ['imgEdgeFade','edgeFade',pct], ['imgDroneBase','droneBase',pct],
+            ['imgDroneDepth','droneDepth',pct], ['imgDroneDrift','droneDrift',pct], ['imgFadeMs','fadeMs',n]];
+  },
+
   refreshImageMode(){
     if(typeof ImageMode === 'undefined') return;
     const m = ImageMode, P = m.P;
@@ -19569,34 +19673,15 @@ void mainImage(out vec4 o, in vec2 f){
     const fit = $('#imgFit'); if(fit) fit.value = P.fit;
     const trans = $('#imgTrans'); if(trans) trans.value = String(typeof P.transBeats === 'number' ? P.transBeats : -1);
     const tstyle = $('#imgTransStyle'); if(tstyle) tstyle.value = String(typeof P.transStyle === 'number' ? P.transStyle : -1);
-    const set = (id, v, fmt)=>{ const el = $('#'+id), val = $('#'+id+'Val'); if(el) el.value = v; if(val) val.textContent = fmt(v); };
-    set('imgRotate', P.rotate, v=>String(Math.round(v)));
-    set('imgSway', P.sway, v=>String(Math.round(v)));
-    set('imgSkewX', P.skewX, v=>String(Math.round(v)));
-    set('imgSkewY', P.skewY, v=>String(Math.round(v)));
-    set('imgKeystone', P.keystone, v=>String(Math.round(v)));
-    set('imgStretch', P.stretch, v=>String(Math.round(v)));
-    set('imgTiles', P.tiles, v=>String(Math.round(v)));
-    set('imgKaleido', P.kaleido, v=>String(Math.round(v)));
-    set('imgBulge', P.bulge, v=>String(Math.round(v)));
-    set('imgTwirl', P.twirl, v=>String(Math.round(v)));
-    set('imgWaveAmp', P.waveAmp, v=>String(Math.round(v)));
-    set('imgWaveCount', P.waveCount, v=>String(Math.round(v)));
-    set('imgPixelate', P.pixelate, v=>String(Math.round(v)));
-    set('imgChroma', P.chroma, v=>String(Math.round(v)));
-    set('imgChromaAngle', P.chromaAngle, v=>String(Math.round(v)));
-    set('imgCorner', P.corner, v=>String(Math.round(v)));
-    set('imgEdgeFade', P.edgeFade, v=>String(Math.round(v)));
-    set('imgDroneBase', P.droneBase, v=>String(Math.round(v)));
-    set('imgDroneDepth', P.droneDepth, v=>String(Math.round(v)));
-    set('imgDroneDrift', P.droneDrift, v=>String(Math.round(v)));
-    set('imgFadeMs', P.fadeMs, v=>String(Math.round(v)));
+    for(const [id, key, fmt] of this._imgFx()){
+      const el = $('#'+id), val = $('#'+id+'Val'); if(el) el.value = P[key]; if(val) val.textContent = fmt(P[key]);
+    }
     const mir = $('#imgMirror'); if(mir) mir.value = String(P.mirror);
     const tmir = $('#imgTileMirror'); if(tmir) tmir.checked = !!P.tileMirror;
     { const fsave = $('#imgFolderSave'), fclear = $('#imgFolderClear');
       const f = P.folder ? m._folderByDir(P.folder) : null;
       const saved = m.hasFolderParams ? m.hasFolderParams(P.folder) : false;
-      if(fsave){ fsave.textContent = 'Save ▸ ' + (f ? f.name : 'フォルダ設定') + (saved ? ' ●' : ''); fsave.disabled = !P.folder; }
+      if(fsave){ fsave.textContent = 'Folder Save' + (saved ? ' ●' : ''); fsave.title = (f ? f.name + ': ' : '') + 'いまの設定 (Order / Beats / Fit / Trans / Style) を選択中のフォルダ/画像に保存。次に選んだとき自動で適用される (md と同方式)'; fsave.disabled = !P.folder; }
       if(fclear) fclear.disabled = !saved; }
     const info = m.currentInfo();
     const cur = $('#imageCurInfo');
@@ -19775,10 +19860,10 @@ void mainImage(out vec4 o, in vec2 f){
       if(!ref) return;
       const b = document.createElement('button');
       b.className = 'randDefBtn';
-      b.textContent = 'Random';
+      b.textContent = 'Random 🎲';
       b.title = 'このセクションのパラメータをランダム化';
       b.dataset.kind = ref.dataset.kind || '';
-      box.insertBefore(b, box.querySelector('#btnPostReset'));
+      box.appendChild(b);
     });
   },
   // セクション内の range / select をランダム化。各エンジンの min/max/step と input ハンドラを
@@ -20019,7 +20104,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // Random 🎲 (数値パラメータのみ。色と Audio は変えない。保存は右上の Save)
     { const row = mkRow();
-      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
       b.title='群れ・筆・破片のパラメータをランダム生成 (色は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const [label,key,mi,ma,step] of specs){
@@ -20187,7 +20272,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // Random 🎲 (数値パラメータのみ。色・Audio / Paper Alpha・カメラ・Hold/Phase は変えない。保存は右上の Save)
     { const row = mkRow();
-      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
       b.title='面・板・線のパラメータをランダム生成 (色・カメラ・Hold は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const spec of specs){
@@ -20229,7 +20314,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // Random 🎲 (スライダーのパラメータのみ。背景色は変えない。保存は右上の Save)
     { const row = mkRow();
-      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
       b.title='スパイクのパラメータをランダム生成 (背景色は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const spec of specs){
@@ -20759,7 +20844,7 @@ void mainImage(out vec4 o, in vec2 f){
           const row = mkRow();
           const lab=document.createElement('label'); lab.textContent='Trans Style';
           const sel=document.createElement('select');
-          const first=document.createElement('option'); first.value='-1'; first.textContent='Mix の設定'; sel.appendChild(first);
+          const first=document.createElement('option'); first.value='-1'; first.textContent='Transition の設定'; sel.appendChild(first);
           const src=document.getElementById('transStyle');
           if(src) for(const o of src.options){ const c=document.createElement('option'); c.value=o.value; c.textContent=o.textContent; sel.appendChild(c); }
           sel.value = String(Math.round(P.setTransStyle ?? -1)); if(sel.selectedIndex < 0) sel.selectedIndex = 0;
@@ -20811,7 +20896,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // Random 🎲 (筆・毛・墨のみ。文字・書体・色・書き順・配置は変えない。保存は右上の Save)
     { const row = mkRow();
-      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
       b.title='筆・毛・墨のパラメータをランダム生成 (文字・書体・色・書き順・配置は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const [title, specs] of groups){
@@ -20938,7 +21023,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // Random 🎲 (数値パラメータのみ。Shape・色・Audio / Paper Alpha は変えない。保存は右上の Save)
     { const row = mkRow();
-      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random 🎲';
+      const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
       b.title='本体の形・破片・剥がれ方のパラメータをランダム生成 (Shape と色は変えない。保存は右上の Save)';
       b.addEventListener('click', ()=>{
         for(const spec of specs){
@@ -22452,12 +22537,14 @@ void mainImage(out vec4 o, in vec2 f){
     const box = document.createElement('div');
     box.style.cssText = 'background:var(--panel,#191b22);border:1px solid var(--line,#333);border-radius:var(--radius);padding:14px 16px;max-height:76vh;width:min(560px,92vw);overflow:auto;font:12px var(--mono,monospace);color:var(--fg,#ddd)';
     box.dataset.pscroll = 'y';
-    box.innerHTML = '<div style="font-weight:700;margin-bottom:4px">プリセット保存履歴</div>'
+    box.innerHTML = '<div style="font-weight:700;margin-bottom:4px;display:flex;align-items:center"><span style="flex:1">プリセット保存履歴</span><button type="button" class="modal-close" data-icon="close" title="閉じる (Esc)"></button></div>'
       + '<div style="color:var(--dim,#888);font-size:10px;margin-bottom:10px">保存のたびにサーバーへ残る世代です。選ぶと「今の一覧に無いプリセット」だけを追加で復元します(既存は消えません)。サムネは復元後に再生成されます。</div>'
       + '<div id="presetHistList">読み込み中…</div>';
     pop.appendChild(box);
     document.body.appendChild(pop);
+    VJIcon.scan(box);
     const close = ()=>pop.remove();
+    box.querySelector('.modal-close').addEventListener('click', close);
     pop.addEventListener('mousedown', e=>{ if(e.target === pop) close(); });
     document.addEventListener('keydown', function esc(e){ if(e.key === 'Escape'){ close(); document.removeEventListener('keydown', esc); } });
 
