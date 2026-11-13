@@ -5283,7 +5283,7 @@ void main(){
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
     //   2.5) プリセット切替トランジション → IMAGON (Overlay の筆跡)
     //   3) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
-    //   3.5) 3D FX: Photo
+    //   3.5) 3D FX: Photo → Slicer → Layers
     //   4) 3D 段 (折り紙系): Needle → Origami → Kaiser → Flames → Uzumaki
     //   5) Glitch 段: Slit-scan → Waveform → Barcode → Datamosh → Pixelsort
     //   6) Lens 段: Mirror → Pixelate → Chroma Ab
@@ -5312,7 +5312,7 @@ void main(){
     // 3) 色調補正 (Sat/Hue/Brightness/Contrast)
     this._applyFinalColorGrade();
 
-    // 3.5) 3D FX (Photo): 画面を切り抜いて 3D 空間に浮かせる。後段の Needle / Origami / Kaiser はその結果ごと折る
+    // 3.5) 3D FX (Photo → Slicer → Layers): 画面を切り抜いて 3D 空間に浮かせる。後段の Needle / Origami / Kaiser はその結果ごと折る
     this._apply3dFx(p, _safe);
 
     // 4) 3D 段 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
@@ -6638,13 +6638,19 @@ void main(){
   //   fold 系 (Needle/Origami/Kaiser) が有効なフレームは foldStack 統合パスが取り込んで描く
   //   (_foldStackTookUzumaki) ため、ここは Uzumaki 単体のときだけ走る。
   // 3D FX (Fx3d.ORDER の各エンジン): 現在フレーム (_finalFBO) を素材に 3D シーンを描き、_finalFBO へ戻す。
-  //   エンジンは透明背景で描き、元の画面を e に応じて暗くした上に重ねる (量 0 → 元の画面と一致、k のクロスフェードは無い)。
+  //   エンジンは透明背景で描き、元の画面を e に応じて暗くした上に重ねる (暗くするのは最初の 1 段だけ。量 0 → 元の画面と一致、k のクロスフェードは無い)。
   _apply3dFx(p, safe){
     if(safe || typeof Fx3d === 'undefined' || !this._finalFBO) return;
     const gl = this.gl;
     const fw = this._finalFBO.w, fh = this._finalFBO.h;
     const s = [1, 0.75, 0.5].includes(+App.post.fx3dScale) ? +App.post.fx3dScale : 1;
     const tw = Math.max(2, Math.round(fw * s)), th = Math.max(2, Math.round(fh * s));
+    // 元の画面を暗くするのは最初に描く 1 段だけ (有効な段の最大の bgDim)。2 段目以降は前段の出力をそのまま敷く
+    let dimLeft = 0;
+    for(const name of Fx3d.ORDER){
+      const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
+      if(e > 0.001) dimLeft = Math.max(dimLeft, Fx3d.bgDim(e));
+    }
     for(const name of Fx3d.ORDER){
       const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
       if(e <= 0.001) continue;
@@ -6701,8 +6707,8 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, T.tex);
       gl.uniform1i(gl.getUniformLocation(this._fx3dOverProg, 'uTex'), 0);
-      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), Fx3d.bgDim(e));
-      // 3D Scale < 100% のときは 3D 側が低解像度 (元の画面より柔らかい) ので、出始めだけ元の画面から短く混ぜて段差を消す
+      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), dimLeft); dimLeft = 0;
+      // 3D Res < 100% のときは 3D 側が低解像度 (元の画面より柔らかい) ので、出始めだけ元の画面から短く混ぜて段差を消す
       const mx = Math.min(1, e / 0.12);
       gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uMix'), s < 1 ? mx * mx * (3 - 2 * mx) : 1);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
@@ -9883,7 +9889,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photo', fx3dPhotoCount:'Photo Count', fx3dPhotoCrop:'Photo Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dScale:'3D Scale', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photo', fx3dPhotoCount:'Photo Count', fx3dPhotoCrop:'Photo Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dScale:'3D Res', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -10000,7 +10006,7 @@ const MIDI = {
       if(![...this.access.inputs.values()].length && Prefs.on('midiNoDeviceToast', '1')) toast('MIDI 入力デバイスが見つかりません (接続すると自動認識します)', 3500);
     }catch(e){
       const md = $('#statMidi'); if(md) md.textContent = '×';
-      toast('MIDI アクセス失敗: ' + e, 4000);
+      if(!Prefs.touch) toast('MIDI unavailable (' + ((e && e.message) || e) + ')', 4000);
     }
     // 起動時: 直近に受信した CC 値を全マッピングへ適用 (連続値のみ)。復元OFFなら適用しない。
     if(_restore && !this.relative) this.applyAll();
@@ -12805,16 +12811,24 @@ const App = {
     material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat'],
     texture:    ['scn','grn','texNoise','texNoiseScale'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','pixsort','gain'],
-    distortion: ['chr','pix','mir','candy','twist'],
+    distortion: ['chr','pix','mir','twist'],
+    pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
     fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','origami','kaiser','kaiserOld','uzumaki','river','fx3dScale'],
-    blur:       ['slit2','filmBlur','glass','dither','mblur','blm','outline'],
-    glitch:     ['slice','ringSlice','ringBlur','split','rings','slitScan','barcode','voxel','glitchTrail','glitchTrailType'],
+    blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline'],
+    glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
   // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
   POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion',
-    pos:'texture', vibrance:'quality', boltz:'distortion', split:'audioFx', rings:'audioFx', voxel:'texture', blm:'texture' },
+    pos:'texture', vibrance:'quality', boltz:'distortion', split:['glitch','audioFx'], rings:['glitch','audioFx'], voxel:['glitch','texture'], blm:'texture',
+    candy:'distortion', slice:'glitch', ringSlice:'glitch', ringBlur:'glitch' },
   // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
   INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper'],
+  // 他欄から移したキーの旧保存値 (POST_KEY_FROM の値は欄名、または新しい順の欄名の配列)
+  postKeyFromSaved(key){
+    const from = this.POST_KEY_FROM[key]; if(!from) return undefined;
+    for(const g of [].concat(from)){ const old = this.postGroupSaved(g); if(old && old[key] !== undefined) return old[key]; }
+    return undefined;
+  },
   postGroupSaved(group){
     try{ const d = JSON.parse(localStorage.getItem('vj.def.post.' + group) || 'null'); return (d && typeof d === 'object') ? d : null; }
     catch(e){ return null; }
@@ -12825,7 +12839,7 @@ const App = {
       const saved = this.postGroupSaved(group) || {};
       for(const key of this.POST_GROUPS[group]){
         let value = saved[key];
-        if(value === undefined && this.POST_KEY_FROM[key]){ const old = this.postGroupSaved(this.POST_KEY_FROM[key]); value = old && old[key]; }
+        if(value === undefined) value = this.postKeyFromSaved(key);
         if(value === undefined || typeof value !== typeof d[key]) continue;
         d[key] = value;
       }
@@ -12838,7 +12852,7 @@ const App = {
     let saved; try{ saved = JSON.parse(localStorage.getItem('vj.def.inkBleed')); }catch(_){}
     for(const key of this.INK_BLEED_KEYS){
       let value = saved && saved[key];
-      if(value === undefined && this.POST_KEY_FROM[key]){ const old = this.postGroupSaved(this.POST_KEY_FROM[key]); value = old && old[key]; }
+      if(value === undefined) value = this.postKeyFromSaved(key);
       const fallback = d[key];
       const valid = typeof fallback === 'number'
         ? Number.isFinite(value) && value >= 0 && value <= (key === 'inkBleedSeed' ? 999 : 1)
@@ -14749,7 +14763,7 @@ ${outBlock}
     if(typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(this.transBeats||0, this.transStyle||0);
     this._resetParamsCore({faded:true});
     this._undoLast = this._undoSnap();
-    toast('パラメータをリセット (Cmd+Z で戻せます)');
+    toast('パラメータをリセット (' + this._undoHint() + ' で戻せます)');
   },
   _resetParamsCore(opts){
     opts = opts || {};
@@ -14843,7 +14857,7 @@ ${outBlock}
 
     this._resetParamsCore();
     this._undoLast = this._undoSnap();
-    toast('両スロットなし / パラメータをリセット (Cmd+Z で戻せます)');
+    toast('両スロットなし / パラメータをリセット (' + this._undoHint() + ' で戻せます)');
   },
 
   resetMixDefault(){
@@ -15920,6 +15934,7 @@ ${outBlock}
     });
   },
   _coarse(){ return window.matchMedia('(pointer:coarse)').matches; },
+  _undoHint(){ return this._coarse() ? '↶' : 'Cmd+Z'; },
   // Enter=OK / Esc=キャンセル に対応した確認モーダル (フルスクリーン/VJ でも確実に動作)
   _confirm(message, onOk){
     if(this.liveLocked('上書き・削除')) return;
@@ -15930,7 +15945,7 @@ ${outBlock}
     box.style.cssText = 'background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:18px 20px;max-width:360px;color:var(--fg);font:13px/1.5 var(--sans);box-shadow:0 8px 30px rgba(0,0,0,.6)';
     const p = document.createElement('div'); p.textContent = message; p.style.marginBottom = '14px';
     const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:var(--btn-gap);justify-content:flex-end';
-    const cancel = document.createElement('button'); cancel.textContent = this._coarse() ? 'キャンセル' : 'キャンセル (Esc)';
+    const cancel = document.createElement('button'); cancel.textContent = this._coarse() ? 'Cancel' : 'Cancel (Esc)';
     cancel.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);cursor:pointer';
     const ok = document.createElement('button'); ok.textContent = this._coarse() ? 'OK' : 'OK (Enter)';
     ok.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer';
@@ -15962,7 +15977,7 @@ ${outBlock}
     input.type = 'text'; input.value = defValue == null ? '' : String(defValue);
     input.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:14px;padding:6px 8px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--surface);color:var(--fg);font:13px var(--sans)';
     const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:var(--btn-gap);justify-content:flex-end';
-    const cancel = document.createElement('button'); cancel.textContent = this._coarse() ? 'キャンセル' : 'キャンセル (Esc)';
+    const cancel = document.createElement('button'); cancel.textContent = this._coarse() ? 'Cancel' : 'Cancel (Esc)';
     cancel.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);cursor:pointer';
     const ok = document.createElement('button'); ok.textContent = this._coarse() ? 'OK' : 'OK (Enter)';
     ok.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer';
@@ -17303,7 +17318,7 @@ void mainImage(out vec4 o, in vec2 f){
         e.preventDefault();
         e.stopPropagation();
         const kind = b.dataset.kind;
-        const defaultScope = kind === 'fb' ? b.closest('.fb-group') : b.closest('.section');
+        const defaultScope = b.closest('.section');
         if(b.classList.contains('randDefBtn') && kind === 'overlay' && UI._overlayRandomize){ UI._overlayRandomize(); return; }
         if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
@@ -18834,29 +18849,18 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxAudioFx',    'audioFx',       f2);
     slid('pxAudioFxAtk', 'audioFxAttack', f2);
     slid('pxAudioFxRel', 'audioFxRelease', f2);
-    // Atk / Rel は本体 (Drive) が 0 だと効かない。
-    //   Atk の既定が 0.6 なので「ON に見えるのに反応しない」と誤解されるため、
-    //   本体 0 のときは行を淡色+disabled にし、触ったら気づけるようトーストを出す。
+    // 詳細行 ([data-sub-of="親 id"]) は親の量が実効 0 だと効かない。ON に見えるのに無反応、という誤解を避けるため
+    //   親が 0 の間は行を淡色 + disabled にする。親の input (手動 / MIDI / Random) と refreshPost (Reset / プリセット) で追従。
     {
-      const fx = $('#pxAudioFx'), atk = $('#pxAudioFxAtk'), rel = $('#pxAudioFxRel');
-      const sync = ()=>{
-        const on = (App.post.audioFx || 0) > 0.001;
-        [atk, rel].forEach(el=>{
-          if(!el) return;
-          el.disabled = !on;
-          const row = el.closest('.row');
-          if(row) row.style.opacity = on ? '' : '0.42';
-        });
-      };
-      UI._syncAudioFxRows = sync;
-      if(fx) fx.addEventListener('input', sync);
-      [atk, rel].forEach(el=>{
+      const pane = document.querySelector('.pane[data-pane="post"]');
+      if(pane) pane.addEventListener('input', ()=>UI._syncSubRows());
+      [$('#pxAudioFxAtk'), $('#pxAudioFxRel')].forEach(el=>{
         if(!el) return;
         el.addEventListener('pointerdown', ()=>{
-          if((App.post.audioFx || 0) <= 0.001) toast('Drive を上げると有効になります (現在 0 = 無効)', 2600);
+          if(el.disabled) toast('Drive を上げると有効になります (現在 0 = 無効)', 2600);
         });
       });
-      sync();
+      UI._syncSubRows();
     }
     slid('pxClarity', 'clarity', f2);
     slid('pxDenoise', 'denoise', f2);
@@ -18919,8 +18923,25 @@ void mainImage(out vec4 o, in vec2 f){
         const b = document.createElement('button'); b.type = 'button';
         b.textContent = (h3.childNodes[0].textContent || '').trim();
         b.addEventListener('click', ()=>sec.scrollIntoView({block:'start', behavior:'smooth'}));
-        chips.appendChild(b);
-      }); }
+        chips.appendChild(b); b._sec = sec;
+      });
+      // チップ行の高さを欄の scroll-margin-top へ / スクロール位置の欄のチップに .on (タッチの横スクロールでも見えるよう寄せる)
+      const bar = chips && chips.closest('.fxjump');
+      if(bar && window.ResizeObserver) new ResizeObserver(()=>pane.style.setProperty('--fxjump-h', bar.offsetHeight+'px')).observe(bar);
+      if(chips && bar){
+        let cur = null;
+        const upd = ()=>{
+          const line = pane.getBoundingClientRect().top + bar.offsetHeight + 12; let hit = null;
+          for(const b of chips.children){ if(b._sec && b._sec.offsetParent && b._sec.getBoundingClientRect().top <= line) hit = b; }
+          if(!hit) hit = chips.firstElementChild;
+          if(pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 2 && pane.scrollTop > 0){ for(const b of chips.children){ if(b._sec && b._sec.offsetParent) hit = b; } }   // 最下端では最後の欄
+          if(hit === cur) return;
+          if(cur) cur.classList.remove('on');
+          cur = hit; if(cur){ cur.classList.add('on'); if(!matchMedia('(hover:hover)').matches) cur.scrollIntoView({inline:'nearest', block:'nearest'}); }
+        };
+        let raf = 0; const sched = ()=>{ if(!raf) raf = requestAnimationFrame(()=>{ raf = 0; upd(); }); };
+        const sc = pane.closest('#side') || pane; sc.addEventListener('scroll', sched, {passive:true}); pane.addEventListener('scroll', sched, {passive:true}); sched();
+      } }
     const reset = $('#btnPostReset');
     if(reset) reset.addEventListener('click', ()=>App._confirm('FX をすべて既定値へ戻しますか？', ()=>{
       App.post = App.postDefaults();
@@ -18928,6 +18949,17 @@ void mainImage(out vec4 o, in vec2 f){
       this.refreshPost();
       toast('FX reset');
     }));
+  },
+
+  _syncSubRows(){
+    const pane = document.querySelector('.pane[data-pane="post"]'); if(!pane) return;
+    const on = id => { const r = (UI._postSlid || []).find(s => s.id === id); return !!r && App.deadParam(App.post[r.key] || 0) > 0.001; };
+    pane.querySelectorAll('[data-sub-of]').forEach(el=>{
+      const live = el.dataset.subOf.split(/\s+/).some(on);
+      el.disabled = !live;
+      const row = el.closest('.row');
+      if(row) row.style.opacity = live ? '' : '0.42';
+    });
   },
 
   refreshPost(){
@@ -18951,7 +18983,7 @@ void mainImage(out vec4 o, in vec2 f){
       el.value = v;
       if(out && r.disp) out.textContent = r.disp(v);
     }
-    if(UI._syncAudioFxRows) UI._syncAudioFxRows();
+    UI._syncSubRows();
     set('pxGamma', p.gamma, f2);
     set('pxSat',   (p.sat != null ? p.sat : 1.0) - 1.0, f2, true);
     set('pxHue',   p.hue,   f3);
@@ -20050,19 +20082,84 @@ void mainImage(out vec4 o, in vec2 f){
       box.appendChild(b);
     });
   },
+  // FX の欄の Random: 欄の全スライダーを振ると絵が判別できないので、量スライダー (詳細行 = [data-sub-of] / .sub-label を除く)
+  //   から 1 本だけ選んで振り、他の量は中立値 (HTML の value) へ戻す。3D 欄は 30% で折り系 (Needle / Origami / Kaiser) をもう 1 本。
+  //   詳細行は選ばれた親のものだけ振る。Color 欄は 1 本でも極端にならないよう中立値から 0.3〜0.7 の位置に収める。
+  _randomizePostSection(sec){
+    const rnd = (a, b)=> a + Math.random()*(b - a);
+    const COLOR_PICK = ['pxGamma', 'pxBri', 'pxCon', 'pxSat', 'pxVibrance', 'pxHue', 'pxVig'];
+    const isColor = !!sec.querySelector('#pxGamma');
+    const isSub = el => !!el.dataset.subOf || !!(el.closest('.row') && el.closest('.row').querySelector('label.sub-label'));
+    const els = [...sec.querySelectorAll('input[type=range], select')].filter(el=>{
+      if(el.dataset.norand) return false;
+      if(el.tagName === 'SELECT') return el.options.length > 1;
+      const mi = parseFloat(el.min), ma = parseFloat(el.max);
+      return isFinite(mi) && isFinite(ma) && ma > mi;
+    });
+    const parents = els.filter(el => !isSub(el) && (!isColor || COLOR_PICK.includes(el.id)));
+    if(!parents.length) return 0;
+    const picked = [parents[Math.floor(Math.random()*parents.length)]];
+    if(sec.querySelector('#pxFx3dPhoto') && Math.random() < 0.3){
+      const folds = ['pxOrigami', 'pxKaiser', 'pxKaiserOld'].filter(id => id !== picked[0].id);
+      const f = document.getElementById(folds[Math.floor(Math.random()*folds.length)]);
+      if(f) picked.push(f);
+    }
+    const fire = (el, type)=> el.dispatchEvent(new Event(type, {bubbles:true}));
+    const setRange = (el, v)=>{
+      const mi = parseFloat(el.min), ma = parseFloat(el.max), step = parseFloat(el.step) || 0.01;
+      v = Math.max(mi, Math.min(ma, Math.round((v - mi)/step)*step + mi));
+      if(parseFloat(el.value) === v) return;
+      el.value = String(v); fire(el, 'input');
+    };
+    // 他の量は中立へ
+    parents.filter(el => !picked.includes(el)).forEach(el=>{
+      if(el.tagName === 'SELECT'){ if(el.selectedIndex !== 0){ el.selectedIndex = 0; fire(el, 'change'); } return; }
+      const nv = parseFloat(el.getAttribute('value')); setRange(el, isFinite(nv) ? nv : 0);
+    });
+    // 選んだ量 (親が先。詳細行は親が 0 のあいだ disabled なので、親を動かして有効にしてから振る)
+    picked.forEach(el=>{
+      if(el.tagName === 'SELECT'){ el.selectedIndex = 1 + Math.floor(Math.random()*(el.options.length - 1)); fire(el, 'change'); return; }
+      const mi = parseFloat(el.min), ma = parseFloat(el.max);
+      const nv = parseFloat(el.getAttribute('value')), neutral = isFinite(nv) ? Math.max(mi, Math.min(ma, nv)) : mi;
+      const up = ma - neutral, down = neutral - mi;
+      let dir, span;
+      if(up > 0 && down > 0){ dir = Math.random() < 0.5 ? 1 : -1; span = isColor ? Math.min(up, down) : (dir > 0 ? up : down); }
+      else { dir = up > 0 ? 1 : -1; span = dir > 0 ? up : down; }
+      if(isColor && el.id === 'pxVig') span = Math.min(span, 1);
+      const u = isColor ? rnd(0.3, 0.7) : rnd(0.25, 0.8);
+      setRange(el, neutral + dir*u*span);
+    });
+    let n = picked.length;
+    picked.forEach(par=>{
+      sec.querySelectorAll('input[type=range][data-sub-of]').forEach(sub=>{
+        if(!sub.dataset.subOf.split(/\s+/).includes(par.id) || sub.dataset.norand) return;
+        const mi = parseFloat(sub.min), ma = parseFloat(sub.max);
+        const lab = ((sub.closest('.row') || {}).querySelector && sub.closest('.row').querySelector('label') || {}).textContent || '';
+        const heavy = /count|grid|steps|iter|pieces|size|枚数|個数/i.test(lab);
+        setRange(sub, rnd(mi, heavy ? mi + (ma - mi)*0.6 : ma)); n++;
+      });
+    });
+    if(picked.some(el => el.id === 'pxGlitchTrail') && typeof GL !== 'undefined' && GL.GLITCH_TRAIL_TYPES){
+      App.post.glitchTrailType = GL.GLITCH_TRAIL_TYPES[Math.floor(Math.random()*GL.GLITCH_TRAIL_TYPES.length)];
+      this.refreshPost(); n++;
+    }
+    return n;
+  },
   // セクション内の range / select をランダム化。各エンジンの min/max/step と input ハンドラを
   // そのまま使うので、値域も反映処理(再構築など)もエンジン側の実装に従う。
   randomizeSection(sec, kind){
     if(!sec) return;
     const rnd = (a,b)=> a + Math.random()*(b-a);
     let n = 0;
+    const isPost = typeof kind === 'string' && kind.indexOf('post:') === 0;   // FX の欄は量 1 本だけ振る (_randomizePostSection)
+    if(isPost) n = this._randomizePostSection(sec);
     sec.querySelectorAll('input[type=range]').forEach(inp=>{
-      if(inp.dataset.norand) return;   // 大きさ・位置など、変えると画面から外れる項目
+      if(isPost || inp.dataset.norand) return;   // 大きさ・位置など、変えると画面から外れる項目
       const mi = parseFloat(inp.min), ma = parseFloat(inp.max);
       if(!isFinite(mi) || !isFinite(ma) || ma <= mi) return;
       const lab = ((inp.parentElement && inp.parentElement.querySelector('label')) || {}).textContent || '';
       // 個数・反復系は重くなりすぎないよう下側 60% に収める
-      const heavy = /count|grid|steps|iter|枚数|個数/i.test(lab);
+      const heavy = /count|grid|steps|iter|pieces|size|枚数|個数/i.test(lab);
       const step = parseFloat(inp.step) || 0.01;
       let v = rnd(mi, heavy ? mi + (ma - mi)*0.6 : ma);
       v = Math.round(v/step)*step;
@@ -20072,7 +20169,7 @@ void mainImage(out vec4 o, in vec2 f){
       n++;
     });
     sec.querySelectorAll('select').forEach(sl=>{
-      if(!sl.options.length || sl.disabled || sl.dataset.norand) return;
+      if(isPost || !sl.options.length || sl.disabled || sl.dataset.norand) return;
       sl.selectedIndex = Math.floor(Math.random()*sl.options.length);
       sl.dispatchEvent(new Event('change', {bubbles:true}));
       n++;
@@ -20085,7 +20182,9 @@ void mainImage(out vec4 o, in vec2 f){
     });
     if(typeof MIDI !== 'undefined' && MIDI.refreshLeds) MIDI.refreshLeds();
     App._undoSchedule && App._undoSchedule();
-    toast('ランダム化: ' + (kind || 'section') + ' (' + n + ' 項目)');
+    const h3 = sec.querySelector(':scope > h3') || sec.querySelector('h3');
+    const head = h3 && h3.childNodes[0] ? h3.childNodes[0].textContent.trim() : '';
+    toast('Random: ' + (head || kind || 'section'));
   },
   refreshShredderParams(){
     const root = document.getElementById('shredParams'); if(!root) return;
@@ -20177,7 +20276,7 @@ void mainImage(out vec4 o, in vec2 f){
     for(const spec of specs){
       const row=document.createElement('div'); row.className='row';
       if(spec.sel){                                   // 選択肢はプルダウン
-        const lab=document.createElement('label'); lab.textContent=spec.label;
+        const lab=document.createElement('label'); lab.textContent=spec.label; if(spec.tip) lab.title = spec.tip;
         const sel=document.createElement('select');
         spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
         sel.value = String(Math.round(P[spec.key] || 0));
@@ -21111,7 +21210,7 @@ void mainImage(out vec4 o, in vec2 f){
       {sel:true, label:'Appear (出現)', key:'appear', opts:['本体の色から', '紙色から']},
       {sel:true, label:'Order (順)', key:'order', opts:['まとまり (ノイズ順)', '下から上', '上から下']},
       {sel:true, label:'Peel By (剥がれ方)', key:'peelMode', opts:['自動 (周期)', 'マウス (クリック・ドラッグ)']},
-      {sel:true, label:'Body Color (本体色)', key:'bodyLink', opts:['Body Color を使う', 'インク (破片) と連動']},
+      {sel:true, label:'Body Link', tip:'本体色: Body Color を使うか、インク (破片) と連動させる', key:'bodyLink', opts:['Body Color を使う', 'インク (破片) と連動']},
       {sel:true, label:'Edge (縁の線)', key:'edgeOn', opts:['なし', 'あり']},
       {sel:true, label:'Shading (陰影)', key:'lit', opts:['なし', 'あり']},
       ['Speed',      'speed',     0,    300, 1,     v=>String(Math.round(v))+'%'],
@@ -22848,7 +22947,7 @@ void mainImage(out vec4 o, in vec2 f){
       // 削除 / 名前変更 (左上の小ボタン)
       const mkBtn = (icon, slot, title, fn)=>{
         const b = document.createElement('div'); b.className = 'ico-btn'; b.title = title;
-        b.style.cssText = 'top:2px;left:calc(2px + 20px * '+slot+')'; VJIcon.set(b, icon);
+        b.style.cssText = 'top:2px;left:calc(2px + (var(--ico) + 2px) * '+slot+')'; VJIcon.set(b, icon);
         b.addEventListener('click', e=>{ e.stopPropagation(); fn(); });
         tile.appendChild(b);
       };

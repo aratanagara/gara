@@ -35,7 +35,7 @@
   --fs:11px; --fs-sm:10px; --fs-xs:9px;
   --ctl-h:24px; --row-h:24px; --row-gap:4px;
   --gap:8px; --label-w:100px; --val-w:48px; --midi-w:38px;
-  --check:14px; --thumb:10px; --track:2px; --pad:10px; --radius:0;
+  --ico:18px; --check:14px; --thumb:10px; --track:2px; --pad:10px; --radius:0;
   --side-w:420px; --sb-w:8px; --acc-fg:#fff; --btn-gap:4px; --midi-h:14px; --thumb-cols:3;
   --fg:#dfdfcf; --dim:#8f8f86; --acc:#3f00ff; --acc2:#5be1ff; --warn:#ffb84d; --err:#ff5c5c;
   --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
@@ -181,7 +181,6 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .section{border:1px solid var(--line);background:var(--panel2);border-radius:var(--radius);padding:8px var(--pad);margin-bottom:8px}
 .section h3{margin:0 0 6px 0;font-size:var(--fs);font-weight:400;min-height:var(--ctl-h);color:var(--fg);display:flex;align-items:center;gap:6px}
 .section h3 .pill{background:transparent;border:1px solid var(--line);border-radius:var(--radius);padding:0 5px;color:var(--dim);font-size:var(--fs-xs)}
-.section h3 .section-tag{font-size:9px}
 .default-actions{display:inline-flex;align-items:center;gap:var(--btn-gap);margin-left:auto;flex:0 0 auto}
 .default-actions button{min-height:var(--ctl-h);height:var(--ctl-h);padding:0 6px;font-size:var(--fs-sm);line-height:1;letter-spacing:0;text-transform:none;white-space:nowrap}
 .default-actions .randDefBtn{background:transparent;color:var(--dim)}
@@ -213,9 +212,11 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .fxjump{position:sticky;top:-10px;z-index:5;display:flex;align-items:center;gap:6px;margin:-10px -10px 6px;padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 .fxjump-chips{flex:1;min-width:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
 .fxjump-chips::-webkit-scrollbar{display:none}
+@media (hover:hover){ .fxjump-chips{flex-wrap:wrap;overflow-x:visible} .fxjump .fxjump-chips button{padding:0 6px} }
+.fxjump-chips button.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
 .fxjump button{flex:0 0 auto;height:var(--ctl-h);padding:0 8px;white-space:nowrap}
-.pane[data-pane=post] > .section{scroll-margin-top:44px}
-@media (max-height:500px) and (orientation:landscape){ .fxjump{padding:3px 10px} .pane[data-pane=post] > .section{scroll-margin-top:34px} }
+.pane[data-pane=post] > .section{scroll-margin-top:calc(var(--fxjump-h,34px) + 10px)}
+@media (max-height:500px) and (orientation:landscape){ .fxjump{padding:3px 10px} }
 .row.sep-top{margin-top:8px;padding-top:8px;border-top:1px solid var(--line2)}
 .visGrid{--vis-cols:var(--thumb-cols);display:grid;grid-template-columns:repeat(var(--vis-cols),1fr);gap:6px;margin-top:6px;container-type:inline-size}
 .thumb-tile{position:relative;cursor:pointer;border:2px solid var(--line);border-radius:4px;overflow:hidden;background:#000;aspect-ratio:4/3;transition:border-color .12s, transform .12s}
@@ -322,12 +323,12 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   #topbar button{height:36px}
   #topbar button .lb{top:0}
   #side{border-left:none;border-top:1px solid var(--line)}
-  #stage #gradQuickBarInv{display:none}
-  #stage #gradQuickBar .gq canvas,#stage #blendPrevBar .bp canvas{height:30px}
 }
 /* スマホ共通 (compact landscape より前に置く) */
 @media (max-width:800px), (max-height:500px) and (orientation:landscape){
   #slotPrevRow{flex:0 0 76px}
+  #stage #gradQuickBarInv{display:none}
+  #stage #gradQuickBar .gq canvas,#stage #blendPrevBar .bp canvas{height:30px}
   #slotSel{display:none}
   #side .pane-head{position:static}
   #topbar{gap:4px;padding:0 6px}
@@ -341,6 +342,8 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   #topbar{overflow-x:auto}
   #topbar button{height:30px;min-width:40px}
   #topbar button .lb{display:none}
+  #stage #gradQuickBar .gq canvas,#stage #blendPrevBar .bp canvas{height:26px}
+  .toast{left:calc((100vw - var(--side-w)) / 2);max-width:calc(100vw - var(--side-w) - 24px)}
 }
 
 /* セクション見出しの折りたたみ (h3 クリックでトグル) */
@@ -423,6 +426,8 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 #side input[type=checkbox]:checked{background:var(--fg);box-shadow:inset 0 0 0 2px var(--panel2)}
 #side input:is([type=range],[type=checkbox]):disabled{opacity:.55;cursor:default}
 #side .toggle-btns button{min-height:var(--ctl-h);font-size:var(--fs)}
+#pxGlitchTrailTypes{flex-wrap:wrap}
+#pxGlitchTrailTypes button{flex:1 1 auto;padding:0 2px}
 :where(button,select,input,textarea):focus-visible{outline:1px solid var(--fg);outline-offset:1px}
 
 #side :where(select,input[type=text],input[type=number],input[type=search]){padding:0 6px}
@@ -449,8 +454,9 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 #settingsPane .set-swatches{display:flex;gap:var(--btn-gap);flex:none}
 #settingsPane .set-swatches button{width:18px;min-width:0;height:var(--ctl-h);padding:0;border:1px solid var(--line2)}
 /* タッチ: スウォッチは 28px 以上。1 行に収まらないので、Accent 行の下段へ折り返す */
-@media (pointer:coarse){
+@media (pointer:coarse),(max-width:430px){
   #settingsPane .row:has(.set-swatches){flex-wrap:wrap}
+  #settingsPane .row #setRandom{margin-left:auto}
   #settingsPane .set-swatches{flex:1 1 100%}
   #settingsPane .set-swatches button{flex:1;width:auto;min-width:28px}
 }
@@ -491,7 +497,7 @@ input[type=color]::-moz-color-swatch{border:1px solid var(--line2);border-radius
 .ico path{vector-effect:non-scaling-stroke;stroke-width:1px}
 @media (min-resolution:2dppx){ .ico path{stroke-width:.5px} }
 /* 画像・グラデの上に置く小ボタン: 半透明の黒地に白い線。影なし・角なし */
-.ico-btn{position:absolute;z-index:3;display:flex;align-items:center;justify-content:center;width:18px;height:18px;padding:0;border:0;border-radius:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
+.ico-btn{position:absolute;z-index:3;display:flex;align-items:center;justify-content:center;width:var(--ico);height:var(--ico);padding:0;border:0;border-radius:0;background:rgba(0,0,0,.55);color:#fff;cursor:pointer}
 @media (hover:hover){ .ico-btn:hover{background:rgba(0,0,0,.8)} }
 .grad-row-btn{top:0;width:calc(var(--ctl-h) - 2px);height:calc(var(--ctl-h) - 2px)}
 /* アイコンだけのボタン (パネル内): 正方形 */
@@ -524,14 +530,13 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 .t-coarse{display:none}
 /* タッチ端末: 操作面を大きく。PC (pointer:fine) の 24px 統一は不変 */
 @media (pointer:coarse){
-  :root{--ctl-h:32px;--row-h:32px;--thumb:24px;--check:28px;--sb-w:0px;--fs:13px;--fs-sm:12px;--fs-xs:11px}
+  :root{--ctl-h:32px;--row-h:32px;--thumb:24px;--ico:28px;--label-w:116px;--check:28px;--sb-w:0px;--fs:13px;--fs-sm:12px;--fs-xs:11px}
   #quickRow button:is(#qUndo,#qRedo){flex:0 0 40px}
   html{touch-action:pan-x pan-y}
   .pscroll{display:none}
   .tab{height:40px}
-  #btnTap{height:48px}
+  .btnrow:has(#btnTap) > button{height:48px}
   #side input[type=range]:not(.huebar){height:var(--ctl-h)}
-  .ico-btn{width:28px;height:28px}
   .grad-handle{width:24px;height:24px;margin-left:-12px}
   .t-fine{display:none}
   .t-coarse{display:inline}
