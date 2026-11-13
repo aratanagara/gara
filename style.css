@@ -199,11 +199,9 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #cw-pop.show{display:block}
 #cw-pop .cw-hex{margin-top:8px;display:flex;align-items:center;gap:6px;font:11px var(--mono)}
 #cw-pop .cw-hex input{flex:1;font:11px var(--mono);background:var(--panel2);color:var(--fg);border:1px solid var(--line);padding:3px 6px;border-radius:3px}
-/* shown = 表示中(Crossfade で決まる) → 青背景 / editing = 編集中(activeSlot) → マゼンタ枠 */
-#slotSel button.shown{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
+/* editing = 編集中(activeSlot) → 反転塗り + マゼンタ枠 */
 #slotSel button.slot-hidden{opacity:.45;color:var(--dim);text-decoration:line-through}
-#slotSel button.slot-hidden.shown{background:#24384e;border-color:#37506b;color:#b6c5d6}
-#slotSel button.editing{outline:2px solid #ff00aa;outline-offset:-2px}
+#slotSel button.editing{background:var(--on-bg);color:var(--on-fg);border-color:var(--on-bg);outline:2px solid #ff00aa;outline-offset:-2px}
 
 /* Shader thumbnail grid */
 #thumbGrid{margin-top:8px}
@@ -274,6 +272,10 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 /* 種類を選ぶトグルボタン列 (Datamosh Type / FB Mode)。選んでいるボタンは aria-pressed="true" */
 .toggle-btns{flex:1;display:flex;gap:0;min-width:0}
 .toggle-btns button{flex:1;min-width:0;padding:0;color:var(--dim)}
+/* 隣り合う ON を 1 つの塊に見せない (.toggles と同じ) */
+.toggle-btns button[aria-pressed="true"] + button[aria-pressed="true"]{border-left-color:var(--panel)}
+/* 動作ボタン (Swap) はトグル列の外 */
+#mixSwap{flex:0 0 auto;min-width:56px;margin-left:var(--btn-gap)}
 
 
 kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;padding:0 4px;font:10px var(--mono);color:var(--fg)}
@@ -314,11 +316,14 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   #topbar button{height:36px}
   #topbar button .lb{top:0}
   #side{border-left:none;border-top:1px solid var(--line)}
-  #gradQuickBar .gq canvas,#gradQuickBarInv .gq canvas{height:26px}
+  #stage #gradQuickBarInv{display:none}
+  #stage #gradQuickBar .gq canvas,#stage #blendPrevBar .bp canvas{height:30px}
 }
 /* スマホ共通 (compact landscape より前に置く) */
 @media (max-width:800px), (max-height:500px) and (orientation:landscape){
   #slotPrevRow{flex:0 0 76px}
+  #slotSel{display:none}
+  #side .pane-head{position:static}
   #topbar{gap:4px;padding:0 6px}
   #topbar button{min-width:48px}
   .toast{max-width:calc(100vw - 24px)}
@@ -364,6 +369,9 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 
 /* Blend Mode プレビュー行 (グラデーションバーの下)。8 分割 = 全ブレンドモード */
 #blendPrevBar{display:flex;gap:2px;padding:0 0 2px}
+/* Full (全画面) はステージだけを出す。Grad / Blend バーと A/B タイルは隠す */
+#stage:fullscreen :is(#gradQuickBar,#gradQuickBarInv,#blendPrevBar,#slotPrevRow){display:none}
+#stage:-webkit-full-screen :is(#gradQuickBar,#gradQuickBarInv,#blendPrevBar,#slotPrevRow){display:none}
 #blendPrevBar .bp{position:relative;flex:1 1 0;min-width:0;border:1px solid var(--line);border-radius:3px;cursor:pointer;overflow:hidden;line-height:0}
 #blendPrevBar .bp canvas{width:100%;height:auto;display:block}
 #blendPrevBar .bp.on{outline:2px solid #ff00aa;outline-offset:-2px}
@@ -453,7 +461,7 @@ input[type=color]::-moz-color-swatch{border:1px solid var(--line2);border-radius
 .row > :is(button,select) + :is(button,select){margin-left:calc(var(--btn-gap) - var(--gap))}
 :is(.toggle-btns,.btnrow,#slotSel) > button + button{margin-left:-1px}
 :is(.toggle-btns,.btnrow,#slotSel) > button{position:relative}
-:is(.toggle-btns,.btnrow,#slotSel) > button:is(:hover,[aria-pressed="true"],.on,.shown,.editing){z-index:1}
+:is(.toggle-btns,.btnrow,#slotSel) > button:is(:hover,[aria-pressed="true"],.on,.editing){z-index:1}
 
 /* Preset / Visual タブのヘッダー (スクロールしても上に残る)。両タブで同じ寸法にそろえる */
 .pane-head{position:sticky;top:-10px;margin:-10px -10px 0;z-index:5;background:var(--panel);padding:10px 10px 8px;border-bottom:1px solid var(--line)}
@@ -497,7 +505,8 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 
 /* タッチ端末: 操作面を大きく。PC (pointer:fine) の 24px 統一は不変 */
 @media (pointer:coarse){
-  :root{--ctl-h:32px;--row-h:32px;--thumb:24px;--check:20px;--sb-w:0px}
+  :root{--ctl-h:32px;--row-h:32px;--thumb:24px;--check:28px;--sb-w:0px;--fs:13px;--fs-sm:12px;--fs-xs:11px}
+  #quickRow button:is(#qUndo,#qRedo){flex:0 0 40px}
   html{touch-action:pan-x pan-y}
   .pscroll{display:none}
   .tab{height:40px}
@@ -521,4 +530,4 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 .toggles > label:has(> input:focus-visible){outline:1px solid var(--acc);outline-offset:1px}
 /* 行の select は縮めてよい (既定の min-width:auto だと狭い画面で行から溢れる) */
 #side .row > select{min-width:0}
-#cfAutoMode{flex:1}
+#side #cfAutoMode{flex:1 1 72px;min-width:72px}

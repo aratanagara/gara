@@ -14702,15 +14702,19 @@ ${outBlock}
     if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
     if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
   },
-  escResetAll(){
+  escResetAll(fromButton){
     if(this.liveLocked('Esc 全リセット')) return;
-    const escMode = Prefs.get('escReset', 'one');
+    let escMode = Prefs.get('escReset', 'one');
+    if(fromButton){
+      if(escMode === 'off') escMode = 'one';
+      if(this._coarse() || Prefs.touch) escMode = 'double';
+    }
     if(escMode === 'off') return;
     if(escMode === 'double'){
       const t = now();
       if(!this._escArmedAt || t - this._escArmedAt > 1){
         this._escArmedAt = t;
-        toast('もう一度 Esc で全リセット (1 秒以内)', 1000, true);
+        toast(`もう一度 ${fromButton ? 'All Off' : 'Esc'} で全リセット (1 秒以内)`, 1000, true);
         return;
       }
       this._escArmedAt = 0;
@@ -16351,7 +16355,7 @@ const UI = {
       on('qRedo',   ()=>App.redo());
       on('qReset',  ()=>App.resetParamsAll());
       on('qClear',  ()=>{ App.resetDraw(); App._undoSchedule(); });
-      on('qAllOff', ()=>App.escResetAll());
+      on('qAllOff', ()=>App.escResetAll(true));
       on('mixShowA', ()=>{ App.toggleSlotVisible('A'); App._undoSchedule(); });
       on('mixShowB', ()=>{ App.toggleSlotVisible('B'); App._undoSchedule(); });
       on('mixSwap',  ()=>{ App.swapSlots(); App._undoSchedule(); });
@@ -19442,12 +19446,8 @@ void mainImage(out vec4 o, in vec2 f){
   },
   refreshSlot(){
     this.refreshSlotPills();
-    // editing = 操作中 (activeSlot) → マゼンタ枠 / shown = A 固定(ベース)。Mix は B の重ね具合。
-    const shown = 'A';
-    $$('#slotSel button').forEach(b=>{
-      b.classList.toggle('editing', b.dataset.slot === App.activeSlot);
-      b.classList.toggle('shown',   b.dataset.slot === shown);
-    });
+    // editing = 操作中 (activeSlot) → 反転塗り + マゼンタ枠
+    $$('#slotSel button').forEach(b=>b.classList.toggle('editing', b.dataset.slot === App.activeSlot));
     // 下段 Slot A/B プレビューに編集中マーカーを反映
     $$('.slotPrev').forEach(tile=>tile.classList.toggle('editing', tile.dataset.slot === App.activeSlot));
     this.refreshSlotVisibility();
@@ -22535,9 +22535,6 @@ void mainImage(out vec4 o, in vec2 f){
     const tsy = $('#transStyle'); if(tsy) tsy.value = String(App.transStyle || 0);
     const pfd = $('#transParamFade'); if(pfd) pfd.value = String(App.paramFadeBeats || 0);
     const pfs = $('#transParamFadeScope'); if(pfs) pfs.value = App.paramFadeScope || 'all';
-    // A 固定(ベース) を青背景にする。Mix 値で入れ替わらない。
-    const shown = 'A';
-    $$('#slotSel button').forEach(b=>b.classList.toggle('shown', b.dataset.slot === shown));
     // 下段 Slot A/B プレビューの editing 枠も再評価
     $$('.slotPrev').forEach(tile=>tile.classList.toggle('editing', tile.dataset.slot === App.activeSlot));
     this.refreshSlotVisibility();

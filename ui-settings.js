@@ -237,6 +237,13 @@
       if(lb && App._coarse()) toast(lb.parentElement.title);   // タッチ端末だけ (PC はホバーで読める)
     });
 
+    // for 無しの行ラベルをタップ → 同じ行の最初のチェックボックスを切り替える (Settings は説明トースト優先で除外)
+    $('#side')?.addEventListener('click', (e) => {
+      const lb = e.target.closest('.row > label');
+      if(!lb || lb.htmlFor || lb.querySelector('input') || lb.closest('#settingsPane')) return;
+      lb.parentElement.querySelector('input[type=checkbox]')?.click();
+    });
+
     const isOpen = () => pane.classList.contains('on');
     $('#setVisDefReset')?.addEventListener('click', () => App.resetVisualDefaults());
     bindSubPanes([
