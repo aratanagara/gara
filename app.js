@@ -12791,6 +12791,9 @@ const App = {
     PRESETS.unshift({ name:'★ FUDE (毛筆)', kind:'fude', ch:[], src:'' });
     PRESETS.unshift({ name:'★ IMAGE (Folder Slideshow)', kind:'image', ch:[], src:'' });
     PRESETS.unshift({ name:'★ VIDEO (Loop Player)', kind:'video', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ SPACE TYPE (3D Poetry)', kind:'spacetype', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ UGOMEKI (Moji Anim)', kind:'ugomeki', ch:[], src:'' });
+    PRESETS.unshift({ name:'★ TEXT DEFORM (Type Graphic)', kind:'textdeform', ch:[], src:'' });
     PRESETS.unshift({ name:'(なし / 透明)', kind:'none', ch:[], src:'' });   // 一番左上: 無選択=透過
     // RHIZOME の別の図は末尾に足す (Code の C 番号は表示順なので、既存の番号を動かさない)
     PRESETS.push({ name:'★ RHIZOME 扇 (逃走線)', kind:'rzfan', ch:[], src:'' });
