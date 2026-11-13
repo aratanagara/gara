@@ -2284,6 +2284,67 @@ void main(){
   frag=vec4(mix(col,metal,clamp(uAmount,0.0,1.0)),1.0);
 }`);
 
+    // Gloss: Relief と同じ輝度勾配の起伏に、濡れたクリアコート (ラッカー) を一枚かける。
+    //   元の色は残し、濡れ色 (少し深く・鮮やか) + 鋭いハイライト + 映り込みの帯 + 縁のフレネルを足す。
+    //   Bump = 起伏の高さとなだらかさ / Sharp = ハイライトの鋭さ / Shine = 反射の強さ /
+    //   Wet = 濡れ色の深さ / Light = 光源が回る速さ
+    this._linkDeferred('glossProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uAmount;
+uniform float uTime;
+uniform float uBump;
+uniform float uSharp;
+uniform float uShine;
+uniform float uWet;
+uniform float uLight;
+float lum(vec3 c){ return dot(c,vec3(0.299,0.587,0.114)); }
+float glossH(vec2 uv, float r){
+  vec2 px=r/uRes;
+  float h=lum(texture(uTex,uv).rgb)*0.36;
+  h+=lum(texture(uTex,uv+vec2( px.x,0.0)).rgb)*0.16;
+  h+=lum(texture(uTex,uv+vec2(-px.x,0.0)).rgb)*0.16;
+  h+=lum(texture(uTex,uv+vec2(0.0, px.y)).rgb)*0.16;
+  h+=lum(texture(uTex,uv+vec2(0.0,-px.y)).rgb)*0.16;
+  return h;
+}
+void main(){
+  vec3 col=texture(uTex,vUv).rgb;
+  if(uAmount<=0.001){ frag=vec4(col,1.0); return; }
+  // Bump: 高いほど起伏が大きく、ぼかし半径も広げて丸く盛り上がった面にする
+  float r=mix(2.0,7.0,uBump);
+  vec2 e=r/uRes;
+  float gx=glossH(vUv+vec2(e.x,0.0),r)-glossH(vUv-vec2(e.x,0.0),r);
+  float gy=glossH(vUv+vec2(0.0,e.y),r)-glossH(vUv-vec2(0.0,e.y),r);
+  float clean=smoothstep(0.002,0.012,length(vec2(gx,gy)));   // 平らな面のノイズは拾わない
+  float k=mix(5.0,28.0,uBump)*clean;
+  vec3 n=normalize(vec3(-gx*k,-gy*k,1.0));
+  vec3 V=vec3(0.0,0.0,1.0);
+  float a=0.9+uTime*uLight*0.8;
+  vec3 L=normalize(vec3(cos(a)*0.6,0.45+0.25*sin(a*0.7),0.75));
+  vec3 H=normalize(L+V);
+  // 濡れ色: 少し深く (ガンマを上げ) 鮮やかに
+  float l0=lum(col);
+  vec3 wet=pow(max(col,vec3(0.0)),vec3(1.0+0.7*uWet));
+  wet=max(vec3(0.0),mix(vec3(lum(wet)),wet,1.0+0.5*uWet));
+  // ハイライト: Blinn-Phong。Sharp で鋭く、鋭いほど面積が減るので強さを補う
+  float ex=mix(24.0,600.0,uSharp*uSharp);
+  float nh=max(0.0,dot(n,H));
+  float spec=pow(nh,ex)*(0.6+ex/180.0);
+  float sheen=pow(nh,ex*0.06+4.0)*0.22;   // ハイライトの周りの広い艶 (塗膜の厚み)
+  // 映り込み: 反射ベクトルの上下で明るさが変わるスタジオの帯 (面が傾いた所にだけ帯が乗る)
+  vec3 R=reflect(-V,n);
+  float band=smoothstep(0.10,0.55,R.y)*(1.0-smoothstep(0.55,0.95,R.y))+smoothstep(-0.2,-0.6,R.y)*0.25;
+  float fres=0.04+0.96*pow(1.0-max(0.0,n.z),5.0);
+  vec3 coat=vec3(1.0)*((spec+sheen)*mix(0.3,1.6,uShine))+vec3(0.95,0.97,1.0)*band*fres*mix(0.6,2.4,uShine);
+  // 明るい所は白く飛びすぎないよう、ハイライトを少し抑える
+  coat*=1.0-0.35*smoothstep(0.7,1.0,l0);
+  vec3 gloss=wet+coat;
+  frag=vec4(mix(col,gloss,clamp(uAmount,0.0,1.0)),1.0);
+}`);
+
     // Barcode: 画面をランダム高の行に割り、各行をランダム周期のセルに刻む。
     // 各セルはソースの 1 点を横に引き延ばした色 = 「引き延ばされたピクセル」。
     // セルごとにバー高さ/隙間が変わり、行ごとに違う速さでシードが変異していく。
@@ -5223,6 +5284,7 @@ void main(){
     this._applyBleedPost(p, _safe);
     this._applyImpastoPost(p, _safe);
     this._applyChromePost(p, _safe);
+    this._applyGlossPost(p, _safe);
 
     this._applyPresetTrans();   // プリセット切替の全画面トランジション (色調補正の直前)
 
@@ -6395,6 +6457,21 @@ void main(){
     this._runFinalPost(this.barcodeProg, '_barcodeTmp', (P)=>{
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
+    });
+  },
+  _applyGlossPost(p, safe){
+    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.gloss) || 0));
+    if(amount <= 0.001 || !this.glossProg) return;
+    const v = (k, d) => { const x = +(p && p[k]); return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };
+    this._runFinalPost(this.glossProg, '_glossTmp', (P)=>{
+      const gl = this.gl, u = (n) => gl.getUniformLocation(P, n);
+      gl.uniform1f(u('uAmount'), amount);
+      gl.uniform1f(u('uTime'), this.postClock != null ? this.postClock : this.clock);
+      gl.uniform1f(u('uBump'),  v('glossBump', 0.5));
+      gl.uniform1f(u('uSharp'), v('glossSharp', 0.6));
+      gl.uniform1f(u('uShine'), v('glossShine', 0.6));
+      gl.uniform1f(u('uWet'),   v('glossWet', 0.4));
+      gl.uniform1f(u('uLight'), v('glossLight', 0.3));
     });
   },
   _applyChromePost(p, safe){
@@ -9470,7 +9547,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -9698,7 +9775,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -12051,6 +12128,7 @@ const App = {
     texNoiseScale:1, unsharpRadius:1, postScale:1, audioFx:1, audioFxAttack:1, audioFxRelease:1,
     // Material (質感): 音で暴れると絵肌が壊れるので対象外
     sdfChrome:1, bleed:1, impasto:1, chrome:1, rain:1, sketch:1,
+    gloss:1, glossBump:1, glossSharp:1, glossShine:1, glossWet:1, glossLight:1,
     pollockGloss:1, pollockMatt:1, pollockFlat:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
@@ -12472,7 +12550,7 @@ const App = {
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
-    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, barcode:0.0,
+    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
@@ -12570,7 +12648,7 @@ const App = {
   POST_GROUPS: {
     color:      ['inv','gamma','bri','con','sat','gradMix','hue','hueRotSpeed'],
     quality:    ['clarity','denoise','deband','vibrance','unsharp','unsharpRadius','fxaa'],
-    material:   ['sdfChrome','bleed','impasto','chrome','rain','sketch','pollockGloss','pollockMatt','pollockFlat'],
+    material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','pollockGloss','pollockMatt','pollockFlat'],
     texture:    ['scn','grn','texNoise','texNoiseScale','pos','blm','voxel'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','split','pixsort','rings','gain'],
     distortion: ['vig','chr','pix','mir','candy','twist','origami','kaiser','kaiserOld','uzumaki','river','boltz'],
@@ -12620,7 +12698,7 @@ const App = {
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
-    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, barcode:0.0,
+    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
@@ -15596,13 +15674,13 @@ ${outBlock}
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:1000000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
     const box = document.createElement('div');
-    box.style.cssText = 'background:#1a1a22;border:1px solid #444;border-radius:8px;padding:18px 20px;max-width:360px;color:#eee;font:13px/1.5 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.6)';
+    box.style.cssText = 'background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:18px 20px;max-width:360px;color:var(--fg);font:13px/1.5 var(--sans);box-shadow:0 8px 30px rgba(0,0,0,.6)';
     const p = document.createElement('div'); p.textContent = message; p.style.marginBottom = '14px';
-    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:var(--btn-gap);justify-content:flex-end';
     const cancel = document.createElement('button'); cancel.textContent = 'キャンセル (Esc)';
-    cancel.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid #555;background:#2a2a33;color:#ccc;cursor:pointer';
+    cancel.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);cursor:pointer';
     const ok = document.createElement('button'); ok.textContent = 'OK (Enter)';
-    ok.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid #6a5cff;background:#6a5cff;color:#fff;cursor:pointer';
+    ok.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer';
     row.appendChild(cancel); row.appendChild(ok); box.appendChild(p); box.appendChild(row); ov.appendChild(box);
     document.body.appendChild(ov);
     const close = ()=>{ try{ ov.remove(); }catch(e){} window.removeEventListener('keydown', onKey, true); this._confirmClose = null; };
@@ -15625,16 +15703,16 @@ ${outBlock}
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:1000000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
     const box = document.createElement('div');
-    box.style.cssText = 'background:#1a1a22;border:1px solid #444;border-radius:8px;padding:18px 20px;min-width:280px;max-width:400px;color:#eee;font:13px/1.5 system-ui,sans-serif;box-shadow:0 8px 30px rgba(0,0,0,.6)';
+    box.style.cssText = 'background:var(--panel);border:1px solid var(--line2);border-radius:var(--radius);padding:18px 20px;min-width:280px;max-width:400px;color:var(--fg);font:13px/1.5 var(--sans);box-shadow:0 8px 30px rgba(0,0,0,.6)';
     const p = document.createElement('div'); p.textContent = message; p.style.marginBottom = '10px';
     const input = document.createElement('input');
     input.type = 'text'; input.value = defValue == null ? '' : String(defValue);
-    input.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:14px;padding:6px 8px;border-radius:6px;border:1px solid #555;background:#111118;color:#eee;font:13px system-ui,sans-serif';
-    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:8px;justify-content:flex-end';
+    input.style.cssText = 'width:100%;box-sizing:border-box;margin-bottom:14px;padding:6px 8px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--surface);color:var(--fg);font:13px var(--sans)';
+    const row = document.createElement('div'); row.style.cssText = 'display:flex;gap:var(--btn-gap);justify-content:flex-end';
     const cancel = document.createElement('button'); cancel.textContent = 'キャンセル (Esc)';
-    cancel.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid #555;background:#2a2a33;color:#ccc;cursor:pointer';
+    cancel.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--line2);background:var(--panel2);color:var(--fg);cursor:pointer';
     const ok = document.createElement('button'); ok.textContent = 'OK (Enter)';
-    ok.style.cssText = 'padding:6px 12px;border-radius:6px;border:1px solid #6a5cff;background:#6a5cff;color:#fff;cursor:pointer';
+    ok.style.cssText = 'padding:6px 12px;border-radius:var(--radius);border:1px solid var(--acc);background:var(--acc);color:#fff;cursor:pointer';
     row.appendChild(cancel); row.appendChild(ok);
     box.appendChild(p); box.appendChild(input); box.appendChild(row); ov.appendChild(box);
     document.body.appendChild(ov);
@@ -16083,6 +16161,7 @@ const UI = {
     // tabs
     $$('.tab').forEach(t=>t.addEventListener('click', ()=>this.openTab(t.dataset.tab)));
     this.openTab('preset');
+    this.initColorBars();
 
     // Visual タブ: 検索 + カテゴリ(タグ)フィルタ
     { const si = $('#visualSearch');
@@ -16692,6 +16771,12 @@ void mainImage(out vec4 o, in vec2 f){
           toast(on ? '復元 ON (次回起動から前回状態を復元)' : '復元 OFF (次回起動はクリーン)');
         });
       } }
+    $('#side').addEventListener('mouseover', (e) => {
+      const label = e.target.closest('.row label, .params .par label');
+      if(label && !label.hasAttribute('title') && label.scrollWidth > label.clientWidth){
+        label.title = label.textContent.trim();
+      }
+    });
     { const hb=$('#btnHelp'), hm=$('#helpModal'), hc=$('#btnHelpClose');
       if(hb && hm){
         const open = ()=>{ hm.style.display='flex'; };
@@ -16837,7 +16922,7 @@ void mainImage(out vec4 o, in vec2 f){
       const inp = document.createElement('input');
       inp.type = 'text';
       inp.value = String(parseFloat(r.value));
-      inp.style.cssText = 'width:100%;box-sizing:border-box;background:rgba(0,0,0,0.55);color:inherit;border:1px solid var(--acc,#888);border-radius:3px;font:inherit;text-align:right;padding:0 2px;outline:none';
+      inp.style.cssText = 'width:100%;box-sizing:border-box;background:var(--surface);color:inherit;border:1px solid var(--acc);border-radius:var(--radius);font:inherit;text-align:right;padding:0 2px;outline:none';
       val.textContent = '';
       val.appendChild(inp);
       inp.focus(); inp.select();
@@ -18127,13 +18212,13 @@ void mainImage(out vec4 o, in vec2 f){
     GradEditor.init();
     UI._gradEditor = GradEditor;
     // グラデの向きを反転 (ストップを t→1-t で左右入れ替え。バーが目に見えて反転する)
-    const gradRevBtn = $('#pxGradReverse');
-    if(gradRevBtn) gradRevBtn.addEventListener('click', ()=>{
+    //   ボタンは Grad Preset 一覧の先頭行 (現在のグラデ) の右端 (_refreshGradList が作る)
+    const reverseGrad = ()=>{
       const cur = GradEditor.get();
       const rev = cur.map(s=>({t: 1 - s.t, rgb: s.rgb.slice()}));
       GradEditor.set(rev, (cur.length - 1) - GradEditor.sel);
       toast('グラデの向きを反転');
-    });
+    };
     // 組み込みグラデ (1〜9,0 キー / リスト番号に対応)
     const BUILTIN_GRADS = [
       { name:'cosine',      hex:'#04001a,#3300d1,#5588aa,#29a9b0,#aab8b0,#b3ee26,#ff8c7a,#f0eeea' },
@@ -18212,7 +18297,9 @@ void mainImage(out vec4 o, in vec2 f){
       return c.length?('linear-gradient(90deg,'+c.join(',')+')'):'#222';
     };
     // 現在のグラデを名前付きでサーバー保存(追加)
+    // Grad Edit の右の ＋ = 現在のグラデを名前付きで新規保存
     const addCurrentGrad = ()=>{ const stops = GradEditor.get(); App._prompt('保存するグラデの名前:', 'grad '+(GradStore.list.length+1), (name)=>{ if(!name || !name.trim()) return; GradStore.add(name.trim(), stops); toast('グラデを保存: '+name.trim()); }); };
+    { const b = $('#pxGradAdd'); if(b) b.addEventListener('click', addCurrentGrad); }
     // グラデリスト UI (色見本 + 番号 + 名前。番号 1〜9,0 がキーに対応。最上部=現在編集中で sticky)
     UI._refreshGradList = ()=>{
       const box = $('#pxGradList'); if(!box) return;
@@ -18220,26 +18307,28 @@ void mainImage(out vec4 o, in vec2 f){
       const items = GradStore.list.map((g,i)=>({name:g.name, css:_gradCss(g.stops), saved:i}));
       const mkRow = (no, css, name)=>{
         const r = document.createElement('div');
-        r.style.cssText = 'position:relative;flex:0 0 20px;cursor:pointer;border-radius:3px;border:1px solid var(--line);overflow:hidden;background:'+css;
-        r.innerHTML = `<span style="position:absolute;left:5px;top:0;line-height:20px;font-weight:bold;color:#fff;text-shadow:0 0 2px #000,0 0 4px #000">${no}</span>`
-          + `<span style="position:absolute;left:21px;right:4px;top:0;line-height:20px;font-size:11px;color:#fff;text-shadow:0 0 2px #000,0 0 4px #000,0 1px 1px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>`;
+        r.className = 'grad-row';
+        r.style.background = css;
+        r.innerHTML = `<span class="grad-row-no">${no}</span>`
+          + `<span style="position:absolute;left:21px;right:4px;top:0;line-height:calc(var(--ctl-h) - 2px);font-size:var(--fs);color:#fff;text-shadow:0 0 2px #000,0 0 4px #000,0 1px 1px #000;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>`;
         return r;
       };
       box.innerHTML = '';
       box.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px';
-      // 現在行(固定ヘッダー)= 現在のグラデを表示 + 右端に「+」追加ボタン
-      const cur = mkRow('●', _gradCss(GradEditor.get()), '現在');
-      cur.dataset.cur = '1'; cur.style.outline='1px solid #9be';
-      const addBtn = document.createElement('span');
-      addBtn.textContent = '+'; addBtn.title = '現在のグラデを名前付きで保存';
-      addBtn.style.cssText = 'position:absolute;top:0;right:0;width:20px;line-height:20px;text-align:center;font-weight:bold;font-size:15px;color:#9be;cursor:pointer;background:rgba(0,0,0,0.4);text-shadow:0 0 2px #000,0 0 3px #000';
-      addBtn.addEventListener('click', e=>{ e.stopPropagation(); addCurrentGrad(); });
-      cur.appendChild(addBtn);
+      // 先頭行 = 現在のグラデを表示。右端の ⇄ で左右 (向き) を入れ替える
+      const cur = mkRow('', _gradCss(GradEditor.get()), '現在');
+      cur.dataset.cur = '1'; cur.style.borderColor = 'var(--fg)'; cur.style.cursor = 'default';
+      const revBtn = document.createElement('span');
+      revBtn.className = 'ico-btn grad-row-btn'; revBtn.style.right = '0'; revBtn.title = 'グラデの向きを反転 (左右入れ替え)';
+      VJIcon.set(revBtn, 'swap');
+      revBtn.addEventListener('click', e=>{ e.stopPropagation(); reverseGrad(); });
+      cur.appendChild(revBtn);
       box.appendChild(cur);
-      // プリセット一覧は「+」の下のスクロール領域に置く(ここにスクロールバーが出る)
+      // プリセット一覧は「現在」の下のスクロール領域に置く(ここにスクロールバーが出る)
       const scroll = document.createElement('div');
       scroll.id = 'pxGradScroll';
-      scroll.style.cssText = 'display:flex;flex-direction:column;gap:2px;max-height:160px;overflow-y:auto';
+      scroll.style.cssText = 'display:flex;flex-direction:column;gap:2px;max-height:calc((var(--ctl-h) + 2px) * 7 - 2px);overflow-y:auto';
+      scroll.dataset.pscroll = 'y';
       box.appendChild(scroll);
       items.forEach((it, n)=>{
         const key = (n===9)?'0':(n<9?String(n+1):'·');
@@ -18252,12 +18341,12 @@ void mainImage(out vec4 o, in vec2 f){
         row.addEventListener('click', ()=> App.applyGradPreset(n));
         if(it.saved != null){
           const si = it.saved, nm = it.name;
-          const mkBtn = (txt, title, right, col, fn)=>{ const b=document.createElement('span'); b.textContent=txt; b.title=title;
-            b.style.cssText='position:absolute;top:0;line-height:20px;width:16px;text-align:center;text-shadow:0 0 2px #000,0 0 3px #000;cursor:pointer;font-size:11px;right:'+right+'px;color:'+col;
+          const mkBtn = (icon, title, slot, fn)=>{ const b=document.createElement('span'); b.className='ico-btn grad-row-btn'; b.title=title;
+            b.style.right = 'calc((var(--ctl-h) - 2px) * '+slot+')'; VJIcon.set(b, icon);
             b.addEventListener('click', e=>{ e.stopPropagation(); fn(); }); row.appendChild(b); };
-          mkBtn('✎', '名前を変更', 36, '#cde', ()=>{ App._prompt('グラデ名を変更:', nm, (nn)=>{ if(nn && nn.trim()){ GradStore.rename(si, nn.trim()); toast('名前変更: '+nn.trim()); } }); });
-          mkBtn('⟳', '現在のグラデで上書き更新', 19, '#9be', ()=>{ App._confirm('「'+nm+'」を現在のグラデで上書きしますか？', ()=>{ GradStore.update(si, GradEditor.get()); toast('更新: '+nm); }); });
-          mkBtn('×', '削除', 2, '#fdd', ()=>{ App._confirm('「'+nm+'」を削除しますか？', ()=>{ GradStore.remove(si); toast('削除: '+nm); }); });
+          mkBtn('edit', '名前を変更', 2, ()=>{ App._prompt('グラデ名を変更:', nm, (nn)=>{ if(nn && nn.trim()){ GradStore.rename(si, nn.trim()); toast('名前変更: '+nn.trim()); } }); });
+          mkBtn('refresh', '現在のグラデで上書き更新', 1, ()=>{ App._confirm('「'+nm+'」を現在のグラデで上書きしますか？', ()=>{ GradStore.update(si, GradEditor.get()); toast('更新: '+nm); }); });
+          mkBtn('close', '削除', 0, ()=>{ App._confirm('「'+nm+'」を削除しますか？', ()=>{ GradStore.remove(si); toast('削除: '+nm); }); });
         }
         scroll.appendChild(row);
       });
@@ -18392,6 +18481,12 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxBleed',   'bleed',   f2);
     slid('pxImpasto', 'impasto', f2);
     slid('pxChrome',  'chrome',  f2);
+    slid('pxGloss', 'gloss', f2);
+    slid('pxGlossBump', 'glossBump', f2);
+    slid('pxGlossSharp', 'glossSharp', f2);
+    slid('pxGlossShine', 'glossShine', f2);
+    slid('pxGlossWet', 'glossWet', f2);
+    slid('pxGlossLight', 'glossLight', f2);
     slid('pxBarcode', 'barcode', f2);
     slid('pxAudioFx',    'audioFx',       f2);
     slid('pxAudioFxAtk', 'audioFxAttack', f2);
@@ -18837,16 +18932,16 @@ void mainImage(out vec4 o, in vec2 f){
         const smap = UI._modeGifMap || {};
         if(smap[slug]) UI._gifStillHover(tile, ph, smap[slug]);   // 通常静止/ホバーでアニメ
         const b = document.createElement('div');
-        b.textContent = '⟳'; b.title = 'このモードに切替してGIFサムネを生成';
-        b.style.cssText = 'position:absolute;top:2px;right:2px;font:10px/1 var(--mono);background:rgba(0,0,0,.72);color:#9be;padding:2px 5px;border-radius:3px;cursor:pointer;z-index:3';
+        b.className = 'ico-btn'; b.style.cssText = 'top:2px;right:2px'; b.title = 'このモードに切替してGIFサムネを生成';
+        VJIcon.set(b, 'refresh');
         b.addEventListener('click', e=>{ e.stopPropagation(); App.captureVisualGif(i); });
         tile.appendChild(b);
       }
       const _sidPre = (p.sid ? p.sid + ' ' : '');
       const _disp = UI._visualNames()[p.name] || p.name;
       const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = _sidPre + _disp; tile.appendChild(lbl);
-      { const eb = document.createElement('div'); eb.textContent = '✎'; eb.title = '名前変更';
-        eb.style.cssText = 'position:absolute;top:2px;left:2px;font:10px/1 var(--mono);background:rgba(0,0,0,.72);color:#ccd;padding:2px 5px;border-radius:3px;cursor:pointer;z-index:3';
+      { const eb = document.createElement('div'); eb.className = 'ico-btn'; eb.style.cssText = 'top:2px;left:2px'; eb.title = '名前変更';
+        VJIcon.set(eb, 'edit');
         eb.addEventListener('click', e=>{ e.stopPropagation(); UI._renameVisualTile(p.name, _sidPre, lbl); });
         tile.appendChild(eb); }
       tile.addEventListener('mouseenter', ()=>{ Preview.hoveredIdx = i; });
@@ -18879,8 +18974,8 @@ void mainImage(out vec4 o, in vec2 f){
       const _mbase = item.name.replace(/\.[^.]+$/, '');
       const _mpre = vsid + ' ';
       const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = _mpre + (UI._visualNames()[_mbase] || _mbase); tile.appendChild(lbl);
-      { const eb = document.createElement('div'); eb.textContent = '✎'; eb.title = '名前変更';
-        eb.style.cssText = 'position:absolute;top:2px;left:2px;font:10px/1 var(--mono);background:rgba(0,0,0,.72);color:#ccd;padding:2px 5px;border-radius:3px;cursor:pointer;z-index:3';
+      { const eb = document.createElement('div'); eb.className = 'ico-btn'; eb.style.cssText = 'top:2px;left:2px'; eb.title = '名前変更';
+        VJIcon.set(eb, 'edit');
         eb.addEventListener('click', e=>{ e.stopPropagation(); UI._renameVisualTile(_mbase, _mpre, lbl); });
         tile.appendChild(eb); }
       const img = new Image();
@@ -18901,8 +18996,8 @@ void mainImage(out vec4 o, in vec2 f){
       const smap = UI._modeGifMap || {};
       if(smap[mslug]) UI._gifStillHover(tile, ph, smap[mslug]);   // 通常静止/ホバーでアニメ
       const gb = document.createElement('div');
-      gb.textContent = '⟳'; gb.title = 'この動画でGIFサムネを生成';
-      gb.style.cssText = 'position:absolute;top:2px;right:2px;font:10px/1 var(--mono);background:rgba(0,0,0,.72);color:#9be;padding:2px 5px;border-radius:3px;cursor:pointer;z-index:3';
+      gb.className = 'ico-btn'; gb.style.cssText = 'top:2px;right:2px'; gb.title = 'この動画でGIFサムネを生成';
+      VJIcon.set(gb, 'refresh');
       gb.addEventListener('click', e=>{ e.stopPropagation(); App.captureMovieGif(item.url, item.name); });
       tile.appendChild(gb);
       tile.addEventListener('click', ()=>{ if(App.transitionVideo) App.transitionVideo(item.url, item.name); });
@@ -19452,9 +19547,9 @@ void mainImage(out vec4 o, in vec2 f){
           // 個別画像 (images/ 直下の臨時ファイル) はローカル起動なら × で実ファイルごと消せる。フォルダは対象外
           if(f.single && this._mediaLocal){
             const del = document.createElement('button');
-            del.textContent = '×';
+            del.className = 'ico-btn'; del.style.cssText = 'top:2px;right:2px';
             del.title = 'この画像を削除 (images/ から実ファイルを消す)';
-            del.style.cssText = 'position:absolute;top:2px;right:2px;width:18px;height:18px;padding:0;border:0;border-radius:3px;background:rgba(0,0,0,.65);color:#fff;font:700 12px/18px var(--mono);cursor:pointer';
+            VJIcon.set(del, 'close');
             del.addEventListener('click', async (e)=>{
               e.stopPropagation();
               if(!confirm('削除しますか: ' + f.name + '\n(' + f.dir + ' の実ファイルを消します)')) return;
@@ -19608,7 +19703,7 @@ void mainImage(out vec4 o, in vec2 f){
       b.textContent = 'Random';
       b.title = 'このセクションのパラメータをランダム化';
       b.dataset.kind = ref.dataset.kind || '';
-      box.insertBefore(b, box.firstChild);
+      box.insertBefore(b, box.querySelector('#btnPostReset'));
     });
   },
   // セクション内の range / select をランダム化。各エンジンの min/max/step と input ハンドラを
@@ -22123,7 +22218,7 @@ void mainImage(out vec4 o, in vec2 f){
       const cfg = document.createElement('div'); cfg.className='cfg';
       const top = document.createElement('div'); top.className='top';
       const lab = document.createElement('div'); lab.className='name'; lab.textContent = e.label;
-      const del = document.createElement('button'); del.textContent='×'; del.addEventListener('click',()=>Inputs.remove(e.id));
+      const del = document.createElement('button'); del.className='ico-only'; del.title='削除'; VJIcon.set(del, 'close'); del.addEventListener('click',()=>Inputs.remove(e.id));
       top.appendChild(lab); top.appendChild(del);
       cfg.appendChild(top);
       r.appendChild(th); r.appendChild(cfg);
@@ -22184,9 +22279,8 @@ void mainImage(out vec4 o, in vec2 f){
           const v = col.value;
           p.value = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255];
         });
+        col.className = 'par-color';
         row.appendChild(col);
-        const val = document.createElement('div'); val.className='val'; val.textContent = '';
-        row.appendChild(val);
       }
       // midi badge
       const key = App.activeSlot+':'+p.name;
@@ -22210,9 +22304,40 @@ void mainImage(out vec4 o, in vec2 f){
     if(p._uiBox) p._uiBox.checked = p.value>0.5;
   },
 
+  // Mix / FX のカラー入力を横幅いっぱいのバーにし、カラーコードを重ねて表示する。
+  // 後から作られる入力 (mode 別 UI / Shader Params) も MutationObserver で包む。
+  initColorBars(){
+    const valDesc = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value');
+    const wrapOne = (inp)=>{
+      if(inp._colorBar) return;
+      const bar = document.createElement('span'); bar.className = 'colorbar';
+      const hex = document.createElement('span'); hex.className = 'colorbar-hex';
+      inp._colorBar = bar;
+      inp.before(bar); bar.append(inp, hex);
+      const sync = ()=>{
+        const v = valDesc.get.call(inp);
+        const n = parseInt(v.slice(1), 16);
+        hex.textContent = v;
+        hex.classList.toggle('dark', 0.2126*(n>>16&255) + 0.7152*(n>>8&255) + 0.0722*(n&255) > 140);
+      };
+      // プログラムからの value 代入でも表示を追従させる
+      Object.defineProperty(inp, 'value', { configurable:true, get(){ return valDesc.get.call(inp); }, set(v){ valDesc.set.call(inp, v); sync(); } });
+      inp.addEventListener('input', sync);
+      sync();
+    };
+    const scan = (n)=>{
+      if(n.matches('input[type=color]')) wrapOne(n);
+      else n.querySelectorAll('input[type=color]').forEach(wrapOne);
+    };
+    for(const pane of $$('.pane[data-pane=mix], .pane[data-pane=post]')){
+      scan(pane);
+      new MutationObserver(ms=>{ for(const m of ms) for(const n of m.addedNodes) if(n.nodeType===1) scan(n); })
+        .observe(pane, { childList:true, subtree:true });
+    }
+  },
+
   refreshSlotABg(){
     const el = $('#slotABg'); if(el && el.value !== App.slotABg) el.value = App.slotABg;
-    const v  = $('#slotABgVal'); if(v) v.textContent = App.slotABg;
   },
   refreshMix(updateSlider=true){
     if(updateSlider) $('#cf').value = App.crossfade;
@@ -22250,7 +22375,8 @@ void mainImage(out vec4 o, in vec2 f){
     pop.id = 'presetHistPop';
     pop.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.62);z-index:9999;display:flex;align-items:center;justify-content:center';
     const box = document.createElement('div');
-    box.style.cssText = 'background:var(--panel,#191b22);border:1px solid var(--line,#333);border-radius:8px;padding:14px 16px;max-height:76vh;width:min(560px,92vw);overflow:auto;font:12px var(--mono,monospace);color:var(--fg,#ddd)';
+    box.style.cssText = 'background:var(--panel,#191b22);border:1px solid var(--line,#333);border-radius:var(--radius);padding:14px 16px;max-height:76vh;width:min(560px,92vw);overflow:auto;font:12px var(--mono,monospace);color:var(--fg,#ddd)';
+    box.dataset.pscroll = 'y';
     box.innerHTML = '<div style="font-weight:700;margin-bottom:4px">プリセット保存履歴</div>'
       + '<div style="color:var(--dim,#888);font-size:10px;margin-bottom:10px">保存のたびにサーバーへ残る世代です。選ぶと「今の一覧に無いプリセット」だけを追加で復元します(既存は消えません)。サムネは復元後に再生成されます。</div>'
       + '<div id="presetHistList">読み込み中…</div>';
@@ -22380,15 +22506,15 @@ void mainImage(out vec4 o, in vec2 f){
       const key = (i < 9) ? String(i+1) : '';   // 数字キーはGrad Preset用。全体Presetはクリックで呼出
       if(key){ const k = document.createElement('div'); k.className = 'key'; k.textContent = key; tile.appendChild(k); }
       // 削除 / 名前変更 (左上の小ボタン)
-      const mkBtn = (txt, col, left, title, fn)=>{
-        const b = document.createElement('div'); b.textContent = txt; b.title = title;
-        b.style.cssText = 'position:absolute;top:2px;left:'+left+'px;font:10px/1 var(--mono);background:rgba(0,0,0,.72);color:'+col+';padding:2px 5px;border-radius:3px;cursor:pointer;z-index:3';
+      const mkBtn = (icon, slot, title, fn)=>{
+        const b = document.createElement('div'); b.className = 'ico-btn'; b.title = title;
+        b.style.cssText = 'top:2px;left:calc(2px + 20px * '+slot+')'; VJIcon.set(b, icon);
         b.addEventListener('click', e=>{ e.stopPropagation(); fn(); });
         tile.appendChild(b);
       };
-      mkBtn('×', '#f88', 3, '削除', ()=>App.presetDelete(i));
-      mkBtn('✎', '#ccd', 24, '名前変更', ()=>{ App._prompt('プリセット名', p.name || ('Preset '+(i+1)), (nn)=>{ App.presetRename(i, nn); UI.refreshPresetLib(); }); });
-      mkBtn('⟳', '#9be', 44, '現在の状態で上書き保存(更新)', ()=>App.presetOverwrite(i, p.name));
+      mkBtn('close', 0, '削除', ()=>App.presetDelete(i));
+      mkBtn('edit', 1, '名前変更', ()=>{ App._prompt('プリセット名', p.name || ('Preset '+(i+1)), (nn)=>{ App.presetRename(i, nn); UI.refreshPresetLib(); }); });
+      mkBtn('refresh', 2, '現在の状態で上書き保存(更新)', ()=>App.presetOverwrite(i, p.name));
       tile.addEventListener('click', e=>{ if(e.shiftKey) App.presetOverwrite(i, p.name); else App.presetApply(i); });
       // ホバー = 毎フレーム優先描画 (シェーダプリセットは常時ラウンドロビンでアニメ。animatePresetThumbs)
       tile.addEventListener('mouseenter', ()=>{ entry.hover = true; });
