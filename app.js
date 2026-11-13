@@ -5283,6 +5283,7 @@ void main(){
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
     //   2.5) プリセット切替トランジション → IMAGON (Overlay の筆跡)
     //   3) 色調補正 (Bri/Con/Sat/Hue。Grad/Auto Map はスロット単位のため合成内)
+    //   3.5) 3D FX: Photo
     //   4) 3D 段 (折り紙系): Needle → Origami → Kaiser → Flames → Uzumaki
     //   5) Glitch 段: Slit-scan → Waveform → Barcode → Datamosh → Pixelsort
     //   6) Lens 段: Mirror → Pixelate → Chroma Ab
@@ -5310,6 +5311,9 @@ void main(){
 
     // 3) 色調補正 (Sat/Hue/Brightness/Contrast)
     this._applyFinalColorGrade();
+
+    // 3.5) 3D FX (Photo): 画面を切り抜いて 3D 空間に浮かせる。後段の Needle / Origami / Kaiser はその結果ごと折る
+    this._apply3dFx(p, _safe);
 
     // 4) 3D 段 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
     const _stacked = this._applyFoldStack(p, _safe);
@@ -6633,6 +6637,82 @@ void main(){
   // Uzumaki (渦巻き展開): カード 24 枚を 3D 空間で対数螺旋にファン展開する頂点シェーダパス。
   //   fold 系 (Needle/Origami/Kaiser) が有効なフレームは foldStack 統合パスが取り込んで描く
   //   (_foldStackTookUzumaki) ため、ここは Uzumaki 単体のときだけ走る。
+  // 3D FX (Fx3d.ORDER の各エンジン): 現在フレーム (_finalFBO) を素材に 3D シーンを描き、_finalFBO へ戻す。
+  //   量 e が小さい間は元画像へクロスフェード (k = min(1, e*4))、k=1 なら blit で置き換え。
+  _apply3dFx(p, safe){
+    if(safe || typeof Fx3d === 'undefined' || !this._finalFBO) return;
+    const gl = this.gl;
+    const fw = this._finalFBO.w, fh = this._finalFBO.h;
+    const s = [1, 0.75, 0.5].includes(+App.post.fx3dScale) ? +App.post.fx3dScale : 1;
+    const tw = Math.max(2, Math.round(fw * s)), th = Math.max(2, Math.round(fh * s));
+    for(const name of Fx3d.ORDER){
+      const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
+      if(e <= 0.001) continue;
+      let T = this._fx3dFBO;
+      if(!T || T.w !== tw || T.h !== th){
+        if(T){ gl.deleteTexture(T.tex); gl.deleteRenderbuffer(T.depth); gl.deleteFramebuffer(T.fbo); }
+        const tex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, tex);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, tw, th, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        const depth = gl.createRenderbuffer();
+        gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+        gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT24, tw, th);
+        const fbo = gl.createFramebuffer();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+        gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        T = this._fx3dFBO = { fbo, tex, depth, w:tw, h:th };
+      }
+      const beat = App.visualBeat ? App.visualBeat() : BPM.beatCount();
+      const ok = Fx3d.render(name, { srcTex:this._finalFBO.tex, fbo:T.fbo, w:tw, h:th, e, clock:this.postClock != null ? this.postClock : this.clock, beat });
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      gl.bindVertexArray(null);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.viewport(0, 0, fw, fh);
+      if(!ok) continue;
+      const k = Math.min(1, e * 4);
+      if(k >= 0.999){
+        gl.bindFramebuffer(gl.READ_FRAMEBUFFER, T.fbo);
+        gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._finalFBO.fbo);
+        gl.blitFramebuffer(0, 0, tw, th, 0, 0, fw, fh, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      } else {
+        if(!this._fx3dCopyProg){
+          const vsh = this._compile(gl.VERTEX_SHADER, `#version 300 es
+out vec2 vUv;
+void main(){ vec2 q = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = q; gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0); }`);
+          const fsh = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uTex; out vec4 frag;
+void main(){ frag = vec4(texture(uTex, vUv).rgb, 1.0); }`);
+          const pr = this._link(vsh, fsh);
+          this._fx3dCopyProg = (pr && !pr.err) ? pr : null;
+          if(!this._fx3dCopyProg) console.error('fx3d copy program failed:', pr && pr.err);
+        }
+        if(!this._fx3dCopyProg) continue;
+        if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
+        gl.useProgram(this._fx3dCopyProg);
+        gl.bindVertexArray(this._emptyVAO);
+        gl.enable(gl.BLEND);
+        gl.blendFunc(gl.CONSTANT_ALPHA, gl.ONE_MINUS_CONSTANT_ALPHA);
+        gl.blendColor(0, 0, 0, k);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, T.tex);
+        gl.uniform1i(gl.getUniformLocation(this._fx3dCopyProg, 'uTex'), 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.disable(gl.BLEND);
+        gl.bindVertexArray(null);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+    }
+  },
   _applyUzumakiPost(p, safe){
     const gl = this.gl;
     const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.uzumaki) || 0));
@@ -9598,7 +9678,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -9805,7 +9885,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photo', fx3dPhotoCount:'Photo Count', fx3dPhotoCrop:'Photo Crop', fx3dScale:'3D Scale', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -12198,6 +12278,8 @@ const App = {
     // Material (質感): 音で暴れると絵肌が壊れるので対象外
     sdfChrome:1, bleed:1, impasto:1, chrome:1, rain:1, sketch:1,
     gloss:1, glossBump:1, glossSharp:1, glossShine:1, glossWet:1, glossLight:1,
+    // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
+    fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dScale:1,
     pollockGloss:1, pollockMatt:1, pollockFlat:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
@@ -12323,6 +12405,8 @@ const App = {
     // Glitch FX のうち音/拍で発火するもの (uHit/uOnset 駆動)。
     // フェードで強度が遅れて上がるとトリガーの瞬発力が鈍るため瞬時反映。
     glass:1, twist:1, origami:1, kaiser:1, kaiserOld:1,
+    // 3D FX の離散値 (フェード中の中間値が無意味)
+    fx3dScale:1, fx3dPhotoCount:1,
   },
   applyPostFaded(target){
     const dur = this._fadeSec();
@@ -12618,6 +12702,7 @@ const App = {
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dScale:1,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
     waveform:0.0,
@@ -12721,7 +12806,7 @@ const App = {
     texture:    ['scn','grn','texNoise','texNoiseScale','pos','blm','voxel'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','split','pixsort','rings','gain'],
     distortion: ['chr','pix','mir','candy','twist','boltz'],
-    fx3d:       ['origami','kaiser','kaiserOld','uzumaki','river'],
+    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','origami','kaiser','kaiserOld','uzumaki','river','fx3dScale'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','outline'],
     glitch:     ['slice','ringSlice','ringBlur','slitScan','barcode','glitchTrail','glitchTrailType'],
   },
@@ -12786,6 +12871,7 @@ const App = {
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
     dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dScale:1,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
     waveform:0.0,
@@ -18670,6 +18756,10 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxKaiser','kaiser', f2);
     slid('pxKaiserOld','kaiserOld', f2);
     slid('pxUzumaki','uzumaki', f2);
+    slid('pxFx3dPhoto','fx3dPhoto', f2);
+    slid('pxFx3dPhotoCount','fx3dPhotoCount', fi);
+    slid('pxFx3dPhotoCrop','fx3dPhotoCrop', v=>(v|0)+'%');
+    { const sc = $('#pxFx3dScale'); if(sc){ sc.value = String(App.post.fx3dScale); sc.addEventListener('change', ()=>{ App.post.fx3dScale = parseFloat(sc.value); }); } }
     slid('pxShake','shake',f2);
     slid('pxMblur','mblur',f2);
     slid('pxGain', 'gain', f2);
@@ -18867,6 +18957,10 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxKaiser', p.kaiser || 0, f2);
     set('pxKaiserOld', p.kaiserOld || 0, f2);
     set('pxUzumaki', p.uzumaki || 0, f2);
+    set('pxFx3dPhoto', p.fx3dPhoto || 0, f2);
+    set('pxFx3dPhotoCount', p.fx3dPhotoCount, fi);
+    set('pxFx3dPhotoCrop', p.fx3dPhotoCrop, v=>(v|0)+'%');
+    if($('#pxFx3dScale')) $('#pxFx3dScale').value = String(p.fx3dScale);
     set('pxShake', p.shake, f2);
     set('pxMblur', p.mblur, f2);
     set('pxGain',  p.gain,  f2);
