@@ -68,7 +68,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794559701">
+<link rel="stylesheet" href="style.css?v=1794560028">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1366,11 +1366,10 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Max Strokes</label><input type="range" id="ovMaxStr" min="20" max="1000" step="10" value="300"><div class="val" id="ovMaxStrVal">300</div></div>
           <div class="btnrow" style="margin-top:6px">
             <button id="btnOverlayClear" style="flex:1">Clear Canvas</button>
-            <button id="btnOverlayRandom" style="flex:1" title="ストローク・形状・モーションのパラメータをランダム生成 (Brush の選択と Trigger は変えない。保存は右上の Save)">Random Params</button>
           </div>
         </div>
 
-        <div class="section">
+        <div class="section sub">
           <h3>Trigger</h3>
           <div class="row"><label>Trigger</label>
             <select id="ovSubdiv" style="flex:1">
@@ -1407,7 +1406,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="help" id="ovDrawBeatsHelp" style="font-size:10px">SMUDGE の描画時間を拍単位で選択。<b>Trigger 連動</b>=発生間隔と同じ / それ以外で発生と描画を分離</div>
         </div>
 
-        <div class="section">
+        <div class="section sub">
           <h3>Stroke Path</h3>
           <div class="row"><label>Anchor</label>
             <select id="ovCenter" style="flex:1">
@@ -1437,7 +1436,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" id="ovSmudgeSpeedRow"><label>Finger Speed</label><input type="range" id="ovSmudgeSpeed" min="0.05" max="4" step="0.01" value="0.5"><div class="val" id="ovSmudgeSpeedVal">0.50</div></div>
         </div>
 
-        <div class="section">
+        <div class="section sub">
           <h3>Probe Motion</h3>
           <div class="help" style="margin-bottom:6px">始点を固定したまま終点を「探る」モーション → 確定 → フェード</div>
           <div class="row"><label>Search Time</label><input type="range" id="ovSearchPhase" min="0.05" max="0.9" step="0.01" value="0.05"><div class="val" id="ovSearchPhaseVal">0.05</div></div>
@@ -1446,7 +1445,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Fade Time</label><input type="range" id="ovFadePhase" min="0.05" max="0.9" step="0.01" value="0.35"><div class="val" id="ovFadePhaseVal">0.35</div></div>
         </div>
 
-        <div class="section">
+        <div class="section sub">
           <h3>Brush Shape</h3>
           <div class="help" style="margin-bottom:6px">imagon.app のブラシ形状を VJ の拍に合わせて生成</div>
           <div class="row"><label>Points</label><input type="range" id="ovSides" min="3" max="40" step="1" value="15"><div class="val" id="ovSidesVal">15</div></div>
@@ -1486,7 +1485,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="bpmBig" id="bpmBig" title="クリックして BPM を入力">120.0</div>
           <input class="bpmBig bpmBigEdit" id="bpmBigEdit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" style="display:none">
           <div class="bpmDots"><div></div><div></div><div></div><div></div></div>
-          <div class="row">
+          <div class="row" hidden>
             <label>BPM</label>
             <input type="number" id="bpmInput" min="20" max="300" step="0.1" value="120" style="flex:1">
           </div>
@@ -1516,56 +1515,17 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <label></label>
             <span id="autoBpmStat" style="font-size:11px;color:var(--dim)">—</span>
           </div>
-        </div>
-
-        <div class="section">
-          <h3>Audio Input</h3>
-          <div class="btnrow">
-            <button id="btnAudioNone" title="音声入力を使わない">なし</button>
-            <button id="btnAudioMic" title="クリックでON / 点灯中に再クリックでOFF">マイク</button>
-            <button id="btnAudioDisp" title="クリックでON / 点灯中に再クリックでOFF">画面音声</button>
-          </div>
-          <div class="help" style="margin-top:8px">
-            <b>画面音声 (Chrome 系):</b> ピッカーで <b>「Chrome タブ」を選択</b> → 下部の <b>「タブの音声を共有」にチェック</b> → Share。<br>
-            ※ 「ウィンドウ」「画面全体」を選ぶと音声が取れず Permission denied になります。<br>
-            ※ macOS では初回 System Settings → Privacy → Screen Recording で Chrome を許可。<br>
-            <br>
-            シェーダ側: <code>texture(iChannel?, vec2(x, 0.25))</code> でFFT、<code>vec2(x, 0.75)</code> で波形、<code>iEnergy</code> で低〜中域のパワー (0..1)。
-          </div>
+          <div class="row" title="BPM 検知に使うアタック音。Auto Spectrum は曲全体の音域と音量へ自動追従"><label for="bpmTarget">BPM Detect</label><select id="bpmTarget"><option value="auto" selected>Auto Spectrum</option><option value="kick">Kick</option><option value="snare">Snare / Clap</option><option value="drum">Drum Mix</option><option value="full">Full Range</option></select></div>
         </div>
 
         <div class="section">
           <h3>Motion Mode</h3>
           <div class="btnrow">
-            <button id="btnModeDrone" class="on">DRONE (時間駆動)</button>
-            <button id="btnModeBeat">BEAT (拍同期)</button>
+            <button id="btnModeDrone" class="on" title="DRONE: 時間駆動">Drone</button>
+            <button id="btnModeBeat" title="BEAT: 拍同期">Beat</button>
           </div>
           <div class="help" style="margin-top:6px">Layer モードなど独自パラメータを持つエンジンの動きを切替えます。</div>
           <div class="row" style="margin-top:8px"><label>Speed</label><input type="range" id="globalSpeed" min="0" max="4" step="0.01" value="1" title="全体の再生速度 (シェーダ time / 動画 playbackRate に乗算)"><div class="val" id="globalSpeedVal">1.00</div></div>
-        </div>
-
-        <div class="section">
-          <h3>Audio Transport <span class="pill" style="font-size:9px">要マイク/ライン入力</span> <span class="default-actions"><button class="saveDefBtn" data-kind="audioTransport" title="Direction / Speed / Depth / Threshold の現在値を起動時のデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="audioTransport" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
-          <div class="row"><label>Direction</label>
-            <select id="atDirMode" style="flex:1" title="音で再生方向 (順/逆) を制御。発火判定は Audio Detect の Target / Sensitivity / Attack と Threshold を使用">
-              <option value="off" selected>Off (矢印キーのみ)</option>
-              <option value="flip">Flip (アタックで反転)</option>
-              <option value="flipAcc">Flip Charge (アタック累積で反転)</option>
-              <option value="revHit">Reverse on Hit (音の間だけ逆)</option>
-              <option value="fwdHit">Forward on Hit (通常は逆)</option>
-            </select>
-          </div>
-          <div class="row"><label>Speed</label>
-            <select id="atSpeedMode" style="flex:1" title="音で再生速度を変調 (Speed スライダーの値に乗算)。シェーダ time / mode / 動画 playbackRate 全てに掛かる">
-              <option value="off" selected>Off</option>
-              <option value="energy">Energy (音量→速度)</option>
-              <option value="hit">Hit Boost (アタックで加速)</option>
-              <option value="duck">Hit Duck (アタックでスロー)</option>
-            </select>
-          </div>
-          <div class="row"><label>Depth</label><input type="range" id="atDepth" min="0" max="1" step="0.01" value="0.5" title="Speed 変調の深さ。Energy: 無音〜大音量で ×1/(1+3d)〜×(1+3d) / Hit Boost: 最大 ×(1+3d) / Hit Duck: 最小 ×(1-0.95d)"><div class="val" id="atDepthVal">0.50</div></div>
-          <div class="row"><label>Threshold</label><input type="range" id="atThr" min="0" max="1" step="0.01" value="0.5" title="Direction の発火閾値 (Audio hit がこの値以上で発火)。低いほど敏感。Flip Charge では反転に必要なアタック累積量 (低いほど頻繁に反転)"><div class="val" id="atThrVal">0.50</div></div>
-          <div class="help" style="margin-top:6px">音の検知は Timing タブ下部の Audio Detect (Target / Sensitivity / Attack) を共用。マイク / 画面音声を ON にしてから使用。</div>
         </div>
 
         <div class="section">
@@ -1622,6 +1582,22 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
 
         <div class="section">
+          <h3>Audio Input</h3>
+          <div class="btnrow">
+            <button id="btnAudioNone" title="音声入力を使わない">なし</button>
+            <button id="btnAudioMic" title="クリックでON / 点灯中に再クリックでOFF">マイク</button>
+            <button id="btnAudioDisp" title="クリックでON / 点灯中に再クリックでOFF">画面音声</button>
+          </div>
+          <div class="help" style="margin-top:8px">
+            <b>画面音声 (Chrome 系):</b> ピッカーで <b>「Chrome タブ」を選択</b> → 下部の <b>「タブの音声を共有」にチェック</b> → Share。<br>
+            ※ 「ウィンドウ」「画面全体」を選ぶと音声が取れず Permission denied になります。<br>
+            ※ macOS では初回 System Settings → Privacy → Screen Recording で Chrome を許可。<br>
+            <br>
+            シェーダ側: <code>texture(iChannel?, vec2(x, 0.25))</code> でFFT、<code>vec2(x, 0.75)</code> で波形、<code>iEnergy</code> で低〜中域のパワー (0..1)。
+          </div>
+        </div>
+
+        <div class="section">
           <h3>Audio Detect <span class="default-actions"><button class="saveDefBtn" data-kind="audioDetect" title="Target / Sensitivity / Band / Attack の現在値を起動時のデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="audioDetect" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label>Target</label>
             <select id="pxATarget" style="flex:1" title="Audio FX が反応する音の種類。Manual は Band スライダーで任意の帯域を選択">
@@ -1646,15 +1622,40 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Attack</label><input type="range" id="pxAAttack" min="0" max="1" step="0.01" value="0.5" title="0=持続(サステインで滑らかに) / 1=トランジェント強調(アタックで鋭く発火)"><div class="val" id="pxAAttackVal">0.50</div></div>
           <div class="row" style="align-items:flex-start"><label>Bands</label><div id="pxATargetInfo" style="flex:1;font-size:var(--fs-sm);color:var(--dim);line-height:var(--ctl-h)">Manual: Band slider</div></div>
         </div>
+
+        <div class="section">
+          <h3>Audio Transport <span class="pill" style="font-size:9px">要マイク/ライン入力</span> <span class="default-actions"><button class="saveDefBtn" data-kind="audioTransport" title="Direction / Speed / Depth / Threshold の現在値を起動時のデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="audioTransport" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
+          <div class="row"><label>Direction</label>
+            <select id="atDirMode" style="flex:1" title="音で再生方向 (順/逆) を制御。発火判定は Audio Detect の Target / Sensitivity / Attack と Threshold を使用">
+              <option value="off" selected>Off (矢印キーのみ)</option>
+              <option value="flip">Flip (アタックで反転)</option>
+              <option value="flipAcc">Flip Charge (アタック累積で反転)</option>
+              <option value="revHit">Reverse on Hit (音の間だけ逆)</option>
+              <option value="fwdHit">Forward on Hit (通常は逆)</option>
+            </select>
+          </div>
+          <div class="row"><label>Speed</label>
+            <select id="atSpeedMode" style="flex:1" title="音で再生速度を変調 (Speed スライダーの値に乗算)。シェーダ time / mode / 動画 playbackRate 全てに掛かる">
+              <option value="off" selected>Off</option>
+              <option value="energy">Energy (音量→速度)</option>
+              <option value="hit">Hit Boost (アタックで加速)</option>
+              <option value="duck">Hit Duck (アタックでスロー)</option>
+            </select>
+          </div>
+          <div class="row"><label>Depth</label><input type="range" id="atDepth" min="0" max="1" step="0.01" value="0.5" title="Speed 変調の深さ。Energy: 無音〜大音量で ×1/(1+3d)〜×(1+3d) / Hit Boost: 最大 ×(1+3d) / Hit Duck: 最小 ×(1-0.95d)"><div class="val" id="atDepthVal">0.50</div></div>
+          <div class="row"><label>Threshold</label><input type="range" id="atThr" min="0" max="1" step="0.01" value="0.5" title="Direction の発火閾値 (Audio hit がこの値以上で発火)。低いほど敏感。Flip Charge では反転に必要なアタック累積量 (低いほど頻繁に反転)"><div class="val" id="atThrVal">0.50</div></div>
+          <div class="help" style="margin-top:6px">音の検知は Timing タブの Audio Detect (Target / Sensitivity / Attack) を共用。マイク / 画面音声を ON にしてから使用。</div>
+        </div>
+
       </div>
 
       <!-- SETTINGS (トップバーの歯車で開く。タブには並べない) -->
       <div class="pane" data-pane="settings" id="settingsPane">
         <div class="pane-head">
-          <h3>Settings <span class="set-dirty" id="setDirty" hidden>未保存</span><span class="grow"></span><span class="default-actions"><button id="setSave" title="表示の現在の設定を保存">Save</button><button id="setReset" title="表示を初期値に戻して保存">Reset</button><button id="setRandom" title="アクセントカラーをランダムに">Random 🎲</button></span><button type="button" class="modal-close" data-icon="close" title="閉じる (Esc)"></button></h3>
+          <h3>Settings <span class="set-dirty" id="setDirty" hidden>未保存</span><span class="grow"></span><button type="button" class="modal-close" data-icon="close" title="閉じる (Esc)"></button></h3>
         </div>
         <div class="section">
-          <h3>表示</h3>
+          <h3>表示 <span class="default-actions"><button id="setSave" title="表示の現在の設定を保存">Save</button><button id="setReset" title="表示を初期値に戻して保存">Reset</button><button id="setRandom" title="アクセントカラーをランダムに">Random 🎲</button></span></h3>
           <div class="row"><label title="押した時点で保存 (Save / Reset の対象外)">Theme</label><div class="toggle-btns" id="setTheme"><button type="button" data-theme="dark">Dark</button><button type="button" data-theme="light">Light</button></div></div>
           <div class="row"><label for="setAcc">Accent</label><input type="color" id="setAcc" data-ckey="acc"><input type="text" id="setAccHex" maxlength="7" spellcheck="false"><div class="set-swatches" id="setAccSw"></div></div>
           <div class="row" title="区切り線 (セクション・見出し・表の罫線)。Auto = テーマの既定"><label for="setLine">Line</label><input type="color" id="setLine" data-ckey="line"><input type="text" maxlength="7" spellcheck="false" data-hex="line"><button type="button" class="set-auto" data-auto="line">Auto</button></div>
@@ -1665,7 +1666,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
         <div class="section">
           <h3>動作</h3>
-          <div class="help set-note">ここから下は変えた時点で反映・保存されます。</div>
           <div class="row" title="ON のとき、起動時に前回の状態を復元 (3 秒ごとに自動保存)。OFF で毎回クリーン起動"><label for="setRestore">Restore</label><input type="checkbox" id="setRestore" data-fn="restore"></div>
           <div class="row" title="描画解像度 (録画 / Projector の出力サイズ。表示枠も追従)"><label for="resSel">Resolution</label><select id="resSel"><optgroup label="横長">
           <option value="3840x2160">3840×2160 16:9</option>
@@ -1692,7 +1692,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <option value="540x960">540×960 9:16</option>
           <option value="600x800">600×800 3:4</option>
         </optgroup></select></div>
-          <div class="row" title="All = プリセット切替もライブ操作もフェード / Preset only = プリセット・状態の切替だけフェードし、MIDI コンやスライダーの操作は即反映。Transition のデフォルトとして全端末で共有されます"><label for="transParamFadeScope">Param Fade 対象</label><select id="transParamFadeScope"><option value="all">All (プリセット + ライブ操作)</option><option value="preset">Preset only (ライブ操作は即反映)</option></select></div>
           <div class="row" title="Grad / Blend プレビューバーの表示 (重いとき用)。P キーと同じ"><label for="setMixPrev">Grad / Blend</label><input type="checkbox" id="setMixPrev" data-fn="mixPrev"></div>
           <div class="row" title="起動時に iMouse を拾うかどうか。今の状態は M キーで切り替える (ここでは変わらない)"><label for="setMouse">iMouse (起動時)</label><input type="checkbox" id="setMouse" data-fn="mouse"></div>
           <div class="row" title="起動時のサーバー取得 (defaults.json・保存デフォルト・S 番号・プリセット・グラデ) を待つ時間。時間切れ・失敗はローカルの値で起動する。Offline = 保存デフォルト・プリセット・グラデのサーバー取得と書き込みをせず、ローカルだけで動く。次回起動から効く"><label for="setSync">Sync Timeout</label><select id="setSync" data-pref="syncTimeout" data-def="none"><option value="none">無し</option><option value="5">5 秒</option><option value="10">10 秒</option><option value="offline">Offline</option></select></div>
@@ -1719,8 +1718,8 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" title="マイクの入力デバイス。OS の既定、または接続中の入力から選ぶ。マイク入力中に切り替えると取り直す"><label for="setMicDev">Mic Device</label><select id="setMicDev" data-pref="micDevice" data-def=""><option value="">OS の既定</option></select></div>
         </div>
         <div class="section">
-          <h3>BPM</h3>
-          <div class="row" title="BPM 検知に使うアタック音。Auto Spectrum は曲全体の音域と音量へ自動追従"><label for="bpmTarget">BPM Detect</label><select id="bpmTarget"><option value="auto" selected>Auto Spectrum</option><option value="kick">Kick</option><option value="snare">Snare / Clap</option><option value="drum">Drum Mix</option><option value="full">Full Range</option></select></div>
+          <h3>Timing</h3>
+          <div class="row" title="All = プリセット切替もライブ操作もフェード / Preset only = プリセット・状態の切替だけフェードし、MIDI コンやスライダーの操作は即反映。Transition のデフォルトとして全端末で共有されます"><label for="transParamFadeScope">Param Fade 対象</label><select id="transParamFadeScope"><option value="all">All (プリセット + ライブ操作)</option><option value="preset">Preset only (ライブ操作は即反映)</option></select></div>
           <div class="row" title="Tap テンポで倍・半分に畳む BPM の範囲。DnB は 90–200、ダブは 80–160 など曲に合わせる"><label for="setTapRange">Tap Range</label><select id="setTapRange" data-pref="tapRange" data-def="60-180"><option value="60-180">60–180</option><option value="80-160">80–160</option><option value="90-200">90–200</option></select></div>
           <div class="row" title="プリセットタイルのクリック・ドロップによる切替を拍の頭まで待つ (小節は 4 拍。待機中に押し直すと最後の操作に置き換わる)"><label for="setQuant">Preset Quantize</label><select id="setQuant" data-pref="presetQuantize" data-def="now"><option value="now">即時</option><option value="beat">次の拍</option><option value="bar">次の小節</option></select></div>
         </div>
@@ -1859,47 +1858,47 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794559701"></script>
-<script src="mode/layer.js?v=1794559701"></script>
-<script src="vendor/iro.min.js?v=1794559701"></script>
-<script src="vendor/mediabunny.min.js?v=1794559701"></script>
-<script src="mode/textdeform.js?v=1794559701"></script>
-<script src="mode/textdeform-comp.js?v=1794559701"></script>
-<script src="mode/ugomeki.js?v=1794559701"></script>
-<script src="mode/slicer.js?v=1794559701"></script>
-<script src="mode/video.js?v=1794559701"></script>
-<script src="mode/aratanagara.js?v=1794559701"></script>
-<script src="vendor/p5.min.js?v=1794559701"></script>
-<script src="mode/cyberui.js?v=1794559701"></script>
-<script src="mode/novel.js?v=1794559701"></script>
-<script src="shaders/inkelly.js?v=1794559701"></script>
-<script src="sketchfx.js?v=1794559701"></script>
-<script src="pixelsortfx.js?v=1794559701"></script>
-<script src="shaders/boltzmann.js?v=1794559701"></script>
-<script src="mode/pen.js?v=1794559701"></script>
-<script src="shaders/caverns.js?v=1794559701"></script>
-<script src="mode/shelf.js?v=1794559701"></script>
-<script src="shaders/ribbon.js?v=1794559701"></script>
-<script src="mode/photoplane.js?v=1794559701"></script>
-<script src="mode/shredder.js?v=1794559701"></script>
-<script src="mode/transflock.js?v=1794559701"></script>
-<script src="mode/liquidpeel.js?v=1794559701"></script>
-<script src="mode/windflock.js?v=1794559701"></script>
-<script src="mode/rhizome.js?v=1794559701"></script>
-<script src="mode/surrealfloat.js?v=1794559701"></script>
-<script src="mode/chrometype.js?v=1794559701"></script>
-<script src="mode/tower4149.js?v=1794559701"></script>
-<script src="mode/fude.js?v=1794559701"></script>
-<script src="mode/image.js?v=1794559701"></script>
-<script src="mode/spacetype.js?v=1794559701"></script>
-<script src="pollockfx.js?v=1794559701"></script>
-<script src="overlay.js?v=1794559701"></script>
-<script src="gif.js?v=1794559701"></script>
-  <script src="ui-icons.js?v=1794559701"></script>
-  <script src="app.js?v=1794559701"></script>
-  <script src="ui-scrollbar.js?v=1794559701"></script>
-  <script src="ui-settings.js?v=1794559701"></script>
-<script src="camroll.js?v=1794559701" defer></script>
-<script src="dbltap.js?v=1794559701" defer></script>
+<script src="presets.js?v=1794560028"></script>
+<script src="mode/layer.js?v=1794560028"></script>
+<script src="vendor/iro.min.js?v=1794560028"></script>
+<script src="vendor/mediabunny.min.js?v=1794560028"></script>
+<script src="mode/textdeform.js?v=1794560028"></script>
+<script src="mode/textdeform-comp.js?v=1794560028"></script>
+<script src="mode/ugomeki.js?v=1794560028"></script>
+<script src="mode/slicer.js?v=1794560028"></script>
+<script src="mode/video.js?v=1794560028"></script>
+<script src="mode/aratanagara.js?v=1794560028"></script>
+<script src="vendor/p5.min.js?v=1794560028"></script>
+<script src="mode/cyberui.js?v=1794560028"></script>
+<script src="mode/novel.js?v=1794560028"></script>
+<script src="shaders/inkelly.js?v=1794560028"></script>
+<script src="sketchfx.js?v=1794560028"></script>
+<script src="pixelsortfx.js?v=1794560028"></script>
+<script src="shaders/boltzmann.js?v=1794560028"></script>
+<script src="mode/pen.js?v=1794560028"></script>
+<script src="shaders/caverns.js?v=1794560028"></script>
+<script src="mode/shelf.js?v=1794560028"></script>
+<script src="shaders/ribbon.js?v=1794560028"></script>
+<script src="mode/photoplane.js?v=1794560028"></script>
+<script src="mode/shredder.js?v=1794560028"></script>
+<script src="mode/transflock.js?v=1794560028"></script>
+<script src="mode/liquidpeel.js?v=1794560028"></script>
+<script src="mode/windflock.js?v=1794560028"></script>
+<script src="mode/rhizome.js?v=1794560028"></script>
+<script src="mode/surrealfloat.js?v=1794560028"></script>
+<script src="mode/chrometype.js?v=1794560028"></script>
+<script src="mode/tower4149.js?v=1794560028"></script>
+<script src="mode/fude.js?v=1794560028"></script>
+<script src="mode/image.js?v=1794560028"></script>
+<script src="mode/spacetype.js?v=1794560028"></script>
+<script src="pollockfx.js?v=1794560028"></script>
+<script src="overlay.js?v=1794560028"></script>
+<script src="gif.js?v=1794560028"></script>
+  <script src="ui-icons.js?v=1794560028"></script>
+  <script src="app.js?v=1794560028"></script>
+  <script src="ui-scrollbar.js?v=1794560028"></script>
+  <script src="ui-settings.js?v=1794560028"></script>
+<script src="camroll.js?v=1794560028" defer></script>
+<script src="dbltap.js?v=1794560028" defer></script>
 </body>
 </html>

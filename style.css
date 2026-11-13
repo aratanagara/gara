@@ -157,6 +157,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .tab{flex:1;height:32px;padding:0 4px;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:11px;color:var(--dim);border-right:1px solid var(--line)}
 .tab:last-child{border-right:none}
 .tab.on{color:var(--fg);background:var(--panel);box-shadow:inset 0 -2px 0 var(--fg)}
+.tab{position:relative}
+.tab.live::after{content:'';position:absolute;top:5px;right:5px;width:5px;height:5px;border-radius:50%;background:var(--acc)}
 .panes{flex:1;overflow:hidden;display:flex;flex-direction:column;min-height:0}
 .pane{flex:1;overflow:auto;padding:10px;display:none;min-height:0}
 .pane.on{display:block}
@@ -164,6 +166,7 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .pane.code.on{display:flex;flex-direction:column}
 
 .row{display:flex;align-items:center;gap:var(--gap);min-height:var(--row-h);margin:0 0 var(--row-gap)}
+.row[hidden]{display:none}
 .row label{flex:0 0 var(--label-w);color:var(--dim);font-size:var(--fs)}
 /* 上寄せの行 (一覧・エディタ) でもラベルが先頭の部品と同じ高さの中央に来るように */
 .row > label{line-height:var(--ctl-h)}
@@ -345,6 +348,11 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
 @media (min-resolution:2dppx){ #side .section > h3::before{border-width:0 .5px .5px 0} }
 #side .section.collapsed > *:not(h3){display:none !important}
 #side .section.collapsed > h3{margin-bottom:0}
+/* 子セクション: 親の Save / Reset / Random で保存される従属欄。親に連結して見せる */
+#side .section.sub{margin-top:-9px;border-top:0;border-top-left-radius:0;border-top-right-radius:0}
+/* 親が折りたたまれたら、直後に連なる子 (.sub) も隠す */
+#side .section.collapsed:not(.sub) + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub + .section.sub + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub,#side .section.collapsed:not(.sub) + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub + .section.sub{display:none}
+#side .section.sub > h3{color:var(--dim);font-size:calc(var(--fs) - 1px)}
 
 /* Help モーダル (ホットキー一覧) */
 .modal-overlay{position:fixed;inset:0;z-index:9998;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center}
@@ -510,6 +518,7 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
   html{touch-action:pan-x pan-y}
   .pscroll{display:none}
   .tab{height:40px}
+  #btnTap{height:48px}
   #side input[type=range]:not(.huebar){height:var(--ctl-h)}
   .ico-btn{width:28px;height:28px}
   .grad-handle{width:24px;height:24px;margin-left:-12px}

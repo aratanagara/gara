@@ -17177,6 +17177,7 @@ void mainImage(out vec4 o, in vec2 f){
         e.stopPropagation();
         const kind = b.dataset.kind;
         const defaultScope = kind === 'fb' ? b.closest('.fb-group') : b.closest('.section');
+        if(b.classList.contains('randDefBtn') && kind === 'overlay' && UI._overlayRandomize){ UI._overlayRandomize(); return; }
         if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
           if(kind === 'overlay'){
@@ -17271,9 +17272,8 @@ void mainImage(out vec4 o, in vec2 f){
     const cc = $('#btnOverlayClear');
     if(cc) cc.addEventListener('click', ()=>{ Overlay.clear(); toast('IMAGON cleared'); });
 
-    // Random 🎲 (NOVEL 等と同じ「パラメータのみランダム化」。Brush の選択と Trigger / Paint Mode / Max Strokes は変えない)
-    const rb = $('#btnOverlayRandom');
-    if(rb) rb.addEventListener('click', ()=>{
+    // 見出しの Random 🎲 (NOVEL 等と同じ「パラメータのみランダム化」。Brush の選択と Trigger / Paint Mode / Max Strokes は変えない)
+    UI._overlayRandomize = ()=>{
       const R = (a, b)=> a + Math.random()*(b - a);
       const ch = (p)=> Math.random() < p;
       const pick = (arr)=> arr[(Math.random()*arr.length)|0];
@@ -17307,7 +17307,7 @@ void mainImage(out vec4 o, in vec2 f){
       UI.refreshOverlay();
       App._undoSchedule();
       toast('IMAGON randomize');
-    });
+    };
 
     // range スライダー (Post と同じヘルパー)。BRUSH_KEYS の場合は brushParams にも保存
     const brushKeySet = new Set(Overlay.BRUSH_KEYS || []);
@@ -19379,6 +19379,8 @@ void mainImage(out vec4 o, in vec2 f){
     if(on(P.gain))     main.push({ t:'GAIN', title:'Gain' });
 
     // 合成のみ: 出力全体の状態
+    { const ovTab = document.querySelector('.tab[data-tab="overlay"]');
+      if(ovTab) ovTab.classList.toggle('live', !!(typeof Overlay !== 'undefined' && Overlay.P && Overlay.P.enabled)); }
     if(typeof Overlay !== 'undefined' && Overlay.P && Overlay.P.enabled && (Overlay.strokes||[]).length)
       main.push({ t:'IMG', title:'IMAGON 描画中' });
     if(App._drawFrozen) main.push({ t:'FREEZE', c:'warn', title:'Draw フリーズ中 (Space)' });
@@ -22797,7 +22799,7 @@ void mainImage(out vec4 o, in vec2 f){
   refreshAudioButtons(){
     const mode = (typeof Audio !== 'undefined') ? Audio.mode : 'off';
     const m = $('#btnAudioMic'), d = $('#btnAudioDisp'), n = $('#btnAudioNone');
-    if(n) n.classList.toggle('audio-on', mode === 'off');
+    if(n) n.classList.toggle('on', mode === 'off');
     if(m) m.classList.toggle('audio-on', mode === 'mic');
     if(d) d.classList.toggle('audio-on', mode === 'display');
   },
