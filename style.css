@@ -493,3 +493,5 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
   #side input[type=range]:not(.huebar){height:var(--ctl-h)}
   .ico-btn{width:28px;height:28px}
 }
+.thumb-tile.import-tile{display:flex;align-items:center;justify-content:center;background:transparent;border-style:dashed;color:var(--dim);font:600 11px var(--mono)}
+@media (hover:hover){ .thumb-tile.import-tile:hover{color:var(--fg)} }

@@ -179,6 +179,7 @@ const MediaImport = {
   // 内蔵サーバ (取り込み可能) かどうか。1 セッションに 1 回だけ問い合わせる
   local(){
     if(!this._probe) this._probe = (async ()=>{
+      if(/\.github\.io$/.test(location.hostname)) return false;   // 公開版 (github.io) はサーバーへ保存しない (セッション限りの blob 読み込み)
       try{
         const r = await fetch('__media', { cache:'no-store' });
         if(!r.ok) return false;
@@ -19089,6 +19090,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(codeCount){ addLabel('Code');   modeIdx.forEach(i => makeTile(i)); }
     const movieLbl  = addLabel('Movie');
     if(noneIdx >= 0) makeTile(noneIdx, 'movie');            // Movie セクションの先頭
+    grid.appendChild(this._importTile('動画', '#fileMovieImport', 'movie'));   // ドロップできない環境 (スマホ) 向けの読み込み
     const shaderLbl = addLabel('Shader');
     if(noneIdx >= 0) makeTile(noneIdx, 'shader');           // Shader セクションの先頭
     shaderIdx.forEach(i => makeTile(i));
@@ -19104,11 +19106,7 @@ void mainImage(out vec4 o, in vec2 f){
       // 書き込み不可配信でブラウザ保存 (IndexedDB) した取り込み動画も一覧へ足す
       movies = (movies || []).concat((typeof MediaImport !== 'undefined') ? MediaImport.storedVideos : []);
       if(shaderLbl.parentNode !== grid) return;   // await 中に再ビルドされたら旧ラベルは detach 済み → insertBefore 例外を防ぐ
-      if(!movies || !movies.length){
-        // Movie セクションごと畳む (先頭の「なし」タイルも残さない)
-        const nx = movieLbl.nextElementSibling;
-        if(nx && nx.classList && nx.classList.contains('thumb-tile') && nx.dataset.cat === 'movie') nx.remove();
-        if(movieLbl.parentNode) movieLbl.remove(); return; }
+      if(!movies || !movies.length) return;   // 見出しと「＋ 動画」タイルは残す
       // 保存済みの並び順で並べ (M 番号は表示順)、Movie の中でドラッグ並べ替え可
       movies = App._sortByOrder(movies, 'movie', m => m.name);
       const mnames = movies.map(m => m.name);
@@ -19121,6 +19119,16 @@ void mainImage(out vec4 o, in vec2 f){
     })();
   },
 
+  // 画像 / 動画の読み込みタイル (サムネと同じ大きさ。クリックで file input を開き、ドロップと同じ MediaImport で取り込む)
+  _importTile(what, inputSel, cat){
+    const tile = document.createElement('div');
+    tile.className = 'thumb-tile import-tile';
+    tile.dataset.cat = cat;
+    tile.textContent = '＋ ' + what;
+    tile.title = what + 'を読み込む' + (this._importNote || '');
+    tile.addEventListener('click', ()=>{ const f = $(inputSel); if(f) f.click(); });
+    return tile;
+  },
   // 遅延ローディング: タイルが可視になったら (JPG が無い場合のみ) live コンパイルのキューへ積む。
   _queueThumb(tile){
     if(!tile) return;
@@ -19478,18 +19486,16 @@ void mainImage(out vec4 o, in vec2 f){
     // ローカル起動なら images/drop/ ・ movies/ へ実ファイルとして取り込む (MediaImport)。
     MediaImport.bindDropZone(document.querySelector('.pane[data-pane="shader"]'));
     MediaImport.bindDropZone($('#imageFolderGrid'));
-    const mBtn = $('#btnMediaImport'), mFile = $('#fileMedia');
-    if(mBtn && mFile){
-      mBtn.addEventListener('click', ()=> mFile.click());
-      mFile.addEventListener('change', async ()=>{ await MediaImport.accept(mFile.files); mFile.value = ''; });
-      MediaImport.local().then(ok=>{
-        mBtn.title = ok ? '画像 / 動画を images/drop/ ・ movies/ へ取り込む (次回起動でも残る)'
-                        : '画像 / 動画を読み込む (このセッション限り。リロードで消えます)';
-        this._mediaLocal = ok;
-        const grid = $('#imageFolderGrid'); if(grid) grid.dataset.sig = '';   // × ボタン付きで作り直す
-        this.refreshImageMode();
-      });
-    }
+    const vFile = $('#fileMovieImport');
+    if(vFile) vFile.addEventListener('change', async ()=>{ await MediaImport.accept(vFile.files); vFile.value = ''; });
+    const iFile = $('#fileImageImport');
+    if(iFile) iFile.addEventListener('change', async ()=>{ await MediaImport.accept(iFile.files); iFile.value = ''; });
+    MediaImport.local().then(ok=>{
+      this._importNote = ok ? ' (images/drop/ ・ movies/ へ取り込み、次回起動でも残る)' : ' (このセッション限り。リロードで消えます)';
+      this._mediaLocal = ok;
+      const grid = $('#imageFolderGrid'); if(grid) grid.dataset.sig = '';   // × ボタン付きで作り直す
+      this.refreshImageMode();
+    });
     try{ indexedDB.deleteDatabase('gara.media'); }catch(e){}   // 旧・次回復元用 IndexedDB の保存データを掃除
   },
 
@@ -19604,6 +19610,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(grid.dataset.sig !== sig){
         grid.dataset.sig = sig;
         grid.innerHTML = '';
+        grid.appendChild(this._importTile('画像', '#fileImageImport', 'image'));   // ドロップできない環境 (スマホ) 向けの読み込み
         for(const f of (m.folders || [])){
           const tile = document.createElement('div');
           tile.className = 'thumb-tile' + (f.dir === P.folder ? ' on' : '');
