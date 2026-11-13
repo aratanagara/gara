@@ -15,6 +15,8 @@
      _lastT, _lastCamT, _lastBeatC, _lastBeatInt, _retargetT, _layoutSalt   (render が代入するので自然に own。初期値は未定義のまま)
      texFlipY           (true にすると generateLayout の crop の v を反転。FBO テクスチャ用。既定 undefined)
    プロトタイプ共有でよいもの: gl, prog, vao, vbo, ibo, idxCount, loc, defaultTex, ok, initialized, m4, startTime。
+   _fx                (own プロパティ {w:0..1}。3D FX が設定すると「画面空間の配置 (w=0: 各プレーンが crop の元の位置・大きさで平ら・真正面カメラ) → 通常の 3D 配置 (w=1)」へ
+                       render 内で補間する。未設定なら従来どおり。w=0 では環境光 1 / 拍パルス 0)
    FX 用: render(opts) に clock (数値) / keepDepth:true (呼び出し側 FBO の深度を使い、RBO の付け外しをしない)。
           P.softFocus は 0 にする (texture(uTex,uv,bias) はミップ前提。FBO テクスチャはミップ無し)。 */
 const PhotoPlane = {
@@ -321,6 +323,7 @@ void main(){
     if(typeof App!=='undefined' && App.beatMode==='beat' && typeof BPM!=='undefined'){
       const bc=(typeof opts.beat==='number')?opts.beat:BPM.beatCount();
       pulse=Math.pow(1-(bc-Math.floor(bc)),2.0)*P.beatPulse;
+      if(this._fx) pulse*=this._fx.w;
     }
 
     // ── カメラ: ランダムな位置へ roaming。drone=なめらかに巡回 / beat=拍ごとに新位置へスナップ(リセット) ──
@@ -350,6 +353,10 @@ void main(){
     }
     const az=this.cam.az, el=this.cam.el, dist=this.cam.dist;
     const eye=[dist*Math.cos(el)*Math.sin(az), dist*Math.sin(el), dist*Math.cos(el)*Math.cos(az)];
+    const fxw = this._fx ? this._fx.w : 1;
+    // 3D FX: w=0 のカメラは z=0 平面が画面にぴったり収まる真正面 (位置は有界なので補間しても時刻で跳ねない)
+    const fxD = P.dist, fxH = 2*fxD*Math.tan(P.fov*Math.PI/360);   // z=0 平面で画面に映る高さ
+    if(this._fx){ eye[0]*=fxw; eye[1]*=fxw; eye[2]=fxD+(eye[2]-fxD)*fxw; }
     const proj=this.m4.persp(P.fov*Math.PI/180, w/h, 0.05, 200.0);
     const dz=(v)=>(typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v;
     const nv=(k,d)=>P[k]==null ? d : dz(P[k]);
@@ -376,7 +383,7 @@ void main(){
     gl.uniformMatrix4fv(this.loc.uMVP,false,vp);
     gl.uniform1f(this.loc.uTime,t);
     gl.uniform3f(this.loc.uCam,eye[0],eye[1],eye[2]);
-    gl.uniform1f(this.loc.uAmbient,P.ambient);
+    gl.uniform1f(this.loc.uAmbient,this._fx ? 1+(P.ambient-1)*fxw : P.ambient);
     gl.uniform1f(this.loc.uWarpYR,nv('warpYRatio',80)/100);
     gl.uniform1f(this.loc.uFold,nv('fold',0));
     gl.uniform1f(this.loc.uTwist,nv('twist',0)*Math.PI/180);
@@ -429,9 +436,21 @@ void main(){
       if(floatAmp!==0) py += floatAmp*Math.sin(t*1.1 + pl.phase);
       let axis=pl.axis;
       if(axisLock!==0){ const ty=pl.axis[1]<0?-1:1; axis=this._norm([pl.axis[0]*(1-axisLock), pl.axis[1]*(1-axisLock)+ty*axisLock, pl.axis[2]*(1-axisLock)]); }
-      const model = this.m4.mul(this.m4.trans(px,py,pz), this.m4.rotAxis(axis,ang));
+      let rotM = this.m4.rotAxis(axis,ang), plScale = pl.scale;
+      if(this._fx){
+        // crop が元の画面で占めていた位置・大きさ (z=0 平面)。回転は行列で補間 (角度は時刻で無限に増えるので角度補間はしない)
+        const asp = this.texAspects[Math.max(0,pl.texIdx)] || 1;
+        const hx = ((pl.crop[0]+pl.crop[2])*0.5 - 0.5)*fxH*asp;
+        const hy = (this.texFlipY ? (pl.crop[1]+pl.crop[3])*0.5 - 0.5 : 0.5 - (pl.crop[1]+pl.crop[3])*0.5)*fxH;
+        const hs = Math.abs(pl.crop[3]-pl.crop[1])*fxH;
+        px = hx+(px-hx)*fxw; py = hy+(py-hy)*fxw; pz *= fxw;
+        plScale = hs+(plScale-hs)*fxw;
+        const id = this.m4.id();
+        for(let q=0;q<16;q++) rotM[q] = id[q]+(rotM[q]-id[q])*fxw;
+      }
+      const model = this.m4.mul(this.m4.trans(px,py,pz), rotM);
       gl.uniformMatrix4fv(this.loc.uModel,false,model);
-      gl.uniform1f(this.loc.uScale,pl.scale);
+      gl.uniform1f(this.loc.uScale,plScale);
       gl.uniform1f(this.loc.uAspect,aspSq===1 ? pl.aspect : Math.pow(pl.aspect,aspSq));
       gl.uniform1f(this.loc.uHue, hueVar!==0 ? hueVar*(hv(pi,2)*2-1)*Math.PI/180 : 0);
       gl.uniform1f(this.loc.uBright, brightVar!==0 ? 1 + brightVar/100*(hv(pi,3)-0.5)*1.6 : 1);

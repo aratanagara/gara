@@ -23,6 +23,9 @@ const SL_IMG_KEYS = ['pieces','seed','sides','maxSides','explode','bend','curl',
        (update/loadRandomImage が代入するので自然に own になるが、初期値は明示しておく)
    buildScene が画像に依存するのは imgAsp のみ。FX 側は imgAsp=w/h → markDirty() で組み直せる。
    プロトタイプ共有でよいもの: gl, prog, postProg, locs, pLocs, quadBuf, m4, VS/FS, initialized, startTime。
+   texFlipY           (true にすると uv の v を反転。画面 (FBO テクスチャ: v=1 が上) を素材にするとき。既定 undefined)
+   _fx                (own プロパティ {w:0..1}。3D FX が設定すると「画面にぴったり収まる真正面 (w=0) → 通常のカメラ (w=1)」へ render 内で補間し、
+                       後段の白飛ばし処理も w で弱める。未設定なら従来どおり)
    FX 用: this._meta3d=true で update() がスロットの userPan/userZoom を無視 (pan=0, zoom=1)。
           update(beat, dt, clock) の clock (数値) を時刻に使う。
           imgMode は 'fixed'、bgMode は 'color' 等に (random 切替・loadRandomImage を呼ばせない)。 */
@@ -162,6 +165,7 @@ uniform float u_strength;
 uniform float u_radius;
 uniform float u_bias;
 uniform float u_enabled;
+uniform float u_seam;       // 3D FX: 明部の白寄せを弱める係数 (スロットは 1)
 in vec2 v_uv;
 out vec4 fragOut;
 
@@ -235,7 +239,7 @@ void main(){
   float dBack  = getDepth(v_uv + lightDir * texel * 0.9);
   float edgeSide = smoothstep(u_bias * 0.12, u_bias * 1.8 + 0.00012, dBack - dFront);
   float lum = luma(color);
-  float whiteBoost = smoothstep(0.9, 1.0, lum);
+  float whiteBoost = smoothstep(0.9, 1.0, lum) * u_seam;
   float faintFloor = whiteBoost * (0.016 + 0.032 * ao + 0.05 * dirShadow + 0.03 * edge) * clamp(u_strength, 0.0, 1.5);
   vec3 paperBase = mix(color, vec3(1.0 - faintFloor), whiteBoost);
   float shadowMix =
@@ -303,6 +307,7 @@ void main(){
       u_radius:   gl.getUniformLocation(this.postProg,'u_radius'),
       u_bias:     gl.getUniformLocation(this.postProg,'u_bias'),
       u_enabled:  gl.getUniformLocation(this.postProg,'u_enabled'),
+      u_seam:     gl.getUniformLocation(this.postProg,'u_seam'),
     };
     // 全画面 quad
     this.quadBuf = gl.createBuffer();
@@ -418,6 +423,7 @@ void main(){
     const TEXR    = dz(this.P.texRotate) * Math.PI / 180;
     const texFx   = (TEXZ !== 1 || TEXR !== 0);
     const tcs = Math.cos(TEXR), tsn = Math.sin(TEXR);
+    const FLIPV = !!this.texFlipY;
 
     const posArr=[], uvArr=[], seedArr=[], idxArr=[];
     let vi = 0;
@@ -465,9 +471,9 @@ void main(){
       posArr.push(w[0], w[1], w[2]);
       if(texFx){
         const rx = (fx*tcs - fy*tsn) / TEXZ, ry = (fx*tsn + fy*tcs) / TEXZ;
-        uvArr.push(rx/A*0.5+0.5, 1-(ry*0.5+0.5));
+        uvArr.push(rx/A*0.5+0.5, FLIPV ? ry*0.5+0.5 : 1-(ry*0.5+0.5));
       } else {
-        uvArr.push(fx/A*0.5+0.5, 1-(fy*0.5+0.5));
+        uvArr.push(fx/A*0.5+0.5, FLIPV ? fy*0.5+0.5 : 1-(fy*0.5+0.5));
       }
       seedArr.push(fid*7.3713);
       return vi++;
@@ -939,9 +945,13 @@ void main(){
         proj[4] = -sn / asp * m11; proj[5] = cs * m11;
       }
       const az = this.cam.az + dz(this.P.camAz) * Math.PI / 180, el = this.cam.el, d = this.cam.dist;
-      const ex = Math.cos(el) * Math.sin(az) * d;
-      const ey = Math.sin(el) * d;
-      const ez = Math.cos(el) * Math.cos(az) * d;
+      let ex = Math.cos(el) * Math.sin(az) * d;
+      let ey = Math.sin(el) * d;
+      let ez = Math.cos(el) * Math.cos(az) * d;
+      if(this._fx){   // w=0 は z=0 平面 (高さ 2) が画面にぴったり収まる真正面 (位置は有界なので補間しても時刻で跳ねない)
+        const w0 = this._fx.w, d0 = 1 / Math.tan(fovRad * 0.5);
+        ex *= w0; ey *= w0; ez = d0 + (ez - d0) * w0;
+      }
       const view = this.m4.lookAt([ex, ey, ez], [dz(this.P.lookX) * 0.01 * this.imgAsp, dz(this.P.lookY) * 0.01, 0], [0,1,0]);
       gl.uniformMatrix4fv(this.locs.u_proj, false, proj);
       gl.uniformMatrix4fv(this.locs.u_view, false, view);
@@ -986,6 +996,7 @@ void main(){
     gl.uniform1f(this.pLocs.u_radius,   this.P.shadowRadius);
     gl.uniform1f(this.pLocs.u_bias,     this.P.shadowBias);
     gl.uniform1f(this.pLocs.u_enabled,  this.P.overlapShadow ? 1 : 0);
+    gl.uniform1f(this.pLocs.u_seam,     this._fx ? this._fx.w : 1);
 
     gl.bindBuffer(gl.ARRAY_BUFFER, this.quadBuf);
     gl.enableVertexAttribArray(this.pLocs.a_xy);

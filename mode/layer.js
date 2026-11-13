@@ -15,6 +15,7 @@
    プロトタイプ共有でよいもの: gl, programs, locs, geo, defaultTex, shadowMap/shadowRBO/shadowFBO (同フレーム内で逐次使用),
      v3/m4, SHADOW_SZ, initialized, startTime。
    texIdx は textures.length 非依存 (texKeyColors[tIdx] が undefined でも keyA=0 で安全)。
+   _fx          (own プロパティ {w:0..1}。3D FX が設定すると「全プレーンが画面にぴったり重なる真正面 (w=0) → 通常の 3D 配置 (w=1)」へ render 内で補間する。未設定なら従来どおり)
    render(opts.clock が数値なら時刻として使う) */
 const Layer = {
   gl:null,
@@ -751,6 +752,7 @@ void main(){
       let axis=sp.axis;
       if(kLock!==0) axis=this.v3.norm([axis[0]*(1-kLock), axis[1]*(1-kLock)+kLock, axis[2]*(1-kLock)]);
       let rot=this.m4.axisAngle(axis, sp.autoAngle + (kTilt!==0 ? sp.floatOff*kTilt : 0));
+      const fxw = this._fx ? this._fx.w : 1;
       if(kFace!==0){
         const cx=camAx.x, cy=camAx.y;
         const bx=[0,1,2].map(j=>rot[j]*(1-kFace)+cx[j]*kFace);
@@ -765,8 +767,15 @@ void main(){
       this._ar[i]=ar;
       const hv=Math.sin((i+1)*78.233)*43758.5453, shade=1-kShade*0.9*(hv-Math.floor(hv));
       this._tintPl[i]=[tc[0]*shade, tc[1]*shade, tc[2]*shade];
+      if(this._fx){
+        // 画面にぴったり重なる大きさ (z=0 平面で画面の半高)。回転は行列で補間 (角度は時刻で無限に増えるので角度補間はしない)
+        const hs=Pp.dist*Math.tan(Pp.fov*Math.PI/360);
+        sc=hs+(sc-hs)*fxw; px*=fxw; py*=fxw; pz*=fxw;
+        const id=this.m4.id();
+        for(let q=0;q<16;q++) rot[q]=id[q]+(rot[q]-id[q])*fxw;
+      }
       return this.m4.mul(
-        this.m4.T(px, py+sp.floatY, pz),
+        this.m4.T(px, py+sp.floatY*fxw, pz),
         this.m4.mul(rot, this.m4.Sv(sc*ar, sc, sc))
       );
     });
@@ -776,6 +785,10 @@ void main(){
     const asp=w/Math.max(1,h);
     const proj=this.m4.perspective(this.P.fov*Math.PI/180, asp, .05, 1000);
     const eye=this._camEye();
+    if(this._fx){   // w=0 は真正面 (位置は有界なので補間しても時刻で跳ねない)
+      const w0=this._fx.w, t0=this.cam.target;
+      eye[0]=t0[0]+(eye[0]-t0[0])*w0; eye[1]=t0[1]+(eye[1]-t0[1])*w0; eye[2]=t0[2]+this.P.dist+(eye[2]-t0[2]-this.P.dist)*w0;
+    }
     const vp=this.m4.mul(proj, this.m4.lookAt(eye, this.cam.target, this._camUp()));
     const bgv=(this.P.bg!=null)?this.P.bg:1.0;
     const bgc=Array.isArray(this.P.bgColor)?this.P.bgColor:[1,1,1];
