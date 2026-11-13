@@ -79,7 +79,7 @@
     try { list = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications'); } catch (_) { return; }
     const want = Prefs.get('micDevice', '');
     sel.textContent = '';
-    sel.add(new Option('OS の既定', ''));
+    sel.add(new Option('OS default (OS の既定)', ''));
     list.forEach((d, i) => sel.add(new Option(d.label || ('Mic ' + (i + 1)), d.deviceId)));
     if(want && !list.some(d => d.deviceId === want)) sel.add(new Option('(未接続の保存デバイス)', want));
     sel.value = want;
