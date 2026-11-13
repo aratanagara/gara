@@ -49,7 +49,7 @@ html[data-theme="light"]{
 }
 #stage,.thumb-tile{--line:#2a2a33;--dim:#8a8a96}
 *{box-sizing:border-box}
-html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.4 var(--sans);overflow:hidden;user-select:none;-webkit-user-select:none}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--fg);font:13px/1.4 var(--sans);overflow:hidden;overscroll-behavior:none;user-select:none;-webkit-user-select:none}
 button,select,input,textarea{font:inherit;color:inherit}
 button{background:transparent;border:1px solid var(--line2);color:var(--fg);padding:4px 8px;border-radius:var(--radius);cursor:pointer}
 @media (hover:hover){ button:hover{background:var(--hover);border-color:var(--fg)} }
@@ -105,7 +105,7 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #stageMain{flex:2 1 0;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;position:relative}
 #slotPrevRow{flex:1 1 0;min-width:0;min-height:0;display:flex;flex-direction:row;border-top:1px solid var(--line);background:#050505}
 #stage.portrait #slotPrevRow{flex-direction:column;border-top:none;border-left:1px solid var(--line)}
-.slotPrev{position:relative;flex:1 1 0;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden}
+.slotPrev{position:relative;flex:1 1 0;min-width:0;min-height:0;display:flex;align-items:center;justify-content:center;cursor:pointer;overflow:hidden;touch-action:none}
 .slotPrev + .slotPrev{border-left:1px solid var(--line)}
 #stage.portrait .slotPrev + .slotPrev{border-left:none;border-top:1px solid var(--line)}
 .slotPrev canvas{width:100%;height:100%;object-fit:contain;display:block}
@@ -144,9 +144,11 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
   background:#000;
   overflow:hidden;
 }
-#stageInner canvas#glcanvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+#stageInner canvas#glcanvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair;touch-action:none}
 #stage.locked canvas{cursor:none}
 #overlay{position:absolute;inset:0;pointer-events:none;font:11px var(--mono);color:#9ad;mix-blend-mode:screen;padding:8px;opacity:.7}
+#stageHint{position:absolute;left:0;right:0;top:50%;transform:translateY(-50%);text-align:center;pointer-events:none;font:12px var(--sans);color:#fff;opacity:.35;padding:0 16px;z-index:2}
+#stageHint[hidden]{display:none}
 #errbox{position:absolute;left:8px;right:8px;bottom:8px;max-height:40%;overflow:auto;background:rgba(255,40,40,.12);border:1px solid var(--err);color:#ffd0d0;font:11px var(--mono);padding:6px 8px;border-radius:6px;white-space:pre-wrap;display:none}
 #errbox.show{display:block}
 
@@ -184,6 +186,11 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 
 #slotSel{display:flex;gap:0;padding:6px;border-bottom:1px solid var(--line);background:var(--panel2);flex-shrink:0}
 #slotSel button{flex:1;height:var(--ctl-h)}
+#quickRow{flex-shrink:0;flex-wrap:nowrap;margin:0;padding:0 6px 6px;background:var(--panel2);border-bottom:1px solid var(--line)}
+#quickRow button{min-width:0;padding:0 2px;height:var(--ctl-h);font-size:var(--fs-sm);white-space:nowrap}
+#quickRow button:is(#qUndo,#qRedo){flex:0 0 28px}
+#slotSel:has(+ #quickRow){border-bottom:0}
+#quickRow button.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg)}
 
 /* Color wheel swatch + popup */
 .cw-swatch{width:28px;height:24px;border:1px solid var(--line);padding:0;cursor:pointer;background:#000;border-radius:3px}
@@ -249,6 +256,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 /* Shader Params: スライダー列から値の列の右端まで (列 2〜3)。高さは右の MIDI ボタンと同じ */
 #side .params .par .colorbar{grid-column:2 / span 2;width:100%;height:var(--midi-h);align-self:center}
 .params .par .midi.learn{background:var(--acc);color:var(--acc-fg);animation:blink 1s infinite}
+/* Web MIDI が無い端末 (iOS など): MIDI 専用の UI を隠す */
+.no-midi .midi,.no-midi [data-stat="midi"],.no-midi .section:has(#btnMidiPush){display:none}
 @keyframes blink{50%{opacity:.4}}
 
 .bpmBig{font:600 28px var(--mono);text-align:center;color:var(--acc);margin:4px 0;cursor:text}
@@ -281,7 +290,7 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
 #pxGradBar{background:#1a1a1a;height:var(--ctl-h);border:1px solid var(--line2)}
 #pxGradAdd{flex:0 0 var(--ctl-h);align-self:flex-start;width:var(--ctl-h);height:var(--ctl-h);min-height:0;padding:0;font-size:13px;line-height:1}
 .grad-handle{position:absolute;top:0;width:12px;height:12px;margin-left:-6px;cursor:ew-resize;
-  border:1px solid var(--line2);border-radius:0;box-shadow:none}
+  border:1px solid var(--line2);border-radius:0;box-shadow:none;touch-action:none}
 /* Grad Preset 一覧の行 (色の行と同じ高さ・罫線) */
 .grad-row{position:relative;flex:0 0 var(--ctl-h);height:var(--ctl-h);cursor:pointer;border:1px solid var(--line2);overflow:hidden}
 .grad-row-no{position:absolute;left:5px;top:0;line-height:calc(var(--ctl-h) - 2px);font-size:var(--fs);color:#fff;text-shadow:0 0 2px #000,0 0 4px #000}
@@ -475,7 +484,7 @@ html[data-theme="light"] :is(#side,#topbar) select{background-image:url("data:im
 .pane-head + .section{margin-top:8px}
 
 /* Settings / Help パネル表示中は Slot A/B とタブを隠す (ui-settings.js が #side に .side-sub を付ける) */
-#side.side-sub > #slotSel,#side.side-sub > .tabs{display:none}
+#side.side-sub > #slotSel,#side.side-sub > #quickRow,#side.side-sub > .tabs{display:none}
 #helpPane .help-steps{margin:0;padding-left:1.4em;font-size:12px;line-height:1.7;color:var(--fg)}
 #helpPane .help-qa{margin:0;font-size:12px;line-height:1.7}
 #helpPane .help-qa dt{color:var(--fg);padding-top:8px}
@@ -488,12 +497,13 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 
 /* タッチ端末: 操作面を大きく。PC (pointer:fine) の 24px 統一は不変 */
 @media (pointer:coarse){
-  :root{--ctl-h:32px;--row-h:32px;--thumb:16px;--check:20px;--sb-w:0px}
-  html{touch-action:manipulation}
+  :root{--ctl-h:32px;--row-h:32px;--thumb:24px;--check:20px;--sb-w:0px}
+  html{touch-action:pan-x pan-y}
   .pscroll{display:none}
   .tab{height:40px}
   #side input[type=range]:not(.huebar){height:var(--ctl-h)}
   .ico-btn{width:28px;height:28px}
+  .grad-handle{width:24px;height:24px;margin-left:-12px}
 }
 /* 読み込みタイル: 欄の先頭で 1 行ぶんの幅。高さは同じ欄のサムネ 1 枚 (列幅 × 3/4) に合わせる */
 .thumb-tile.import-tile{grid-column:1/-1;aspect-ratio:auto;height:calc((100cqw - (var(--vis-cols) - 1)*6px)/var(--vis-cols)*.75);display:flex;align-items:center;justify-content:center;background:transparent;border-style:dashed;color:var(--dim);font:600 11px var(--mono)}

@@ -68,7 +68,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794556387">
+<link rel="stylesheet" href="style.css?v=1794558292">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -199,11 +199,19 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
       <button data-slot="A" class="shown editing">Slot A</button>
       <button data-slot="B">Slot B</button>
     </div>
+    <div id="quickRow" class="btnrow">
+      <button id="qFreeze" title="Draw フリーズ (Space)">Freeze</button>
+      <button id="qUndo" title="Undo (Cmd/Ctrl+Z)">↶</button>
+      <button id="qRedo" title="Redo (Cmd/Ctrl+Shift+Z)">↷</button>
+      <button id="qReset" title="パラメータを保存値・初期値へリセット (R。スロットは保持)">Reset</button>
+      <button id="qClear" title="IMAGON / Manga をクリア + Pan・Zoom リセット + 初期フレームへ (C)">Clear</button>
+      <button id="qAllOff" title="全スロットをなしにして全パラメータをリセット (Esc。Live Lock 中は無効)">All Off</button>
+    </div>
 
     <div class="tabs">
       <div class="tab on" data-tab="preset">Preset</div>
       <div class="tab" data-tab="shader">Visual</div>
-      <div class="tab" data-tab="mix">Mix</div>
+      <div class="tab" data-tab="mix">Params</div>
       <div class="tab" data-tab="post">FX</div>
       <div class="tab" data-tab="overlay">IMAGON</div>
       <div class="tab" data-tab="tempo">Timing</div>
@@ -219,7 +227,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div style="display:flex;gap:var(--btn-gap);align-items:center;flex-wrap:wrap">
             <input type="search" id="presetSearch" placeholder="検索…" style="flex:1;min-width:70px">
             <button class="preFilter on" data-cat="all"   >All</button>
-            <button class="preFilter"    data-cat="mode"  >Mode</button>
+            <button class="preFilter"    data-cat="mode"  >Code</button>
             <button class="preFilter"    data-cat="movie" >Movie</button>
             <button class="preFilter"    data-cat="shader">Shader</button>
           </div>
@@ -310,6 +318,22 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <div class="val" id="cfVal">1.00</div>
           </div>
           <div class="row">
+            <label>Show</label>
+            <div class="toggle-btns">
+              <button id="mixShowA" title="Slot A の表示 ON/OFF ([)">A</button>
+              <button id="mixShowB" title="Slot B の表示 ON/OFF (])">B</button>
+              <button id="mixSwap" title="Slot A ⇄ B を交換 (Shift+X)">Swap</button>
+            </div>
+          </div>
+          <div class="row">
+            <label>Zoom</label>
+            <div class="toggle-btns">
+              <button id="mixZoomOut" title="操作中のスロットを縮小 (,)">−</button>
+              <button id="mixZoomReset" title="Pan / Zoom を 1:1 へ">1:1</button>
+              <button id="mixZoomIn" title="操作中のスロットを拡大 (.)">+</button>
+            </div>
+          </div>
+          <div class="row">
             <label>A BG</label>
             <input type="color" id="slotABg" value="#000000" title="Slot A の背景色 = 出力の下地。Slot A が透過している所 (なし / 透過シェーダ / Image の余白) がこの色になる">
             <button id="slotABgReset" class="ico-only" title="黒 (既定) に戻す" data-icon="reset"></button>
@@ -339,7 +363,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <select id="tdMdSelect" style="flex:1"></select>
           </div>
           <div class="row"><label>Randomize</label>
-            <button id="tdMdRandOne" title="配色・書体・組版・変形をランダム生成 (保存は右上の Save)" style="flex:1">Random 🎲</button>
+            <button id="tdMdRandOne" title="配色・書体・組版・変形をランダム生成 (保存は右上の Save)" style="flex:1">Random All</button>
           </div>
           <div class="row"><label>Paper</label>
             <input type="color" id="tdMdPaper" value="#050507">
@@ -671,7 +695,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <select id="mtMdSelect" style="flex:1"></select>
           </div>
           <div class="row"><label>Randomize</label>
-            <button id="mtSeedRand" title="ランダムにアニメ設定一式＋組版を生成" style="flex:1">Random 🎲</button>
+            <button id="mtSeedRand" title="ランダムにアニメ設定一式＋組版を生成" style="flex:1">Random All</button>
             <button id="mtReseed" title="揺れの乱数パターンだけ変更">Reseed</button>
           </div>
           <div class="row"><label>Typeface</label>
@@ -717,7 +741,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <select id="stMdSelect" style="flex:1"></select>
           </div>
           <div class="row"><label>Randomize</label>
-            <button id="stRandom" title="シーンと動きのパラメータをランダム生成 (Scene=Randomのままなら自動切替も継続)" style="flex:1">Random 🎲</button>
+            <button id="stRandom" title="シーンと動きのパラメータをランダム生成 (Scene=Randomのままなら自動切替も継続)" style="flex:1">Random Params</button>
           </div>
           <div class="row"><label>Scene</label>
             <select id="stScene" style="flex:1" title="Saved=呼び出したmdにデフォルト保存したsceneを再生(既定) / Random=サイクルごとにランダム抽選 / 具体名=固定。シーン: wave=波打つ文字面 / wall=文字の壁 / arc=弧 / tunnel=トンネル / cylinder=円筒 / helix=螺旋 / sphere=球 / rings=同心円 / ribbon=3D曲線帯 / lissajous=リサージュ / vortex=渦 / burst=放射 / scatter=散布 / fall=雨"></select>
@@ -936,6 +960,10 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <span id="imageCurInfo" style="font:600 10px var(--mono);color:var(--dim);text-transform:none;letter-spacing:0"></span>
             <span class="default-actions"><button class="saveDefBtn" data-kind="image" title="現在のフォルダ・送り拍・順序・フィットをデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="image" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button></span>
           </h3>
+          <div class="btnrow" style="margin:0 0 6px">
+            <button id="imgFolderSave" style="flex:2" title="いまの設定 (Order / Beats / Fit / Trans / Style) を選択中のフォルダ/画像に保存。次に選んだとき自動で適用される (md と同方式)">Folder Save</button>
+            <button id="imgFolderClear" style="flex:1" title="このフォルダ/画像の保存設定を削除">Folder Clear</button>
+          </div>
           <div class="row"><label>Advance</label>
             <input type="range" id="imgEveryBeats" min="1" max="32" step="1" value="4" title="beat モード時に何拍ごとに次の画像へ送るか (drone モードでは自動送りなし)">
             <div class="val" id="imgEveryBeatsVal">4拍</div>
@@ -946,14 +974,16 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
               <option value="random">Random</option>
               <option value="single">Single (固定)</option>
             </select>
+          </div>
+          <div class="row"><label>Fit</label>
             <select id="imgFit" style="flex:1" title="Contain=全体表示(余白透過) / Cover=画面いっぱい / Drone=ゆっくり寄り引きしながら漂う">
-              <option value="contain">Contain</option>
-              <option value="cover">Cover</option>
+              <option value="contain">Contain (全体表示)</option>
+              <option value="cover">Cover (画面いっぱい)</option>
               <option value="drone">Drone (寄り引き)</option>
             </select>
           </div>
           <div class="row"><label>Trans</label>
-            <select id="imgTrans" style="flex:1" title="画像切替のトランジション: Trans 連動=Mix パネルの Trans Beats 設定 / カット=即時 / 拍数=その長さで全画面トランジション">
+            <select id="imgTrans" style="flex:1" title="画像切替のトランジション: Trans 連動=Timing タブの Transition の Trans Beats 設定 / カット=即時 / 拍数=その長さで全画面トランジション">
               <option value="-1">Trans 連動</option>
               <option value="0">カット (即時)</option>
               <option value="0.25">1/4 拍</option>
@@ -965,7 +995,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             </select>
           </div>
           <div class="row"><label>Style</label>
-            <select id="imgTransStyle" style="flex:1" title="画像切替の演出: Style 連動=Mix パネルの Trans Style / なし=素の Crossfade">
+            <select id="imgTransStyle" style="flex:1" title="画像切替の演出: Style 連動=Timing タブの Transition の Trans Style / なし=素の Crossfade">
               <option value="-1">Style 連動</option>
               <option value="0">なし (Crossfade)</option>
               <option value="1">Black Fade (暗転)</option>
@@ -977,36 +1007,32 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
               <option value="11">Barcode (バーコード化)</option>
             </select>
           </div>
-          <div class="row"><label>Rotate</label><input type="range" id="imgRotate" min="-180" max="180" step="1" value="0" title="画像の回転 (度)。画像の外は透明"><div class="val" id="imgRotateVal">0</div></div>
-          <div class="row"><label>Sway</label><input type="range" id="imgSway" min="0" max="30" step="1" value="0" title="回転の揺れ幅 (度)。ゆっくり左右に揺れる"><div class="val" id="imgSwayVal">0</div></div>
-          <div class="row"><label>Skew X</label><input type="range" id="imgSkewX" min="-60" max="60" step="1" value="0" title="横の傾き (度)"><div class="val" id="imgSkewXVal">0</div></div>
-          <div class="row"><label>Skew Y</label><input type="range" id="imgSkewY" min="-60" max="60" step="1" value="0" title="縦の傾き (度)"><div class="val" id="imgSkewYVal">0</div></div>
-          <div class="row"><label>Keystone</label><input type="range" id="imgKeystone" min="-80" max="80" step="1" value="0" title="台形ゆがみ (%)。+ で上が狭く / - で下が狭く"><div class="val" id="imgKeystoneVal">0</div></div>
-          <div class="row"><label>Stretch</label><input type="range" id="imgStretch" min="30" max="300" step="1" value="100" title="横幅の比率 (%)"><div class="val" id="imgStretchVal">100</div></div>
-          <div class="row"><label>Mirror</label><select id="imgMirror" style="flex:1" title="鏡像: 中心線で折り返す"><option value="0">なし</option><option value="1">左右</option><option value="2">上下</option><option value="3">左右 + 上下</option></select></div>
-          <div class="row"><label>Tiles +</label><input type="range" id="imgTiles" min="0" max="7" step="1" value="0" title="敷き詰め: 1 辺に足す枚数 (0=1 枚のまま)"><div class="val" id="imgTilesVal">0</div></div>
+          <div class="row"><label>Rotate</label><input type="range" id="imgRotate" min="-180" max="180" step="1" value="0" title="画像の回転 (度)。画像の外は透明"><div class="val" id="imgRotateVal">0°</div></div>
+          <div class="row"><label>Sway</label><input type="range" id="imgSway" min="0" max="30" step="1" value="0" title="回転の揺れ幅 (度)。ゆっくり左右に揺れる"><div class="val" id="imgSwayVal">0°</div></div>
+          <div class="row"><label>Skew X</label><input type="range" id="imgSkewX" min="-60" max="60" step="1" value="0" title="横の傾き (度)"><div class="val" id="imgSkewXVal">0°</div></div>
+          <div class="row"><label>Skew Y</label><input type="range" id="imgSkewY" min="-60" max="60" step="1" value="0" title="縦の傾き (度)"><div class="val" id="imgSkewYVal">0°</div></div>
+          <div class="row"><label>Keystone</label><input type="range" id="imgKeystone" min="-80" max="80" step="1" value="0" title="台形ゆがみ (%)。+ で上が狭く / - で下が狭く"><div class="val" id="imgKeystoneVal">0%</div></div>
+          <div class="row"><label>Stretch</label><input type="range" id="imgStretch" min="30" max="300" step="1" value="100" title="横幅の比率 (%)"><div class="val" id="imgStretchVal">100%</div></div>
+          <div class="row"><label>Mirror</label><select id="imgMirror" style="flex:1" title="鏡像: 中心線で折り返す"><option value="0">Off</option><option value="1">Left-Right</option><option value="2">Up-Down</option><option value="3">Both</option></select></div>
+          <div class="row"><label>Tile</label><input type="range" id="imgTiles" data-midi-key="*:dom~Tiles_+" min="0" max="7" step="1" value="0" title="敷き詰め: 1 辺に足す枚数 (0=1 枚のまま)"><div class="val" id="imgTilesVal">0</div></div>
           <div class="row"><label for="imgTileMirror">Tile Flip</label><input type="checkbox" id="imgTileMirror" title="敷き詰めを交互に裏返す (継ぎ目がつながる)"></div>
           <div class="row"><label>Kaleido</label><input type="range" id="imgKaleido" min="0" max="12" step="1" value="0" title="万華鏡の分割数 (0=なし)"><div class="val" id="imgKaleidoVal">0</div></div>
-          <div class="row"><label>Bulge</label><input type="range" id="imgBulge" min="-40" max="100" step="1" value="0" title="樽型 / 糸巻き型のゆがみ (%)"><div class="val" id="imgBulgeVal">0</div></div>
-          <div class="row"><label>Twirl</label><input type="range" id="imgTwirl" min="-360" max="360" step="5" value="0" title="中心のねじれ (度)"><div class="val" id="imgTwirlVal">0</div></div>
-          <div class="row"><label>Wave Amp</label><input type="range" id="imgWaveAmp" min="0" max="15" step="1" value="0" title="波ゆがみの振れ幅 (%)"><div class="val" id="imgWaveAmpVal">0</div></div>
-          <div class="row"><label>Wave Count</label><input type="range" id="imgWaveCount" min="1" max="12" step="1" value="5" title="波ゆがみの山の数 (Wave Amp が 1 以上のとき)"><div class="val" id="imgWaveCountVal">5</div></div>
-          <div class="row"><label>Pixelate</label><input type="range" id="imgPixelate" min="0" max="100" step="1" value="0" title="モザイクの粗さ (%)"><div class="val" id="imgPixelateVal">0</div></div>
-          <div class="row"><label>Chroma Split</label><input type="range" id="imgChroma" min="0" max="50" step="1" value="0" title="色ずれ (RGB の分離幅 %)"><div class="val" id="imgChromaVal">0</div></div>
-          <div class="row"><label>Chroma Angle</label><input type="range" id="imgChromaAngle" min="-180" max="180" step="5" value="0" title="色ずれの向き (度) (Chroma Split が 1 以上のとき)"><div class="val" id="imgChromaAngleVal">0</div></div>
-          <div class="row"><label>Corner</label><input type="range" id="imgCorner" min="0" max="100" step="1" value="0" title="画像の角丸 (%)。画像の外は透明"><div class="val" id="imgCornerVal">0</div></div>
-          <div class="row"><label>Edge Fade</label><input type="range" id="imgEdgeFade" min="0" max="60" step="1" value="0" title="画像の縁のぼかし (%)。画像の外は透明"><div class="val" id="imgEdgeFadeVal">0</div></div>
-          <div class="row"><label>Drone Zoom</label><input type="range" id="imgDroneBase" min="100" max="160" step="1" value="118" title="Drone の基本ズーム (%)"><div class="val" id="imgDroneBaseVal">118</div></div>
-          <div class="row"><label>Drone Depth</label><input type="range" id="imgDroneDepth" min="0" max="100" step="1" value="100" title="Drone の寄り引きの振れ幅 (%)"><div class="val" id="imgDroneDepthVal">100</div></div>
-          <div class="row"><label>Drone Drift</label><input type="range" id="imgDroneDrift" min="0" max="100" step="1" value="100" title="Drone の漂いの大きさ (%)"><div class="val" id="imgDroneDriftVal">100</div></div>
+          <div class="row"><label>Bulge</label><input type="range" id="imgBulge" min="-40" max="100" step="1" value="0" title="樽型 / 糸巻き型のゆがみ (%)"><div class="val" id="imgBulgeVal">0%</div></div>
+          <div class="row"><label>Twirl</label><input type="range" id="imgTwirl" min="-360" max="360" step="5" value="0" title="中心のねじれ (度)"><div class="val" id="imgTwirlVal">0°</div></div>
+          <div class="row"><label>Wave</label><input type="range" id="imgWaveAmp" data-midi-key="*:dom~Wave_Amp" min="0" max="15" step="1" value="0" title="波ゆがみの振れ幅 (%)"><div class="val" id="imgWaveAmpVal">0%</div></div>
+          <div class="row"><label>Wave Freq</label><input type="range" id="imgWaveCount" data-midi-key="*:dom~Wave_Count" min="1" max="12" step="1" value="5" title="波ゆがみの山の数 (Wave Amp が 1 以上のとき)"><div class="val" id="imgWaveCountVal">5</div></div>
+          <div class="row"><label>Pixelate</label><input type="range" id="imgPixelate" min="0" max="100" step="1" value="0" title="モザイクの粗さ (%)"><div class="val" id="imgPixelateVal">0%</div></div>
+          <div class="row"><label>Chroma Split</label><input type="range" id="imgChroma" min="0" max="50" step="1" value="0" title="色ずれ (RGB の分離幅 %)"><div class="val" id="imgChromaVal">0%</div></div>
+          <div class="row"><label>Chroma Angle</label><input type="range" id="imgChromaAngle" min="-180" max="180" step="5" value="0" title="色ずれの向き (度) (Chroma Split が 1 以上のとき)"><div class="val" id="imgChromaAngleVal">0°</div></div>
+          <div class="row"><label>Corner</label><input type="range" id="imgCorner" min="0" max="100" step="1" value="0" title="画像の角丸 (%)。画像の外は透明"><div class="val" id="imgCornerVal">0%</div></div>
+          <div class="row"><label>Edge Fade</label><input type="range" id="imgEdgeFade" min="0" max="60" step="1" value="0" title="画像の縁のぼかし (%)。画像の外は透明"><div class="val" id="imgEdgeFadeVal">0%</div></div>
+          <div class="row"><label>Drone Zoom</label><input type="range" id="imgDroneBase" min="100" max="160" step="1" value="118" title="Drone の基本ズーム (%)"><div class="val" id="imgDroneBaseVal">118%</div></div>
+          <div class="row"><label>Drone Depth</label><input type="range" id="imgDroneDepth" min="0" max="100" step="1" value="100" title="Drone の寄り引きの振れ幅 (%)"><div class="val" id="imgDroneDepthVal">100%</div></div>
+          <div class="row"><label>Drone Drift</label><input type="range" id="imgDroneDrift" min="0" max="100" step="1" value="100" title="Drone の漂いの大きさ (%)"><div class="val" id="imgDroneDriftVal">100%</div></div>
           <div class="row"><label>Fade (ms)</label><input type="range" id="imgFadeMs" min="0" max="2000" step="50" value="350" title="画像を切り替えるときの内蔵クロスフェードの長さ (Trans がカット以外のとき)"><div class="val" id="imgFadeMsVal">350</div></div>
           <div class="row"><label>Manual</label>
             <button id="imgPrev" style="flex:1" title="前の画像">◀ Prev</button>
             <button id="imgNext" style="flex:1" title="次の画像 (C キーでも送り)">Next ▶</button>
-          </div>
-          <div class="btnrow" style="margin-top:6px">
-            <button id="imgFolderSave" style="flex:2" title="いまの設定 (Order / Beats / Fit / Trans / Style) を選択中のフォルダ/画像に保存。次に選んだとき自動で適用される (md と同方式)">Save ▸ フォルダ設定</button>
-            <button id="imgFolderClear" style="flex:1" title="このフォルダ/画像の保存設定を削除">Clear</button>
           </div>
         </div>
 
@@ -1021,7 +1047,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div id="slicerStatus" style="font-size:10px;color:var(--dim);margin-top:6px">no image</div>
           <div id="slicerLibGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;margin-top:4px"></div>
           <div class="row"><label>Randomize</label>
-            <button id="btnSlSeedRand" title="画像とシードをランダムに選び直す (保存は右上の Save)" style="flex:1">Random 🎲</button>
+            <button id="btnSlSeedRand" title="画像とシードをランダムに選び直す (保存は右上の Save)" style="flex:1">Reseed</button>
           </div>
           <div class="row"><label>Img Beats</label><input type="range" id="slImgBeats" min="0" max="32" step="1" value="8" title="Random スロット選択時に画像を切り替える拍数 (0=自動切替なし)"><div class="val" id="slImgBeatsVal">8</div></div>
           <div class="row" style="margin-top:8px"><label>Pieces</label><input type="range" id="slPieces" min="10" max="2000" step="10" value="150"><div class="val" id="slPiecesVal">150</div></div>
@@ -1147,8 +1173,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
       <!-- POST FX -->
       <div class="pane" data-pane="post">
+        <div class="btnrow" id="postResetRow" style="margin:0 0 6px"><button id="btnPostReset" title="Post FX 全体を既定値へ戻す (確認あり)">Reset All FX</button></div>
         <div class="section">
-          <h3>Post FX <span class="default-actions"><button class="saveDefBtn" data-kind="post:color" title="色調の現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:color" title="保存した色調の既定値へ戻す (保存が無ければ初期値)">Reset</button><button id="btnPostReset" title="Post FX 全体を既定値へ戻す">Reset All</button></span></h3>
+          <h3>Color <span class="default-actions"><button class="saveDefBtn" data-kind="post:color" title="色調の現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:color" title="保存した色調の既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label for="pxInv">Invert</label><input type="checkbox" id="pxInv" title="色反転 (hue も180°回転)"></div>
           <div class="row"><label>Gamma</label><input type="range" id="pxGamma" min="0.5" max="2.5" step="0.01" value="1"><div class="val" id="pxGammaVal">1.00</div></div>
           <div class="row"><label>Brightness</label><input type="range" id="pxBri" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxBriVal">0.00</div></div>
@@ -1173,6 +1200,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div class="row"><label>Hue Shift</label><input type="range" id="pxHue" min="-1" max="1" step="0.001" value="0"><div class="val" id="pxHueVal">0.00</div></div>
           <div class="row"><label>Hue Rotate</label><input type="range" id="pxHueRot" min="0" max="2" step="0.01" value="0" title="自動で色相が左右にランダムに揺れる"><div class="val" id="pxHueRotVal">0.00</div></div>
+          <div class="row"><label>Vignette</label><input type="range" id="pxVig" min="0" max="2" step="0.01" value="0"><div class="val" id="pxVigVal">0.00</div></div>
         </div>
         <div class="section">
           <h3>Quality <span class="pill" style="font-size:9px">画質補完</span> <span class="default-actions"><button class="saveDefBtn" data-kind="post:quality" title="Qualityの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:quality" title="保存したQualityの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
@@ -1230,7 +1258,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
         <div class="section">
           <h3>Distortion <span class="default-actions"><button class="saveDefBtn" data-kind="post:distortion" title="Distortionの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:distortion" title="保存したDistortionの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
-          <div class="row"><label>Vignette</label><input type="range" id="pxVig" min="0" max="2" step="0.01" value="0"><div class="val" id="pxVigVal">0.00</div></div>
           <div class="row"><label>Chroma Ab</label><input type="range" id="pxChr" min="0" max="0.05" step="0.0005" value="0"><div class="val" id="pxChrVal">0.000</div></div>
           <div class="row"><label>Pixelate</label><input type="range" id="pxPix" min="0" max="300" step="1" value="0"><div class="val" id="pxPixVal">0</div></div>
           <div class="row"><label>Mirror</label>
@@ -1257,6 +1284,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Hipass</label><input type="range" id="pxGlass" min="0" max="1" step="0.01" value="0" title="Hipass: 初速から高域強調が強く効き、後段でブラー範囲が広がる。補色は弱めに抑えつつ残す"><div class="val" id="pxGlassVal">0.00</div></div>
           <div class="row"><label>Dither Blur</label><input type="range" id="pxDither" min="0" max="1" step="0.01" value="0" title="Kawase Jitter Blur: ジッター付き 2 半径 Kawase ブラー。指数カーブ"><div class="val" id="pxDitherVal">0.00</div></div>
           <div class="row"><label>Motion Blur</label><input type="range" id="pxMblur" min="0" max="1" step="0.01" value="0"><div class="val" id="pxMblurVal">0.00</div></div>
+          <div class="row"><label>Outline</label><input type="range" id="pxOutline" min="0" max="1" step="0.01" value="0" title="Outline: 色差対応Scharr + Canny細線化で、白地にAAなしの1pxドット輪郭を引き直す"><div class="val" id="pxOutlineVal">0.00</div></div>
           <div class="fb-group" style="margin-top:10px;padding-top:8px;border-top:1px solid #383838">
             <h3>FB <span class="default-actions"><button class="saveDefBtn" data-kind="fb" title="FBの種類と全設定を既定値として保存">Save</button><button class="resetDefBtn" data-kind="fb" title="保存したFBの既定値を消して初期値へ戻す">Reset</button></span></h3>
             <div class="row"><label>Mode</label><div id="pxFbMode" class="toggle-btns" data-single title="FBの種類 (同時に掛けるのは 1 種類)"><button data-type="add" title="Add: 明るい残像">Add</button><button data-type="multiply" title="Multiply: 暗い残像">Multiply</button><button data-type="residue" title="Residue: 動いた形の残像">Residue</button></div></div>
@@ -1282,8 +1310,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Ring Slice</label><input type="range" id="pxRingSlice" min="0" max="1" step="0.01" value="0" title="同心円の帯ごとに別々の速さ・向きで映像を回し続ける (Slice の同心円版。境界線なし)。値=回転の速さ。帯のパターンは beat モードで拍ごとに変わり、drone では固定"><div class="val" id="pxRingSliceVal">0.00</div></div>
           <div class="row"><label>Ring Blur</label><input type="range" id="pxRingBlur" min="0" max="1" step="0.01" value="0" title="Ring Slice と同じ同心円の帯ごとに、円周方向の回転ブラー。帯ごとに量と向きが違い、時間で脈動する。一部の帯はぼかさない"><div class="val" id="pxRingBlurVal">0.00</div></div>
           <div class="row"><label>Slit-scan</label><input type="range" id="pxSlitScan" min="0" max="1" step="0.01" value="0" title="時間が縦に流れるスクロール型slit-scan。値=分割数。上下方向はランダムなタイミングで反転。0=OFF"><div class="val" id="pxSlitScanVal">0.0</div></div>
-          <div class="row"><label>Outline</label><input type="range" id="pxOutline" min="0" max="1" step="0.01" value="0" title="Outline: 色差対応Scharr + Canny細線化で、白地にAAなしの1pxドット輪郭を引き直す"><div class="val" id="pxOutlineVal">0.00</div></div>
-          <div class="row"><label for="pxInkBleed">Ink Bleed</label><input type="range" id="pxInkBleed" min="0" max="1" step="0.01" value="0" title="線と輪郭の色を保ったまま紙ににじませる。背景が黒いときは Paper を黒に設定する"><div class="val" id="pxInkBleedVal">0</div></div>
           <div class="row"><label>Barcode</label><input type="range" id="pxBarcode" min="0" max="1" step="0.01" value="0" title="ランダムなピクセルを横に引き延ばし、ランダムな周期・高さのバーコード状の行に。行ごとに違う速さで変異する"><div class="val" id="pxBarcodeVal">0.00</div></div>
           <div class="row"><label>Datamosh</label><input type="range" id="pxGlitchTrail" min="0" max="1" step="0.01" value="0" title="細面ほど1/16〜1/4拍で速く動き、未分割の大面を遅く残しながら分節スキャンを刻むデータモッシュ。0=OFF"><div class="val" id="pxGlitchTrailVal">0.00</div></div>
           <div class="row"><label>Datamosh Type</label><div id="pxGlitchTrailTypes" class="toggle-btns" title="Datamosh の種類 (複数を同時に重ねられる)"><button data-type="mondrian" title="面ごとの動き + 走査帯">Mondrian</button><button data-type="block" title="マクロブロックの流れ + 4 拍ごとの I フレーム">Block</button><button data-type="melt" title="縦の帯が下へ垂れる">Melt</button><button data-type="tear" title="横帯の横ずれ + ロール">Tear</button><button data-type="freeze" title="面が数拍そのまま固まる">Freeze</button></div></div>
@@ -1291,6 +1317,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
         <div class="section">
           <h3>Ink Bleed <span class="default-actions"><button class="saveDefBtn" data-kind="inkBleed" title="インクのにじみ設定を保存する">Save</button><button class="resetDefBtn" data-kind="inkBleed" title="保存した詳細設定に戻す。保存がなければ初期値に戻す">Reset</button><button class="randDefBtn" data-kind="inkBleed" title="Spread・Fiber・Edge・Node・Seed をランダムに変える">Random 🎲</button></span></h3>
+          <div class="row"><label for="pxInkBleed">Ink Bleed</label><input type="range" data-norand="1" id="pxInkBleed" min="0" max="1" step="0.01" value="0" title="線と輪郭の色を保ったまま紙ににじませる。背景が黒いときは Paper を黒に設定する"><div class="val" id="pxInkBleedVal">0</div></div>
           <div class="row"><label for="pxInkBleedSpread">Spread</label><input type="range" id="pxInkBleedSpread" min="0" max="1" step="0.01" value="0.5" title="にじみと溜まりの上限。線幅に比例して広がるが、太い線でもこれ以上は広がらない"><div class="val" id="pxInkBleedSpreadVal">0.5</div></div>
           <div class="row"><label for="pxInkBleedFiber">Fiber</label><input type="range" id="pxInkBleedFiber" min="0" max="1" step="0.01" value="0.5" title="溜まりの縁の揺らぎ (線幅に対する比)"><div class="val" id="pxInkBleedFiberVal">0.50</div></div>
           <div class="row"><label for="pxInkBleedEdge">Edge</label><input type="range" id="pxInkBleedEdge" min="0" max="1" step="0.01" value="0.4" title="印刷インク風の仕上げ。線が少し柔らかく太り、ベタにわずかなムラが出る (線幅によらず一定)"><div class="val" id="pxInkBleedEdgeVal">0.40</div></div>
@@ -1340,7 +1367,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Max Strokes</label><input type="range" id="ovMaxStr" min="20" max="1000" step="10" value="300"><div class="val" id="ovMaxStrVal">300</div></div>
           <div class="btnrow" style="margin-top:6px">
             <button id="btnOverlayClear" style="flex:1">Clear Canvas</button>
-            <button id="btnOverlayRandom" style="flex:1" title="ストローク・形状・モーションのパラメータをランダム生成 (Brush の選択と Trigger は変えない。保存は右上の Save)">Random 🎲</button>
+            <button id="btnOverlayRandom" style="flex:1" title="ストローク・形状・モーションのパラメータをランダム生成 (Brush の選択と Trigger は変えない。保存は右上の Save)">Random Params</button>
           </div>
         </div>
 
@@ -1456,6 +1483,53 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
       <!-- TEMPO -->
       <div class="pane" data-pane="tempo">
         <div class="section">
+          <h3>BPM</h3>
+          <div class="bpmBig" id="bpmBig" title="クリックして BPM を入力">120.0</div>
+          <input class="bpmBig bpmBigEdit" id="bpmBigEdit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" style="display:none">
+          <div class="bpmDots"><div></div><div></div><div></div><div></div></div>
+          <div class="row">
+            <label>BPM</label>
+            <input type="number" id="bpmInput" min="20" max="300" step="0.1" value="120" style="flex:1">
+          </div>
+          <div class="btnrow">
+            <button id="btnTap" class="acc" title="タップテンポ (T)">Tap</button>
+            <button id="btnReset" title="位相リセット">Reset Φ</button>
+            <button id="bpmHalf">½</button>
+            <button id="bpmDouble">×2</button>
+            <button id="bpmMidiLearn" class="midi" style="flex:0 0 60px" title="BPM値にCC割当">MIDI</button>
+          </div>
+          <div class="btnrow" style="margin-top:6px">
+            <button id="tapMidiLearn" class="midi" title="Tapボタンにmidiコンのボタンを割当">Tap ← MIDI</button>
+            <button id="resetMidiLearn" class="midi" title="Reset Φ にmidiコンのボタンを割当">Reset Φ ← MIDI</button>
+          </div>
+          <div class="row" style="margin-top:8px">
+            <label>Auto</label>
+            <input type="checkbox" id="bpmAuto" checked>
+            <span style="font-size:11px;color:var(--dim)">音から自動検出（要マイク/オーディオ）</span>
+          </div>
+          <div class="row">
+            <label></label>
+            <span id="autoBpmStat" style="font-size:11px;color:var(--dim)">—</span>
+          </div>
+        </div>
+
+        <div class="section">
+          <h3>Audio Input</h3>
+          <div class="btnrow">
+            <button id="btnAudioNone" title="音声入力を使わない">なし</button>
+            <button id="btnAudioMic" title="クリックでON / 点灯中に再クリックでOFF">マイク</button>
+            <button id="btnAudioDisp" title="クリックでON / 点灯中に再クリックでOFF">画面音声</button>
+          </div>
+          <div class="help" style="margin-top:8px">
+            <b>画面音声 (Chrome 系):</b> ピッカーで <b>「Chrome タブ」を選択</b> → 下部の <b>「タブの音声を共有」にチェック</b> → Share。<br>
+            ※ 「ウィンドウ」「画面全体」を選ぶと音声が取れず Permission denied になります。<br>
+            ※ macOS では初回 System Settings → Privacy → Screen Recording で Chrome を許可。<br>
+            <br>
+            シェーダ側: <code>texture(iChannel?, vec2(x, 0.25))</code> でFFT、<code>vec2(x, 0.75)</code> で波形、<code>iEnergy</code> で低〜中域のパワー (0..1)。
+          </div>
+        </div>
+
+        <div class="section">
           <h3>Motion Mode</h3>
           <div class="btnrow">
             <button id="btnModeDrone" class="on">DRONE (時間駆動)</button>
@@ -1486,16 +1560,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div class="row"><label>Depth</label><input type="range" id="atDepth" min="0" max="1" step="0.01" value="0.5" title="Speed 変調の深さ。Energy: 無音〜大音量で ×1/(1+3d)〜×(1+3d) / Hit Boost: 最大 ×(1+3d) / Hit Duck: 最小 ×(1-0.95d)"><div class="val" id="atDepthVal">0.50</div></div>
           <div class="row"><label>Threshold</label><input type="range" id="atThr" min="0" max="1" step="0.01" value="0.5" title="Direction の発火閾値 (Audio hit がこの値以上で発火)。低いほど敏感。Flip Charge では反転に必要なアタック累積量 (低いほど頻繁に反転)"><div class="val" id="atThrVal">0.50</div></div>
-          <div class="help" style="margin-top:6px">音の検知は Tempo タブ下部の Audio Detect (Target / Sensitivity / Attack) を共用。マイク / 画面音声を ON にしてから使用。</div>
-        </div>
-
-        <div class="section">
-          <h3>MIDI Map</h3>
-          <div class="btnrow" style="margin-top:6px">
-            <button id="btnMidiPush" style="flex:2" title="この端末の MIDI マップ (learn 差分) をサーバーへ送り、他の端末 (ブラウザ / デスクトップアプリ) に反映する">MIDI マップを共有 ▸ Push</button>
-            <button id="btnMidiPull" style="flex:1" title="サーバーの MIDI マップをこの端末へ取り込む (リロードで反映)">Pull</button>
-          </div>
-          <div class="help" style="font-size:10px;margin-top:4px">MIDI マップは端末ごとに保存されます。正にしたい端末で <b>Push</b> → 反映したい端末で <b>Pull</b>。</div>
+          <div class="help" style="margin-top:6px">音の検知は Timing タブ下部の Audio Detect (Target / Sensitivity / Attack) を共用。マイク / 画面音声を ON にしてから使用。</div>
         </div>
 
         <div class="section">
@@ -1552,37 +1617,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
 
         <div class="section">
-          <h3>BPM</h3>
-          <div class="bpmBig" id="bpmBig" title="クリックして BPM を入力">120.0</div>
-          <input class="bpmBig bpmBigEdit" id="bpmBigEdit" type="text" inputmode="decimal" autocomplete="off" spellcheck="false" style="display:none">
-          <div class="bpmDots"><div></div><div></div><div></div><div></div></div>
-          <div class="row">
-            <label>BPM</label>
-            <input type="number" id="bpmInput" min="20" max="300" step="0.1" value="120" style="flex:1">
-          </div>
-          <div class="btnrow">
-            <button id="btnTap" class="acc" title="タップテンポ (T)">Tap</button>
-            <button id="btnReset" title="位相リセット">Reset Φ</button>
-            <button id="bpmHalf">½</button>
-            <button id="bpmDouble">×2</button>
-            <button id="bpmMidiLearn" class="midi" style="flex:0 0 60px" title="BPM値にCC割当">MIDI</button>
-          </div>
-          <div class="btnrow" style="margin-top:6px">
-            <button id="tapMidiLearn" class="midi" title="Tapボタンにmidiコンのボタンを割当">Tap ← MIDI</button>
-            <button id="resetMidiLearn" class="midi" title="Reset Φ にmidiコンのボタンを割当">Reset Φ ← MIDI</button>
-          </div>
-          <div class="row" style="margin-top:8px">
-            <label>Auto</label>
-            <input type="checkbox" id="bpmAuto" checked>
-            <span style="font-size:11px;color:var(--dim)">音から自動検出（要マイク/オーディオ）</span>
-          </div>
-          <div class="row">
-            <label></label>
-            <span id="autoBpmStat" style="font-size:11px;color:var(--dim)">—</span>
-          </div>
-        </div>
-
-        <div class="section">
           <h3>Audio Detect <span class="default-actions"><button class="saveDefBtn" data-kind="audioDetect" title="Target / Sensitivity / Band / Attack の現在値を起動時のデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="audioDetect" title="ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label>Target</label>
             <select id="pxATarget" style="flex:1" title="Audio FX が反応する音の種類。Manual は Band スライダーで任意の帯域を選択">
@@ -1607,38 +1641,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Attack</label><input type="range" id="pxAAttack" min="0" max="1" step="0.01" value="0.5" title="0=持続(サステインで滑らかに) / 1=トランジェント強調(アタックで鋭く発火)"><div class="val" id="pxAAttackVal">0.50</div></div>
           <div class="row" style="align-items:flex-start"><label>Bands</label><div id="pxATargetInfo" style="flex:1;font-size:var(--fs-sm);color:var(--dim);line-height:var(--ctl-h)">Manual: Band slider</div></div>
         </div>
-
-        <div class="section">
-          <h3>Audio Input</h3>
-          <div class="btnrow">
-            <button id="btnAudioNone" title="音声入力を使わない">なし</button>
-            <button id="btnAudioMic" title="クリックでON / 点灯中に再クリックでOFF">マイク</button>
-            <button id="btnAudioDisp" title="クリックでON / 点灯中に再クリックでOFF">画面音声</button>
-          </div>
-          <div class="help" style="margin-top:8px">
-            <b>画面音声 (Chrome 系):</b> ピッカーで <b>「Chrome タブ」を選択</b> → 下部の <b>「タブの音声を共有」にチェック</b> → Share。<br>
-            ※ 「ウィンドウ」「画面全体」を選ぶと音声が取れず Permission denied になります。<br>
-            ※ macOS では初回 System Settings → Privacy → Screen Recording で Chrome を許可。<br>
-            <br>
-            シェーダ側: <code>texture(iChannel?, vec2(x, 0.25))</code> でFFT、<code>vec2(x, 0.75)</code> で波形、<code>iEnergy</code> で低〜中域のパワー (0..1)。
-          </div>
-        </div>
-
-        <div class="section">
-          <h3>Diagnostics <span class="pill" id="diagStat" style="font-size:9px">—</span></h3>
-          <div class="btnrow">
-            <button id="btnDiagDownload" title="診断ログ(エラー/メモリ/FPS)をJSONで保存">ログ保存</button>
-            <button id="btnDiagShow" title="コンソールに表示">表示</button>
-            <button id="btnDiagClear" title="ログ消去">クリア</button>
-          </div>
-          <div class="help" style="margin-top:6px;font-size:10px">エラー・WebGLコンテキストロスト・メモリ/FPSを記録（リロード後も保持）。落ちた後にここから保存して原因を確認できます。</div>
-        </div>
       </div>
 
       <!-- SETTINGS (トップバーの歯車で開く。タブには並べない) -->
       <div class="pane" data-pane="settings" id="settingsPane">
         <div class="pane-head">
-          <h3>Settings <span class="set-dirty" id="setDirty" hidden>未保存</span><span class="grow"></span><span class="default-actions"><button id="setSave" title="表示の現在の設定を保存">Save</button><button id="setReset" title="表示を初期値に戻して保存">Reset</button><button id="setRandom" title="アクセントカラーをランダムに">Random</button></span></h3>
+          <h3>Settings <span class="set-dirty" id="setDirty" hidden>未保存</span><span class="grow"></span><span class="default-actions"><button id="setSave" title="表示の現在の設定を保存">Save</button><button id="setReset" title="表示を初期値に戻して保存">Reset</button><button id="setRandom" title="アクセントカラーをランダムに">Random 🎲</button></span><button type="button" class="modal-close" data-icon="close" title="閉じる (Esc)"></button></h3>
         </div>
         <div class="section">
           <h3>表示</h3>
@@ -1684,12 +1692,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" title="起動時に iMouse を拾うかどうか。今の状態は M キーで切り替える (ここでは変わらない)"><label for="setMouse">iMouse (起動時)</label><input type="checkbox" id="setMouse" data-fn="mouse"></div>
           <div class="row" title="起動時のサーバー取得 (defaults.json・保存デフォルト・S 番号・プリセット・グラデ) を待つ時間。時間切れ・失敗はローカルの値で起動する。Offline = 保存デフォルト・プリセット・グラデのサーバー取得と書き込みをせず、ローカルだけで動く。次回起動から効く"><label for="setSync">Sync Timeout</label><select id="setSync" data-pref="syncTimeout" data-def="none"><option value="none">無し</option><option value="5">5 秒</option><option value="10">10 秒</option><option value="offline">Offline</option></select></div>
           <div class="row" title="デフォルト保存をサーバー経由で全端末と共有するか。この端末だけ = 起動時の取得も保存時のアップロードもしない (リハーサル用端末向け)。次回起動から効く"><label for="setShare">Share Defaults</label><select id="setShare" data-pref="shareDefaults" data-def="1"><option value="1">共有</option><option value="0">この端末だけ</option></select></div>
-          <div class="row" title="Visual ごとのデフォルト (Mix のエンジン別パラメータ・Shader Params) を基準値 (defaults_visual.json) に戻す。全端末共通。Mix / Transition / Post / Audio の保存値は変わらない"><label for="setVisDefReset">Visual Defaults</label><button type="button" id="setVisDefReset">Reset</button></div>
+          <div class="row" title="Visual ごとのデフォルト (Params のエンジン別パラメータ・Shader Params) を基準値 (defaults_visual.json) に戻す。全端末共通。Mix / Transition / Post / Audio の保存値は変わらない"><label for="setVisDefReset">Visual Defaults</label><button type="button" id="setVisDefReset">Reset</button></div>
           <div class="row" title="Esc による全スロットのリセット。二度押し = 1 秒以内にもう一度 Esc で実行 (Settings・MIDI Learn・モーダルを開いている間の Esc は従来どおり閉じるだけ)"><label for="setEscReset">Esc Reset</label><select id="setEscReset" data-pref="escReset" data-def="one"><option value="one">一発</option><option value="double">二度押し (1 秒以内)</option><option value="off">無効</option></select></div>
           <div class="row" title="Backspace でアクティブスロットを「なし(透明)」にする"><label for="setBsClear">Backspace Clear</label><input type="checkbox" id="setBsClear" data-pref="backspaceClear" data-def="1"></div>
           <div class="row" title="ON の間は Esc 全リセット・Backspace・プリセット / グラデ / Bank の削除と上書き・Shift+X (Slot A ⇄ B 交換) を止めてトーストで知らせる。プリセット切替とパラメータ操作は通る"><label for="setLiveLock">Live Lock</label><input type="checkbox" id="setLiveLock" data-pref="liveLock" data-def="0"></div>
           <div class="row" title="フルスクリーン (Shift+F) のあいだ、ステージ上のマウスカーソルを隠す"><label for="setHideCursor">Hide Cursor</label><input type="checkbox" id="setHideCursor" data-pref="hideCursor" data-def="0"></div>
-          <div class="row" title="画面のスリープを抑止する (ブラウザ版のみ。アプリ版は常に抑止済み)"><label for="setWakeLock">Wake Lock</label><input type="checkbox" id="setWakeLock" data-pref="wakeLock" data-def="0"></div>
+          <div class="row" title="画面のスリープを抑止する (ブラウザ版のみ。アプリ版は常に抑止済み。既定はタッチ端末だけ ON)"><label for="setWakeLock">Wake Lock</label><input type="checkbox" id="setWakeLock" data-pref="wakeLock" data-def="0"></div>
           <div class="row" title="画面下のトースト通知。出さない = Live Lock の警告と Esc 二度押しの案内以外は出さない"><label for="setToasts">Toasts</label><select id="setToasts" data-pref="toasts" data-def="all"><option value="all">すべて</option><option value="off">出さない</option></select></div>
         </div>
         <div class="section">
@@ -1719,16 +1727,30 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" title="コントローラの LED へ状態を返す。無印 Launch Control などで明滅・点灯の不具合が出るなら OFF"><label for="setMidiLed">LED Feedback</label><input type="checkbox" id="setMidiLed" data-pref="midiLed" data-def="1"></div>
           <div class="row" title="プリセット読込後、つまみが基準点を通過するまで値を反映しない (飛び防止)。OFF = つまみの位置にすぐ追従"><label for="setMidiPickup">Pickup</label><input type="checkbox" id="setMidiPickup" data-pref="midiPickup" data-def="1"></div>
           <div class="row" title="起動時に MIDI 入力デバイスが無いとき「見つかりません」と知らせる"><label for="setMidiNoDev">No-Device Toast</label><input type="checkbox" id="setMidiNoDev" data-pref="midiNoDeviceToast" data-def="1"></div>
+          <div class="btnrow" style="margin-top:6px">
+            <button id="btnMidiPush" style="flex:2" title="この端末の MIDI マップ (learn 差分) をサーバーへ送り、他の端末 (ブラウザ / デスクトップアプリ) に反映する">MIDI マップを共有 ▸ Push</button>
+            <button id="btnMidiPull" style="flex:1" title="サーバーの MIDI マップをこの端末へ取り込む (リロードで反映)">Pull</button>
+          </div>
+          <div class="help" style="font-size:10px;margin-top:4px">MIDI マップは端末ごとに保存されます。正にしたい端末で <b>Push</b> → 反映したい端末で <b>Pull</b>。</div>
         </div>
         <div class="section">
           <h3>録画</h3>
           <div class="row" title="録画にシステム音声 (Audio = System のとき) を含める。OFF = 映像のみ"><label for="setRecAudio">Record Audio</label><input type="checkbox" id="setRecAudio" data-pref="recAudio" data-def="1"></div>
         </div>
+        <div class="section">
+          <h3>Diagnostics <span class="pill" id="diagStat" style="font-size:9px">—</span></h3>
+          <div class="btnrow">
+            <button id="btnDiagDownload" title="診断ログ(エラー/メモリ/FPS)をJSONで保存">ログ保存</button>
+            <button id="btnDiagShow" title="コンソールに表示">表示</button>
+            <button id="btnDiagClear" title="ログ消去">クリア</button>
+          </div>
+          <div class="help" style="margin-top:6px;font-size:10px">エラー・WebGLコンテキストロスト・メモリ/FPSを記録（リロード後も保持）。落ちた後にここから保存して原因を確認できます。</div>
+        </div>
       </div>
       <!-- HELP (トップバーの Help で右パネルを切替)。ショートカットは CLAUDE.md のホットキー節が正。変更したらここも合わせて更新する -->
       <div class="pane" data-pane="help" id="helpPane">
         <div class="pane-head">
-          <h3>Help</h3>
+          <h3>Help<span class="grow"></span><button type="button" class="modal-close" data-icon="close" title="閉じる (Esc)"></button></h3>
         </div>
         <div class="section">
           <h3>はじめに</h3>
@@ -1738,7 +1760,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <li><b>Timing</b> でテンポを合わせ (<kbd>T</kbd> でタップ)、Audio Input をマイクか画面音声にすると音に反応する。</li>
             <li>色は <kbd>1</kbd>〜<kbd>9</kbd> の Grad Preset、仕上げは <b>FX</b> タブの Post FX。</li>
             <li>気に入った状態は <b>Preset</b> タブの「+ 現在を保存」で残す。</li>
-            <li>本番の出力は <b>Projector</b>、録画は <b>Record</b>、静止画は <b>Shot</b>。</li>
+            <li>本番の出力は <b>Projector</b> (スマホは <b>Full</b> = フルスクリーン)、録画は <b>Record</b>、静止画は <b>Shot</b>。</li>
           </ol>
         </div>
         <div class="section">
@@ -1748,7 +1770,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <tr><td><kbd>Esc</kbd></td><td>全スロットを「なし(透明)」に + 各パラメータを保存値/初期値へリセット (Settings の Esc Reset で二度押し・無効に変更可)。Settings / Help を開いているときは閉じるだけ</td></tr>
             <tr><td><kbd>R</kbd></td><td>Post / Mix / Transition / mode / IMAGON / Pan・Zoom を保存値・初期値へリセット (スロットは保持)</td></tr>
             <tr><td><kbd>Cmd/Ctrl + Z</kbd></td><td>Undo / <kbd>Cmd/Ctrl + Shift + Z</kbd>・<kbd>Cmd/Ctrl + Y</kbd> Redo</td></tr>
-            <tr><td><kbd>Tab</kbd></td><td>パネルのタブ送り (Preset → Visual → Mix → … / <kbd>Shift + Tab</kbd> で逆順)</td></tr>
+            <tr><td><kbd>Tab</kbd></td><td>パネルのタブ送り (Preset → Visual → Params → … / <kbd>Shift + Tab</kbd> で逆順)</td></tr>
             <tr><td><kbd>Enter</kbd></td><td>表示中パネルの検索バーへフォーカス (もう一度押すと解除) / Manga スロット時はマシンガン配置</td></tr>
           </table>
         </div>
@@ -1832,46 +1854,47 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794556387"></script>
-<script src="mode/layer.js?v=1794556387"></script>
-<script src="vendor/iro.min.js?v=1794556387"></script>
-<script src="vendor/mediabunny.min.js?v=1794556387"></script>
-<script src="mode/textdeform.js?v=1794556387"></script>
-<script src="mode/textdeform-comp.js?v=1794556387"></script>
-<script src="mode/ugomeki.js?v=1794556387"></script>
-<script src="mode/slicer.js?v=1794556387"></script>
-<script src="mode/video.js?v=1794556387"></script>
-<script src="mode/aratanagara.js?v=1794556387"></script>
-<script src="vendor/p5.min.js?v=1794556387"></script>
-<script src="mode/cyberui.js?v=1794556387"></script>
-<script src="mode/novel.js?v=1794556387"></script>
-<script src="shaders/inkelly.js?v=1794556387"></script>
-<script src="sketchfx.js?v=1794556387"></script>
-<script src="pixelsortfx.js?v=1794556387"></script>
-<script src="shaders/boltzmann.js?v=1794556387"></script>
-<script src="mode/pen.js?v=1794556387"></script>
-<script src="shaders/caverns.js?v=1794556387"></script>
-<script src="mode/shelf.js?v=1794556387"></script>
-<script src="shaders/ribbon.js?v=1794556387"></script>
-<script src="mode/photoplane.js?v=1794556387"></script>
-<script src="mode/shredder.js?v=1794556387"></script>
-<script src="mode/transflock.js?v=1794556387"></script>
-<script src="mode/liquidpeel.js?v=1794556387"></script>
-<script src="mode/windflock.js?v=1794556387"></script>
-<script src="mode/rhizome.js?v=1794556387"></script>
-<script src="mode/surrealfloat.js?v=1794556387"></script>
-<script src="mode/chrometype.js?v=1794556387"></script>
-<script src="mode/tower4149.js?v=1794556387"></script>
-<script src="mode/fude.js?v=1794556387"></script>
-<script src="mode/image.js?v=1794556387"></script>
-<script src="mode/spacetype.js?v=1794556387"></script>
-<script src="pollockfx.js?v=1794556387"></script>
-<script src="overlay.js?v=1794556387"></script>
-<script src="gif.js?v=1794556387"></script>
-  <script src="ui-icons.js?v=1794556387"></script>
-  <script src="app.js?v=1794556387"></script>
-  <script src="ui-scrollbar.js?v=1794556387"></script>
-  <script src="ui-settings.js?v=1794556387"></script>
-<script src="camroll.js?v=1794556387" defer></script>
+<script src="presets.js?v=1794558292"></script>
+<script src="mode/layer.js?v=1794558292"></script>
+<script src="vendor/iro.min.js?v=1794558292"></script>
+<script src="vendor/mediabunny.min.js?v=1794558292"></script>
+<script src="mode/textdeform.js?v=1794558292"></script>
+<script src="mode/textdeform-comp.js?v=1794558292"></script>
+<script src="mode/ugomeki.js?v=1794558292"></script>
+<script src="mode/slicer.js?v=1794558292"></script>
+<script src="mode/video.js?v=1794558292"></script>
+<script src="mode/aratanagara.js?v=1794558292"></script>
+<script src="vendor/p5.min.js?v=1794558292"></script>
+<script src="mode/cyberui.js?v=1794558292"></script>
+<script src="mode/novel.js?v=1794558292"></script>
+<script src="shaders/inkelly.js?v=1794558292"></script>
+<script src="sketchfx.js?v=1794558292"></script>
+<script src="pixelsortfx.js?v=1794558292"></script>
+<script src="shaders/boltzmann.js?v=1794558292"></script>
+<script src="mode/pen.js?v=1794558292"></script>
+<script src="shaders/caverns.js?v=1794558292"></script>
+<script src="mode/shelf.js?v=1794558292"></script>
+<script src="shaders/ribbon.js?v=1794558292"></script>
+<script src="mode/photoplane.js?v=1794558292"></script>
+<script src="mode/shredder.js?v=1794558292"></script>
+<script src="mode/transflock.js?v=1794558292"></script>
+<script src="mode/liquidpeel.js?v=1794558292"></script>
+<script src="mode/windflock.js?v=1794558292"></script>
+<script src="mode/rhizome.js?v=1794558292"></script>
+<script src="mode/surrealfloat.js?v=1794558292"></script>
+<script src="mode/chrometype.js?v=1794558292"></script>
+<script src="mode/tower4149.js?v=1794558292"></script>
+<script src="mode/fude.js?v=1794558292"></script>
+<script src="mode/image.js?v=1794558292"></script>
+<script src="mode/spacetype.js?v=1794558292"></script>
+<script src="pollockfx.js?v=1794558292"></script>
+<script src="overlay.js?v=1794558292"></script>
+<script src="gif.js?v=1794558292"></script>
+  <script src="ui-icons.js?v=1794558292"></script>
+  <script src="app.js?v=1794558292"></script>
+  <script src="ui-scrollbar.js?v=1794558292"></script>
+  <script src="ui-settings.js?v=1794558292"></script>
+<script src="camroll.js?v=1794558292" defer></script>
+<script src="dbltap.js?v=1794558292" defer></script>
 </body>
 </html>
