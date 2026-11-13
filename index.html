@@ -68,7 +68,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794555154">
+<link rel="stylesheet" href="style.css?v=1794555535">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -237,8 +237,6 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <span class="pill" id="thumbCount">0</span>
             <span class="grow"></span>
             <span id="fmtBadge" class="pill" title="アクティブスロットの形式" style="color:var(--dim)">—</span>
-            <span class="default-actions"><button id="btnMediaImport">+ 画像/動画</button></span>
-            <input type="file" id="fileMedia" accept="image/*,video/*" multiple hidden>
           </h3>
           <div style="display:flex;gap:var(--btn-gap);align-items:center;flex-wrap:wrap">
             <input type="search" id="visualSearch" placeholder="検索…" style="flex:1;min-width:70px">
@@ -259,8 +257,10 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <!-- IMAGE: images/ 傘下のフォルダをスライドショー表示 -->
         <div class="section" id="imageSection" style="margin-top:8px">
           <h3>Image <span class="pill">folder</span></h3>
+          <input type="file" id="fileImageImport" accept="image/*" multiple hidden>
+          <input type="file" id="fileMovieImport" accept="video/*" multiple hidden>
           <div id="imageFolderGrid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:6px"></div>
-          <div class="help" style="margin-top:6px;font-size:10px">フォルダをクリックで Slot にロード。サムネは中身を 3×2 表示。beat モードで自動送り / <kbd>C</kbd> で次へ。drone は送りなし。<br>画像ファイルをここへドラッグ&ドロップすると<b>臨時フォルダ</b>として追加 (セッション限り。リロードで消える)。</div>
+          <div class="help" style="margin-top:6px;font-size:10px">フォルダをクリックで Slot にロード。サムネは中身を 3×2 表示。beat モードで自動送り / <kbd>C</kbd> で次へ。drone は送りなし。<br>画像ファイルをここへドラッグ&ドロップするか「＋ 画像」タイルで読み込むと<b>臨時フォルダ</b>として追加 (セッション限り。リロードで消える)。</div>
         </div>
 
         <details id="editorDetails" class="section">
@@ -1787,7 +1787,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <dt>どのスロットを操作しているのか分からない</dt>
             <dd>マゼンタの枠が付いている方です (上の Slot A / B ボタンと下段のタイル)。<kbd>X</kbd> か、ボタン・タイルのクリックで切り替えます。読み込みやパラメータ操作は、このスロットに対して行われます。</dd>
             <dt>自分の画像や動画を使いたい</dt>
-            <dd>Visual タブへファイルをドラッグ&amp;ドロップするか、Visual の「+ 画像/動画」から読み込みます。アプリ版・ローカル起動では images/drop/ と movies/ に保存されて次回も残ります。ウェブ版ではリロードすると消えます。</dd>
+            <dd>Visual タブへファイルをドラッグ&amp;ドロップするか、Visual の Image 欄・Movie 欄の先頭にある「＋」タイルから読み込みます。アプリ版・ローカル起動では images/drop/ と movies/ に保存されて次回も残ります。ウェブ版ではリロードすると消えます。</dd>
             <dt>音に反応させたい</dt>
             <dd>Timing の Audio Input で「マイク」か「画面音声」を選びます。画面音声は、ピッカーで「Chrome タブ」を選び「タブの音声を共有」にチェックしてください。反応の強さは Audio Detect で調整します。</dd>
             <dt>テンポを曲に合わせたい</dt>
@@ -1814,46 +1814,46 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794555154"></script>
-<script src="mode/layer.js?v=1794555154"></script>
-<script src="vendor/iro.min.js?v=1794555154"></script>
-<script src="vendor/mediabunny.min.js?v=1794555154"></script>
-<script src="mode/textdeform.js?v=1794555154"></script>
-<script src="mode/textdeform-comp.js?v=1794555154"></script>
-<script src="mode/ugomeki.js?v=1794555154"></script>
-<script src="mode/slicer.js?v=1794555154"></script>
-<script src="mode/video.js?v=1794555154"></script>
-<script src="mode/aratanagara.js?v=1794555154"></script>
-<script src="vendor/p5.min.js?v=1794555154"></script>
-<script src="mode/cyberui.js?v=1794555154"></script>
-<script src="mode/novel.js?v=1794555154"></script>
-<script src="shaders/inkelly.js?v=1794555154"></script>
-<script src="sketchfx.js?v=1794555154"></script>
-<script src="pixelsortfx.js?v=1794555154"></script>
-<script src="shaders/boltzmann.js?v=1794555154"></script>
-<script src="mode/pen.js?v=1794555154"></script>
-<script src="shaders/caverns.js?v=1794555154"></script>
-<script src="mode/shelf.js?v=1794555154"></script>
-<script src="shaders/ribbon.js?v=1794555154"></script>
-<script src="mode/photoplane.js?v=1794555154"></script>
-<script src="mode/shredder.js?v=1794555154"></script>
-<script src="mode/transflock.js?v=1794555154"></script>
-<script src="mode/liquidpeel.js?v=1794555154"></script>
-<script src="mode/windflock.js?v=1794555154"></script>
-<script src="mode/rhizome.js?v=1794555154"></script>
-<script src="mode/surrealfloat.js?v=1794555154"></script>
-<script src="mode/chrometype.js?v=1794555154"></script>
-<script src="mode/tower4149.js?v=1794555154"></script>
-<script src="mode/fude.js?v=1794555154"></script>
-<script src="mode/image.js?v=1794555154"></script>
-<script src="mode/spacetype.js?v=1794555154"></script>
-<script src="pollockfx.js?v=1794555154"></script>
-<script src="overlay.js?v=1794555154"></script>
-<script src="gif.js?v=1794555154"></script>
-  <script src="ui-icons.js?v=1794555154"></script>
-  <script src="app.js?v=1794555154"></script>
-  <script src="ui-scrollbar.js?v=1794555154"></script>
-  <script src="ui-settings.js?v=1794555154"></script>
-<script src="camroll.js?v=1794555154" defer></script>
+<script src="presets.js?v=1794555535"></script>
+<script src="mode/layer.js?v=1794555535"></script>
+<script src="vendor/iro.min.js?v=1794555535"></script>
+<script src="vendor/mediabunny.min.js?v=1794555535"></script>
+<script src="mode/textdeform.js?v=1794555535"></script>
+<script src="mode/textdeform-comp.js?v=1794555535"></script>
+<script src="mode/ugomeki.js?v=1794555535"></script>
+<script src="mode/slicer.js?v=1794555535"></script>
+<script src="mode/video.js?v=1794555535"></script>
+<script src="mode/aratanagara.js?v=1794555535"></script>
+<script src="vendor/p5.min.js?v=1794555535"></script>
+<script src="mode/cyberui.js?v=1794555535"></script>
+<script src="mode/novel.js?v=1794555535"></script>
+<script src="shaders/inkelly.js?v=1794555535"></script>
+<script src="sketchfx.js?v=1794555535"></script>
+<script src="pixelsortfx.js?v=1794555535"></script>
+<script src="shaders/boltzmann.js?v=1794555535"></script>
+<script src="mode/pen.js?v=1794555535"></script>
+<script src="shaders/caverns.js?v=1794555535"></script>
+<script src="mode/shelf.js?v=1794555535"></script>
+<script src="shaders/ribbon.js?v=1794555535"></script>
+<script src="mode/photoplane.js?v=1794555535"></script>
+<script src="mode/shredder.js?v=1794555535"></script>
+<script src="mode/transflock.js?v=1794555535"></script>
+<script src="mode/liquidpeel.js?v=1794555535"></script>
+<script src="mode/windflock.js?v=1794555535"></script>
+<script src="mode/rhizome.js?v=1794555535"></script>
+<script src="mode/surrealfloat.js?v=1794555535"></script>
+<script src="mode/chrometype.js?v=1794555535"></script>
+<script src="mode/tower4149.js?v=1794555535"></script>
+<script src="mode/fude.js?v=1794555535"></script>
+<script src="mode/image.js?v=1794555535"></script>
+<script src="mode/spacetype.js?v=1794555535"></script>
+<script src="pollockfx.js?v=1794555535"></script>
+<script src="overlay.js?v=1794555535"></script>
+<script src="gif.js?v=1794555535"></script>
+  <script src="ui-icons.js?v=1794555535"></script>
+  <script src="app.js?v=1794555535"></script>
+  <script src="ui-scrollbar.js?v=1794555535"></script>
+  <script src="ui-settings.js?v=1794555535"></script>
+<script src="camroll.js?v=1794555535" defer></script>
 </body>
 </html>
