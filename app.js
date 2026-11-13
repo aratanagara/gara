@@ -9883,7 +9883,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Gain', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Audio Scanline', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photo', fx3dPhotoCount:'Photo Count', fx3dPhotoCrop:'Photo Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dScale:'3D Scale', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Bleed', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Audio → FX', audioFxAttack:'Audio FX Attack', audioFxRelease:'Audio FX Release', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photo', fx3dPhotoCount:'Photo Count', fx3dPhotoCrop:'Photo Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dScale:'3D Scale', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -9967,7 +9967,8 @@ const MIDI = {
     const _midiStat = ()=>{
       const md = $('#statMidi'); if(!md || !this.access) return;
       const n = [...this.access.inputs.values()].length;
-      md.textContent = n ? `MIDI ${n}` : 'MIDI 0台';
+      const names = [...this.access.inputs.values()].map(i=>i.name || 'MIDI');
+      md.textContent = n ? (n > 1 ? `${names[0]} +${n-1}` : names[0]) : '0台';
     };
     // requestMIDIAccess をタイムアウト付きでリトライする。
     //   Electron(特に Finder 起動の署名アプリ)では初回の requestMIDIAccess が解決しないまま
@@ -9998,7 +9999,7 @@ const MIDI = {
       _midiStat();
       if(![...this.access.inputs.values()].length && Prefs.on('midiNoDeviceToast', '1')) toast('MIDI 入力デバイスが見つかりません (接続すると自動認識します)', 3500);
     }catch(e){
-      const md = $('#statMidi'); if(md) md.textContent = 'MIDI ×';
+      const md = $('#statMidi'); if(md) md.textContent = '×';
       toast('MIDI アクセス失敗: ' + e, 4000);
     }
     // 起動時: 直近に受信した CC 値を全マッピングへ適用 (連続値のみ)。復元OFFなら適用しない。
@@ -12155,6 +12156,7 @@ const App = {
     return false;
   },
   // Slot A と B の中身(シェーダ/種別/パラメータ等)をまるごと入れ替える
+  flipCrossfade(){ this.crossfade = this.crossfade<0.5?1:0; UI.refreshMix(); },
   swapSlots(){
     if(typeof GL === 'undefined' || !GL.slots) return;
     if(this.liveLocked('Slot A ⇄ B 交換')) return;
@@ -12798,18 +12800,19 @@ const App = {
   // Post FX のグループ既定値: 各見出し (Quality / Material / …) の Save で現在値を
   // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
   POST_GROUPS: {
-    color:      ['inv','gamma','bri','con','sat','gradMix','hue','hueRotSpeed','vig'],
-    quality:    ['clarity','denoise','deband','vibrance','unsharp','unsharpRadius','fxaa'],
-    material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','pollockGloss','pollockMatt','pollockFlat'],
-    texture:    ['scn','grn','texNoise','texNoiseScale','pos','blm','voxel'],
-    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','split','pixsort','rings','gain'],
-    distortion: ['chr','pix','mir','candy','twist','boltz'],
+    color:      ['inv','gamma','bri','con','sat','vibrance','gradMix','hue','hueRotSpeed','vig','pos'],
+    quality:    ['clarity','denoise','deband','unsharp','unsharpRadius','fxaa'],
+    material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat'],
+    texture:    ['scn','grn','texNoise','texNoiseScale'],
+    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','pixsort','gain'],
+    distortion: ['chr','pix','mir','candy','twist'],
     fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','origami','kaiser','kaiserOld','uzumaki','river','fx3dScale'],
-    blur:       ['slit2','filmBlur','glass','dither','mblur','outline'],
-    glitch:     ['slice','ringSlice','ringBlur','slitScan','barcode','glitchTrail','glitchTrailType'],
+    blur:       ['slit2','filmBlur','glass','dither','mblur','blm','outline'],
+    glitch:     ['slice','ringSlice','ringBlur','split','rings','slitScan','barcode','voxel','glitchTrail','glitchTrailType'],
   },
   // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
-  POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion' },
+  POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion',
+    pos:'texture', vibrance:'quality', boltz:'distortion', split:'audioFx', rings:'audioFx', voxel:'texture', blm:'texture' },
   // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
   INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper'],
   postGroupSaved(group){
@@ -12999,6 +13002,7 @@ const App = {
     //  復元後に適用し直さないと保存が毎回上書きされ「保存できない」ように見える)。
     this.applyAudioTransportDefault();
     this.applyAudioDetectDefault();
+    this.applyMotionDefault();
     MIDI.init();
     this._audioAutoStart();
     this.applyHideCursor();
@@ -13466,7 +13470,7 @@ ${outBlock}
       else if(k==='d'){ App.toggleBeatMode(); }   // D = beat ↔ drone トグル
       else if(k==='['){ e.preventDefault(); if(!e.repeat) this.toggleSlotVisible('A'); }
       else if(k===']'){ e.preventDefault(); if(!e.repeat) this.toggleSlotVisible('B'); }
-      else if(k==='\\'){ this.crossfade = this.crossfade<0.5?1:0; UI.refreshMix(); }
+      else if(k==='\\'){ this.flipCrossfade(); }
       else if(k==='a'){
         // A: Auto Map をアクティブスロットへ適用 (A なら A ← B の -1.0 / B なら B ← A の +1.0)。
         //    同じ向きで既に効いていればもう一度 A で 0 に戻す。
@@ -14527,7 +14531,8 @@ ${outBlock}
         transStyle: this.transStyle,
         paramFadeBeats: this.paramFadeBeats,
         paramFadeScope: this.paramFadeScope
-      }
+      },
+      motion: { speed: this.speed }
     };
     const d = {
       beatMode: this.beatMode || 'beat',
@@ -14914,6 +14919,24 @@ ${outBlock}
     this.applyAudioDetectDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
     if(typeof UI !== 'undefined' && UI.refreshPost) UI.refreshPost();
     toast('保存値へ戻しました: audioDetect');
+  },
+  // ─── Motion Mode の Speed のデフォルト保存 (Drone / Beat はプリセット読込で戻る実行時の切替なので対象外) ───
+  saveMotionDefault(){
+    const d = { speed:this.speed };
+    try{ localStorage.setItem('vj.def.motion', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: motion'); }
+    catch(e){ toast('保存失敗'); }
+  },
+  resetMotionDefault(){
+    const f = this._factoryDefaults && this._factoryDefaults.motion;
+    if(f) this.setSpeed(f.speed);
+    this.applyMotionDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
+    toast('保存値へ戻しました: motion');
+  },
+  applyMotionDefault(){
+    let d = null;
+    try{ d = JSON.parse(localStorage.getItem('vj.def.motion') || 'null'); }catch(e){}
+    if(!d || typeof d !== 'object') return;
+    if(typeof d.speed === 'number') this.setSpeed(d.speed);
   },
   saveAudioTransportDefault(){
     try{ localStorage.setItem('vj.def.audioTransport', JSON.stringify(this.audioTime)); this.uploadDefs(); toast('デフォルト保存: audioTransport'); }
@@ -16462,6 +16485,7 @@ const UI = {
       on('mixShowA', ()=>{ App.toggleSlotVisible('A'); App._undoSchedule(); });
       on('mixShowB', ()=>{ App.toggleSlotVisible('B'); App._undoSchedule(); });
       on('mixSwap',  ()=>{ App.swapSlots(); App._undoSchedule(); });
+      on('mixFlip',  ()=>{ App.flipCrossfade(); App._undoSchedule(); });
       on('mixZoomOut',   ()=>App.zoomSlot(App.activeSlot, 1/1.25));
       on('mixZoomIn',    ()=>App.zoomSlot(App.activeSlot, 1.25));
       on('mixZoomReset', ()=>App.resetUserPanZoom());
@@ -17297,6 +17321,7 @@ void mainImage(out vec4 o, in vec2 f){
           else if(kind === 'mix') App.resetMixDefault();
           else if(kind === 'transition') App.resetTransDefault();
           else if(kind === 'audioTransport') App.resetAudioTransportDefault();
+          else if(kind === 'motion') App.resetMotionDefault();
           else if(kind === 'audioDetect') App.resetAudioDetectDefault();
           else if(kind === 'fb') App.resetFbDefault();
           else if(kind && kind.indexOf('post:') === 0) App.resetPostGroupDefault(kind.slice(5));
@@ -17318,6 +17343,7 @@ void mainImage(out vec4 o, in vec2 f){
         else if(kind === 'mix') App.saveMixDefault();
         else if(kind === 'transition') App.saveTransDefault();
         else if(kind === 'audioTransport') App.saveAudioTransportDefault();
+        else if(kind === 'motion') App.saveMotionDefault();
         else if(kind === 'audioDetect') App.saveAudioDetectDefault();
         else if(kind === 'fb') App.saveFbDefault();
         else if(kind && kind.indexOf('post:') === 0) App.savePostGroupDefault(kind.slice(5));
@@ -18808,7 +18834,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxAudioFx',    'audioFx',       f2);
     slid('pxAudioFxAtk', 'audioFxAttack', f2);
     slid('pxAudioFxRel', 'audioFxRelease', f2);
-    // Atk / Rel は本体 (Audio → FX) が 0 だと効かない。
+    // Atk / Rel は本体 (Drive) が 0 だと効かない。
     //   Atk の既定が 0.6 なので「ON に見えるのに反応しない」と誤解されるため、
     //   本体 0 のときは行を淡色+disabled にし、触ったら気づけるようトーストを出す。
     {
@@ -18827,7 +18853,7 @@ void mainImage(out vec4 o, in vec2 f){
       [atk, rel].forEach(el=>{
         if(!el) return;
         el.addEventListener('pointerdown', ()=>{
-          if((App.post.audioFx || 0) <= 0.001) toast('Audio → FX を上げると有効になります (現在 0 = 無効)', 2600);
+          if((App.post.audioFx || 0) <= 0.001) toast('Drive を上げると有効になります (現在 0 = 無効)', 2600);
         });
       });
       sync();
@@ -18886,6 +18912,15 @@ void mainImage(out vec4 o, in vec2 f){
       fxa.checked = !!App.post.fxaa;
       fxa.addEventListener('change', ()=>{ App.post.fxaa = fxa.checked; });
     }
+    // 欄へジャンプするチップ行 (見出し名を欄から拾う)
+    { const chips = $('#fxJumpChips'), pane = document.querySelector('.pane[data-pane="post"]');
+      if(chips && pane) pane.querySelectorAll(':scope > .section').forEach(sec=>{
+        const h3 = sec.querySelector(':scope > h3'); if(!h3) return;
+        const b = document.createElement('button'); b.type = 'button';
+        b.textContent = (h3.childNodes[0].textContent || '').trim();
+        b.addEventListener('click', ()=>sec.scrollIntoView({block:'start', behavior:'smooth'}));
+        chips.appendChild(b);
+      }); }
     const reset = $('#btnPostReset');
     if(reset) reset.addEventListener('click', ()=>App._confirm('FX をすべて既定値へ戻しますか？', ()=>{
       App.post = App.postDefaults();
@@ -19497,7 +19532,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(on(P.hue))      main.push({ t:'HUE', title:'Hue Shift' });
     if(on(P.inv))      main.push({ t:'INV', title:'Invert' });
     if(on(P.sat, 0.01) && Math.abs(dz(P.sat) - 1) > 0.01) main.push({ t:'SAT', title:'Saturation' });
-    if(on(P.gain))     main.push({ t:'GAIN', title:'Gain' });
+    if(on(P.gain))     main.push({ t:'FLASH', title:'Flash' });
 
     // 合成のみ: 出力全体の状態
     { const ovTab = document.querySelector('.tab[data-tab="overlay"]');
@@ -19858,11 +19893,12 @@ void mainImage(out vec4 o, in vec2 f){
             del.className = 'ico-btn'; del.style.cssText = 'top:2px;right:2px';
             del.title = 'この画像を削除 (images/ から実ファイルを消す)';
             VJIcon.set(del, 'close');
-            del.addEventListener('click', async (e)=>{
+            del.addEventListener('click', (e)=>{
               e.stopPropagation();
-              if(!confirm('削除しますか: ' + f.name + '\n(' + f.dir + ' の実ファイルを消します)')) return;
-              try{ await MediaImport.remove(f.dir); toast('削除: ' + f.name); }
-              catch(err){ toast('削除失敗: ' + (err && err.message || err)); }
+              App._confirm('削除しますか: ' + f.name + ' (' + f.dir + ' の実ファイルを消します)', async ()=>{
+                try{ await MediaImport.remove(f.dir); toast('削除: ' + f.name); }
+                catch(err){ toast('削除失敗: ' + (err && err.message || err)); }
+              });
             });
             tile.appendChild(del);
           }
@@ -20003,7 +20039,7 @@ void mainImage(out vec4 o, in vec2 f){
   // Save / Reset がある見出しには Random も置く (セクション内のスライダー/プルダウンをランダム化)
   installRandomButtons(){
     document.querySelectorAll('.default-actions').forEach(box=>{
-      if(box.querySelector('.randDefBtn')) return;
+      if(box.dataset.noRand !== undefined || box.querySelector('.randDefBtn')) return;
       const ref = box.querySelector('.saveDefBtn') || box.querySelector('.resetDefBtn');
       if(!ref) return;
       const b = document.createElement('button');

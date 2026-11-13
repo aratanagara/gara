@@ -80,6 +80,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #topbar #statCpu,#topbar #statGpu{min-width:32px}
 #topbar #statAtk{min-width:30px}
 #topbar #statMidi{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+/* 幅 420px 以下: ボタン群 + FPS が 1 行に収まるようロゴを畳む (横スクロール回避) */
+@media (max-width:420px){ #topbar .title-logo{display:none} }
 /* トップバーのボタン: アイコン(上)+ラベル(下)の縦2段。幅を詰めて統一。
    高さは topbar(42px)より少し大きくして上下に少しはみ出させる(元デザイン踏襲) */
 #topbar button{min-width:58px;height:46px;background:var(--panel);box-sizing:border-box;display:inline-flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:2px 6px;line-height:1.02;font-size:10px}
@@ -208,6 +210,13 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 
 /* Shader thumbnail grid */
 #thumbGrid{margin-top:8px}
+.fxjump{position:sticky;top:-10px;z-index:5;display:flex;align-items:center;gap:6px;margin:-10px -10px 6px;padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
+.fxjump-chips{flex:1;min-width:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
+.fxjump-chips::-webkit-scrollbar{display:none}
+.fxjump button{flex:0 0 auto;height:var(--ctl-h);padding:0 8px;white-space:nowrap}
+.pane[data-pane=post] > .section{scroll-margin-top:44px}
+@media (max-height:500px) and (orientation:landscape){ .fxjump{padding:3px 10px} .pane[data-pane=post] > .section{scroll-margin-top:34px} }
+.row.sep-top{margin-top:8px;padding-top:8px;border-top:1px solid var(--line2)}
 .visGrid{--vis-cols:var(--thumb-cols);display:grid;grid-template-columns:repeat(var(--vis-cols),1fr);gap:6px;margin-top:6px;container-type:inline-size}
 .thumb-tile{position:relative;cursor:pointer;border:2px solid var(--line);border-radius:4px;overflow:hidden;background:#000;aspect-ratio:4/3;transition:border-color .12s, transform .12s}
 @media (hover:hover){ .thumb-tile:hover{border-color:var(--acc2);transform:scale(1.02);z-index:1} }
@@ -303,12 +312,6 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:5px solid #cfd0d6}
 .grad-handle.sel{box-shadow:0 0 0 1px var(--fg);z-index:3}
 .grad-handle.sel::after{border-bottom-color:var(--fg)}
-
-/* サムネ(Visual / Preset)の列数は --thumb-cols。スマホ幅だけ 2 列に固定 */
-@media (max-width: 600px){
-  #presetList{grid-template-columns:repeat(2,1fr)}
-  .visGrid{--vis-cols:2}
-}
 
 /* スマホ縦 / 狭幅: 縦積み。高さは fr で配分 (vh は使わない)。
    minmax(0,1fr): トップバーの min-content(ボタン群) に列幅を引きずられないように。
@@ -445,6 +448,12 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 #settingsPane .set-note{margin:0 0 6px}
 #settingsPane .set-swatches{display:flex;gap:var(--btn-gap);flex:none}
 #settingsPane .set-swatches button{width:18px;min-width:0;height:var(--ctl-h);padding:0;border:1px solid var(--line2)}
+/* タッチ: スウォッチは 28px 以上。1 行に収まらないので、Accent 行の下段へ折り返す */
+@media (pointer:coarse){
+  #settingsPane .row:has(.set-swatches){flex-wrap:wrap}
+  #settingsPane .set-swatches{flex:1 1 100%}
+  #settingsPane .set-swatches button{flex:1;width:auto;min-width:28px}
+}
 #settingsPane .row input[type=color]{flex:0 0 var(--ctl-h);width:var(--ctl-h);height:var(--ctl-h);padding:0}
 #settingsPane .row input[type=text]{flex:1 1 0;min-width:0;font-family:var(--mono)}
 #settingsPane .row .set-auto{flex:none;padding:0 8px;color:var(--dim)}
@@ -511,6 +520,8 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 #helpPane .help-table{table-layout:fixed}
 #helpPane .help-table td:first-child{width:116px}
 
+/* タッチ端末向けの文言 (.t-coarse) はタッチ端末だけ表示、マウス前提の文言 (.t-fine) はタッチ端末で隠す */
+.t-coarse{display:none}
 /* タッチ端末: 操作面を大きく。PC (pointer:fine) の 24px 統一は不変 */
 @media (pointer:coarse){
   :root{--ctl-h:32px;--row-h:32px;--thumb:24px;--check:28px;--sb-w:0px;--fs:13px;--fs-sm:12px;--fs-xs:11px}
@@ -522,6 +533,8 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
   #side input[type=range]:not(.huebar){height:var(--ctl-h)}
   .ico-btn{width:28px;height:28px}
   .grad-handle{width:24px;height:24px;margin-left:-12px}
+  .t-fine{display:none}
+  .t-coarse{display:inline}
 }
 /* 読み込みタイル: 欄の先頭で 1 行ぶんの幅。高さは同じ欄のサムネ 1 枚 (列幅 × 3/4) に合わせる */
 .thumb-tile.import-tile{grid-column:1/-1;aspect-ratio:auto;height:calc((100cqw - (var(--vis-cols) - 1)*6px)/var(--vis-cols)*.75);display:flex;align-items:center;justify-content:center;background:transparent;border-style:dashed;color:var(--dim);font:600 11px var(--mono)}
