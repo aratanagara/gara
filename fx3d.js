@@ -5,15 +5,16 @@
    GL 側 (_apply3dFx) が FBO・合成・GL 状態の復元を担当する。 */
 const Fx3d = {
   // 工場値: スクリプト読込時に確定 (App の state 復元より前)
-  FACTORY: { photo: JSON.parse(JSON.stringify(PhotoPlane.P)) },
+  // エンジンの読込に失敗していても fx3d.js / app.js を止めない (その 3D FX だけ使えなくなる)
+  FACTORY: { photo: (typeof PhotoPlane !== 'undefined') ? JSON.parse(JSON.stringify(PhotoPlane.P)) : null },
   inst: {},
   ORDER: ['photo'],
   KEY: { photo: 'fx3dPhoto' },
 
   ensure(name, gl){
     if(this.inst[name]) return this.inst[name];
-    const base = name === 'photo' ? PhotoPlane : null;
-    if(!base) return null;
+    const base = (name === 'photo' && typeof PhotoPlane !== 'undefined') ? PhotoPlane : null;
+    if(!base || !this.FACTORY[name]) return null;
     if(!base.initialized) base.init(gl);
     if(!base.ok) return null;
     const o = Object.create(base);
