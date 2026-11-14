@@ -190,10 +190,10 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 
 #slotSel{display:flex;gap:0;padding:6px;border-bottom:1px solid var(--line);background:var(--panel2);flex-shrink:0}
 #slotSel button{flex:1;height:var(--ctl-h)}
-#quickRow{flex-shrink:0;flex-wrap:nowrap;margin:0;padding:0 6px 6px;background:var(--panel2);border-bottom:1px solid var(--line)}
+#quickRow{flex-shrink:0;flex-wrap:nowrap;margin:0;padding:6px 6px 0;background:var(--panel2);border-bottom:1px solid var(--line)}
 #quickRow button{min-width:0;padding:0 2px;height:var(--ctl-h);font-size:var(--fs-sm);white-space:nowrap}
 #quickRow button:is(#qUndo,#qRedo){flex:0 0 28px}
-#slotSel:has(+ #quickRow){border-bottom:0}
+#quickRow:has(+ #slotSel){border-bottom:0}
 #quickRow button.on{background:var(--on-bg);border-color:var(--on-bg);color:var(--on-fg)}
 
 /* Color wheel swatch + popup */
@@ -330,7 +330,7 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   #stage #gradQuickBarInv{display:none}
   #stage #gradQuickBar .gq canvas,#stage #blendPrevBar .bp canvas{height:30px}
   #slotSel{display:none}
-  #quickRow{padding:0}   /* Slot A/B が隠れるスマホでは、タブと同じく端まで詰める */
+  #quickRow,#quickRow:has(+ #slotSel){padding:0;border-bottom:1px solid var(--line)}   /* Slot A/B が隠れるスマホでは、タブと同じく端まで詰める */
   #side .pane-head{position:static}
   #topbar{gap:4px;padding:0 6px}
   #topbar button{min-width:48px}
