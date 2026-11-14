@@ -17,8 +17,17 @@ const Fx3d = {
     layer:  (typeof Layer !== 'undefined') ? JSON.parse(JSON.stringify(Layer.P)) : null,
   },
   inst: {},
-  ORDER: ['photo', 'slicer', 'layer'],
-  KEY: { photo: 'fx3dPhoto', slicer: 'fx3dSlicer', layer: 'fx3dLayer' },
+  ORDER: ['photo', 'slicer', 'layer', 'diorama', 'points', 'cubes', 'blinds', 'gravity', 'globe'],
+  KEY: { photo: 'fx3dPhoto', slicer: 'fx3dSlicer', layer: 'fx3dLayer', diorama: 'fx3dDiorama', points: 'fx3dPoints',
+         cubes: 'fx3dCubes', blinds: 'fx3dBlinds', gravity: 'fx3dGravity', globe: 'fx3dGlobe' },
+  // 自前レンダラ: name -> { render(gl, o) }。各 fx3d-<name>.js が Fx3d.EXTRA.<name> = {...} で登録する。
+  //   o = { srcTex, fbo, w, h, e, k, asp, clock, beat, hit, beatMode, post }  (k = smooth(e) / hit = 0..1 / beatMode = beat モードか)
+  //   戻り値: 描けたら true。透明背景・前乗算 (clear(0,0,0,0)、不透明な面は vec4(rgb,1)) で o.fbo へ描く。
+  //   k = 0 で「dist 1.35 の正面カメラ + z=0 の平らな紙 + uShade 0」= 元画面と画素一致になること。
+  //   未登録の名前は render() が false を返し、その段は飛ばされる。
+  EXTRA: {},
+  BUILTIN: { photo: 1, slicer: 1, layer: 1 },
+  has(name){ return !!(this.BUILTIN[name] || this.EXTRA[name]); },
 
   // 立ち上がりが十分に平らな smootherstep (デッドゾーン境界 0.10 で絵が跳ねない)
   smooth(e){ const x = Math.max(0, Math.min(1, e / 0.7)); return x * x * x * (x * (x * 6 - 15) + 10); },
@@ -73,9 +82,89 @@ const Fx3d = {
     return o;
   },
 
+  // ── 自前レンダラ共有ヘルパ ──
+  // プログラムをリンクしてキャッシュ。失敗時は null (失敗も覚えて再試行しない)
+  prog(gl, id, vs, fs){
+    const c = this._progs || (this._progs = {});
+    if(id in c) return c[id];
+    const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);
+    const p = GL._link(v, f);
+    if(!p || p.err){ console.error('fx3d program failed:', id, p && p.err); return (c[id] = null); }
+    return (c[id] = p);
+  },
+  // カメラ。az / el はラジアン、原点を見る。dist = 1.35 で z=0 の紙 q=(uv-0.5)*2*(asp,1) が画面をちょうど満たす
+  camera(asp, az, el, dist){
+    const ce = Math.cos(el);
+    const eye = [dist * Math.sin(az) * ce, dist * Math.sin(el), dist * Math.cos(az) * ce];
+    const norm = (v)=>{ const l = Math.hypot(v[0], v[1], v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
+    const zc = norm(eye);
+    const xc = norm([zc[2], 0, -zc[0]]);
+    const yc = [zc[1]*xc[2]-zc[2]*xc[1], zc[2]*xc[0]-zc[0]*xc[2], zc[0]*xc[1]-zc[1]*xc[0]];
+    const d = (a, b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    const view = [xc[0],yc[0],zc[0],0, xc[1],yc[1],zc[1],0, xc[2],yc[2],zc[2],0, -d(xc,eye),-d(yc,eye),-d(zc,eye),1];
+    const f = 1.35, zn = 0.03, zf = 30.0;
+    const proj = [f/asp,0,0,0, 0,f,0,0, 0,0,(zf+zn)/(zn-zf),-1, 0,0,2*zf*zn/(zn-zf),0];
+    return { view, proj, eye };
+  },
+  // MSAA の色 + 深度 RBO (全レンダラで 1 つを共有)。描画後は resolve() で渡された fbo へ blit
+  msaa(gl, w, h){
+    let M = this._msaa;
+    if(M && M.w === w && M.h === h) return M;
+    if(M){ gl.deleteRenderbuffer(M.color); gl.deleteRenderbuffer(M.depth); gl.deleteFramebuffer(M.fbo); }
+    const samples = Math.min(8, gl.getParameter(gl.MAX_SAMPLES) || 0);
+    const color = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, color);
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w, h);
+    const depth = gl.createRenderbuffer();
+    gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
+    gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w, h);
+    const fbo = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
+    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return (this._msaa = { fbo, color, depth, w, h });
+  },
+  resolve(gl, dstFbo, w, h){
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._msaa.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, dstFbo);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  },
+  // 紙のライティング (折り系 FS と同じ。dFdx / dFdy の面法線)。使う側は FS 先頭 (precision の後) へ連結し、
+  // fx3dLit(アルベド, ワールド座標, 目の位置, shade) を呼ぶ。shade = Fx3d.shade(k)
+  GLSL_LIT: `vec3 fx3dLit(vec3 alb, vec3 wp, vec3 eye, float shade){
+  vec3 N = normalize(cross(dFdx(wp), dFdy(wp)));
+  vec3 V = normalize(eye - wp);
+  if(dot(N, V) < 0.0) N = -N;
+  vec3 L = normalize(vec3(2.4, 2.0, 3.0));
+  float ndl = max(0.0, dot(N, L));
+  vec3 light = vec3(0.50, 0.48, 0.46) * ndl + mix(vec3(0.60, 0.61, 0.64), vec3(0.72), N.y * 0.5 + 0.5);
+  float spec = pow(max(0.0, dot(N, normalize(L + V))), 26.0);
+  vec3 res = alb * light + vec3(1.0) * spec * 0.10;
+  return mix(alb, res, shade);
+}
+`,
+  shade(k){ return Math.min(1, k / 0.22); },
+
   // e = 0..1 の量。戻り値: 描けたか
-  render(name, { srcTex, fbo, w, h, e, clock, beat }){
-    const o = this.ensure(name, GL.gl);
+  render(name, o){
+    const x = this.EXTRA[name];
+    if(x){
+      const gl = GL.gl;
+      return !!x.render(gl, Object.assign({
+        k: this.smooth(o.e), asp: o.w / o.h,
+        hit: Math.max(0, Math.min(1, (typeof Audio !== 'undefined' && Audio.hit) || 0)),
+        beatMode: App.beatMode === 'beat', post: App.post,
+        dz: (v)=>App.deadParam(v),   // Twist / Spin など詳細 0..1 のデッドゾーン (量 e は渡す時点で適用済み)
+      }, o));
+    }
+    if(!this.BUILTIN[name]) return false;
+    const { srcTex, fbo, w, h, e, clock, beat } = o;
+    const o2 = this.ensure(name, GL.gl);
+    return this._renderBuiltin(name, o2, { srcTex, fbo, w, h, e, clock, beat });
+  },
+  _renderBuiltin(name, o, { srcTex, fbo, w, h, e, clock, beat }){
     if(!o) return false;
     const P = o.P, post = App.post || {};
     const F = this.FACTORY[name];
