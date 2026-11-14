@@ -22,7 +22,8 @@ void main(){
   float ang = uK * uSpin * (2.5 + 1.5 * sin(uT * 0.4)) * f;
   float cs = cos(ang), sn = sin(ang);
   vec2 d2 = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs) * (1.0 - 0.35 * uK * f);
-  vec3 P = vec3(q + (d2 - d), -1.6 * uK * (1.0 + 0.5 * uHit) * f);
+  float fw = pow(0.09 / (r2 + 0.09), 0.55);                    // 深さは裾の広い漏斗 (中心 1 → 遠方 0)
+  vec3 P = vec3(q + (d2 - d), -3.6 * uK * (1.0 + 0.5 * uHit) * fw);
   vUv = uv; vW = P;
   gl_Position = uProj * uView * vec4(P, 1.0);
 }`;
@@ -34,7 +35,7 @@ out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
   vec3 col = fx3dLit(texture(uTex, vUv).rgb, vW, uEye, uShade);
-  float deep = smoothstep(-1.6, -0.7, vW.z / max(uK, 1e-3));   // 喉の奥を暗く (出始めは Shade と同じ立ち上がり)
+  float deep = smoothstep(-3.6, -1.2, vW.z / max(uK, 1e-3));   // 喉の奥を暗く (出始めは Shade と同じ立ち上がり)
   col *= mix(1.0, mix(0.15, 1.0, deep), uShade);
   frag = vec4(col, 1.0);
 }`;
@@ -58,7 +59,7 @@ Fx3d.EXTRA.gravity = {
       const a = pt(n - 1), c = pt(n);
       cx = a[0] + (c[0] - a[0]) * e; cy = a[1] + (c[1] - a[1]) * e;
     } else { cx = 0.3 * asp * Math.sin(0.23 * t); cy = 0.3 * Math.sin(0.31 * t + 1); }
-    const cam = Fx3d.camera(asp, 0.6 * k * Math.sin(0.2 * t), 0.75 * k, 1.35 + 0.8 * k);
+    const cam = Fx3d.camera(asp, 0.6 * k * Math.sin(0.2 * t), -1.05 * k, 1.35 + 0.9 * k);
     const M = Fx3d.msaa(gl, o.w, o.h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
     gl.viewport(0, 0, o.w, o.h);

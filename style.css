@@ -330,6 +330,7 @@ kbd{background:var(--surface);border:1px solid var(--line);border-radius:3px;pad
   #stage #gradQuickBarInv{display:none}
   #stage #gradQuickBar .gq canvas,#stage #blendPrevBar .bp canvas{height:30px}
   #slotSel{display:none}
+  #quickRow{padding:0}   /* Slot A/B が隠れるスマホでは、タブと同じく端まで詰める */
   #side .pane-head{position:static}
   #topbar{gap:4px;padding:0 6px}
   #topbar button{min-width:48px}
