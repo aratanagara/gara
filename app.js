@@ -5001,7 +5001,7 @@ vec3 f3Paper(vec2 q, float lift){
     gl.uniform1i(U('uB'), 1);
     gl.uniform1f(U('uMix'),       App.crossfade);
     gl.uniform1f(U('uShowA'),     App.slotVisibleAmount ? App.slotVisibleAmount('A') : (App.slotVisible && App.slotVisible.A === false ? 0 : 1));
-    gl.uniform1f(U('uShowB'),     App.slotVisibleAmount ? App.slotVisibleAmount('B') : (App.slotVisible && App.slotVisible.B === false ? 0 : 1));
+    gl.uniform1f(U('uShowB'),     (App.slotVisibleAmount ? App.slotVisibleAmount('B') : (App.slotVisible && App.slotVisible.B === false ? 0 : 1)) * (this._fx3dBMul == null ? 1 : this._fx3dBMul));
     { const bg = App.bgAColor(); gl.uniform3f(U('uBgColA'), bg[0], bg[1], bg[2]); }   // Slot A の背景色 (本命/フォールバック共通)
     // mode エンジン(FBO 独立描画)には user zoom/pan を合成段でテクスチャ適用 (shader は iZoom 済のため 1.0)
     { const modeSet = GL._modeZoomSet || (GL._modeZoomSet = new Set(App.modeStateKinds || []));
@@ -7019,7 +7019,7 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
     const cf = App.crossfade;
     const force = this._fx3dForceG;                       // 検証用: 数値を入れると g をその値に固定 (3D 方式を強制)
     if(!Prefs.on('fx3dNative', '0') && force == null){    // 試験機能 (3D Native) が OFF: 平面方式だけ (g = 0・統合パスの先取りもなし)
-      this._fx3dGate = 0; this._fx3dBw = shown('B') ? 1 : 0; this._fx3dG = 0; this._fx3dFlatStack = false; this._fx3dFrame = null;
+      this._fx3dGate = 0; this._fx3dBw = shown('B') ? 1 : 0; this._fx3dBMul = 1; this._fx3dG = 0; this._fx3dFlatStack = false; this._fx3dFrame = null;
       return;
     }
     let want = foldOn && (candA || candB) && this._fx3dChainIdle(p);
@@ -7030,6 +7030,8 @@ void main(){ vec4 t = texture(uTex, vUv); frag = vec4(t.rgb, t.a + uDim * (1.0 -
     this._fx3dGate = slew(this._fx3dGate || 0, want ? 1 : 0);
     if(this._fx3dGate <= 0 && tgt) this._fx3dTarget = tgt;
     this._fx3dBw = slew(this._fx3dBw == null ? 0 : this._fx3dBw, shown('B') ? 1 : 0);
+    // A を 3D で描く候補の間は、B の表示も bw で 0.35 秒かけて出す (瞬時に出すと、折られていない平らな B が 3D の絵の上に飛び出す)
+    this._fx3dBMul = (foldOn && candA && this._fx3dTarget === 'A') ? this._fx3dBw : 1;
     const cfTerm = this._fx3dTarget === 'B' ? sstep(1 - W, 1, cf) : 1 - sstep(0, W, cf * this._fx3dBw);
     let g = this._fx3dGate * cfTerm;
     if(force != null) g = force;
@@ -8507,6 +8509,7 @@ vec4 fx3dApply(vec4 clip){
       if(this._pkCaptureWait === 0) this._pkCapture = true;
     }
     if(!frozen) this._fx3dUpdate(post, realDt, this.slots[this._fx3dTarget || 'A'].fbos[0].w, this.slots[this._fx3dTarget || 'A'].fbos[0].h);
+    else { this._fx3dBMul = 1; this._fx3dBw = (this.slots.B.kind !== 'none' && App.slotVisibleAmount('B') > 0) ? 1 : 0; }   // フリーズ中は B の表示を追従させない (解除後に B が消えて出直さないよう bw も合わせる)
     if(frozen){
       this._freezeSources(realDt);                 // シェーダ/mode/video の更新を停止(前フレーム保持)
     } else {
