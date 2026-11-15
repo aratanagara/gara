@@ -32,6 +32,7 @@
 // @param uKdAxis    0..300   = 100.0
 // @param uKdOrder   0..100   = 85.0
 // @param uKdSize    30..300  = 100.0
+// @param uKdJump    0..100   = 30.0
 // @param uKdThick   20..300  = 100.0
 // @param uKdAccord  0..100   = 70.0
 // @param uKdDraw    0..100   = 40.0
@@ -73,6 +74,7 @@ uniform float uKdRest;    // 休む周期の割合 (%)。上げると画面に�
 uniform float uKdGreat;   // 大円と大きな楔の大きさ (%)。0 でなし
 uniform float uKdAxis;    // 主軸・対軸の線の太さ (%)。0 で軸線なし (配置の骨格は残る)
 uniform float uKdOrder;   // 構成に従う要素の割合 (%)。残りは軸と無関係に散る
+uniform float uKdJump;    // 要素の大きさのジャンプ率 (%)。上げると大きな要素と小さな要素の差が開く (100 で 1/3〜3 倍)。主役 (大円・大きな楔・軸線) は対象外
 uniform float uKdSize;    // 要素の大きさ (%)
 uniform float uKdThick;   // 線の太さ (%)
 uniform float uKdAccord;  // 形と色の対応 (%)。円=青・楔=黄・四角=赤 になる割合
@@ -374,6 +376,7 @@ vec3 bg_kandinsky(vec2 fc){
       int m = ci * 7 + int(ty);
       vec4 ta = KD_TA[m], tb = KD_TB[m];
       r0 = sz * (ta.x + ta.y * (ta.z > 0.5 ? hs * hs : hs)) * (m == 7 ? beamK : 1.0);
+      r0 *= exp2(uKdJump * 0.0158 * (fract(hC.w * 3.71 + hs * 1.37) * 2.0 - 1.0));   // ジャンプ率: 要素ごとに倍率を振る
       ext = tb.xy * r0 + tb.zw * sz + (ci == 1 ? 0.012 * th0 : 0.0);
       // 軸の座標で置く: 主軸 / 対軸、uu = 軸に沿った位置、vv = 軸からの離れ
       bool mainAx = hC.z < 0.62;
