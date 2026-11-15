@@ -35,6 +35,7 @@
 // @param uKdThick   20..300  = 100.0
 // @param uKdAccord  0..100   = 70.0
 // @param uKdDraw    0..100   = 40.0
+// @param uKdPop     0..100   = 60.0
 // @param uKdMotion  0..300   = 100.0
 // @param uKdSpin    0..300   = 100.0
 // @param uKdTurn    0..180   = 60.0
@@ -75,6 +76,7 @@ uniform float uKdOrder;   // 構成に従う要素の割合 (%)。残りは軸�
 uniform float uKdSize;    // 要素の大きさ (%)
 uniform float uKdThick;   // 線の太さ (%)
 uniform float uKdAccord;  // 形と色の対応 (%)。円=青・楔=黄・四角=赤 になる割合
+uniform float uKdPop;     // 現れるときのポップ (%)。大きさが行き過ぎて弾んで戻る / 消えるときは逆に少し膨らんでから縮む。0 でなめらかに膨らむだけ
 uniform float uKdDraw;    // 寿命のうち 組み上がる / 消える のにかける割合 (%)。0 で一瞬で出て一瞬で消える
 uniform float uKdMotion;  // 流れに沿って滑り込む / 抜けていく距離 (%)
 uniform float uKdTurn;    // 骨格 (主軸・対軸) が周期ごとに回る角度の平均 (度)。回転は積み重なり、構成ごと向きを変え続ける。0 で向きは種で固定
@@ -193,6 +195,8 @@ float kd_rot(float t, float per, float ph, float rad, float h1, float h2){
   // 半周期の違う 2 つの反転を重ねる → 逆回転のタイミングと速さが不規則になる (h が大きいと一方向)
   return rad * (0.65 * kd_tri(k, f, h1) + 0.35 * kd_tri(k, f, h2) + 0.45 * sin(st * 2.399 + ph));
 }
+// ease-out-back: 行き過ぎて戻る (k = 行き過ぎの強さ)
+float kd_back(float x, float k){ float y = x - 1.0; return 1.0 + (k + 1.0) * y * y * y + k * y * y; }
 float kd_turn(float t, float per, float ph){
   float x = t / per;
   float st = floor(x) + smoothstep(0.6, 1.0, fract(x));
@@ -295,6 +299,8 @@ vec3 bg_kandinsky(vec2 fc){
   float sz = uKdSize * 0.01 * gS;
   float th0 = uKdThick * 0.01;
   float dr = uKdDraw * 0.01 * 0.45;
+  float pop = uKdPop * 0.01;
+  float popK = 1.2 + 1.8 * pop;                        // 行き過ぎの強さ (100% で約 2 割)
   float mo = uKdMotion * 0.01;
   float rh = uKdRhythm * 0.01;
   float ord = uKdOrder * 0.01;
@@ -333,9 +339,11 @@ vec3 bg_kandinsky(vec2 fc){
     float fq = tq * iLb;
     // 組み上がり ein / 消え eout (0..1)。割り算を避けるため、傾き idr をループの外で求めてある
     float idrr = lead ? (i == 0 ? idr * 6.0 : idr * 3.0) : idr;
-    float ein = clamp(fq * idrr, 0.0, 1.0), eout = clamp((1.0 - fq) * idrr, 0.0, 1.0);
-    ein = ein * ein * (3.0 - 2.0 * ein);
-    eout = eout * eout * (3.0 - 2.0 * eout);
+    float einL = clamp(fq * idrr, 0.0, 1.0), eoutL = clamp((1.0 - fq) * idrr, 0.0, 1.0);
+    float ein = einL * einL * (3.0 - 2.0 * einL);
+    float eout = eoutL * eoutL * (3.0 - 2.0 * eoutL);
+    // ポップ: 大きさだけ ease-out-back で行き過ぎて戻る。消えるときは同じ曲線の逆再生 (少し膨らんでから縮む)
+    float pin = mix(ein, kd_back(einL, popK), pop), pout = mix(eout, kd_back(eoutL, popK), pop);
     float ie = 1.0 - ein, oe = 1.0 - eout;
 
     // 種類・位置・向き・届く範囲を求め、届かない要素はここで飛ばす
@@ -382,7 +390,7 @@ vec3 bg_kandinsky(vec2 fc){
       sl = ci == 2 ? 0.18 : 0.26;
       crp = 0.0015 * (fq - 0.5) * Lb;
       // 粗い足切り: 軸の座標で見て明らかに届かない画素は、残りの計算をせずに飛ばす (負荷の大半はここで落ちる)
-      float R = ext.x + ext.y + 1.3 * mo * (sl * abs(oe * oe - ie * ie) + abs(crp)) + 0.01;
+      float R = (ext.x + ext.y) * (1.0 + 0.3 * pop) + 1.3 * mo * (sl * abs(oe * oe - ie * ie) + abs(crp)) + 0.01;
       float lgm = abs(lg);
       vec2 dd = fr ? abs(q - pf) : abs((mainAx ? ab1 : ab2) - vec2(uu, 0.0));
       vec2 mg = fr ? vec2(R) : R + vec2(lgm * 0.4 * zsq, lgm * abs(uu) + 0.34 * zsq + 0.05 * flk);
@@ -436,7 +444,7 @@ vec3 bg_kandinsky(vec2 fc){
 
     if(cat < 0.5){
       // ── 大円: 外へにじむ光輪 → 色の輪 → 暗い円盤 → ずれた内円 ──
-      float r = r0 * (0.35 + 0.65 * ein) * eout * (1.0 + 0.035 * pul);
+      float r = r0 * (0.35 + 0.65 * pin) * pout * (1.0 + 0.035 * pul);
       float rr = length(d0);
       float d = rr - r;
       float hl = uKdHalo * 0.01;
@@ -456,7 +464,7 @@ vec3 bg_kandinsky(vec2 fc){
       col = mix(col, cI, aI * a);
     } else if(cat < 1.5){
       // ── 面 ──
-      float s = (0.3 + 0.7 * ein) * eout;                                // 滑り込みながら膨らむ
+      float s = (0.3 + 0.7 * pin) * pout;                                // 滑り込みながら膨らむ (ポップで弾む)
       float op = ein * eout > 0.0 ? smoothstep(0.0, 0.25, ein) * smoothstep(0.0, 0.25, eout) : 0.0;
       float r = r0 * s;
       float ow = 0.0016 * th0;
@@ -628,8 +636,8 @@ vec3 bg_kandinsky(vec2 fc){
       col = mix(col, c, a);
       pt = max(pt, a);
     } else {
-      // ── 点 ── (膨らんで現れ、縮んで消える)
-      float s = ein * eout;
+      // ── 点 ── (弾んで現れ、膨らんでから縮んで消える)
+      float s = pin * pout;
       vec3 c = hD.y < uKdColor * 0.01 + 0.25 ? kd_pal(fract(hD.y * 5.17)) : uKdInk;
       if(ty < 1.5){
         // 点 / 輪つきの点
