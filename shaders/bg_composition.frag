@@ -149,7 +149,10 @@ bool mg_hvis(float j, float a){
   return mg_h(vec3(j * 5.17, a, mg_rseed + 14.0)) < 0.5;
 }
 // 垂直線 k (錨でない) の、水平線 row から上の区間があるか
-bool mg_piece(float k, float row){ return mg_h(vec3(k * 3.31, row, mg_rseed + 13.0)) < 0.5; }
+bool mg_piece(float k, float row){ return mg_h(vec3(k * 3.31, row, mg_rseed + 13.0)) < 0.72; }
+// 構造の向き: 水平線が通りやすく垂直線が区間で切れる仕組みなので、そのままだと横長の面に偏る。
+// 道の種ごとに縦横を入れ替え、縦長の構成も同じだけ出す
+vec2 mg_orient(vec2 q){ return mg_h(vec3(mg_rseed, 61.0, 3.0)) < 0.5 ? q.yx : q; }
 
 void mg_build(vec2 q){
   float c0 = floor(q.x / mg_pitch);
@@ -223,6 +226,7 @@ vec3 bg_composition(vec2 fc){
   float w = 0.011 * uMcLine * 0.01 * (1.0 + audio * 0.5);   // 線の半幅
   mg_unit = 2.0 * w; mg_snap = 0.0;
   mg_pitch = 1.0 / uMcDensity;
+  q = mg_orient(q);
   mg_build(q);
 
   // ── 面 (4 辺とも閉じた矩形) ──
