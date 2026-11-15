@@ -345,6 +345,11 @@
      "ch": [
       "slotA"
      ]
+    },
+    {
+     "file": "bg_boogie_woogie.frag",
+     "func": "bg_boogie_woogie",
+     "name": "Boogie Woogie"
     }
    ],
    "exclude": [
