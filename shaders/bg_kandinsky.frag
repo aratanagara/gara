@@ -4,7 +4,7 @@
 //   バウハウス期のカンディンスキー (Composition VIII) を、ロシア構成主義の「構成」として組む。
 //   ■ 骨格: 画面を斜めに貫く主軸と、それに交わる対軸。交点が焦点。
 //       主軸の一端に光輪を重ねた大円、反対側から大円を指す大きな楔、2 本の軸線 (枠 0〜3 が主役)。
-//       骨格は種で決まり、周期ごとに向きを変える (uKdSpin)。要素は骨格に乗ったまま一緒に回る。
+//       骨格は種で決まり、周期ごとに回る (uKdTurn = 積み重なる回転 / uKdSpin = ゆらぎ)。要素は骨格に乗ったまま一緒に回る。
 //   ■ 配置: 残りの枠は軸の座標で置く (uKdOrder)。軸の上に乗る / 軸に接して座る / 軸に平行・直角に向く。
 //       楔は焦点を指し、扇は軸の上の一点から開き、円弧は大円を囲む軌道になる。
 //       大きさは少数の中くらいと多数の小さな要素 (階層)。軸から外れた所は余白として残る。
@@ -37,6 +37,7 @@
 // @param uKdDraw    0..100   = 40.0
 // @param uKdMotion  0..300   = 100.0
 // @param uKdSpin    0..300   = 100.0
+// @param uKdTurn    0..180   = 60.0
 // @param uKdRhythm  0..100   = 60.0
 // @param uKdFlock   0..200   = 100.0
 // @param uKdOverlap 0..100   = 75.0
@@ -74,6 +75,7 @@ uniform float uKdThick;   // 線の太さ (%)
 uniform float uKdAccord;  // 形と色の対応 (%)。円=青・楔=黄・四角=赤 になる割合
 uniform float uKdDraw;    // 寿命のうち 組み上がる / 消える のにかける割合 (%)。0 で一瞬で出て一瞬で消える
 uniform float uKdMotion;  // 流れに沿って滑り込む / 抜けていく距離 (%)
+uniform float uKdTurn;    // 骨格 (主軸・対軸) が周期ごとに回る角度の平均 (度)。回転は積み重なり、構成ごと向きを変え続ける。0 で向きは種で固定
 uniform float uKdSpin;    // 構成全体が周期ごとに向きを変える量と、円弧・扇の回る速さ (%)
 uniform float uKdRhythm;  // 動きの刻み (%)。0 でなめらか、上げると 1・2・4 拍ごとに進んで止まる
 uniform float uKdFlock;   // 群れの振る舞い (%)。旋回で外側が遅れてついてくる・流れがうねる・密度が息をする。0 で硬い構成のまま
@@ -173,6 +175,12 @@ const vec4 KD_TB[21] = vec4[21](
 // 種類ごとの 軸を横切る向きになる割合
 const float KD_PERP[21] = float[21](0., 0., 0., 0., 0., 0., 0.,  0.28, 0.3, 0.3, 0.35, 0., 0., 0.35,  0., 0., 0.3, 0., 0., 0., 0.);
 // 群れの旋回: 周期 per 拍ごとに、終わりの 4 割でいっせいに向きを変えて止まる (-1..1)
+// 骨格の回転: 周期の終わり 4 割でいっせいに回り、角度は積み重なる (1 周期あたり平均 rad、大小のむらつき)
+float kd_rot(float t, float per, float ph, float rad){
+  float x = t / per;
+  float st = floor(x) + smoothstep(0.6, 1.0, fract(x));
+  return rad * (st + 0.45 * sin(st * 2.399 + ph));
+}
 float kd_turn(float t, float per, float ph){
   float x = t / per;
   float st = floor(x) + smoothstep(0.6, 1.0, fract(x));
@@ -220,11 +228,13 @@ vec3 bg_kandinsky(vec2 fc){
   float kA0 = (sa.x < 0.5 ? -1.0 : 1.0) * (0.36 + 0.42 * sa.y);
   float kB0 = 1.5708 + (sa.w - 0.5) * 0.9;
   float phA = sa.z * 6.2832, phB = sb.x * 6.2832;
-  float kA = kA0 + 0.20 * turn * kd_turn(B, per, phA);
+  float rad = radians(uKdTurn) * (sb.x < 0.5 ? -1.0 : 1.0);           // 回る向きは種で決める
+  float rotA = kd_rot(B, per, phA, rad);
+  float kA = kA0 + rotA + 0.20 * turn * kd_turn(B, per, phA);
   float kB = kA + kB0 + 0.12 * turn * kd_turn(B + per * 0.5, per, phB);
   // 群れの遅れ: 少し前の向きも求めておき、焦点から遠い要素ほど前の向きに寄せる (旋回の間だけ列がしなる)
   float tlg = B - flk * 2.8;
-  float lgA = kA0 + 0.20 * turn * kd_turn(tlg, per, phA) - kA;
+  float lgA = clamp(kA0 + kd_rot(tlg, per, phA, rad) + 0.20 * turn * kd_turn(tlg, per, phA) - kA, -0.35, 0.35);   // 大きく回る間も遅れは小角度に収める
   float lgB = lgA + 0.12 * turn * (kd_turn(tlg + per * 0.5, per, phB) - kd_turn(B + per * 0.5, per, phB));
   // 群れの密度: 集まっては散る
   float brA = 1.0 + 0.16 * flk * sin(B * 0.131), brB = 1.0 + 0.16 * flk * sin(B * 0.131 + 2.1);
