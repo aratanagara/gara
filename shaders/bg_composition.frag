@@ -7,6 +7,7 @@
 //     ・それ以外の垂直線は、見えている水平線と水平線のあいだを区間ごとに引く (端は水平線の上)
 //   面はこの線で 4 辺とも閉じた矩形単位で塗る。
 //   動き: uMcChange の周期ごとに、要素ごとにずれて 線のスライド / 出没 / 色の塗り替え。
+//         uMcDyn で 線の本数そのものが 数本〜全部のあいだで増減する。
 //         uMcRedraw = N 拍ごとに構図を丸ごと描き直す。uMcDrawIn で線 → 面の順に描かれていく。
 //   格子構造 (mg_*) は bg_boogie_woogie.frag と同じ実装 (片方を直したらもう片方も直す)。
 //   bgZoom・bgCamPx でズーム/パン。
@@ -14,6 +15,7 @@
 
 // @param uMcDensity 2..24    = 4.0
 // @param uMcLines   20..100  = 85.0
+// @param uMcDyn     0..100   = 60.0
 // @param uMcFull    0..100   = 40.0
 // @param uMcFullH   0..100   = 55.0
 // @param uMcIrreg   0..100   = 80.0
@@ -38,6 +40,7 @@
 // @param uMcYellow  color = #f6cf16
 uniform float uMcDensity; // 線の密度 (画面の高さあたりの本数)
 uniform float uMcLines;   // 線が立つ割合 (%)。下げると線が抜けて大きな面が増える
+uniform float uMcDyn;     // 線の本数の増減の深さ (%)。変化の周期 × 2 ごとに、数本〜全部のあいだで本数が変わる。0 で一定
 uniform float uMcFull;    // 垂直線が上下に貫く割合 (%)。貫く線が水平線の端の受け手になる
 uniform float uMcFullH;   // 水平線が左右に貫く割合 (%)。下げると垂直線と垂直線のあいだで止まる線が増える
 uniform float uMcIrreg;   // 線の間隔のばらつき (%)。0 で等間隔の格子
@@ -76,6 +79,9 @@ float mg_vn(vec2 p){
 // 入力 (エントリで設定)
 float mg_B, mg_P, mg_Ease, mg_pitch, mg_unit, mg_snap, mg_seed, mg_gen, mg_dp;
 float mg_lines, mg_full, mg_fullH, mg_irreg, mg_motion;
+float mg_dyn;       // 線の本数の増減の深さ (0..1)
+float mg_rseed;     // 道 (線の構造) の乱数の種。道を固定するときは描き直しでも変えない
+float mg_roadFix;   // 1 = 道を固定 (スライド・出没・本数の増減・描き込みなし)
 // 出力 (mg_build)
 float mg_kL, mg_xL, mg_kR, mg_xR, mg_jB, mg_yB, mg_jT, mg_yT;
 float mg_aL, mg_aR;   // 左右の線が錨 (上下に貫く線) か
@@ -87,6 +93,7 @@ void mg_setTime(float bt, float spd, float kick, float change, float redraw, flo
   float nR = floor(redraw + 0.5);
   mg_gen = nR > 0.5 ? floor(mg_B / nR) : 0.0;
   mg_seed = seed * 1.37 + mg_gen * 17.31;
+  mg_rseed = mg_seed; mg_roadFix = 0.0;
   mg_dp = 1.0;
   if(drawIn > 0.0){
     float per = nR > 0.5 ? nR : mg_P;
@@ -103,35 +110,46 @@ float mg_epoch(float salt, out float f){
 // 線 k (軸 ax: 0 = 垂直 / 1 = 水平) の位置。世代の最後の 1 拍でスライドする
 float mg_lpos(float k, float ax){
   float salt = k * 1.731 + ax * 91.3;
-  float f; float e = mg_epoch(salt, f);
-  float s = clamp(f * mg_P - (mg_P - 1.0), 0.0, 1.0);
-  s = mix(s, 1.0 - pow(1.0 - s, 3.0), mg_Ease);
-  float h0 = mg_h(vec3(salt, e, mg_seed + 5.0));
-  float h1 = mg_h(vec3(salt, e + 1.0, mg_seed + 5.0));
-  float hb = mg_h(vec3(salt, -9.0, mg_seed + 5.0));
-  float j = mix(hb, mix(h0, h1, s), mg_motion) - 0.5;
-  float x = (k + 0.5 + j * 0.9 * mg_irreg) * mg_pitch;
+  float j = mg_h(vec3(salt, -9.0, mg_rseed + 5.0));
+  if(mg_roadFix < 0.5){
+    float f; float e = mg_epoch(salt, f);
+    float s = clamp(f * mg_P - (mg_P - 1.0), 0.0, 1.0);
+    s = mix(s, 1.0 - pow(1.0 - s, 3.0), mg_Ease);
+    float h0 = mg_h(vec3(salt, e, mg_rseed + 5.0));
+    float h1 = mg_h(vec3(salt, e + 1.0, mg_rseed + 5.0));
+    j = mix(j, mix(h0, h1, s), mg_motion);
+  }
+  float x = (k + 0.5 + (j - 0.5) * 0.9 * mg_irreg) * mg_pitch;
   return mix(x, floor(x / mg_unit + 0.5) * mg_unit, mg_snap);
 }
-// 線 k が立っているか (世代ごとに 35% の線だけ入れ替わる)
+// 線の本数の増減: 周期 (変化の周期 × 2) ごとに、立てる線の割合を数本〜全部のあいだで振る。軸ごとに半周期ずらす
+float mg_level(float ax){
+  if(mg_dyn <= 0.0) return 1.0;
+  float per = mg_P * 2.0;
+  float ge = floor((mg_B + per * 0.5 * ax) / per);
+  float lv = mg_h(vec3(ge, ax + 31.0, mg_rseed + 91.0));
+  return mix(1.0, 0.1 + 0.9 * pow(lv, 1.5), mg_dyn);
+}
+// 線 k が立っているか (世代ごとに 35% の線だけ入れ替わる + 本数の増減)。線ごとの値が小さい線から順に残る
 bool mg_lexist(float k, float ax){
   float salt = k * 2.917 + ax * 57.1;
+  float hb = mg_h(vec3(salt, -3.0, mg_rseed + 9.0));
+  if(mg_roadFix > 0.5) return hb < mg_lines;
   float f; float e = mg_epoch(salt + 0.5, f);
-  float hb = mg_h(vec3(salt, -3.0, mg_seed + 9.0));
-  float he = mg_h(vec3(salt, e, mg_seed + 9.0));
-  float h = mix(hb, he, step(mg_h(vec3(salt, e, mg_seed + 4.0)), 0.35));
-  return h < mg_lines;
+  float he = mg_h(vec3(salt, e, mg_rseed + 9.0));
+  float h = mix(hb, he, step(mg_h(vec3(salt, e, mg_rseed + 4.0)), 0.35));
+  return h < mg_lines * mg_level(ax);
 }
-bool mg_anchor(float k){ return mg_h(vec3(k * 3.31, 11.0, mg_seed)) < mg_full; }   // 上下に貫く垂直線
-bool mg_hfull(float j){ return mg_h(vec3(j * 5.17, 12.0, mg_seed)) < mg_fullH; }   // 左右に貫く水平線
+bool mg_anchor(float k){ return mg_h(vec3(k * 3.31, 11.0, mg_rseed)) < mg_full; }   // 上下に貫く垂直線
+bool mg_hfull(float j){ return mg_h(vec3(j * 5.17, 12.0, mg_rseed)) < mg_fullH; }   // 左右に貫く水平線
 // 水平線 j が、錨 a から始まる錨区間に引かれているか
 bool mg_hvis(float j, float a){
   if(!mg_lexist(j, 1.0)) return false;
   if(mg_hfull(j)) return true;
-  return mg_h(vec3(j * 5.17, a, mg_seed + 14.0)) < 0.5;
+  return mg_h(vec3(j * 5.17, a, mg_rseed + 14.0)) < 0.5;
 }
 // 垂直線 k (錨でない) の、水平線 row から上の区間があるか
-bool mg_piece(float k, float row){ return mg_h(vec3(k * 3.31, row, mg_seed + 13.0)) < 0.5; }
+bool mg_piece(float k, float row){ return mg_h(vec3(k * 3.31, row, mg_rseed + 13.0)) < 0.5; }
 
 void mg_build(vec2 q){
   float c0 = floor(q.x / mg_pitch);
@@ -173,10 +191,12 @@ void mg_build(vec2 q){
 }
 // 描き直し中に線が出る順番: 貫く線 → 区間の水平線 → 区間の垂直線 (端の受け手が先に出る)
 bool mg_shownV(float k, float an){
+  if(mg_roadFix > 0.5) return true;
   float h = mg_h(vec3(k, mg_gen, mg_seed + 71.0));
   return mg_dp >= (an > 0.5 ? 0.02 + 0.3 * h : 0.62 + 0.25 * h);
 }
 bool mg_shownH(float j){
+  if(mg_roadFix > 0.5) return true;
   float h = mg_h(vec3(j, mg_gen, mg_seed + 73.0));
   return mg_dp >= (mg_hfull(j) ? 0.02 + 0.3 * h : 0.3 + 0.28 * h);
 }
@@ -189,7 +209,7 @@ vec3 bg_composition(vec2 fc){
   float kick = clamp(uMcKick * 0.01, 0.0, 1.0);
   mg_setTime(getBeat(), uMcSpeed * 0.01, kick, uMcChange, uMcRedraw, uMcDrawIn, uMcSeed);
   mg_lines = uMcLines * 0.01; mg_full = uMcFull * 0.01; mg_fullH = uMcFullH * 0.01;
-  mg_irreg = uMcIrreg * 0.01; mg_motion = uMcMotion * 0.01;
+  mg_irreg = uMcIrreg * 0.01; mg_motion = uMcMotion * 0.01; mg_dyn = uMcDyn * 0.01;
   float audio = clamp(iAudio, 0.0, 1.0) * uMcKick * 0.01;
 
   float zm = max(bgZoom, 0.001);
