@@ -350,6 +350,11 @@
      "file": "bg_boogie_woogie.frag",
      "func": "bg_boogie_woogie",
      "name": "Boogie Woogie"
+    },
+    {
+     "file": "bg_composition.frag",
+     "func": "bg_composition",
+     "name": "Composition"
     }
    ],
    "exclude": [
