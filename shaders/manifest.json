@@ -355,6 +355,11 @@
      "file": "bg_composition.frag",
      "func": "bg_composition",
      "name": "Composition"
+    },
+    {
+     "file": "bg_kandinsky.frag",
+     "func": "bg_kandinsky",
+     "name": "Kandinsky"
     }
    ],
    "exclude": [
