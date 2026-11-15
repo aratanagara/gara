@@ -24,6 +24,7 @@
 // @param uMbFull    0..100   = 55.0
 // @param uMbFullH   0..100   = 70.0
 // @param uMbIrreg   0..100   = 80.0
+// @param uMbJump    0..100   = 0.0
 // @param uMbLine    20..300  = 100.0
 // @param uMbBlip    0..100   = 35.0
 // @param uMbBlipLen 50..300  = 100.0
@@ -53,6 +54,7 @@ uniform float uMbLines;   // 線が立つ割合 (%)。下げると線が抜け�
 uniform float uMbDyn;     // 線の本数の増減の深さ (%)。変化の周期 × 2 ごとに、数本〜全部のあいだで本数が変わる。0 で一定 (Mode 1・2 では効かない)
 uniform float uMbFull;    // 垂直線が上下に貫く割合 (%)。貫く線が水平線の端の受け手になる
 uniform float uMbFullH;   // 水平線が左右に貫く割合 (%)。下げると垂直線と垂直線のあいだで止まる線が増える
+uniform float uMbJump;    // 区画の大きさのジャンプ率 (%)。上げると大きな街区と細い路地がはっきり分かれる (道の間隔を場所ごとに伸び縮みさせる)。0 でほぼ均等
 uniform float uMbIrreg;   // 線の間隔のばらつき (%)。0 で等間隔の格子
 uniform float uMbLine;    // 線の太さ (%)
 uniform float uMbBlip;    // 車の量 (%)。上げると信号待ちの列が伸びる
@@ -286,6 +288,13 @@ vec3 bg_boogie_woogie(vec2 fc){
   mg_unit = 2.0 * w; mg_snap = 1.0;                                    // 単位格子 (= 線の太さ) に揃える
   mg_pitch = 1.0 / (uMbDensity * 2.2);
   q = mg_orient(q);
+  // ジャンプ率: 各軸を単調に伸び縮みさせた空間で格子を組む (Composition と同じ)。線幅は傾き dq で割って一定に戻す
+  float jp = uMbJump * 0.01 * 0.97;
+  vec2 wf1 = 6.2832 / (mg_pitch * vec2(5.6, 4.9)), wf2 = 6.2832 / (mg_pitch * vec2(2.6, 2.9));
+  vec2 wp1 = vec2(mg_h(vec3(mg_rseed, 71.0, 1.0)), mg_h(vec3(mg_rseed, 72.0, 1.0))) * 6.2832 + (mg_roadFix > 0.5 ? 0.0 : mg_B * 0.021 * mg_motion);
+  vec2 wp2 = vec2(mg_h(vec3(mg_rseed, 73.0, 1.0)), mg_h(vec3(mg_rseed, 74.0, 1.0))) * 6.2832 - (mg_roadFix > 0.5 ? 0.0 : mg_B * 0.017 * mg_motion);
+  vec2 dq = 1.0 + jp * (0.62 * cos(q * wf1 + wp1) + 0.38 * cos(q * wf2 + wp2));
+  q += jp * (0.62 * sin(q * wf1 + wp1) / wf1 + 0.38 * sin(q * wf2 + wp2) / wf2);
   mg_build(q);
 
   // ── 面: 入れ子の色ブロック ──
@@ -323,7 +332,7 @@ vec3 bg_boogie_woogie(vec2 fc){
   float dVR = (mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)) ? mg_xR - q.x : BIG;
   float dHB = (mg_jB > -9e3 && mg_shownH(mg_jB)) ? q.y - mg_yB : BIG;
   float dHT = (mg_jT <  9e3 && mg_shownH(mg_jT)) ? mg_yT - q.y : BIG;
-  float sV = min(dVL, dVR), sH = min(dHB, dHT);
+  float sV = min(dVL, dVR) / dq.x, sH = min(dHB, dHT) / dq.y;   // 伸び縮み前の距離に戻す
   float cov = smoothstep(w + aa, w - aa, min(sV, sH));
   if(cov > 0.0){
     float an = dVL < dVR ? mg_aL : mg_aR;
