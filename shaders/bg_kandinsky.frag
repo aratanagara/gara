@@ -48,6 +48,7 @@
 // @param uKdScale   20..500  = 100.0
 // @param uKdZoomMove 0..100  = 0.0
 // @param uKdSeed    0..100   = 0.0
+// @param uKdReseed  0..32    = 0.0
 // @param uKdGrain   0..100   = 30.0
 // @param uKdClear   0..100   = 0.0
 // @param uKdPaper   color = #ece2cb
@@ -85,6 +86,7 @@ uniform float uKdKick;    // 拍の効き (%)。拍頭の押し出しと円の�
 uniform float uKdScale;   // 構成の拡大率 (%)。画面中央を中心に、線の太さごと拡大・縮小。引くと軸が伸び、要素はやや広い範囲に並ぶ
 uniform float uKdZoomMove; // ゆっくり寄っては引くズームの深さ (%)。32 拍で一往復し、焦点へ寄っていく
 uniform float uKdSeed;    // 乱数の種。値を変えると別の構成になる
+uniform float uKdReseed;  // N 拍ごとに乱数の種をランダムに引き直して別の構成へ切り替える (0 = しない / 4 = 4 拍ごと)。Speed に関係なく実際の拍で数える
 uniform float uKdGrain;   // 紙と絵具のムラ (%)
 uniform float uKdClear;   // 地を透過する量 (%)。Slot B で下の絵に点・線・面だけを重ねる
 uniform vec3 uKdPaper;    // 地の色
@@ -200,6 +202,8 @@ vec3 bg_kandinsky(vec2 fc){
     B = floor(bq) + mix(fb, 1.0 - pow(1.0 - fb, 3.0), kick);   // 拍頭で押し出して止まる
   }
   float seed = uKdSeed * 1.37;
+  float nRs = floor(uKdReseed + 0.5);
+  if(nRs > 0.5) seed += floor((fre ? time * 2.0 : bt) / nRs) * 17.31;   // N 拍ごとに別の種へ
 
   float zm = max(bgZoom, 0.001);
   vec2 q0 = ((fc - 0.5 * resolution) / zm + bgCamPx) / resolution.y;  // 画面の高さ = 1
