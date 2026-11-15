@@ -7,7 +7,7 @@
 //     ・それ以外の垂直線は、見えている水平線と水平線のあいだを区間ごとに引く (端は水平線の上)
 //   面はこの線で 4 辺とも閉じた矩形単位で塗る。
 //   動き: uMcChange の周期ごとに、要素ごとにずれて 線のスライド / 出没 / 色の塗り替え。
-//         uMcDyn で 線の本数そのものが 数本〜全部のあいだで増減する。
+//         uMcDyn で 線の本数そのものが 数本〜全部のあいだで増減する。uMcJump で面の大きさの差 (ジャンプ率) を付ける。
 //         uMcRedraw = N 拍ごとに構図を丸ごと描き直す。uMcDrawIn で線 → 面の順に描かれていく。
 //   格子構造 (mg_*) は bg_boogie_woogie.frag と同じ実装 (片方を直したらもう片方も直す)。
 //   bgZoom・bgCamPx でズーム/パン。
@@ -19,6 +19,7 @@
 // @param uMcFull    0..100   = 40.0
 // @param uMcFullH   0..100   = 55.0
 // @param uMcIrreg   0..100   = 80.0
+// @param uMcJump    0..100   = 50.0
 // @param uMcLine    20..300  = 100.0
 // @param uMcColor   0..100   = 30.0
 // @param uMcBlack   0..50    = 4.0
@@ -43,6 +44,7 @@ uniform float uMcLines;   // 線が立つ割合 (%)。下げると線が抜け�
 uniform float uMcDyn;     // 線の本数の増減の深さ (%)。変化の周期 × 2 ごとに、数本〜全部のあいだで本数が変わる。0 で一定
 uniform float uMcFull;    // 垂直線が上下に貫く割合 (%)。貫く線が水平線の端の受け手になる
 uniform float uMcFullH;   // 水平線が左右に貫く割合 (%)。下げると垂直線と垂直線のあいだで止まる線が増える
+uniform float uMcJump;    // 面の大きさのジャンプ率 (%)。上げると大きな面と細い帯がはっきり分かれる (線の間隔を場所ごとに伸び縮みさせる)。0 でほぼ均等
 uniform float uMcIrreg;   // 線の間隔のばらつき (%)。0 で等間隔の格子
 uniform float uMcLine;    // 線の太さ (%)
 uniform float uMcColor;   // 色面 (赤/青/黄) になる面の割合 (%)
@@ -227,6 +229,14 @@ vec3 bg_composition(vec2 fc){
   mg_unit = 2.0 * w; mg_snap = 0.0;
   mg_pitch = 1.0 / uMcDensity;
   q = mg_orient(q);
+  // ジャンプ率: 各軸を単調に伸び縮みさせた空間で格子を組む (間隔の比は最大 (1+jp)/(1-jp) 倍 = 100% で約 65 倍)。
+  // 線幅は伸び縮みの傾き dq で割って、どこでも同じ太さに戻す。伸び縮みの場所はゆっくり流れる
+  float jp = uMcJump * 0.01 * 0.97;
+  vec2 wf1 = 6.2832 / (mg_pitch * vec2(5.6, 4.9)), wf2 = 6.2832 / (mg_pitch * vec2(2.6, 2.9));
+  vec2 wp1 = vec2(mg_h(vec3(mg_rseed, 71.0, 1.0)), mg_h(vec3(mg_rseed, 72.0, 1.0))) * 6.2832 + mg_B * 0.021 * mg_motion;
+  vec2 wp2 = vec2(mg_h(vec3(mg_rseed, 73.0, 1.0)), mg_h(vec3(mg_rseed, 74.0, 1.0))) * 6.2832 - mg_B * 0.017 * mg_motion;
+  vec2 dq = 1.0 + jp * (0.62 * cos(q * wf1 + wp1) + 0.38 * cos(q * wf2 + wp2));
+  q += jp * (0.62 * sin(q * wf1 + wp1) / wf1 + 0.38 * sin(q * wf2 + wp2) / wf2);
   mg_build(q);
 
   // ── 面 (4 辺とも閉じた矩形) ──
@@ -248,7 +258,7 @@ vec3 bg_composition(vec2 fc){
   if(mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)) sV = min(sV, mg_xR - q.x);
   if(mg_jB > -9e3 && mg_shownH(mg_jB)) sH = min(sH, q.y - mg_yB);
   if(mg_jT <  9e3 && mg_shownH(mg_jT)) sH = min(sH, mg_yT - q.y);
-  float cov = smoothstep(w + aa, w - aa, min(sV, sH));
+  float cov = smoothstep(w + aa, w - aa, min(sV / dq.x, sH / dq.y));
   col = mix(col, uMcInk, cov);
   isPaper *= 1.0 - cov;
 
