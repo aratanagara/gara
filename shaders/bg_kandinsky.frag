@@ -38,6 +38,8 @@
 // @param uKdMotion  0..300   = 100.0
 // @param uKdSpin    0..300   = 100.0
 // @param uKdTurn    0..180   = 60.0
+// @param uKdReverse 0..100   = 30.0
+// @param uKdSizeVar 0..100   = 50.0
 // @param uKdRhythm  0..100   = 60.0
 // @param uKdFlock   0..200   = 100.0
 // @param uKdOverlap 0..100   = 75.0
@@ -76,6 +78,8 @@ uniform float uKdAccord;  // 形と色の対応 (%)。円=青・楔=黄・四角
 uniform float uKdDraw;    // 寿命のうち 組み上がる / 消える のにかける割合 (%)。0 で一瞬で出て一瞬で消える
 uniform float uKdMotion;  // 流れに沿って滑り込む / 抜けていく距離 (%)
 uniform float uKdTurn;    // 骨格 (主軸・対軸) が周期ごとに回る角度の平均 (度)。回転は積み重なり、構成ごと向きを変え続ける。0 で向きは種で固定
+uniform float uKdReverse; // 回転が逆向きに切り替わる頻度 (%)。0 で一方向に回り続ける / 上げるほど不規則なタイミングで行き来する
+uniform float uKdSizeVar; // 要素と大円の大きさが周期ごとに変わる幅 (%)。0 で一定 / 100 で 0.5〜2 倍
 uniform float uKdSpin;    // 構成全体が周期ごとに向きを変える量と、円弧・扇の回る速さ (%)
 uniform float uKdRhythm;  // 動きの刻み (%)。0 でなめらか、上げると 1・2・4 拍ごとに進んで止まる
 uniform float uKdFlock;   // 群れの振る舞い (%)。旋回で外側が遅れてついてくる・流れがうねる・密度が息をする。0 で硬い構成のまま
@@ -176,10 +180,18 @@ const vec4 KD_TB[21] = vec4[21](
 const float KD_PERP[21] = float[21](0., 0., 0., 0., 0., 0., 0.,  0.28, 0.3, 0.3, 0.35, 0., 0., 0.35,  0., 0., 0.3, 0., 0., 0., 0.);
 // 群れの旋回: 周期 per 拍ごとに、終わりの 4 割でいっせいに向きを変えて止まる (-1..1)
 // 骨格の回転: 周期の終わり 4 割でいっせいに回り、角度は積み重なる (1 周期あたり平均 rad、大小のむらつき)
-float kd_rot(float t, float per, float ph, float rad){
+// 逆回転: 整数の段 k ごとに +1 / -1 (半周期 h で反転する矩形波) を積んだ量 = 三角波。段の途中は f (0..1) で進む
+float kd_tri(float k, float f, float h){
+  float m = floor(k / h), r = k - m * h;
+  bool up = mod(m, 2.0) < 0.5;
+  return (up ? r : h - r) + (up ? f : -f);
+}
+float kd_rot(float t, float per, float ph, float rad, float h1, float h2){
   float x = t / per;
-  float st = floor(x) + smoothstep(0.6, 1.0, fract(x));
-  return rad * (st + 0.45 * sin(st * 2.399 + ph));
+  float k = floor(x), f = smoothstep(0.6, 1.0, fract(x));
+  float st = k + f;
+  // 半周期の違う 2 つの反転を重ねる → 逆回転のタイミングと速さが不規則になる (h が大きいと一方向)
+  return rad * (0.65 * kd_tri(k, f, h1) + 0.35 * kd_tri(k, f, h2) + 0.45 * sin(st * 2.399 + ph));
 }
 float kd_turn(float t, float per, float ph){
   float x = t / per;
@@ -229,12 +241,15 @@ vec3 bg_kandinsky(vec2 fc){
   float kB0 = 1.5708 + (sa.w - 0.5) * 0.9;
   float phA = sa.z * 6.2832, phB = sb.x * 6.2832;
   float rad = radians(uKdTurn) * (sb.x < 0.5 ? -1.0 : 1.0);           // 回る向きは種で決める
-  float rotA = kd_rot(B, per, phA, rad);
+  float rv = uKdReverse * 0.01;
+  float h1 = rv > 0.0 ? max(1.0, floor(mix(12.0, 1.0, rv) * (0.6 + 0.8 * sb.y) + 0.5)) : 1e5;   // 反転までの段数
+  float h2 = rv > 0.0 ? max(1.0, floor(mix(9.0, 1.0, rv) * (0.6 + 0.8 * sb.z) + 0.5)) : 1e5;
+  float rotA = kd_rot(B, per, phA, rad, h1, h2);
   float kA = kA0 + rotA + 0.20 * turn * kd_turn(B, per, phA);
   float kB = kA + kB0 + 0.12 * turn * kd_turn(B + per * 0.5, per, phB);
   // 群れの遅れ: 少し前の向きも求めておき、焦点から遠い要素ほど前の向きに寄せる (旋回の間だけ列がしなる)
   float tlg = B - flk * 2.8;
-  float lgA = clamp(kA0 + kd_rot(tlg, per, phA, rad) + 0.20 * turn * kd_turn(tlg, per, phA) - kA, -0.35, 0.35);   // 大きく回る間も遅れは小角度に収める
+  float lgA = clamp(kA0 + kd_rot(tlg, per, phA, rad, h1, h2) + 0.20 * turn * kd_turn(tlg, per, phA) - kA, -0.35, 0.35);   // 大きく回る間も遅れは小角度に収める
   float lgB = lgA + 0.12 * turn * (kd_turn(tlg + per * 0.5, per, phB) - kd_turn(B + per * 0.5, per, phB));
   // 群れの密度: 集まっては散る
   float brA = 1.0 + 0.16 * flk * sin(B * 0.131), brB = 1.0 + 0.16 * flk * sin(B * 0.131 + 2.1);
@@ -245,7 +260,12 @@ vec3 bg_kandinsky(vec2 fc){
   float great = uKdGreat * 0.01;
   float dC = min(0.25 * asp, 0.27 / max(abs(e1.y), 0.2));
   vec2 C0 = F + e1 * cs * dC;
-  float rG = 0.165 * great;
+  // 大きさ: 周期ごとに全体の倍率を引き直し、骨格の旋回と同じ終わり 4 割で移り変わる
+  float sv = uKdSizeVar * 0.01;
+  float xs = B / per, ks = floor(xs), fs = smoothstep(0.6, 1.0, fract(xs));
+  float gS = exp2(sv * mix(kd_h4(vec3(seed, ks, 41.0)).x * 2.0 - 1.0, kd_h4(vec3(seed, ks + 1.0, 41.0)).x * 2.0 - 1.0, fs));
+  float gG = exp2(sv * 0.7 * mix(kd_h4(vec3(seed, ks, 43.0)).y * 2.0 - 1.0, kd_h4(vec3(seed, ks + 1.0, 43.0)).y * 2.0 - 1.0, fs));
+  float rG = 0.165 * great * gG;
 
   // ズーム: uKdScale は画面中央が中心。uKdZoomMove は焦点へゆっくり寄っては戻る
   float zf = 1.0 + 1.5 * uKdZoomMove * 0.01 * (0.5 - 0.5 * cos(B * 0.19635));
@@ -272,7 +292,7 @@ vec3 bg_kandinsky(vec2 fc){
   float wT = max(wP + wL + wD, 1e-3);
   int N = int(uKdCount + 0.5);
   float fN = max(float(N) - 4.0, 1.0);
-  float sz = uKdSize * 0.01;
+  float sz = uKdSize * 0.01 * gS;
   float th0 = uKdThick * 0.01;
   float dr = uKdDraw * 0.01 * 0.45;
   float mo = uKdMotion * 0.01;
@@ -331,7 +351,7 @@ vec3 bg_kandinsky(vec2 fc){
         cat = 0.0; r0 = rG; ext = vec2(r0 * 2.6);
         P = C0 + 0.012 * mo * vec2(sin(B * 0.21 + hA.w * 6.0), cos(B * 0.17)); dv = e1 * cs;
       } else if(i == 1){
-        cat = 1.0; ty = 2.0; r0 = 0.50 * great * (0.8 + 0.4 * hs); ext = vec2(r0 * 0.55, r0 * 0.2);
+        cat = 1.0; ty = 2.0; r0 = 0.50 * great * gG * (0.8 + 0.4 * hs); ext = vec2(r0 * 0.55, r0 * 0.2);
         dv = e1 * cs;                                  // 大円を指す
         P = F - dv * (0.07 + r0 * 0.5); sl = 0.35;
       } else {
