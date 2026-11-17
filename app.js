@@ -478,7 +478,7 @@ void main(){
     // 軽量フォールバック合成を先に投げる: 本命の巨大 composite の完成(Windows/FXC では数十秒かかりうる)や
     // 失敗に関係なく、こちらが先に上がった時点でステージを描き始められる。本命完成後は自動で切替。
     this._linkDeferred('compositeFallbackProg', COMPOSITE_FALLBACK_FS);
-    this._linkDeferred('compositeProg', `#version 300 es
+    const COMPOSITE_FS = `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag;
 uniform sampler2D uA, uB;
@@ -1691,7 +1691,9 @@ void main(){
   }
 
   frag = vec4(col, 1.0);
-}`);
+}`;
+    this._compositeFS = COMPOSITE_FS;   // Audio / Pattern を 3D のあとに掛けるパス (_applyAudioPatternPost) がこのソースから作る
+    this._linkDeferred('compositeProg', COMPOSITE_FS);
 
     // Relief is a standalone pass so it remains available while the large
     // composite shader is still compiling or has fallen back on a given GPU.
@@ -4860,30 +4862,6 @@ vec3 f3Paper(vec2 q, float lift){
     else if(this._candyFBOMid.w!==mw || this._candyFBOMid.h!==mh) this._resizeFBO(this._candyFBOMid,mw,mh);
     if(!this._candyFBOLow) this._candyFBOLow=this._mkFBO(lw,lh);
     else if(this._candyFBOLow.w!==lw || this._candyFBOLow.h!==lh) this._resizeFBO(this._candyFBOLow,lw,lh);
-    if(!this._candyWarmFBO) this._candyWarmFBO=this._mkFBO(4,4);
-  },
-
-  _warmCandyProgram(){
-    if(this._candyWarmed || !this.compositeProg || !this._candyWarmFBO) return;
-    const gl=this.gl, P=this.compositeProg, U=(n)=>gl.getUniformLocation(P,n);
-    const A=this.slots.A.fbos[this.slots.A.fbIdx^1], B=this.slots.B.fbos[this.slots.B.fbIdx^1];
-    if(!A || !B) return;
-    this._candyWarmed=true;
-    gl.useProgram(P);
-    gl.bindVertexArray(this.quadVAO);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D,A.tex); gl.uniform1i(U('uA'),0);
-    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D,B.tex); gl.uniform1i(U('uB'),1);
-    gl.uniform1f(U('uShowA'),1); gl.uniform1f(U('uShowB'),1); gl.uniform1f(U('uMix'),0.5);
-    gl.uniform1f(U('uZoomA'),1); gl.uniform1f(U('uZoomB'),1);
-    gl.uniform2f(U('uPanA'),0,0); gl.uniform2f(U('uPanB'),0,0);
-    gl.uniform2f(U('uRes'),4,4); gl.uniform1f(U('uTime'),0);
-    gl.uniform1f(U('uCandy'),0.35); gl.uniform1i(U('uCandyMode'),1);
-    gl.bindFramebuffer(gl.FRAMEBUFFER,this._candyWarmFBO.fbo);
-    gl.viewport(0,0,4,4);
-    gl.drawArrays(gl.TRIANGLES,0,3);
-    gl.flush();
-    gl.bindVertexArray(null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   },
 
   composite(toDefault=true){
@@ -4894,7 +4872,6 @@ vec3 f3Paper(vec2 q, float lift){
     if(!P) return;   // 両方とも未完成 (ローディング画面が出ている)
     // 中間 FBO (_finalFBO) に composite し、Post FX を順に掛けてから最後に画面へ blit
     this._ensureFinalFBO();
-    if(P===this.compositeProg && !this._candyWarmed) this._warmCandyProgram();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
     gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
     gl.useProgram(P);
@@ -4952,11 +4929,13 @@ vec3 f3Paper(vec2 q, float lift){
     const _sk = (typeof SketchFX !== 'undefined') && p && (p.sketch || 0) > 0.001 && !(App.safeMode);
     const _safe = (typeof App !== 'undefined' && App.safeMode);
     // Color 段 (Grad Map / Hue / Bri / Con / Sat / Gamma / Invert / Posterize / Vignette / Vibrance) は連鎖の最後で掛ける (_applyFinalColorGrade)。
-    gl.uniform1f(U('uAScan'),  p.aScan  || 0);
+    // Audio (Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe) と Pattern (Tunnel / Slice / Ring Slice / Mondrian / Rings / Voxel) は
+    //   合成では掛けず、3D 段のあとの _applyAudioPatternPost で掛ける (3D で折れた・吸い込まれた絵に乗る)。ここでは 0 を送る
+    gl.uniform1f(U('uAScan'),  0);
     { const c = this._fxLineRGB || [1,1,1]; gl.uniform3f(U('uFxLineCol'), c[0], c[1], c[2]); gl.uniform1f(U('uFxLineOn'), this._fxLineOn ? 1 : 0); }
-    gl.uniform1f(U('uAStrobe'),  p.aStrobe  || 0);
-    gl.uniform1f(U('uAShock'),   p.aShock   || 0);
-    gl.uniform1f(U('uAExplode'), p.aExplode || 0);
+    gl.uniform1f(U('uAStrobe'),  0);
+    gl.uniform1f(U('uAShock'),   0);
+    gl.uniform1f(U('uAExplode'), 0);
     // Slit-scan(時間差スライス)は _applySlitScan で適用(履歴バッファ使用)。ここでは何もしない。
     gl.uniform1f(U('uOnset'),     (typeof Audio!=='undefined') ? (Audio.onset||0) : 0);
     gl.uniform1f(U('uAttack'),    (typeof Audio!=='undefined') ? (Audio.attack||0) : 0);
@@ -4986,24 +4965,24 @@ vec3 f3Paper(vec2 q, float lift){
     gl.uniform1f(U('uBlm'),       p.blm);
     gl.uniform1f(U('uUnsharp'),       p.unsharp || 0);
     gl.uniform1f(U('uUnsharpRadius'), App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(p.unsharp) : (p.unsharpRadius || 1.5));
-    gl.uniform1f(U('uSlice'),     p.slice);
-    gl.uniform1f(U('uRingSlice'), p.ringSlice || 0);
+    gl.uniform1f(U('uSlice'),     0);
+    gl.uniform1f(U('uRingSlice'), 0);
     // Ring Slice の回転位相: 値 (= 速さ。1.0 で最大 0.8 rad/s) × 時間を積分。0 で止まる (角度は保持、次に上げると続きから)
     { const _rsDt = Math.max(0.001, Math.min(0.1, this.lastDt || 1/60));
       this._rsPhase = (this._rsPhase || 0) + (p.ringSlice || 0) * 0.8 * _rsDt;
       gl.uniform1f(U('uRsPhase'), this._rsPhase); }
-    gl.uniform1f(U('uSplit'),     p.split || 0);
-    gl.uniform1f(U('uMosaic'),    p.mosaic);
-    gl.uniform1f(U('uShake'),     p.shake);
+    gl.uniform1f(U('uSplit'),     0);
+    gl.uniform1f(U('uMosaic'),    0);
+    gl.uniform1f(U('uShake'),     0);
     // セーフモード時は GPU 過負荷の主因になる重い FX を強制 0 にクランプ(明滅/クラッシュ防止)
     gl.uniform1f(U('uMblur'),     _safe ? 0 : p.mblur);
     gl.uniform1f(U('uGlass'),     _safe ? 0 : (p.glass || 0.0));
-    gl.uniform1f(U('uGain'),      p.gain);
-    gl.uniform1f(U('uVoxel'),     _safe ? 0 : (p.voxel || 0));
+    gl.uniform1f(U('uGain'),      0);
+    gl.uniform1f(U('uVoxel'),     0);
     gl.uniform1f(U('uRain'),      _safe ? 0 : (p.rain || 0));
     // Flames Post FX
     gl.uniform1f(U('uSketch'),    0);   // 単パス近似は無効(多パス SketchFX エンジンで処理)
-    gl.uniform1f(U('uRings'),     _safe ? 0 : (p.rings || 0));
+    gl.uniform1f(U('uRings'),     0);
     const _candyBlocked = _sk || _safe;
     const _candyRaw = _candyBlocked ? 0 : Math.max(0, Math.min(1, p.candy || 0));
     const _candyBeatNow = App.visualBeat ? App.visualBeat() : ((typeof BPM !== 'undefined' && BPM.beatCount ? BPM.beatCount() : 0) * (App.beatScale || 1));
@@ -5052,7 +5031,11 @@ vec3 f3Paper(vec2 q, float lift){
         this._candySmooth = 0;
       }
     }
-    gl.uniform1f(U('uCandy'),     _candyAmt);
+    gl.uniform1f(U('uCandy'),     0);
+    // 3D 段のあとの Audio / Pattern パスへ渡す値 (Tunnel は上のなめらかな立ち上がり / 拍での消え方を済ませた値)
+    this._apVals = { uAScan: p.aScan || 0, uAStrobe: p.aStrobe || 0, uAShock: p.aShock || 0, uAExplode: p.aExplode || 0,
+      uSlice: p.slice || 0, uRingSlice: p.ringSlice || 0, uSplit: p.split || 0, uMosaic: p.mosaic || 0, uShake: p.shake || 0,
+      uGain: p.gain || 0, uVoxel: _safe ? 0 : (p.voxel || 0), uRings: _safe ? 0 : (p.rings || 0), uCandy: _candyAmt };
     gl.uniform1f(U('uClarity'),   p.clarity || 0);
     gl.uniform1f(U('uDenoise'),   _safe ? 0 : (p.denoise || 0));
     gl.uniform1f(U('uDeband'),    _safe ? 0 : (p.deband || 0));
@@ -5069,33 +5052,7 @@ vec3 f3Paper(vec2 q, float lift){
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.uniform1i(U('uFbTex'), 6);
     gl.activeTexture(gl.TEXTURE0);
-    // Tunnel 2パス: 前段で実 A/B 合成からトンネルを専用 FBO に描き、
-    // 本パスでは sampleAB がそれを土台に返す(後段 FX が元映像を混ぜ戻して透ける問題の対策)。
-    const _candyOn = _candyAmt > 0.001;
-    if(_candyOn){
-      const candyTarget = _candyAmt < 0.18 ? this._candyFBOLow : (_candyAmt < 0.48 ? this._candyFBOMid : this._candyFBO);
-      const cw = candyTarget.w, ch = candyTarget.h;
-      // 前フレームの本パスでユニット7に描画先テクスチャが残っていると
-      // フィードバックループ (INVALID_OPERATION) になるため、描く前に必ず解除する。
-      gl.activeTexture(gl.TEXTURE0 + 7);
-      gl.bindTexture(gl.TEXTURE_2D, null);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.uniform1i(U('uCandyMode'), 1);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, candyTarget.fbo);
-      gl.uniform2f(U('uRes'), cw, ch);
-      gl.viewport(0, 0, cw, ch);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
-      gl.uniform2f(U('uRes'), this._finalFBO.w, this._finalFBO.h);
-      gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
-      gl.uniform1i(U('uCandyMode'), 2);
-      gl.activeTexture(gl.TEXTURE0 + 7);
-      gl.bindTexture(gl.TEXTURE_2D, candyTarget.tex);
-      gl.uniform1i(U('uCandyTex'), 7);
-      gl.activeTexture(gl.TEXTURE0);
-    } else {
-      gl.uniform1i(U('uCandyMode'), 0);
-    }
+    gl.uniform1i(U('uCandyMode'), 0);   // Tunnel は 3D 段のあとの _applyAudioPatternPost で掛ける
     // 3D Native の切り替わり (0 < g < 1): 平面の絵 F を _finalFBO へ (以降は平面方式と同じ経路)、3D の絵 N を補助 FBO へ合成する
     const _fr3 = this._fx3dFrame, _fl3 = this._fx3dFlat;
     const _blend = !!(_fr3 && _fr3.blend && _fl3 && _fl3.frame === _fr3.frame && _fl3.slot === _fr3.target);
@@ -5169,6 +5126,7 @@ vec3 f3Paper(vec2 q, float lift){
     this._applyFlamesPost(p, _safe);
     this._applyUzumakiPost(p, _safe);   // 渦巻き展開 (折り紙系と同じ幾何変形枠)
     this._fx3dBgUnder();                // 折り系 / Uzumaki が抜いた背景 (alpha < 1) に 3D BG を敷く
+    this._applyAudioPatternPost(p, _safe);   // 4.5) Audio / Pattern: 3D 段のあと (3D で折れた・吸い込まれた絵に乗る)
 
     // 5) Glitch 段: 折った結果にグリッチを掛ける (Slit-scan → Waveform → Barcode → Datamosh → Pixelsort)
     this._applySlitScan(p, _safe);
@@ -5682,6 +5640,143 @@ vec3 f3Paper(vec2 q, float lift){
     }
   },
 
+  // ── Audio / Pattern を 3D 段のあとに掛けるパス ──
+  //   合成シェーダのソース (_compositeFS) を流用し、sampleAB を「3D 段のあとの画面 (uPost3D)」を読むものに差し替え、
+  //   main を Audio / Pattern の効果だけにしたプログラム (audioPatProg) で描く。合成と同じ uniform は合成のプログラムから写し、
+  //   効果の量 (_apVals) だけ上書きする。Tunnel は合成と同じ 2 パス (前段でトンネルだけを描き、本パスでそれを土台にする)
+  _audioPatFS(){
+    let s = this._compositeFS;
+    s = s.replace('precision highp float;\n', 'precision highp float;\nuniform sampler2D uPost3D;\n');
+    s = s.replace('vec4 sampleAB(vec2 uv){\n', 'vec4 sampleAB(vec2 uv){\n  if(uCandyMode == 2) return vec4(texture(uCandyTex, fl_mirror(uv)).rgb, 1.0);\n  return vec4(texture(uPost3D, fl_mirror(uv)).rgb, 1.0);\n');
+    const i = s.lastIndexOf('void main(){');
+    return s.slice(0, i) + `void main(){
+  if(uCandyMode == 1){ frag = vec4(applyCandyTunnel(vec3(0.0), vUv), 1.0); return; }
+  vec2 uv = vUv;
+  vec2 sliceLineUv = uv;
+  uv = applySlice(uv);
+  uv = applyRingSlice(uv);
+  vec2 splitLineUv = uv;
+  uv = applySplit(uv);
+  uv = applyShake(uv);
+  vec2 ringsLineUv = uv;
+  uv = applyRings(uv);
+  uv = applyAudioFX(uv);
+  vec3 col = sampleAB(uv).rgb;
+  float fxEdge = max(sliceEdgeMask(sliceLineUv), max(splitEdgeMask(splitLineUv), ringsEdgeMask(ringsLineUv)));
+  if(fxEdge > 0.001){
+    float fxLuma = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 fxLine = (uFxLineOn > 0.5) ? uFxLineCol : ((fxLuma < 0.48) ? vec3(1.0) : vec3(0.0));
+    col = mix(col, fxLine, clamp(fxEdge, 0.0, 1.0));
+  }
+  if(uVoxel > 0.001) col = vxRender();
+  float mosStr = uMosaic * uHit;
+  if(mosStr > 0.001){
+    float sr = uHitSeed;
+    float mosaicSize = mix(4.0, 32.0, h11(sr*7.3));
+    vec2 cell = floor((vUv * uRes - uRes * 0.5) / mosaicSize);
+    vec3 m = col;
+    float bh = h21(cell + vec2(sr*7.7, sr*3.3));
+    if(bh > 0.7)       m = col.gbr;
+    else if(bh > 0.4)  m = col.brg;
+    col = mix(col, m, mosStr);
+  }
+  if(abs(uGain) > 0.001){
+    float pulse = pow(1.0 - uBeatPhase, 16.0);
+    col *= (1.0 + uGain * pulse);
+    if(uGain > 0.0) col += uGain * pulse * (1.0 - col) * 0.85;
+    col = max(col, vec3(0.0));
+  }
+  if(uAStrobe > 0.001){
+    float fl = smoothstep(0.15, 0.75, uAttack) * uAStrobe;
+    vec3 fc = (uHitSeed > 0.35) ? vec3(1.0) : (vec3(1.0) - col);
+    col = mix(col, fc, clamp(fl, 0.0, 1.0));
+  }
+  frag = vec4(max(col, 0.0), 1.0);
+}`;
+  },
+  _applyAudioPatternPost(p, safe){
+    const V = this._apVals;
+    if(!this.compositeProg) return;
+    // 合成のプログラムが上がったら裏でコンパイルを始めておく (スライダーを上げた瞬間に待たせない)
+    if(!this._audioPatQueued){ this._audioPatQueued = true; this._linkDeferred('audioPatProg', this._audioPatFS()); }
+    if(safe || !V || !this._finalFBO) return;
+    let on = false;
+    for(const k in V){ if(Math.abs(V[k]) > 0.001){ on = true; break; } }
+    if(!on) return;
+    const P = this.audioPatProg, C = this.compositeProg;
+    if(!P) return;   // 非同期コンパイル待ち
+    const gl = this.gl;
+    // 合成のプログラムから同じ名前の uniform を写す (時間・拍・音・線の色・Voxel の設定など)
+    if(!this._audioPatCopy){
+      const list = [], n = gl.getProgramParameter(P, gl.ACTIVE_UNIFORMS);
+      for(let i = 0; i < n; i++){
+        const u = gl.getActiveUniform(P, i);
+        if(!u || /^(uPost3D|uCandyTex|uRes|uCandyMode)$/.test(u.name)) continue;
+        if(V[u.name.replace(/\[0\]$/, '')] != null) continue;
+        const base = u.name.replace(/\[0\]$/, '');
+        for(let j = 0; j < u.size; j++){
+          const nm = u.size > 1 ? base + '[' + j + ']' : u.name;
+          const lc = gl.getUniformLocation(C, nm), lp = gl.getUniformLocation(P, nm);
+          if(lc && lp) list.push({ type: u.type, lc, lp });
+        }
+      }
+      this._audioPatCopy = list;
+    }
+    const w = this._finalFBO.w, h = this._finalFBO.h;
+    let tmp = this._audioPatTmp;
+    if(!tmp || tmp.w !== w || tmp.h !== h){
+      if(tmp){ gl.deleteTexture(tmp.tex); gl.deleteFramebuffer(tmp.fbo); }
+      tmp = this._audioPatTmp = this._mkRGBA8FBO(w, h);
+    }
+    gl.useProgram(P);
+    for(const c of this._audioPatCopy){
+      const v = gl.getUniform(C, c.lc);
+      switch(c.type){
+        case gl.FLOAT: gl.uniform1f(c.lp, v); break;
+        case gl.FLOAT_VEC2: gl.uniform2fv(c.lp, v); break;
+        case gl.FLOAT_VEC3: gl.uniform3fv(c.lp, v); break;
+        case gl.FLOAT_VEC4: gl.uniform4fv(c.lp, v); break;
+        case gl.INT: case gl.BOOL: case gl.SAMPLER_2D: gl.uniform1i(c.lp, +v); break;
+        case gl.INT_VEC2: gl.uniform2iv(c.lp, v); break;
+        case gl.FLOAT_MAT4: gl.uniformMatrix4fv(c.lp, false, v); break;
+        case gl.FLOAT_MAT3: gl.uniformMatrix3fv(c.lp, false, v); break;
+      }
+    }
+    const U = (n)=>gl.getUniformLocation(P, n);
+    for(const k in V) gl.uniform1f(U(k), V[k]);
+    gl.bindVertexArray(this.quadVAO);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+    gl.activeTexture(gl.TEXTURE0 + 8);
+    gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
+    gl.uniform1i(U('uPost3D'), 8);
+    if(V.uCandy > 0.001){
+      const ca = V.uCandy;
+      const ct = ca < 0.18 ? this._candyFBOLow : (ca < 0.48 ? this._candyFBOMid : this._candyFBO);
+      if(ct){
+        gl.activeTexture(gl.TEXTURE0 + 7); gl.bindTexture(gl.TEXTURE_2D, null);   // 描画先を読まない (フィードバック防止)
+        gl.uniform1i(U('uCandyMode'), 1);
+        gl.uniform2f(U('uRes'), ct.w, ct.h);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, ct.fbo);
+        gl.viewport(0, 0, ct.w, ct.h);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        gl.activeTexture(gl.TEXTURE0 + 7); gl.bindTexture(gl.TEXTURE_2D, ct.tex);
+        gl.uniform1i(U('uCandyTex'), 7);
+        gl.uniform1i(U('uCandyMode'), 2);
+      } else gl.uniform1i(U('uCandyMode'), 0);
+    } else gl.uniform1i(U('uCandyMode'), 0);
+    gl.uniform2f(U('uRes'), w, h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, tmp.fbo);
+    gl.viewport(0, 0, w, h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.activeTexture(gl.TEXTURE0 + 7); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0 + 8); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindVertexArray(null);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, tmp.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._finalFBO.fbo);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  },
   _runFinalPost(P, tmpKey, setup){
     const gl = this.gl;
     if(!P || !this._finalFBO) return;
