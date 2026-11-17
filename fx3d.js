@@ -144,7 +144,12 @@ const Fx3d = {
     const sm = (x)=>{ x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
     return s.on ? sm((t - s.tOn) / L) : 1 - sm((t - s.tOff) / L);
   },
-  popEpoch(name){ this._ps(name).ep = this._now(); },
+  // 組み直しの間隔が弾みの長さ (+ 遅れ) の 2 倍より短いときは弾ませない (出きらないうちに次が来て、ずっと縮んで見えるため)
+  popEpoch(name){
+    const s = this._ps(name), t = this._now();
+    if(t - (s.epLast != null ? s.epLast : -1e9) >= 2 * (this.popDur() + this.POP_STAG)) s.ep = t;
+    s.epLast = t;
+  },
   // 枚数: req = 求める枚数、stable = 枚数を変えても既存の要素の番号と形が変わらないか。
   //   stable: 増えた分が弾んで出る / 減った分は縮み終わるまで描く (戻り値 = 描く枚数)。
   //   そうでない (区切りが全部変わる): 古い枚数のまま全部が縮み、縮み終わったら新しい枚数で全部が弾んで出る

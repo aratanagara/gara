@@ -163,9 +163,9 @@ Fx3d.EXTRA.cubes = {
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;
     if(nvp){
-      // Needle: 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。側面は短辺方向 10 (単体 Needle と同じ間隔)、端面は 10 × 10
+      // Needle: 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。側面は短辺方向 14 (重ねたときの紙と同じ間隔)、端面は 14 × 14
       const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
-      const gy = 10, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy))), sub = Fx3d.foldFrame ? 3 : 2;
+      const gy = 14, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy))), sub = Fx3d.foldFrame ? 3 : 2;
       setU(nvp);
       gl.uniform1f(uloc(gl, nvp, 'uShade'), 1);
       gl.uniform1f(uloc(gl, nvp, 'uNvSub'), sub);
