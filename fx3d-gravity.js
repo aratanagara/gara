@@ -57,6 +57,7 @@ void main(){
       P = vec3(uFD * (uFS + x) + nv * v, zz);
     }
   }
+  P *= fx3dPop(0.0);   // ポップ: 布ごと中心から
   vUv = uv; vW = P; vDeep = deep;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
@@ -149,6 +150,7 @@ Fx3d.EXTRA.gravity = {
     gl.uniform1f(uloc(gl, pr, 'uFT'), ft);
     gl.uniform1f(uloc(gl, pr, 'uFR'), 0.18);   // 小さい巻き = 裏返った布は元の布のすぐ上に重なる (カメラの前を塞がない)
     gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
+    Fx3d.popUniforms(gl, pr, 'gravity');
     Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     gl.drawArrays(gl.TRIANGLES, 0, COLS * ROWS * 6);
     gl.bindVertexArray(null);

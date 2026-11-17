@@ -43,6 +43,8 @@ void main(){
   vec2 sc = vec2(uAsp, 1.0);
   if(uVert > 0.5){ P = vec3(P.y * sc.x, P.x * sc.y, P.z); Nn = vec3(Nn.y, Nn.x, Nn.z); vUv = vec2(vy, u); }
   else { P = vec3(P.x * sc.x, P.y * sc.y, P.z); vUv = vec2(u, vy); }
+  vec3 Cs = uVert > 0.5 ? vec3(yc * sc.x, 0.0, 0.0) : vec3(0.0, yc * sc.y, 0.0);   // 帯の中心
+  P = Cs + (P - Cs) * fx3dPop(i);   // ポップ: 帯ごとに中心から
   vVc = yc * 0.5 + 0.5;
   vW = P;
   vN = Nn;
@@ -90,7 +92,7 @@ Fx3d.EXTRA.blinds = {
     const pr = Fx3d.prog(gl, 'blinds', VS, FS);
     if(!pr) return false;
     const post = o.post || {};
-    const N = Math.max(2, Math.min(NMAX, Math.round(+post.fx3dBlindsCount || 14)));
+    const N = Fx3d.popCount('blinds', Math.max(2, Math.min(NMAX, Math.round(+post.fx3dBlindsCount || 14))), false);   // 本数を変えると区切りが全部変わる = 全部縮んでから出直す
     const twist = Math.max(0, Math.min(1, o.dz(+post.fx3dBlindsTwist)));
     const asp = o.asp, k = o.k, t = o.clock || 0;
     const b = o.beatMode ? (o.beat || 0) : t * 0.5;
@@ -98,7 +100,7 @@ Fx3d.EXTRA.blinds = {
     const vert = ep === 0 ? 0 : (h1(ep, 4.4) < 0.5 ? 1 : 0);
     const nUse = vert ? Math.max(2, Math.min(NMAX, Math.round(N * asp))) : N;   // 縦帯は本数を縦横比ぶん増やして帯の太さを揃える
     const key = ep + ':' + nUse;
-    if(this._key !== key){ this._key = key; this._E = partition(ep, nUse); }
+    if(this._key !== key){ if(this._key != null && ep !== this._ep) Fx3d.popEpoch('blinds'); this._key = key; this._ep = ep; this._E = partition(ep, nUse); }   // 4 拍ごとの組み直しで帯が弾んで出直す
     const pat = Math.floor(h1(bid, 7.7) * 4);
     const org = Math.floor(h1(bid, 1.9) * nUse);
     const sgn = h1(bid, 5.5) < 0.5 ? 1 : -1;
@@ -132,6 +134,7 @@ Fx3d.EXTRA.blinds = {
     gl.uniform1f(uloc(gl, pr, 'uSel'), Math.min(1, k / 0.6));   // 返る帯の割合 (量で増える)
     gl.uniform1fv(uloc(gl, pr, 'uEdge'), this._E);
     gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
+    Fx3d.popUniforms(gl, pr, 'blinds');
     Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     gl.drawArrays(gl.TRIANGLES, 0, nUse * SEG * 6);
     gl.bindVertexArray(null);

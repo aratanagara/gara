@@ -16,7 +16,7 @@ const SL_IMG_KEYS = ['pieces','seed','sides','maxSides','explode','bend','curl',
 
 /* Object.create(Slicer) で派生インスタンス (3D FX 等) を作るとき、own プロパティにしなければならないもの:
      P, PDefaults, cam   (in-place 更新される。deep copy を渡す)
-     posBuf, uvBuf, seedBuf, idxBuf, numIdx   (buildScene が delete→createBuffer で代入)
+     posBuf, uvBuf, seedBuf, ctrBuf, idxBuf, numIdx   (buildScene が delete→createBuffer で代入)
      sceneFbo, sceneColorTex, sceneDepthTex, postFbo, postColorTex, fboW, fboH   (_ensureSceneTargets が作り直す)
      imgTex, imgW, imgH, imgAsp, imageReady, bgFromImage   (loadFromUrl 系が delete→create。FX 側は imgTex=ソース, imgAsp=w/h, imageReady=true)
      _needsRebuild, _t, _autoBase, _autoEpoch, _imgEpoch, _imgLoading, curName, library, _skipImgParams
@@ -34,7 +34,7 @@ const Slicer = {
   initialized:false,
   prog:null,                 // メインシェーダ (断片描画)
   postProg:null,             // ポストエフェクト (overlap shadow / AO)
-  posBuf:null, uvBuf:null, seedBuf:null, idxBuf:null, numIdx:0,
+  posBuf:null, uvBuf:null, seedBuf:null, ctrBuf:null, idxBuf:null, numIdx:0,
   quadBuf:null,
   sceneFbo:null, sceneColorTex:null, sceneDepthTex:null,
   fboW:0, fboH:0,
@@ -127,13 +127,14 @@ vec3 slDisp(vec3 pos, float seed){
 in vec3 a_pos;
 in vec2 a_uv;
 in float a_seed;
+in vec3 a_ctr;              // 断片の中心 (3D FX のポップ = 断片の中心から拡大縮小)
 uniform mat4 u_proj;
 uniform mat4 u_view;
 ${this.DISP_GLSL}
 out vec2 v_uv;
 void main(){
   v_uv = a_uv;
-  vec3 pos = slDisp(a_pos, a_seed);
+  vec3 pos = slDisp(a_ctr + (a_pos - a_ctr) * fx3dPop(floor(a_seed / 7.3713 + 0.5)), a_seed);
   gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));   // 3D FX の Slicer に折りを掛けるフック (Code の Slicer では素通し)
 }`; },
   // 3D FX の Needle: 断片の代わりに描く針の面 (buildScene の spikesFor)。a_k = (w, 面の種, 格子 1 つぶんの長さ, 断片番号)。
@@ -143,13 +144,14 @@ layout(location = 0) in vec3 a_sp;
 layout(location = 1) in vec3 a_sn;
 layout(location = 2) in vec2 a_suv;
 layout(location = 3) in vec4 a_sk;
+layout(location = 4) in vec3 a_sc;   // 断片の中心 (ポップ)
 uniform mat4 u_proj;
 uniform mat4 u_view;
 ${this.DISP_GLSL}
 out vec2 v_uv; out vec3 v_w;
 void main(){
   float h = a_sk.x * fx3dNeedleH(vec2(a_sk.y, 3.7), a_suv * vec2(1.78, 1.0) * 3.2) * a_sk.z;
-  vec3 pos = slDisp(a_sp + a_sn * h, a_sk.w * 7.3713);
+  vec3 pos = slDisp(a_sc + (a_sp + a_sn * h - a_sc) * fx3dPop(a_sk.w), a_sk.w * 7.3713);
   v_uv = a_suv;
   v_w = pos;
   gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));
@@ -323,13 +325,15 @@ void main(){
     this.PDefaults = JSON.parse(JSON.stringify(this.P));
     // メインシェーダ
     // 折りの頂点フック (GL.fx3dHookGLSL) を #version の直後へ差し込む。uFx3dOn = 0 (既定) では gl_Position をそのまま返す
-    this.prog = this._compileProg(this.VS.replace('#version 300 es\n', '#version 300 es\nprecision highp float;\n' + GL.fx3dHookGLSL()), this.FS);
+    this.prog = this._compileProg(this.VS.replace('#version 300 es\n', '#version 300 es\nprecision highp float;\n' + GL.fx3dHookGLSL() + (typeof Fx3d !== 'undefined' ? Fx3d.POP_GLSL : 'float fx3dPop(float i){ return 1.0; }\n')), this.FS);
     this.postProg = this._compileProg(this.POST_VS, this.POST_FS);
     if(!this.prog || !this.postProg){ console.error('Slicer: shader compile failed'); return false; }
     this.locs = {
       a_pos:  gl.getAttribLocation(this.prog,'a_pos'),
       a_uv:   gl.getAttribLocation(this.prog,'a_uv'),
       a_seed: gl.getAttribLocation(this.prog,'a_seed'),
+      a_ctr:  gl.getAttribLocation(this.prog,'a_ctr'),
+      u_popM: gl.getUniformLocation(this.prog,'uPopM'),
       u_proj: gl.getUniformLocation(this.prog,'u_proj'),
       u_view: gl.getUniformLocation(this.prog,'u_view'),
       u_map:  gl.getUniformLocation(this.prog,'u_map'),
@@ -469,7 +473,7 @@ void main(){
     const tcs = Math.cos(TEXR), tsn = Math.sin(TEXR);
     const FLIPV = !!this.texFlipY;
 
-    const posArr=[], uvArr=[], seedArr=[], idxArr=[];
+    const posArr=[], uvArr=[], seedArr=[], idxArr=[], ctrArr=[];
     let vi = 0;
     const SEED = (this.P.seed || 0) * 0.137;
     const rnd  = (s)=> Math.abs(Math.sin((s+SEED)*127.1+1.3)*43758.5453%1);
@@ -523,6 +527,8 @@ void main(){
       const uv = uvOf(fx, fy);
       uvArr.push(uv[0], uv[1]);
       seedArr.push(fid*7.3713);
+      const c = p._ctr || (p._ctr = wpos(p.cx, p.cy, p));
+      ctrArr.push(c[0], c[1], c[2]);
       return vi++;
     }
     // 3D FX の Needle: 断片の平らな座標を揺らした格子で区切り、四角形のまま / 三角形 2 枚に割った面ごとに、重心の真上を頂点とする角錐にする
@@ -560,7 +566,8 @@ void main(){
         let n=[T[1]*B[2]-T[2]*B[1], T[2]*B[0]-T[0]*B[2], T[0]*B[1]-T[1]*B[0]]; const nl=Math.hypot(n[0],n[1],n[2])||1e-12; n=[n[0]/nl,n[1]/nl,n[2]/nl];
         const cw=SP*0.5*(Math.hypot(T[0],T[1],T[2])+Math.hypot(B[0],B[1],B[2]))/E;
         const uv=uvOf(x,y);
-        spk.push(b[0],b[1],b[2], n[0],n[1],n[2], uv[0],uv[1], w,key,cw,fid);
+        const pc = p._ctr || (p._ctr = wpos(p.cx, p.cy, p));
+        spk.push(b[0],b[1],b[2], n[0],n[1],n[2], uv[0],uv[1], w,key,cw,fid, pc[0],pc[1],pc[2]);
       };
       for(let cy=Math.floor(y0/SP)-1; cy<=Math.floor(y1/SP)+1; cy++) for(let cx=Math.floor(x0/SP)-1; cx<=Math.floor(x1/SP)+1; cx++){
         const LL=nvSeed(cx,cy), LR=nvSeed(cx+1,cy), UR=nvSeed(cx+1,cy+1), UL=nvSeed(cx,cy+1);
@@ -714,6 +721,7 @@ void main(){
     if(this.posBuf) gl.deleteBuffer(this.posBuf);
     if(this.uvBuf)  gl.deleteBuffer(this.uvBuf);
     if(this.seedBuf)gl.deleteBuffer(this.seedBuf);
+    if(this.ctrBuf) gl.deleteBuffer(this.ctrBuf);
     if(this.idxBuf) gl.deleteBuffer(this.idxBuf);
     this.posBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuf);
@@ -724,6 +732,9 @@ void main(){
     this.seedBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.seedBuf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(seedArr), gl.STATIC_DRAW);
+    this.ctrBuf = gl.createBuffer();
+    gl.bindBuffer(gl.ARRAY_BUFFER, this.ctrBuf);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ctrArr), gl.STATIC_DRAW);
     this.idxBuf = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxBuf);
     // 頂点数が多いので UNSIGNED_INT 推奨 (WebGL2 ネイティブ対応)
@@ -735,13 +746,13 @@ void main(){
         this.spkVAO = gl.createVertexArray();
         gl.bindVertexArray(this.spkVAO);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.spkBuf);
-        const st = 12 * 4, L = [[0,3,0],[1,3,3],[2,2,6],[3,4,8]];
+        const st = 15 * 4, L = [[0,3,0],[1,3,3],[2,2,6],[3,4,8],[4,3,12]];
         for(const [loc, n, off] of L){ gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, st, off * 4); }
         gl.bindVertexArray(null);
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, this.spkBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(spk), gl.DYNAMIC_DRAW);
-      this.spkN = spk.length / 12;
+      this.spkN = spk.length / 15;
     }
     this._needsRebuild = false;
   },
@@ -1098,6 +1109,13 @@ void main(){
       gl.bindBuffer(gl.ARRAY_BUFFER, this.seedBuf);
       gl.enableVertexAttribArray(this.locs.a_seed);
       gl.vertexAttribPointer(this.locs.a_seed, 1, gl.FLOAT, false, 0, 0);
+      if(this.locs.a_ctr >= 0){
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.ctrBuf);
+        gl.enableVertexAttribArray(this.locs.a_ctr);
+        gl.vertexAttribPointer(this.locs.a_ctr, 3, gl.FLOAT, false, 0, 0);
+      }
+      // ポップ (3D FX のときだけ。Code の Slicer はプログラムを共有するので明示的に切る)
+      if(this._fx && typeof Fx3d !== 'undefined') Fx3d.popUniforms(gl, this.prog, 'slicer'); else gl.uniform1f(this.locs.u_popM, 0);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxBuf);
       const nvOn = this._fx && this.spkN > 0 && typeof Fx3d !== 'undefined' && !!Fx3d.spikeFrame;   // Needle: 断片の代わりに針の面を描く
       if(!nvOn) gl.drawElements(gl.TRIANGLES, this.numIdx, gl.UNSIGNED_INT, 0);
@@ -1118,6 +1136,7 @@ void main(){
           gl.uniform1i(U('u_map'), 0);
           GL.fx3dUniforms(sp, proj, 1 / Math.tan(fovRad * 0.5), Fx3d.foldFrame);
           Fx3d.spikeUniforms(gl, sp);
+          Fx3d.popUniforms(gl, sp, 'slicer');
           gl.bindVertexArray(this.spkVAO);
           gl.drawArrays(gl.TRIANGLES, 0, this.spkN);
           gl.bindVertexArray(null);

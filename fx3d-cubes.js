@@ -69,6 +69,9 @@ void main(){
   int cy = cell / nx, cx = cell - cy * nx;
   ab = (vec2(float(cx), float(cy)) + ab) / float(nx);
   vec3 P = cubeSurf(seg, face, ab, vUv);
+  vec2 uvd;
+  vec3 ctr = 0.5 * (cubeSurf(seg, 0, vec2(0.5), uvd) + cubeSurf(seg, 2, vec2(0.5), uvd));   // 本の中心
+  P = ctr + (P - ctr) * fx3dPop(float(seg));   // ポップ: 本ごとに中心から
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
@@ -97,6 +100,7 @@ void main(){
   if(dot(N, P0 - ctr) < 0.0) N = -N;                                                      // 外向きに揃える
   float cell = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);                     // 格子 1 つぶんの長さ
   vec3 P = P0 + N * (w * fx3dNeedleH(key, uv0 * vec2(uAsp, 1.0) * 3.2) * cell);
+  P = ctr + (P - ctr) * fx3dPop(float(seg));   // ポップ: 本ごとに中心から
   vUv = uv0;
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
@@ -123,7 +127,7 @@ Fx3d.EXTRA.cubes = {
     const pr = Fx3d.prog(gl, 'cubes', VS, FS);
     if(!pr) return false;
     const post = o.post || {};
-    const N = Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 1)));
+    const N = Fx3d.popCount('cubes', Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 1))), false);   // 本数を変えると区切りが全部変わる = 全部縮んでから出直す
     const asp = o.asp, k = o.k, t = o.clock || 0;
     // カメラは軽く振るだけ (断面が短辺 = 画面を満たしたまま回るのを見せる)
     const cam = Fx3d.camera(asp, 0.16 * k * Math.sin(0.19 * t), 0.10 * k * Math.sin(0.13 * t + 1), 1.35 - 0.08 * k);
@@ -154,6 +158,7 @@ Fx3d.EXTRA.cubes = {
       gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
       gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.06 * ss(0.1, 0.6, k));   // 本と本の隙間 (端面がのぞく)
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
+      Fx3d.popUniforms(gl, pr, 'cubes');
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;

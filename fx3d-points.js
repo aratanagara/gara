@@ -30,7 +30,9 @@ void main(){
   vec4 vp = uView * vec4(P, 1.0);
   gl_Position = fx3dApply(uProj * vp);
   float viewZ = max(0.05, -vp.z);
-  gl_PointSize = min(uMaxPt, max(1.0, uCellPx * (1.15 - 0.45 * uK) * (uDist / viewZ)));
+  float pp = fx3dPop(float(gl_VertexID));   // ポップ: 点ごとに大きさが弾む (0 の点は描かない)
+  gl_PointSize = min(uMaxPt, max(1.0, uCellPx * (1.15 - 0.45 * uK) * (uDist / viewZ) * pp));
+  if(pp < 0.02) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   vCol = c;
 }`;
   const FS = `#version 300 es
@@ -97,6 +99,7 @@ void main(){
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
       gl.uniform1i(u('uTex'), 0);
+      Fx3d.popUniforms(gl, p, 'points');
       Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
       gl.drawArrays(gl.POINTS, 0, D * rows);
       return true;

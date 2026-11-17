@@ -458,6 +458,7 @@ void main(){
         const hs = Math.abs(pl.crop[3]-pl.crop[1])*fxH;
         px = hx+(px-hx)*fxw; py = hy+(py-hy)*fxw; pz *= fxw;
         plScale = hs+(plScale-hs)*fxw;
+        plScale *= Fx3d.popAt('photo', pi);   // ポップ: 現れる / 消えるときの弾み (板の中心から)
         const id = this.m4.id();
         for(let q=0;q<16;q++) rotM[q] = id[q]+(rotM[q]-id[q])*fxw;
       }
