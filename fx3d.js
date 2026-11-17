@@ -92,11 +92,11 @@ const Fx3d = {
   fold(gl, pr, proj, paperD){ GL.fx3dUniforms(pr, proj, paperD, this.foldFrame); },
 
   // ── 面を覆う針 (Needle を物体の面へ) ──
-  //   最後の段が対応エンジン (Slicer / spikes: true) で Needle が ON のとき、GL がその段を描く間だけ spikeFrame を立てる。
+  //   最後の段が対応エンジン (Slicer / Photos / Layers / spikes: true) で Needle が ON のとき、GL がその段を描く間だけ spikeFrame を立てる。
   //   エンジンは元の面の代わりに、面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐。突起と凹み) で覆って描く。
   //   VS で fx3dNeedleH (と fx3dNeedleVert) を呼ぶと prog() がその GLSL を差し込む。uniform は spikeUniforms(gl, pr [, frame])
   spikeFrame: null,
-  canSpike(name){ const x = this.EXTRA[name]; return name === 'slicer' || !!(x && x.spikes); },
+  canSpike(name){ const x = this.EXTRA[name]; return name === 'slicer' || name === 'photo' || name === 'layer' || !!(x && x.spikes); },
   spikeUniforms(gl, pr, frame){
     const s = frame || this.spikeFrame || { a: 0, beat: 0, bm: 0, hit: 0, t: 0, scat: 0 };
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpA'), s.a);
