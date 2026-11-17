@@ -5278,12 +5278,13 @@ vec3 f3Paper(vec2 q, float lift){
     const _fx3dDone = (!!this._fx3dFrame && !_blend) || !!this._fx3dPostFold;   // 3D FX の段で物体へ折りを掛け済みなら画面段の折りは飛ばす
     if(_fx3dDone){ this._foldStackActive = false; this._foldStackTookUzumaki = false; }
     this._foldPrebuilt = _blend ? this._fx3dFrame.F : null;
-    const _stacked = _fx3dDone || this._applyFoldStack(p, _safe);
+    const _pF = this._fx3dNeedleTaken ? Object.assign({}, p, { origami: 0 }) : p;   // Needle を 3D FX の面に生やした段は画面段の Needle を掛けない
+    const _stacked = _fx3dDone || this._applyFoldStack(_pF, _safe);
     this._foldPrebuilt = null;
     if(!_stacked){
-      this._applyOrigamiPost(p, _safe);      // 表示: Needle
-      this._applyKaiserPost(p, _safe);       // 表示: Origami
-      this._applyKaiserOldPost(p, _safe);    // 表示: Kaiser
+      this._applyOrigamiPost(_pF, _safe);    // 表示: Needle
+      this._applyKaiserPost(_pF, _safe);     // 表示: Origami
+      this._applyKaiserOldPost(_pF, _safe);  // 表示: Kaiser
     }
     if(_blend) this._fx3dBlendOver(this._fx3dFrame.a);
     this._applyFlamesPost(p, _safe);
@@ -6579,6 +6580,7 @@ vec3 f3Paper(vec2 q, float lift){
   //   エンジンは透明背景で描き、元の画面を e に応じて暗くした上に重ねる (暗くするのは最初の 1 段だけ。量 0 → 元の画面と一致、k のクロスフェードは無い)。
   _apply3dFx(p, safe){
     this._fx3dPostFold = null;
+    this._fx3dNeedleTaken = false;
     if(safe || typeof Fx3d === 'undefined' || !this._finalFBO) return;
     const gl = this.gl;
     const fw = this._finalFBO.w, fh = this._finalFBO.h;
@@ -6594,9 +6596,18 @@ vec3 f3Paper(vec2 q, float lift){
     const aN = av('origami'), aO = av('kaiser'), aK = av('kaiserOld'), aR = av('fx3dRoll');
     let lastName = null;
     for(const name of Fx3d.ORDER){ if(av(Fx3d.KEY[name]) > 0.001 && Fx3d.has(name)) lastName = name; }
-    if(lastName && Fx3d.canFold(lastName) && (aN > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001) && !this._fx3dFrame && this.foldStackProg){
-      this._fx3dPostFold = { g: 1, zs: 0.3, F: this._foldBuild(p, aN, aO, aK, aR, false, fw, fh) };
+    // Needle は、最後の段が面ごとの針に対応したエンジン (Slicer / Cubes) なら、物体の面の上に角錐として生やす
+    //   (画面段の Needle と頂点フックの Needle は止める。ほかの折りはそのまま物体へ掛かる)
+    const spike = !!lastName && Fx3d.canSpike(lastName) && aN > 0.001 && !this._fx3dFrame;
+    this._fx3dNeedleTaken = spike;
+    const aNf = spike ? 0 : aN;
+    if(lastName && Fx3d.canFold(lastName) && (aNf > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001) && !this._fx3dFrame && this.foldStackProg){
+      this._fx3dPostFold = { g: 1, zs: 0.3, F: this._foldBuild(p, aNf, aO, aK, aR, false, fw, fh) };
     }
+    const onN = (x=>x * x * (3 - 2 * x))(Math.min(1, aN / 0.16));   // デッドゾーンを抜けた所から 0 で立ち上げる
+    const spikeF = spike ? { a: aN * onN, beat: App.visualBeat ? App.visualBeat() : BPM.beatCount(), bm: App.beatMode === 'beat' ? 1 : 0,
+      hit: (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0,
+      t: (this.postClock != null ? this.postClock : this.clock) * 0.5 } : null;
     for(const name of Fx3d.ORDER){
       const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
       if(e <= 0.001 || !Fx3d.has(name)) continue;
@@ -6624,8 +6635,9 @@ vec3 f3Paper(vec2 q, float lift){
       gl.bindVertexArray(null);   // Layer / Slicer は「いま bound の VAO」へ属性を張るので、必ず既定 VAO にしてから描かせる
       const folded = !!this._fx3dPostFold && name === lastName;
       Fx3d.foldFrame = folded ? this._fx3dPostFold : null;
+      Fx3d.spikeFrame = name === lastName ? spikeF : null;
       const ok = Fx3d.render(name, { srcTex:this._finalFBO.tex, fbo:T.fbo, w:tw, h:th, e, clock:this.postClock != null ? this.postClock : this.clock, beat });
-      Fx3d.foldFrame = null;
+      Fx3d.foldFrame = null; Fx3d.spikeFrame = null;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
       gl.bindVertexArray(null);
