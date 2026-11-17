@@ -23,7 +23,7 @@ void main(){
   float sc = (uDist - z) / 1.35 * uMargin;                    // 層ごとに画面を満たす大きさへ (正面から見たら全層が同じ大きさ)
   vUv = 0.5 + (u - 0.5) * uMargin;                            // 余白ぶんは uv が 0..1 の外へ出る (FS でミラー)
   vLayer = layer;
-  gl_Position = fx3dApply(uProj * uView * vec4(q * sc, z, 1.0));
+  gl_Position = fx3dApply(uProj * uView * vec4(q * sc * fx3dPop(float(layer)), z, 1.0));   // ポップ: 層ごとに中心から
 }`;
   const FS = `#version 300 es
 precision highp float;
@@ -62,7 +62,7 @@ void main(){
     render(gl, o){
       const p = Fx3d.prog(gl, 'diorama', VS, FS);
       if(!p) return false;
-      const N = Math.max(2, Math.min(24, Math.round(+(o.post && o.post.fx3dDioramaLayers) || 8)));
+      const N = Fx3d.popCount('diorama', Math.max(2, Math.min(24, Math.round(+(o.post && o.post.fx3dDioramaLayers) || 8))), false);   // 層数を変えると区切りが全部変わる = 全層が縮んでから出直す
       const k = o.k, t = o.clock;
       // カメラの振り: drone = ゆっくり連続、beat = 拍ごとの乱数の向きへ Ease Out (Needle と同じ bid / ease)
       let az = 0.35 * Math.sin(0.3 * t), el = 0.22 * Math.sin(0.23 * t);
@@ -103,6 +103,7 @@ void main(){
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
       gl.uniform1i(u('uTex'), 0);
+      Fx3d.popUniforms(gl, p, 'diorama');
       Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
       gl.drawArrays(gl.TRIANGLES, 0, N * 12 * 12 * 6);
       gl.disable(gl.BLEND);

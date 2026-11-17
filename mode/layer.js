@@ -771,6 +771,7 @@ void main(){
         // 画面にぴったり重なる大きさ (z=0 平面で画面の半高)。回転は行列で補間 (角度は時刻で無限に増えるので角度補間はしない)
         const hs=Pp.dist*Math.tan(Pp.fov*Math.PI/360);
         sc=hs+(sc-hs)*fxw; px*=fxw; py*=fxw; pz*=fxw;
+        sc*=Fx3d.popAt('layer', i);   // ポップ: 現れる / 消えるときの弾み (板の中心から)
         const id=this.m4.id();
         for(let q=0;q<16;q++) rot[q]=id[q]+(rot[q]-id[q])*fxw;
       }

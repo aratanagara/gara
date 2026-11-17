@@ -61,7 +61,7 @@ const Fx3d = {
       o.PDefaults = JSON.parse(JSON.stringify(this.FACTORY[name]));
       o.cam = { az:0, el:0.3, dist:2.5 };
       // buildScene / _ensureSceneTargets は「いまの値を削除してから作り直す」ので、元エンジン (スロット) の資源を指さないよう空にしておく
-      o.posBuf = o.uvBuf = o.seedBuf = o.idxBuf = null; o.numIdx = 0;
+      o.posBuf = o.uvBuf = o.seedBuf = o.idxBuf = o.ctrBuf = null; o.numIdx = 0;
       o.spkBuf = o.spkVAO = null; o.spkN = 0;
       o.sceneFbo = o.sceneColorTex = o.sceneDepthTex = o.postFbo = o.postColorTex = null; o.fboW = o.fboH = 0;
       o.imgTex = null; o.imgW = 1; o.imgH = 1; o.imgAsp = 1; o.imageReady = true; o.bgFromImage = null;
@@ -113,12 +113,125 @@ const Fx3d = {
     return src.slice(0, i + 1) + glsl + src.slice(i + 1);
   },
 
+  // ── ポップ (要素が現れる / 消えるときの弾み) ──
+  //   3D FX の段ごとに状態を持つ: ON (量が 0 から上がった) / OFF (0 へ戻った。戻ったあとも縮み終わるまで直前の量で描き続ける) /
+  //   組み直し (Slicer の配置替え・Blinds の区画替え = popEpoch) / 枚数の変化 (popCount)。要素ごとに少しずつ遅れて (stagger) 弾む。
+  //   動きの型は App.post.fx3dPop (Back / Elastic / Bounce / Ease Out / Off)。
+  //   JS 側は popAt(name, i) = 要素 i の拡大率 (0 = 消えている, 1 = 通常, >1 = 弾みの行き過ぎ)。
+  //   GLSL 側は VS で fx3dPop(要素番号) を呼ぶ (prog() が POP_GLSL を差し込む)。uniform は popUniforms(gl, pr, name)
+  POP_DUR: { back: 0.45, elastic: 0.8, bounce: 0.6, out: 0.35 },
+  POP_MODE: { off: 0, back: 1, elastic: 2, bounce: 3, out: 4 },
+  POP_STAG: 0.3,
+  effE: {},       // このフレームの段ごとの量 (OFF の縮み中は直前の量)。GL._fx3dBgPrep が popFrame で毎フレーム作る
+  _pop: {},
+  popMode(){ const m = App.post && App.post.fx3dPop; return this.POP_MODE[m] != null ? m : 'back'; },
+  popDur(){ return this.POP_DUR[this.popMode()] || 0; },
+  _ps(name){ return this._pop[name] || (this._pop[name] = { on: false, tOn: -1e9, tOff: -1e9, held: 0, ep: -1e9, cnt: null }); },
+  _now(){ return performance.now() / 1000; },
+  popFrame(p, safe){
+    const t = this._now(), live = this.popMode() !== 'off' ? this.popDur() + this.POP_STAG : 0;
+    for(const name of this.ORDER){
+      const e = safe ? 0 : Math.max(0, Math.min(1, +(p && p[this.KEY[name]]) || 0)), s = this._ps(name);
+      if(e > 0.001){ if(!s.on){ s.on = true; s.tOn = t; } s.held = e; this.effE[name] = e; continue; }
+      if(s.on){ s.on = false; s.tOff = t; }
+      this.effE[name] = (!safe && t - s.tOff < live) ? s.held : 0;
+    }
+  },
+  // 背景を暗くする量に掛ける係数 (ON で 0 → 1、OFF で 1 → 0。要素の遅れも含めた長さでなめらかに)
+  popEnv(name){
+    if(this.popMode() === 'off') return 1;
+    const s = this._ps(name), t = this._now(), L = this.popDur() + this.POP_STAG;
+    const sm = (x)=>{ x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+    return s.on ? sm((t - s.tOn) / L) : 1 - sm((t - s.tOff) / L);
+  },
+  popEpoch(name){ this._ps(name).ep = this._now(); },
+  // 枚数: req = 求める枚数、stable = 枚数を変えても既存の要素の番号と形が変わらないか。
+  //   stable: 増えた分が弾んで出る / 減った分は縮み終わるまで描く (戻り値 = 描く枚数)。
+  //   そうでない (区切りが全部変わる): 古い枚数のまま全部が縮み、縮み終わったら新しい枚数で全部が弾んで出る
+  popCount(name, req, stable){
+    const s = this._ps(name), t = this._now();
+    if(!s.cnt){ s.cnt = { from: req, to: req, t: -1e9, stable }; return req; }
+    const c = s.cnt;
+    if(req !== c.to){ c.from = c.to; c.to = req; c.t = t; c.stable = stable; }
+    if(this.popMode() === 'off') return c.to;
+    const age = t - c.t, L = this.popDur() + this.POP_STAG;
+    if(c.stable) return age < L ? Math.max(c.from, c.to) : c.to;
+    return age < L ? c.from : c.to;
+  },
+  _popEase(m, x){
+    if(m === 1){ const c1 = 1.70158, c3 = c1 + 1, y = x - 1; return 1 + c3 * y * y * y + c1 * y * y; }
+    if(m === 2){ if(x <= 0) return 0; if(x >= 1) return 1; return Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * 2.0943951) + 1; }
+    if(m === 3){ const n1 = 7.5625, d1 = 2.75;
+      if(x < 1 / d1) return n1 * x * x;
+      if(x < 2 / d1){ x -= 1.5 / d1; return n1 * x * x + 0.75; }
+      if(x < 2.5 / d1){ x -= 2.25 / d1; return n1 * x * x + 0.9375; }
+      x -= 2.625 / d1; return n1 * x * x + 0.984375; }
+    const y = 1 - x; return 1 - y * y * y;
+  },
+  popAt(name, i){
+    const m = this.POP_MODE[this.popMode()];
+    if(!m) return 1;
+    const s = this._ps(name), t = this._now(), D = this.popDur(), S = this.POP_STAG;
+    const st = (x=>x - Math.floor(x))(Math.sin(i * 91.3458 + 17.17) * 47453.5453) * S;
+    const pin = (a)=>a <= 0 ? 0 : a >= D ? 1 : this._popEase(m, a / D);
+    const pout = (a)=>a <= 0 ? 1 : a >= D ? 0 : this._popEase(m, 1 - a / D);
+    let v = pin(t - s.tOn - st) * (s.on ? 1 : pout(t - s.tOff - st)) * pin(t - s.ep - st);
+    const c = s.cnt;
+    if(c && t - c.t < 2 * (D + S)){
+      const a = t - c.t;
+      if(c.stable){ if(i >= c.from && i < c.to) v *= pin(a - st); else if(i >= c.to && i < c.from) v *= pout(a - st); }
+      else v *= a < D + S ? pout(a - st) : pin(a - D - S - st);
+    }
+    return Math.max(0, v);
+  },
+  POP_GLSL: `uniform float uPopOn, uPopOff, uPopEp, uPopCa, uPopC0, uPopC1, uPopCK, uPopM, uPopD, uPopS;
+float popE(float x){
+  if(uPopM < 1.5){ float y = x - 1.0; return 1.0 + 2.70158 * y * y * y + 1.70158 * y * y; }
+  if(uPopM < 2.5){ if(x <= 0.0) return 0.0; if(x >= 1.0) return 1.0; return pow(2.0, -10.0 * x) * sin((x * 10.0 - 0.75) * 2.0943951) + 1.0; }
+  if(uPopM < 3.5){
+    if(x < 1.0 / 2.75) return 7.5625 * x * x;
+    if(x < 2.0 / 2.75){ x -= 1.5 / 2.75; return 7.5625 * x * x + 0.75; }
+    if(x < 2.5 / 2.75){ x -= 2.25 / 2.75; return 7.5625 * x * x + 0.9375; }
+    x -= 2.625 / 2.75; return 7.5625 * x * x + 0.984375;
+  }
+  float y = 1.0 - x; return 1.0 - y * y * y;
+}
+float popIn(float a){ return a <= 0.0 ? 0.0 : a >= uPopD ? 1.0 : popE(a / uPopD); }
+float popOut(float a){ return a <= 0.0 ? 1.0 : a >= uPopD ? 0.0 : popE(1.0 - a / uPopD); }
+// 要素 idx の拡大率 (uPopM = 0 なら常に 1)。要素の中心から拡大縮小して使う
+float fx3dPop(float idx){
+  if(uPopM < 0.5) return 1.0;
+  float st = fract(sin(idx * 91.3458 + 17.17) * 47453.5453) * uPopS;
+  float v = popIn(uPopOn - st) * popOut(uPopOff - st) * popIn(uPopEp - st);
+  if(uPopCK > 1.5) v *= uPopCa < uPopD + uPopS ? popOut(uPopCa - st) : popIn(uPopCa - uPopD - uPopS - st);
+  else if(uPopCK > 0.5){ if(idx >= uPopC0 && idx < uPopC1) v *= popIn(uPopCa - st); else if(idx >= uPopC1 && idx < uPopC0) v *= popOut(uPopCa - st); }
+  return max(v, 0.0);
+}
+`,
+  popUniforms(gl, pr, name){
+    const U = (n)=>gl.getUniformLocation(pr, n), m = this.POP_MODE[this.popMode()];
+    gl.uniform1f(U('uPopM'), m);
+    if(!m) return;
+    const s = this._ps(name), t = this._now(), D = this.popDur(), S = this.POP_STAG, c = s.cnt;
+    gl.uniform1f(U('uPopD'), D);
+    gl.uniform1f(U('uPopS'), S);
+    gl.uniform1f(U('uPopOn'), Math.min(1e4, t - s.tOn));
+    gl.uniform1f(U('uPopOff'), s.on ? -1e4 : Math.min(1e4, t - s.tOff));
+    gl.uniform1f(U('uPopEp'), Math.min(1e4, t - s.ep));
+    const live = c && t - c.t < 2 * (D + S);
+    gl.uniform1f(U('uPopCK'), live ? (c.stable ? 1 : 2) : 0);
+    gl.uniform1f(U('uPopCa'), live ? t - c.t : 1e4);
+    gl.uniform1f(U('uPopC0'), c ? c.from : 0);
+    gl.uniform1f(U('uPopC1'), c ? c.to : 0);
+  },
+
   // ── 自前レンダラ共有ヘルパ ──
   // プログラムをリンクしてキャッシュ。失敗時は null (失敗も覚えて再試行しない)
   prog(gl, id, vs, fs){
     const c = this._progs || (this._progs = {});
     if(id in c) return c[id];
     vs = this._withHooks(vs, 'fx3dNeedleH(', GL.needleCellGLSL());
+    vs = this._withHooks(vs, 'fx3dPop(', this.POP_GLSL);
     vs = this._withHooks(vs, 'fx3dApply(', GL.fx3dHookGLSL());
     fs = this._withHooks(fs, 'fx3dFoldShade(', GL.fx3dShadeGLSL());
     const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);
@@ -208,7 +321,7 @@ const Fx3d = {
     if(name === 'photo'){
       const cropMax = Math.max(0.3, Math.min(1, (+post.fx3dPhotoCrop || 70) / 100));
       P.bg = [0, 0, 0]; P.softFocus = 0;
-      P.count = Math.max(4, Math.min(80, Math.round(+(post.fx3dPhotoCount) || 24)));
+      P.count = this.popCount('photo', Math.max(4, Math.min(80, Math.round(+(post.fx3dPhotoCount) || 24))), true);   // 枚数を変えても既存の板は同じ (増減した分だけ弾む)
       P.cropMax = cropMax; P.cropMin = cropMax * 0.36;
       P.spread = 2 + 7 * e;
       P.bend = F.bend * k;
@@ -221,7 +334,7 @@ const Fx3d = {
       return true;
     }
     if(name === 'slicer'){
-      const pieces = Math.max(20, Math.min(400, Math.round(+(post.fx3dSlicerPieces) || F.pieces)));
+      const pieces = this.popCount('slicer', Math.max(20, Math.min(400, Math.round(+(post.fx3dSlicerPieces) || F.pieces))), true);   // 断片は番号ごとに形が決まる (増減した分だけ弾む)
       o.imgTex = srcTex; o.imageReady = true;
       P.pieces = pieces;
       P.postScale = 1;
@@ -240,12 +353,14 @@ const Fx3d = {
         o._autoBase = { explode: F.explode * q, bend: F.bend * q, curl: F.curl * q };
         o._autoEpoch = -1;   // 次の update で中心を反映して組み直す (同じ拍ならシードも同じ)
       }
+      const seed0 = P.seed;
       o.update(beat, 1 / 60, clock);
+      if(P.seed !== seed0) this.popEpoch('slicer');   // 拍の組み直し (配置替え) で断片が弾んで出直す
       o.render({ fbo, w, h, slot:'B' });
       return true;
     }
     if(name === 'layer'){
-      const count = Math.max(1, Math.min(40, Math.round(+(post.fx3dLayerCount) || 12)));
+      const count = this.popCount('layer', Math.max(1, Math.min(40, Math.round(+(post.fx3dLayerCount) || 12))), true);
       const pct = Math.max(20, Math.min(300, +(post.fx3dLayerSize) || 100)) / 100;
       P.bgColor = [0, 0, 0]; P.bg = 1;
       P.pngAlpha = false; P.showGround = false; P.shadowOn = false; P.gloss = 0;
