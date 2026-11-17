@@ -282,6 +282,46 @@ void main(){
   gl_FragColor=vec4(mix(u_fogColor, col, fogF), alpha);
 }`,
 
+  // 3D FX の Needle (最後に掛かる): 板を GL.needleCellGLSL の針の面で覆い、板の法線方向へ突起 / 凹み。元の板の代わりに描く
+  //   (VS_PL は GLSL ES 1.00 で gl_VertexID が使えないので、針の面だけ 3.00 の別プログラム。Fx3d.prog が針の GLSL を差し込む)
+  NV_VS:`#version 300 es
+precision highp float;
+uniform mat4 u_vp, u_model; uniform vec3 u_planeBend; uniform vec2 uNvGrid, uNvSalt; uniform float uNvSub, u_ar, u_cell;
+out vec2 v_uv; out vec3 v_wpos;
+vec3 deformPlanePos(vec3 p){
+  float axis=u_planeBend.z;
+  float coord=mix(p.x, p.y, axis);
+  float disp=u_planeBend.x*sin(coord*1.5707963)+u_planeBend.y*sin(coord*3.1415926);
+  vec3 lp=p; lp.z+=disp; return lp;
+}
+void main(){
+  vec2 ab; float w; vec2 key;
+  fx3dNeedleVert(gl_VertexID, uNvGrid, uNvSub, uNvSalt, ab, w, key);
+  vec3 p=vec3(ab*2.0-1.0, 0.0);
+  const float E=1e-3;
+  vec3 P0=deformPlanePos(p);
+  vec3 W0=(u_model*vec4(P0,1.0)).xyz;
+  vec3 WT=mat3(u_model)*((deformPlanePos(p+vec3(E,0.0,0.0))-P0)/E), WB=mat3(u_model)*((deformPlanePos(p+vec3(0.0,E,0.0))-P0)/E);
+  vec3 N=normalize(cross(WT, WB));
+  float cell=min(0.5*(length(WT)*2.0/uNvGrid.x+length(WB)*2.0/uNvGrid.y), u_cell);   // 小さな板でも針の大きさを画面基準で揃える
+  vec3 Wp=W0+N*(w*fx3dNeedleH(key, ab*vec2(u_ar,1.0)*3.2)*cell);
+  v_uv=ab; v_wpos=Wp;
+  gl_Position=u_vp*vec4(Wp,1.0);
+}`,
+  NV_FS:`#version 300 es
+precision highp float;
+uniform sampler2D u_tex; uniform vec3 u_camPos, u_lightDir, u_tint; uniform float u_ambient;
+in vec2 v_uv; in vec3 v_wpos; out vec4 frag;
+void main(){
+  vec4 t=texture(u_tex, v_uv);
+  if(t.a<0.5) discard;
+  vec3 n=normalize(cross(dFdx(v_wpos), dFdy(v_wpos)));
+  vec3 v=normalize(u_camPos-v_wpos);
+  if(dot(n,v)<0.0) n=-n;
+  float diff=max(dot(n, normalize(u_lightDir)), 0.0);
+  frag=vec4(t.rgb*u_tint*(u_ambient+(1.0-u_ambient)*diff), 1.0);
+}`,
+
   _compile(src, type){
     const gl=this.gl;
     const s=gl.createShader(type);
@@ -896,7 +936,42 @@ void main(){
     gl.enableVertexAttribArray(L.uv);  gl.vertexAttribPointer(L.uv,  2, gl.FLOAT, false, 0, 0);
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, geo.idxB);
 
-    for(let i=0;i<this.planes.length;i++){
+    const nvp=(this._fx && typeof Fx3d!=='undefined' && Fx3d.spikeFrame) ? Fx3d.prog(gl, 'layerNeedle', this.NV_VS, this.NV_FS) : null;
+    if(nvp){
+      // Needle: 板ごとに針の面で覆う (格子 = 板の大きさを画面の高さの 1/14 で割った数)
+      gl.disable(gl.BLEND);
+      gl.useProgram(nvp);
+      if(!GL._emptyVAO) GL._emptyVAO=gl.createVertexArray();
+      gl.bindVertexArray(GL._emptyVAO);
+      const U=(n)=>gl.getUniformLocation(nvp, n);
+      gl.uniformMatrix4fv(U('u_vp'), false, vp);
+      gl.uniform3fv(U('u_camPos'), eye);
+      gl.uniform3fv(U('u_lightDir'), lightDir);
+      gl.uniform1f(U('u_ambient'), this.P.ambient);
+      gl.uniform1f(U('uNvSub'), 1);
+      gl.uniform1i(U('u_tex'), 0);
+      Fx3d.spikeUniforms(gl, nvp);
+      const cellW=Pp.dist*Math.tan(Pp.fov*Math.PI/360)*2/14;
+      gl.uniform1f(U('u_cell'), cellW);
+      for(let i=0;i<this.planes.length;i++){
+        const sp=this.planes[i], m=models[i];
+        const hw=Math.hypot(m[0],m[1],m[2]), hh=Math.hypot(m[4],m[5],m[6]);   // 板の半幅・半高 (世界)
+        const cpl=Math.min(cellW, 2*Math.min(hw, hh)/6);   // 短辺方向は最低 6 (小さな板でも針が板に見合った大きさ)
+        const gx=Math.max(1, Math.min(64, Math.round(2*hw/cpl))), gy=Math.max(1, Math.min(64, Math.round(2*hh/cpl)));
+        if(hw<1e-6 || hh<1e-6) continue;
+        gl.uniformMatrix4fv(U('u_model'), false, m);
+        gl.uniform1f(U('u_ar'), this._ar[i]);
+        gl.uniform3fv(U('u_tint'), this._tintPl[i]);
+        gl.uniform3fv(U('u_planeBend'), this._planeBendUniform(sp));
+        gl.uniform2f(U('uNvGrid'), gx, gy);
+        gl.uniform2f(U('uNvSalt'), i*3.7+0.3, 6.1);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.bindTexture(gl.TEXTURE_2D, (this.textures.length>0 && sp.texIdx>=0) ? this.textures[sp.texIdx] : this.defaultTex);
+        gl.drawArrays(gl.TRIANGLES, 0, GL.needleCellVerts(gx, gy, 1));
+      }
+      gl.bindVertexArray(null);
+    }
+    for(let i=0;i<(nvp ? 0 : this.planes.length);i++){
       const sp=this.planes[i];
       gl.uniformMatrix4fv(L.mvp, false, this.m4.mul(vp, models[i]));
       gl.uniformMatrix4fv(L.model, false, models[i]);

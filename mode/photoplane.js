@@ -133,6 +133,9 @@ uniform mat4 uMVP, uModel;
 uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq, uWarpYR, uFold, uTwist, uPaper;
 uniform vec2 uBend;      // 端の反り x,y
 uniform vec4 uCrop;      // u0,v0,u1,v1
+uniform float uNvOn, uNvSub;   // 3D FX の Needle: 板を GL.needleCellGLSL の針の面で覆う (aPos / aUV の代わりに gl_VertexID から作る)
+uniform vec2 uNvGrid, uNvSalt;
+uniform float uNvCell;          // 画面基準の針の間隔 (板の座標。小さな板でも針の大きさを揃える)
 out vec2 vUv; out vec3 vN; out vec3 vWorld; out vec2 vL; out vec2 vQ;
 vec3 displace(vec2 q){
   vec2 p = q; p.x *= uAspect;
@@ -158,14 +161,18 @@ vec3 displace(vec2 q){
   return vec3(p, z);
 }
 void main(){
-  vec3 pc = displace(aPos);
+  vec2 qp = aPos, uvp = aUV;
+  float nw = 0.0; vec2 nkey = vec2(0.0);
+  if(uNvOn > 0.5){ vec2 ab; fx3dNeedleVert(gl_VertexID, uNvGrid, uNvSub, uNvSalt, ab, nw, nkey); qp = ab - 0.5; uvp = vec2(ab.x, 1.0 - ab.y); }
+  vec3 pc = displace(qp);
   float e = 0.02;
-  vec3 n = normalize(cross(displace(aPos+vec2(e,0.0))-pc, displace(aPos+vec2(0.0,e))-pc));
+  vec3 n = normalize(cross(displace(qp+vec2(e,0.0))-pc, displace(qp+vec2(0.0,e))-pc));
+  if(uNvOn > 0.5) pc += n * (nw * fx3dNeedleH(nkey, uvp * vec2(uAspect, 1.0) * 3.2) * min(0.5 * (uAspect / uNvGrid.x + 1.0 / uNvGrid.y), uNvCell));
   vec4 wp = uModel * vec4(pc*uScale, 1.0);
   vWorld = wp.xyz;
   vN = mat3(uModel) * n;
-  vUv = mix(uCrop.xy, uCrop.zw, aUV);
-  vL = aUV; vQ = aPos;
+  vUv = mix(uCrop.xy, uCrop.zw, uvp);
+  vL = uvp; vQ = qp;
   gl_Position = uMVP * wp;
 }`;
     const fs = `#version 300 es
@@ -209,7 +216,7 @@ void main(){
   if(uFog > 0.0){ float f = 1.0 - exp(-uFog*max(length(uCam - vWorld) - uFogStart, 0.0)); col = mix(col, uFogCol, f); }
   frag = vec4(col, 1.0);
 }`;
-    this.prog = this._link(vs, fs);
+    this.prog = this._link(vs.replace('precision highp float;\n', 'precision highp float;\n' + GL.needleCellGLSL()), fs);
     if(!this.prog){ this.initialized=true; this.ok=false; return; }
     this._buildGeo(28);
     // デフォルトのプレースホルダ (画像未ロード時): グレー市松
@@ -226,7 +233,7 @@ void main(){
   _link(vs,fs){ const gl=this.gl; const v=this._compile(gl.VERTEX_SHADER,vs), f=this._compile(gl.FRAGMENT_SHADER,fs); if(!v||!f) return null;
     const p=gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.bindAttribLocation(p,0,'aPos'); gl.bindAttribLocation(p,1,'aUV'); gl.linkProgram(p);
     if(!__glReady(gl, p, true)){ console.error('[PhotoPlane link]', gl.getProgramInfoLog(p)); return null; }
-    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
+    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uNvOn','uNvSub','uNvGrid','uNvSalt','uNvCell','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
 
   // 細分プレーン (N×N グリッド) — bend/warp をなめらかに
   _buildGeo(N){
@@ -435,6 +442,11 @@ void main(){
     gl.uniform1f(this.loc.uWarpFreq,P.warpFreq);
     gl.uniform1f(this.loc.uBendMul,P.bend);
     gl.uniform1f(this.loc.uPaper,this._fx ? 1 : 0);
+    // Needle (3D FX の最後の段): 板ごとに針の面で描く。Code の PhotoPlane とプログラムを共有するので毎回明示的に切り替える
+    const nvOn = !!(this._fx && typeof Fx3d!=='undefined' && Fx3d.spikeFrame);
+    gl.uniform1f(this.loc.uNvOn, nvOn ? 1 : 0);
+    if(nvOn){ gl.uniform1f(this.loc.uNvSub, 1); Fx3d.spikeUniforms(gl, this.prog); gl.bindVertexArray(GL._emptyVAO || (GL._emptyVAO = gl.createVertexArray())); }
+    const nvCell = fxH / 14;
     gl.uniform1i(this.loc.uTex,0);
     gl.activeTexture(gl.TEXTURE0);
 
@@ -473,7 +485,16 @@ void main(){
       gl.uniform4f(this.loc.uCrop,pl.crop[0],pl.crop[1],pl.crop[2],pl.crop[3]);
       const tex=(pl.texIdx>=0 && this.textures[pl.texIdx])?this.textures[pl.texIdx]:this.defaultTex;
       gl.bindTexture(gl.TEXTURE_2D,tex);
-      gl.drawElements(gl.TRIANGLES,this.idxCount,gl.UNSIGNED_SHORT,0);
+      if(nvOn){
+        const pa = aspSq===1 ? pl.aspect : Math.pow(pl.aspect,aspSq);
+        // 格子: 画面基準の間隔 (大きな板) / 短辺方向は最低 6 (小さな板でも針が板に見合った大きさ)
+        const sh = Math.min(plScale*pa, plScale), cpl = Math.min(nvCell, sh / 6);
+        const gx = Math.max(1, Math.min(64, Math.round(plScale*pa/cpl))), gy = Math.max(1, Math.min(64, Math.round(plScale/cpl)));
+        gl.uniform2f(this.loc.uNvGrid, gx, gy);
+        gl.uniform2f(this.loc.uNvSalt, pi*3.7+0.3, 4.9);
+        gl.uniform1f(this.loc.uNvCell, nvCell / Math.max(1e-5, plScale));
+        if(plScale > 1e-5) gl.drawArrays(gl.TRIANGLES, 0, GL.needleCellVerts(gx, gy, 1));
+      } else gl.drawElements(gl.TRIANGLES,this.idxCount,gl.UNSIGNED_SHORT,0);
     }
 
     gl.bindVertexArray(null);
