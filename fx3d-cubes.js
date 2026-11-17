@@ -7,28 +7,18 @@
 (function(){
 const SX = 8, SY = 8, SC = 4;                       // 側面の分割 (長辺 × 短辺方向) / 端面の分割
 const PER = 4 * SX * SY * 6 + 2 * SC * SC * 6;      // 1 本あたりの頂点数
-const VS = `#version 300 es
-precision highp float;
-uniform mat4 uView, uProj;
+// 直方体の表面: 本 seg・面 face (0..3 = 側面 / 4, 5 = 端面) の面内座標 ab (0..1) → 位置。uvo = 貼る絵の uv
+const SURF = `
 uniform float uAsp, uN, uK, uSel, uBeat, uBeatMode, uT, uHit, uGap;
-out vec2 vUv; out vec3 vW;
 float h1(float p){ return fract(sin(p * 127.1 + 311.7) * 43758.5453); }
 float easeOut(float x){ float y = 1.0 - x; return 1.0 - y * y * y; }
 vec2 rot(vec2 v, float a){ float c = cos(a), s = sin(a); return vec2(v.x * c - v.y * s, v.x * s + v.y * c); }
-void main(){
-  int id = gl_VertexID, seg = id / ${PER}, r = id - seg * ${PER};
+vec3 cubeSurf(int seg, int face, vec2 ab, out vec2 uvo){
   bool land = uAsp >= 1.0;
   float Lh = land ? uAsp : 1.0, Sh = land ? 1.0 : uAsp;   // 長辺・短辺の半分 (紙座標)
   float fi = float(seg);
   float L0 = -Lh + 2.0 * Lh * fi / uN, L1 = -Lh + 2.0 * Lh * (fi + 1.0) / uN;
   float Lc = 0.5 * (L0 + L1), Lw = 0.5 * (L1 - L0) * uGap;
-  // 面と面内の座標 (a = 長辺方向 0..1, b = 面の上方向 0..1)
-  int face, tv, cell, nx;
-  if(r < 4 * ${SX * SY * 6}){ face = r / ${SX * SY * 6}; int q = r - face * ${SX * SY * 6}; cell = q / 6; tv = q - cell * 6; nx = ${SX}; }
-  else { int q = r - 4 * ${SX * SY * 6}; face = 4 + q / ${SC * SC * 6}; q -= (face - 4) * ${SC * SC * 6}; cell = q / 6; tv = q - cell * 6; nx = ${SC}; }
-  vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
-  int cy = cell / nx, cx = cell - cy * nx;
-  ab = (vec2(float(cx), float(cy)) + ab) / float(nx);
   float L; vec2 sz;                                   // sz = 断面内の位置 (S, z) (軸からの相対)
   vec2 img;                                           // この点に貼る絵の紙座標 (L, S)
   if(face < 4){
@@ -59,9 +49,55 @@ void main(){
   // 回っている本は少し手前へ (端面の陰が見える) + ヒットで押し出し
   float push = (0.18 * sin(3.14159265 * pr) + 0.12 * uHit) * uK * Sh;
   vec3 P3 = vec3(L, sz.x, sz.y - Sh + push);         // 軸は z = -Sh (前面が z = 0)
-  vec3 P = land ? P3 : vec3(P3.y, P3.x, P3.z);
   vec2 im = land ? img : img.yx;
-  vUv = im / (2.0 * vec2(uAsp, 1.0)) + 0.5;
+  uvo = im / (2.0 * vec2(uAsp, 1.0)) + 0.5;
+  return land ? P3 : vec3(P3.y, P3.x, P3.z);
+}
+`;
+const VS = `#version 300 es
+precision highp float;
+uniform mat4 uView, uProj;
+out vec2 vUv; out vec3 vW;
+${SURF}
+void main(){
+  int id = gl_VertexID, seg = id / ${PER}, r = id - seg * ${PER};
+  // 面と面内の座標 (a = 長辺方向 0..1, b = 面の上方向 0..1)
+  int face, tv, cell, nx;
+  if(r < 4 * ${SX * SY * 6}){ face = r / ${SX * SY * 6}; int q = r - face * ${SX * SY * 6}; cell = q / 6; tv = q - cell * 6; nx = ${SX}; }
+  else { int q = r - 4 * ${SX * SY * 6}; face = 4 + q / ${SC * SC * 6}; q -= (face - 4) * ${SC * SC * 6}; cell = q / 6; tv = q - cell * 6; nx = ${SC}; }
+  vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
+  int cy = cell / nx, cx = cell - cy * nx;
+  ab = (vec2(float(cx), float(cy)) + ab) / float(nx);
+  vec3 P = cubeSurf(seg, face, ab, vUv);
+  vW = P;
+  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+}`;
+// 面ごとの針 (Needle): 側面ごとに uGX × uGY の格子へ種を置き、面の法線方向へ角錐を立てる (fx3d.js の SPIKE_GLSL)
+const SPK_VS = `#version 300 es
+precision highp float;
+uniform mat4 uView, uProj;
+uniform float uGX, uGY;
+out vec2 vUv; out vec3 vW;
+${SURF}
+void main(){
+  int gx = int(uGX), gy = int(uGY), per = gx * gy;
+  int inst = gl_InstanceID, fq = inst / per, c = inst - fq * per;
+  int seg = fq / 4, face = fq - seg * 4;
+  int cy = c / gx, cx = c - cy * gx;
+  vec2 key = vec2(float(inst) * 1.37 + 0.5, float(seg) * 3.1 + 2.3);
+  vec2 ab0 = (vec2(float(cx), float(cy)) + 0.4 + 0.2 * vec2(h1(key.x), h1(key.x + 9.1))) / vec2(uGX, uGY);
+  const float E = 1e-3;
+  vec2 uv0, uvA, uvB;
+  vec3 P0 = cubeSurf(seg, face, ab0, uv0);
+  vec3 T = (cubeSurf(seg, face, ab0 + vec2(E, 0.0), uvA) - P0) / E;
+  vec3 B = (cubeSurf(seg, face, ab0 + vec2(0.0, E), uvB) - P0) / E;
+  float lT = length(T), lB = length(B);
+  vec3 Tn = T / lT, Bn = B / lB;
+  vec3 N = normalize(cross(Tn, Bn)) * (uAsp >= 1.0 ? 1.0 : -1.0);   // 縦長は xy を入れ替えている = 向きが反転
+  float r = 0.4 * min(lT / uGX, lB / uGY);
+  vec3 s = fx3dSpike(gl_VertexID, key);
+  vec3 P = P0 + (Tn * s.x + Bn * s.y + N * s.z) * r;
+  vUv = uv0 + (uvA - uv0) / E * (s.x * r / lT) + (uvB - uv0) / E * (s.y * r / lB);
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
@@ -82,6 +118,7 @@ const ss = (a, b, x)=>{ const y = Math.max(0, Math.min(1, (x - a) / (b - a))); r
 
 Fx3d.EXTRA.cubes = {
   foldHook: true,
+  spikes: true,
   render(gl, o){
     const pr = Fx3d.prog(gl, 'cubes', VS, FS);
     if(!pr) return false;
@@ -97,27 +134,44 @@ Fx3d.EXTRA.cubes = {
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
     gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.useProgram(pr);
-    if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
-    gl.bindVertexArray(GL._emptyVAO);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
-    gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
-    gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
-    gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
-    gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
-    gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
-    gl.uniform1f(uloc(gl, pr, 'uN'), N);
-    gl.uniform1f(uloc(gl, pr, 'uK'), k);
-    gl.uniform1f(uloc(gl, pr, 'uSel'), ss(0.15, 0.7, k));   // 回る本の割合 (全開で全部)
-    gl.uniform1f(uloc(gl, pr, 'uBeat'), o.beat || 0);
-    gl.uniform1f(uloc(gl, pr, 'uBeatMode'), o.beatMode ? 1 : 0);
-    gl.uniform1f(uloc(gl, pr, 'uT'), t);
-    gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
-    gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.06 * ss(0.1, 0.6, k));   // 本と本の隙間 (端面がのぞく)
-    gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
-    Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+    const setU = (pr)=>{
+      gl.useProgram(pr);
+      if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
+      gl.bindVertexArray(GL._emptyVAO);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
+      gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
+      gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
+      gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
+      gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
+      gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
+      gl.uniform1f(uloc(gl, pr, 'uN'), N);
+      gl.uniform1f(uloc(gl, pr, 'uK'), k);
+      gl.uniform1f(uloc(gl, pr, 'uSel'), ss(0.15, 0.7, k));   // 回る本の割合 (全開で全部)
+      gl.uniform1f(uloc(gl, pr, 'uBeat'), o.beat || 0);
+      gl.uniform1f(uloc(gl, pr, 'uBeatMode'), o.beatMode ? 1 : 0);
+      gl.uniform1f(uloc(gl, pr, 'uT'), t);
+      gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
+      gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.06 * ss(0.1, 0.6, k));   // 本と本の隙間 (端面がのぞく)
+      gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
+      Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+    };
+    setU(pr);
     gl.drawArrays(gl.TRIANGLES, 0, N * PER);
+    if(Fx3d.spikeFrame){
+      const sp = Fx3d.prog(gl, 'cubesSpike', SPK_VS, FS);
+      if(sp){
+        // 格子: 短辺方向 6 (単体 Needle と同じ間隔)、長辺方向はその間隔で 1 本の長さを割る
+        const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
+        const gy = 6, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy)));
+        setU(sp);
+        gl.uniform1f(uloc(gl, sp, 'uShade'), 1);
+        gl.uniform1f(uloc(gl, sp, 'uGX'), gx);
+        gl.uniform1f(uloc(gl, sp, 'uGY'), gy);
+        Fx3d.spikeUniforms(gl, sp);
+        gl.drawArraysInstanced(gl.TRIANGLES, 0, Fx3d.SPIKE_VERTS, N * 4 * gx * gy);
+      }
+    }
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);
     return true;

@@ -103,20 +103,12 @@ const Slicer = {
   _needsRebuild:false,
 
   // ==== shaders ====
-  VS:`#version 300 es
-in vec3 a_pos;
-in vec2 a_uv;
-in float a_seed;
-uniform mat4 u_proj;
-uniform mat4 u_view;
-uniform float u_time;
+  // 頂点の動き (グローバル warp + 浮遊)。断片の VS と面ごとの針の VS で共有
+  DISP_GLSL:`uniform float u_time;
 uniform float u_warpAmp;    // グローバル warp 振幅 (M006 相当・空間全体を曲げる)
 uniform float u_warpFreq;   // グローバル warp 周波数
 uniform float u_drift;      // 浮遊の振れ幅 (1=従来)
-out vec2 v_uv;
-void main(){
-  v_uv = a_uv;
-  vec3 pos = a_pos;
+vec3 slDisp(vec3 pos, float seed){
   // グローバル warp: 空間全体を正弦場で曲げる/波打たせる (アニメ)
   if(u_warpAmp > 0.0001){
     float wf = u_warpFreq;
@@ -125,11 +117,64 @@ void main(){
     pos.y += u_warpAmp * 0.4 * cos(pos.z*wf*0.9 - u_time*0.7);
   }
   float d = 0.004 * u_drift;
-  pos.x += sin(u_time*0.17 + a_seed*13.7) * d;
-  pos.y += cos(u_time*0.13 + a_seed*7.31) * d * 0.7;
-  pos.z += sin(u_time*0.11 + a_seed*5.17) * d * 0.4;
+  pos.x += sin(u_time*0.17 + seed*13.7) * d;
+  pos.y += cos(u_time*0.13 + seed*7.31) * d * 0.7;
+  pos.z += sin(u_time*0.11 + seed*5.17) * d * 0.4;
+  return pos;
+}
+`,
+  get VS(){ return `#version 300 es
+in vec3 a_pos;
+in vec2 a_uv;
+in float a_seed;
+uniform mat4 u_proj;
+uniform mat4 u_view;
+${this.DISP_GLSL}
+out vec2 v_uv;
+void main(){
+  v_uv = a_uv;
+  vec3 pos = slDisp(a_pos, a_seed);
   gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));   // 3D FX の Slicer に折りを掛けるフック (Code の Slicer では素通し)
-}`,
+}`; },
+  // 3D FX の面ごとの針 (Needle): 1 本 = 断片の面上の点 (a_sp) と面の向き (a_st / a_sb = 単位の接線)、根元の uv と
+  //   接線 1 単位あたりの uv の変化 (a_sduv)、a_sk = (種, 底面の半径, 断片の浮遊の種)。角錐の形は Fx3d.SPIKE_GLSL
+  get SPK_VS(){ return `#version 300 es
+layout(location = 0) in vec3 a_sp;
+layout(location = 1) in vec3 a_st;
+layout(location = 2) in vec3 a_sb;
+layout(location = 3) in vec2 a_suv;
+layout(location = 4) in vec4 a_sduv;
+layout(location = 5) in vec3 a_sk;
+uniform mat4 u_proj;
+uniform mat4 u_view;
+${this.DISP_GLSL}
+out vec2 v_uv; out vec3 v_w;
+void main(){
+  vec3 s = fx3dSpike(gl_VertexID, vec2(a_sk.x, 2.3));
+  float r = a_sk.y;
+  vec3 N = normalize(cross(a_st, a_sb));
+  vec3 pos = slDisp(a_sp + (a_st * s.x + a_sb * s.y + N * s.z) * r, a_sk.z);
+  v_uv = a_suv + (a_sduv.xy * s.x + a_sduv.zw * s.y) * r;
+  v_w = pos;
+  gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));
+}`; },
+  get SPK_FS(){ return `#version 300 es
+precision highp float;
+uniform sampler2D u_map;
+uniform vec3 u_tint;
+uniform float u_sat;
+uniform vec3 u_eye;
+in vec2 v_uv; in vec3 v_w;
+out vec4 fragOut;
+${Fx3d.GLSL_LIT}
+void main(){
+  vec4 t0 = texture(u_map, v_uv);
+  if(t0.a < 0.5) discard;
+  vec3 c = t0.rgb;
+  if(u_sat != 1.0){ float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, u_sat); }
+  c *= u_tint;
+  fragOut = vec4(fx3dFoldShade(fx3dLit(c, v_w, u_eye, 1.0)), 1.0);
+}`; },
   FS:`#version 300 es
 precision highp float;
 uniform sampler2D u_map;
@@ -469,20 +514,72 @@ void main(){
       const sc=Math.max(0.01,1-wz/CAM_Z);
       return [(p.cx+lx)*sc, (p.cy+ly)*sc, wz];
     }
+    function uvOf(fx, fy){
+      if(texFx){
+        const rx = (fx*tcs - fy*tsn) / TEXZ, ry = (fx*tsn + fy*tcs) / TEXZ;
+        return [rx/A*0.5+0.5, FLIPV ? ry*0.5+0.5 : 1-(ry*0.5+0.5)];
+      }
+      return [fx/A*0.5+0.5, FLIPV ? fy*0.5+0.5 : 1-(fy*0.5+0.5)];
+    }
     function emit(fx, fy, fid, p){
       const w = wpos(fx, fy, p);
       posArr.push(w[0], w[1], w[2]);
-      if(texFx){
-        const rx = (fx*tcs - fy*tsn) / TEXZ, ry = (fx*tsn + fy*tcs) / TEXZ;
-        uvArr.push(rx/A*0.5+0.5, FLIPV ? ry*0.5+0.5 : 1-(ry*0.5+0.5));
-      } else {
-        uvArr.push(fx/A*0.5+0.5, FLIPV ? fy*0.5+0.5 : 1-(fy*0.5+0.5));
-      }
+      const uv = uvOf(fx, fy);
+      uvArr.push(uv[0], uv[1]);
       seedArr.push(fid*7.3713);
       return vi++;
     }
+    // 3D FX の面ごとの針: 断片の平らな座標で格子 (単体 Needle と同じ間隔 1/3) に種を置き、断片の外周から離れた所だけに立てる
+    const spk = this._fx ? [] : null;
+    let fragTris = [];
+    const SP = 1/3;
+    function spikesFor(fid, p){
+      if(!fragTris.length) return;
+      let x0=Infinity, y0=Infinity, x1=-Infinity, y1=-Infinity;
+      const cnt = new Map(), ek = (ax,ay,bx,by)=>{ const a=ax.toFixed(5)+','+ay.toFixed(5), b=bx.toFixed(5)+','+by.toFixed(5); return a<b ? a+'|'+b : b+'|'+a; };
+      for(const t of fragTris){
+        for(let i=0;i<3;i++){
+          x0=Math.min(x0,t[i*2]); x1=Math.max(x1,t[i*2]); y0=Math.min(y0,t[i*2+1]); y1=Math.max(y1,t[i*2+1]);
+          const j=(i+1)%3, k=ek(t[i*2],t[i*2+1],t[j*2],t[j*2+1]);
+          const e=cnt.get(k); if(e) e.n++; else cnt.set(k,{n:1, s:[t[i*2],t[i*2+1],t[j*2],t[j*2+1]]});
+        }
+      }
+      const edges=[]; for(const e of cnt.values()) if(e.n===1) edges.push(e.s);   // 外周 = 1 枚の三角形にしか属さない辺
+      const inside=(x,y)=>fragTris.some(t=>{
+        const d1=(x-t[2])*(t[1]-t[3])-(t[0]-t[2])*(y-t[3]), d2=(x-t[4])*(t[3]-t[5])-(t[2]-t[4])*(y-t[5]), d3=(x-t[0])*(t[5]-t[1])-(t[4]-t[0])*(y-t[1]);
+        return !((d1<0||d2<0||d3<0) && (d1>0||d2>0||d3>0));
+      });
+      const edgeDist=(x,y)=>{ let m=Infinity; for(const e of edges){ const dx=e[2]-e[0], dy=e[3]-e[1], l2=dx*dx+dy*dy||1e-12; const u=Math.max(0,Math.min(1,((x-e[0])*dx+(y-e[1])*dy)/l2)); m=Math.min(m,Math.hypot(x-e[0]-u*dx, y-e[1]-u*dy)); } return m; };
+      const push=(x,y,r,key)=>{
+        const E=1e-3, w=wpos(x,y,p), wa=wpos(x+E,y,p), wb=wpos(x,y+E,p);
+        const T=[wa[0]-w[0],wa[1]-w[1],wa[2]-w[2]], B=[wb[0]-w[0],wb[1]-w[1],wb[2]-w[2]];
+        const lT=Math.hypot(T[0],T[1],T[2])||1e-9, lB=Math.hypot(B[0],B[1],B[2])||1e-9;
+        const uv=uvOf(x,y), ua=uvOf(x+E,y), ub=uvOf(x,y+E);
+        const rw = r * 0.5 * (lT + lB) / E;   // 底面の半径は断片の平らな座標 → 世界の長さへ
+        spk.push(w[0],w[1],w[2], T[0]/lT,T[1]/lT,T[2]/lT, B[0]/lB,B[1]/lB,B[2]/lB, uv[0],uv[1],
+          (ua[0]-uv[0])/lT,(ua[1]-uv[1])/lT,(ub[0]-uv[0])/lB,(ub[1]-uv[1])/lB, key, rw, fid*7.3713);
+      };
+      let n=0;
+      for(let gy=Math.floor(y0/SP); gy<=Math.floor(y1/SP); gy++){
+        for(let gx=Math.floor(x0/SP); gx<=Math.floor(x1/SP); gx++){
+          const key = gx*12.9898 + gy*78.233 + fid*0.371;
+          const x=(gx+0.4+0.2*rnd(key+1.7))*SP, y=(gy+0.4+0.2*rnd(key+4.1))*SP;
+          if(!inside(x,y)) continue;
+          const r=Math.min(SP*0.4, edgeDist(x,y)*0.95);
+          if(r<0.012) continue;
+          push(x,y,r,key); n++;
+        }
+      }
+      if(!n){   // 格子に掛からない小さな断片は、いちばん大きい三角形の重心に 1 本
+        let best=null, ba=0;
+        for(const t of fragTris){ const a=Math.abs((t[2]-t[0])*(t[5]-t[1])-(t[4]-t[0])*(t[3]-t[1])); if(a>ba){ ba=a; best=t; } }
+        const x=(best[0]+best[2]+best[4])/3, y=(best[1]+best[3]+best[5])/3, r=Math.min(SP*0.4, edgeDist(x,y)*0.95);
+        if(r>=0.012) push(x,y,r,fid*0.371+0.5);
+      }
+    }
     const SUBDIV = 2; // 3→2 (各三角形 64tri → 16tri)
     function subdivTri(ax,ay,bx,by,cx,cy,fid,p,d){
+      if(spk && d===SUBDIV) fragTris.push([ax,ay,bx,by,cx,cy]);
       if(d<=0){
         idxArr.push(emit(ax,ay,fid,p), emit(bx,by,fid,p), emit(cx,cy,fid,p));
         return;
@@ -520,6 +617,7 @@ void main(){
       const cx=rnds(s+0.1)*A*SCAT_X;
       const cy=rnds(s+0.2)*SCAT_Y;
       const p=makeParams(fid, cx, cy);
+      fragTris = [];
       const sizeSeed = rnd(s+0.50);
       const sizeClass = rnd(s+0.51);
       let baseSize;
@@ -604,6 +702,7 @@ void main(){
         const [dx,dy]=R(-len*0.5, wid,cr,sr);
         subdivQuad(ax,ay,bx,by,ccx,ccy,dx,dy,fid,p,SUBDIV);
       }
+      if(spk) spikesFor(fid, p);
     }
 
     const gl = this.gl;
@@ -625,6 +724,20 @@ void main(){
     // 頂点数が多いので UNSIGNED_INT 推奨 (WebGL2 ネイティブ対応)
     gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, new Uint32Array(idxArr), gl.STATIC_DRAW);
     this.numIdx = idxArr.length;
+    if(spk){
+      if(!this.spkBuf){
+        this.spkBuf = gl.createBuffer();
+        this.spkVAO = gl.createVertexArray();
+        gl.bindVertexArray(this.spkVAO);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.spkBuf);
+        const st = 18 * 4, L = [[0,3,0],[1,3,3],[2,3,6],[3,2,9],[4,4,11],[5,3,15]];
+        for(const [loc, n, off] of L){ gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, st, off * 4); gl.vertexAttribDivisor(loc, 1); }
+        gl.bindVertexArray(null);
+      }
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.spkBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(spk), gl.DYNAMIC_DRAW);
+      this.spkN = spk.length / 18;
+    }
     this._needsRebuild = false;
   },
 
@@ -982,6 +1095,28 @@ void main(){
       gl.vertexAttribPointer(this.locs.a_seed, 1, gl.FLOAT, false, 0, 0);
       gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxBuf);
       gl.drawElements(gl.TRIANGLES, this.numIdx, gl.UNSIGNED_INT, 0);
+      if(this._fx && this.spkN > 0 && Fx3d.spikeFrame){
+        const sp = Fx3d.prog(gl, 'slicerSpike', this.SPK_VS, this.SPK_FS);
+        if(sp){
+          const U = (n)=>gl.getUniformLocation(sp, n);
+          gl.useProgram(sp);
+          gl.uniformMatrix4fv(U('u_proj'), false, proj);
+          gl.uniformMatrix4fv(U('u_view'), false, view);
+          gl.uniform1f(U('u_time'), this._t);
+          gl.uniform1f(U('u_warpAmp'), this.P.warpAmp || 0);
+          gl.uniform1f(U('u_warpFreq'), this.P.warpFreq || 2.0);
+          gl.uniform1f(U('u_drift'), dz(this.P.drift) / 100);
+          gl.uniform3fv(U('u_tint'), this.P.pieceTint);
+          gl.uniform1f(U('u_sat'), dz(this.P.pieceSat) / 100);
+          gl.uniform3f(U('u_eye'), ex, ey, ez);
+          gl.uniform1i(U('u_map'), 0);
+          GL.fx3dUniforms(sp, proj, 1 / Math.tan(fovRad * 0.5), Fx3d.foldFrame);
+          Fx3d.spikeUniforms(gl, sp);
+          gl.bindVertexArray(this.spkVAO);
+          gl.drawArraysInstanced(gl.TRIANGLES, 0, Fx3d.SPIKE_VERTS, this.spkN);
+          gl.bindVertexArray(null);
+        }
+      }
     }
 
     // ── pass2: ポストエフェクト (低解像度 postFbo へ書き込み) ──
