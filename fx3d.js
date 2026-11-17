@@ -91,42 +91,20 @@ const Fx3d = {
   canFold(name){ const x = this.EXTRA[name]; return name === 'slicer' || !!(x && x.foldHook); },
   fold(gl, pr, proj, paperD){ GL.fx3dUniforms(pr, proj, paperD, this.foldFrame); },
 
-  // ── 面ごとの針 (Needle を物体の面の上へ) ──
+  // ── 面を覆う針 (Needle を物体の面へ) ──
   //   最後の段が対応エンジン (Slicer / spikes: true) で Needle が ON のとき、GL がその段を描く間だけ spikeFrame を立てる。
-  //   エンジンは面の上に格子で種を置き、1 本 = 3〜5 角錐 (側面 5 枚 = 15 頂点) をインスタンス描画する。
-  //   VS で fx3dSpike(gl_VertexID, 種) を呼ぶと、底面内の位置 (底面の半径 = 1) と高さ (同じ単位) が返る。
-  //   面の法線方向へ高さを足し、根元の絵を貼る。種の無い針・高さ 0 は全頂点が中心に縮退して描かれない
+  //   エンジンは元の面の代わりに、面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐。突起と凹み) で覆って描く。
+  //   VS で fx3dNeedleH (と fx3dNeedleVert) を呼ぶと prog() がその GLSL を差し込む。uniform は spikeUniforms(gl, pr [, frame])
   spikeFrame: null,
   canSpike(name){ const x = this.EXTRA[name]; return name === 'slicer' || !!(x && x.spikes); },
-  SPIKE_VERTS: 15,
-  SPIKE_GLSL: `uniform float uSpA, uSpBeat, uSpBM, uSpHit, uSpT;
-float spH(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
-vec3 fx3dSpike(int vid, vec2 cell){
-  int tri = vid / 3, cn = vid - tri * 3;
-  float ns = 3.0 + floor(spH(cell + 23.9) * 2.999);
-  if(float(tri) >= ns || spH(cell + 7.7) > 0.62) return vec3(0.0);
-  // 高さは単体 Needle と同じ二極化 (低い針と高い針が隣り合う) + 拍ごとの目標へ Ease Out / drone は連続サイン
-  float jr = spH(cell + 9.9);
-  float amp = (jr < 0.45) ? mix(0.05, 0.35, jr / 0.45) : mix(1.05, 1.9, pow(spH(cell + 1.1), 3.0));
-  float osc = sin(uSpT * (0.22 + 0.26 * spH(cell + 0.13)) + spH(cell + 5.5) * 6.2831);
-  float bid = floor(uSpBeat);
-  float ease = 1.0 - pow(1.0 - clamp(fract(uSpBeat) / 0.24, 0.0, 1.0), 3.0);
-  float bosc = mix(spH(cell + bid * 7.7 + 11.3), spH(cell + (bid + 1.0) * 7.7 + 11.3), ease) * 2.0 - 1.0;
-  osc = mix(osc, bosc, uSpBM);
-  float h = 6.0 * amp * sqrt(abs(osc)) * uSpA * (1.0 + mix(0.10, 0.46, uSpBM) * pow(clamp(uSpHit, 0.0, 1.0), 0.65));
-  if(h < 0.02) return vec3(0.0);
-  if(cn == 2) return vec3(0.0, 0.0, h);
-  float a = spH(cell + 41.3) * 6.2831 + float(tri + cn) * 6.2831 / ns;
-  return vec3(cos(a), sin(a), 0.0);
-}
-`,
-  spikeUniforms(gl, pr){
-    const s = this.spikeFrame || { a: 0, beat: 0, bm: 0, hit: 0, t: 0 };
+  spikeUniforms(gl, pr, frame){
+    const s = frame || this.spikeFrame || { a: 0, beat: 0, bm: 0, hit: 0, t: 0, scat: 0 };
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpA'), s.a);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpBeat'), s.beat);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpBM'), s.bm);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpHit'), s.hit);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpT'), s.t);
+    gl.uniform1f(gl.getUniformLocation(pr, 'uSpScat'), s.scat);
   },
   _withHooks(src, use, glsl){
     if(!src.includes(use)) return src;
@@ -140,7 +118,7 @@ vec3 fx3dSpike(int vid, vec2 cell){
   prog(gl, id, vs, fs){
     const c = this._progs || (this._progs = {});
     if(id in c) return c[id];
-    vs = this._withHooks(vs, 'fx3dSpike(', this.SPIKE_GLSL);
+    vs = this._withHooks(vs, 'fx3dNeedleH(', GL.needleCellGLSL());
     vs = this._withHooks(vs, 'fx3dApply(', GL.fx3dHookGLSL());
     fs = this._withHooks(fs, 'fx3dFoldShade(', GL.fx3dShadeGLSL());
     const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);

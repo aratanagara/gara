@@ -3313,8 +3313,11 @@ uniform float uMode;
 uniform mat4 uView, uProj;
 uniform float uUzN, uUzTH, uUzSpin, uUzShr, uUzZStep, uUzCard, uUzOrbR;
 uniform vec2 uUzCw;
+uniform vec2 uNvGrid;
+uniform float uNvSub;
 out vec2 vUv; out vec3 vWorld;
 ${this._foldPaperGLSL('u')}
+${this.needleCellGLSL()}
 void main(){
   if(uMode < 0.5){
     vec2 c = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
@@ -3324,18 +3327,26 @@ void main(){
     return;
   }
   int vid = gl_VertexID;
-  int grid6 = int(uGrid.x) * int(uGrid.y) * 6;
-  int cardI = vid / grid6;             // Uzumaki 統合時のカード番号 (uUzN=0 なら常に 0)
-  vid -= cardI * grid6;
-  int cell = vid / 6, corner = vid - cell * 6;
-  int GW = int(uGrid.x);
-  int cx = cell - (cell / GW) * GW, cy = cell / GW;
-  vec2 co[6] = vec2[6](vec2(0.,0.), vec2(1.,0.), vec2(1.,1.), vec2(0.,0.), vec2(1.,1.), vec2(0.,1.));
-  vec2 uv = (vec2(float(cx), float(cy)) + co[corner]) / uGrid;
-  vUv = uv;
+  // uMode 2 = Needle: 紙を針の面 (三角形・四角形の角錐) で覆って描く (needleCellGLSL)。1 = 格子の紙
+  int nvN = int(uNvSub), per = uMode > 1.5 ? (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * nvN * nvN : int(uGrid.x) * int(uGrid.y) * 6;
+  int cardI = vid / per;               // Uzumaki 統合時のカード番号 (uUzN=0 なら常に 0)
+  vid -= cardI * per;
   float asp = uRes.x / max(uRes.y, 1.0);
+  vec2 uv; float lift = 0.0;
+  if(uMode > 1.5){
+    float w; vec2 key;
+    fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(0.0), uv, w, key);
+    lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 / uNvGrid.y);
+  } else {
+    int cell = vid / 6, corner = vid - cell * 6;
+    int GW = int(uGrid.x);
+    int cx = cell - (cell / GW) * GW, cy = cell / GW;
+    vec2 co[6] = vec2[6](vec2(0.,0.), vec2(1.,0.), vec2(1.,1.), vec2(0.,0.), vec2(1.,1.), vec2(0.,1.));
+    uv = (vec2(float(cx), float(cy)) + co[corner]) / uGrid;
+  }
+  vUv = uv;
   vec2 q = (uv - 0.5) * 2.0 * vec2(asp, 1.0);
-  vec3 P = f3Paper(q, 0.0);
+  vec3 P = f3Paper(q, lift);
   // Uzumaki 統合: 折り上がりの紙をカードとして複製し、対数螺旋 (らせん階段) に配置
   if(uUzN > 0.5){
     float ufi = float(cardI + 1);
@@ -3356,7 +3367,7 @@ void main(){
 precision highp float;
 in vec2 vUv; in vec3 vWorld; out vec4 frag;
 uniform sampler2D uTex;
-uniform float uMode, uShade, uBgDark, uNeedleAmt, uNeedleMix, uPaperFade;
+uniform float uMode, uShade, uBgDark, uCrystal, uNeedleMix, uPaperFade;
 uniform vec3 uEye;
 void main(){
   if(uMode < 0.5){
@@ -3379,7 +3390,7 @@ void main(){
   vec3 paper = alb * light + vec3(1.0) * pow(specBase, 26.0) * 0.20;
   // 結晶 (Needle): 元映像を内部反射へ使う質感を移植
   float NoV = max(dot(N, V), 0.0);
-  float namp = clamp(uNeedleAmt, 0.0, 1.0);
+  float namp = clamp(uCrystal, 0.0, 1.0);
   vec2 refrOff = N.xy * (0.0015 + 0.0095 * namp) * (0.35 + 0.65 * (1.0 - NoV));
   vec3 frontSample = texture(uTex, clamp(uv + refrOff, 0.0, 1.0)).rgb;
   vec3 innerSample = texture(uTex, clamp(uv - refrOff * 1.85, 0.0, 1.0)).rgb;
@@ -4516,7 +4527,7 @@ void main(){
   // 折り (Needle 変位 + 蛇腹 + 折り線 + ひねり) の GLSL。統合パスの頂点シェーダと、3D のまま掛ける頂点フック (fx3dApply) が共有する。
   // pre='u' は統合パスの uniform 名そのまま。他は 'uF3' に付け替える。
   _foldPaperGLSL(pre){
-    const src = `uniform float uNeedleAmt, uNt, uWarp2, uWt2, uTwist, uFitScale;
+    const src = `uniform float uNeedleAmt, uNt, uWarp2, uWt2, uTwist, uFitScale, uNeedleScat;
 uniform float uBeat, uBeatMode, uHit;
 uniform vec2 uRollDir;
 uniform float uRollOff, uRollR;
@@ -4530,8 +4541,12 @@ uniform vec3 uAxisO[28];
 uniform vec3 uAxisD[28];
 float f3h1(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 // Needle: 格子状に丘 + 針(尖ったコーン)。針座標を max 合成 → 鋭い先端
+const float F3NR = 1.6;   // 針の密度 (単体 Needle の NR と同じ)。格子を細かくし、大きさ・高さは 1/F3NR で比率を保つ
+float f3vn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(f3h1(i), f3h1(i + vec2(1.0, 0.0)), f.x), mix(f3h1(i + vec2(0.0, 1.0)), f3h1(i + vec2(1.0, 1.0)), f.x), f.y); }
 float f3NeedleH(vec2 q, float t){
-  vec2 g = q * 3.0, gi = floor(g);
+  vec2 g = q * 3.0 * F3NR, gi = floor(g);
+  float jLo = 0.2 - 0.17 * uNeedleScat, jW = 0.6 + 0.34 * uNeedleScat;   // Scatter: 揺らし幅と、生える確率の偏り (単体 Needle と同じ考え方)
   float C = 0.0;   // 最も突出した凹凸 (山/谷)
   // Beat モード: 単体 Needle と同じく拍ごとの乱数目標へ Ease Out で変形 (拍頭で大きく動く)
   float bid = floor(uBeat);
@@ -4540,7 +4555,7 @@ float f3NeedleH(vec2 q, float t){
     for(int dx = -1; dx <= 1; dx++){
       vec2 cell = gi + vec2(float(dx), float(dy));
       float r1 = f3h1(cell + 0.13), r2 = f3h1(cell + 7.7), r3 = f3h1(cell + 3.3);
-      vec2 c = (cell + vec2(0.2 + 0.6 * r1, 0.2 + 0.6 * r3)) / 3.0;
+      vec2 c = (cell + vec2(jLo + jW * r1, jLo + jW * r3)) / (3.0 * F3NR);
       // Each nucleus drifts continuously at its own rate. Moving the height-field center in VS keeps
       // facets, normals and depth coherent when Needle is combined with Origami / Kaiser.
       float driftRate = mix(0.16,0.38,f3h1(cell+19.4));
@@ -4548,7 +4563,7 @@ float f3NeedleH(vec2 q, float t){
       vec2 drift = vec2(
         sin(t*driftRate+r1*6.2831),
         cos(t*driftRate*0.83+r3*6.2831)
-      )*driftAmp;
+      )*driftAmp/F3NR;
       c += drift;
       // 底は 3〜5 角形 (向きも種ごと) = 円錐でなく面のまっすぐな角錐
       vec2 dq = q - c;
@@ -4561,10 +4576,11 @@ float f3NeedleH(vec2 q, float t){
         d = max(d, dot(dq, vec2(cos(a), sin(a))));
       }
       d /= cos(3.14159265 / ns);                             // 外接円の半径で正規化 (角錐の大きさを円錐と揃える)
-      if(r2 < 0.5){
+      {   // どのセルにも生やす (生えていない所を作らない)。Scatter は高低の群れ
         // 高さを二極化: 低い針と高い針が隣り合う極端なギザギザ (単体 Needle と同じ)
         float jr = f3h1(cell + 9.9);
         float amp = (jr < 0.45) ? mix(0.05, 0.35, jr / 0.45) : mix(1.05, 1.9, pow(f3h1(cell + 1.1), 3.0));
+        amp *= mix(1.0, 0.2 + 1.6 * f3vn(cell * 0.19 + 7.1), uNeedleScat);
         // osc の符号で 山(+)/谷(-)。時間で行き来し、山が急に谷にもなる。
         float osc = sin(t * (0.22 + 0.26 * r1) + f3h1(cell + 5.5) * 6.2831);
         osc = sign(osc) * pow(abs(osc), 0.5);              // 中間を素早く通り山/谷に長く留まる = 急な反転
@@ -4573,7 +4589,7 @@ float f3NeedleH(vec2 q, float t){
         float bosc = mix(bA, bB, ease);
         bosc = sign(bosc) * pow(abs(bosc), 0.5);
         osc = mix(osc, bosc, uBeatMode);                   // beat: 拍ごとの目標 / drone: 連続サイン
-        float cone = osc * amp * max(0.0, 1.0 - d * 6.0);  // 山も谷も同じ鋭い角錐
+        float cone = osc * amp / F3NR * max(0.0, 1.0 - d * 6.0 * F3NR);  // 山も谷も同じ鋭い角錐
         if(abs(cone) > abs(C)) C = cone;                   // 最も突出した凹凸を採用
       }
     }
@@ -4621,7 +4637,7 @@ vec3 f3Paper(vec2 q, float lift){
   return P;
 }
 `;
-    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|RollDir|RollOff|RollR|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
+    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|NeedleScat|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|RollDir|RollOff|RollR|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
   },
   _compile(type, src){
     const gl = this.gl;
@@ -5898,6 +5914,11 @@ vec3 f3Paper(vec2 q, float lift){
     const h22 = (px, py)=>{ const n = h21(px, py); return [n, h21(px + n + 19.19, py + n + 19.19)]; };
     const sstep = (a, b, x)=>{ const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
     const mixf = (a, b, t)=>a + (b - a) * t;
+    // Scatter: 種点の揺らし幅を広げ、針の生える確率を低周波ノイズで偏らせる (密な群れと空き地ができる = 格子が見えない)
+    const scat = Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6)));
+    const vnz = (x, y)=>{ const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
+      return mixf(mixf(h21(ix + 0.5, iy + 0.5), h21(ix + 1.5, iy + 0.5), ux), mixf(h21(ix + 0.5, iy + 1.5), h21(ix + 1.5, iy + 1.5), ux), uy); };
+    const jLo = 0.18 - 0.16 * scat, jHi = 0.82 + 0.16 * scat;
     const beatId = Math.floor(visualBeat), bp = visualBeat - beatId;
     const beatQ = Math.max(0, Math.min(1, bp / 0.24));
     const beatEase = 1 - Math.pow(1 - beatQ, 3);
@@ -5908,7 +5929,8 @@ vec3 f3Paper(vec2 q, float lift){
     const uvOf = (wx, wy)=>[wx / (2 * extX) + 0.5, wy / (2 * extY) + 0.5];
     // ── キャンバスをランダム三角形分割した一枚のメッシュ。丘も針も同じメッシュの種点の隆起 ──
     // として生やす (別ジオメトリの円錐を置かない) = 飛び地が構造的に発生しない。
-    const S = 6.4;                                                 // 格子密度。細かな三角面を約1.9倍に増やす
+    const NR = 1.6;                                                // 針の密度 (本数の倍率)。大きさ・長さ・橋は 1/NR で縮めて比率は保つ
+    const S = 6.4 * NR;                                            // 格子密度
     const nxC = Math.ceil(S * asp) + 1, nyC = Math.ceil(S) + 1;
     const seeds = [];
     const napex = [];                                              // 針の頂点 (橋用)
@@ -5916,7 +5938,7 @@ vec3 f3Paper(vec2 q, float lift){
       const row = [];
       for(let cx = -1; cx <= nxC; cx++){
         const rnd = h22(cx + 17.3, cy + 41.9);
-        let sx = cx + mixf(0.18, 0.82, rnd[0]), sy = cy + mixf(0.18, 0.82, rnd[1]);
+        let sx = cx + mixf(jLo, jHi, rnd[0]), sy = cy + mixf(jLo, jHi, rnd[1]);
         const phase = h21(cx + 54.6, cy + 77.1) * Math.PI * 2;
         const mA = h22(cx + beatId * 7.13 + 31.7, cy + beatId * 3.91 + 83.2);
         const mB = h22(cx + (beatId + 1) * 7.13 + 31.7, cy + (beatId + 1) * 3.91 + 83.2);
@@ -5928,7 +5950,7 @@ vec3 f3Paper(vec2 q, float lift){
         const su = sx / (S * asp), sv2 = sy / S;
         // 針 (約半数の種点): 平らな地から角錐が立つ + リーン。丘 (丸い起伏) は持たない = 面がまっすぐな多面体
         let nx3 = 0, ny3 = 0, nz3 = 0;
-        const isN = h21(cx + 401.7, cy + 77.3) < 0.55;
+        const isN = true;   // どの種にも針を立てる (生えていない面を作らない)。低い針はほぼ平らでも残す
         let dispN = 0;
         if(isN){
           const speed = mixf(0.22, 0.68, h21(cx + 93.4, cy + 5.2));
@@ -5950,19 +5972,19 @@ vec3 f3Paper(vec2 q, float lift){
           // 高さを二極化: 低い針と高い針が隣り合い、横から見た輪郭が極端なギザギザになる
           const jagR = h21(cx + 331.9, cy + 157.1);
           const jag = jagR < 0.45 ? mixf(0.06, 0.32, jagR / 0.45) : mixf(0.9, 1.8, (jagR - 0.45) / 0.55);
-          const raw = peak * growth * 1.05 * depth * jag;
-          const heightCap = mixf(7.2, 10.8, primary);
+          const raw = peak * growth * 1.05 * depth * jag / NR * mixf(1, 0.2 + 1.6 * vnz(cx * 0.19 + 7.1, cy * 0.19 + 3.3), scat);   // Scatter: 高低の群れ
+          const heightCap = mixf(7.2, 10.8, primary) / NR;
           dispN = raw / Math.sqrt(1 + raw * raw / (heightCap * heightCap));
           const lA = h21(cx + beatId * 9.7 + 121.7, cy + 31.6) * 2 - 1;
           const lB = h21(cx + (beatId + 1) * 9.7 + 121.7, cy + 31.6) * 2 - 1;
           const leanMotion = mixf(Math.sin(droneCycle * 0.73), mixf(lA, lB, beatEase), beatMode);
           const leanAng = h21(cx + 121.7, cy + 31.6) * Math.PI * 2 + 0.72 * leanMotion;
-          const leanAmt = mixf(0.48, 0.98, rnd[0]) * (0.82 + 0.32 * rise + 0.34 * beatPulse) * mixf(1.0, 0.24, primary);
+          const leanAmt = mixf(0.48, 0.98, rnd[0]) / NR * (0.82 + 0.32 * rise + 0.34 * beatPulse) * mixf(1.0, 0.24, primary);
           const lxv = Math.cos(leanAng) * leanAmt, lyv = Math.sin(leanAng) * leanAmt;
           const sl = Math.hypot(lxv, lyv, 1);
           // 鍾乳洞: 針を上下(±z)両面に生やす。約半数を下向き(石筍↑ / 鍾乳石↓)= 山と谷が交互に突き出す
           const zdir = h21(cx + 61.3, cy + 137.9) < 0.5 ? 1 : -1;
-          const cap = mixf(7.6, 11.3, primary);
+          const cap = mixf(7.6, 11.3, primary) / NR;
           nx3 = (lxv / sl) * dispN;
           ny3 = (lyv / sl) * dispN;
           const zext = (1 / sl) * dispN;
@@ -5970,7 +5992,7 @@ vec3 f3Paper(vec2 q, float lift){
         }
         const pt = { x: (su - 0.5) * 2 * extX + nx3, y: (sv2 - 0.5) * 2 * extY + ny3, z: nz3, u: su, v: sv2, d: isN ? dispN : 0 };
         row.push(pt);
-        if(isN && dispN > 1.0) napex.push({ x: pt.x, y: pt.y, z: pt.z, u: pt.u, v: pt.v, f: h21(cx + 101.0, cy + 211.7) });
+        if(isN && dispN > 1.0 / NR) napex.push({ x: pt.x, y: pt.y, z: pt.z, u: pt.u, v: pt.v, f: h21(cx + 101.0, cy + 211.7) });
       }
       seeds.push(row);
     }
@@ -5984,18 +6006,26 @@ vec3 f3Paper(vec2 q, float lift){
     }
     // 橋: 各針を近い順に 2 本まで鞍状の屋根で接続 (最近傍グラフ)
     const links = new Set();
+    // 近傍探索はマス目 (一辺 = 橋の最大長) で候補を絞る (総当たり + 並べ替えは針が増えると重い)
+    const LMAX = 7.0 / NR, bk = new Map(), bkey = (gx, gy)=>gx * 65536 + gy;
+    napex.forEach((a, i)=>{ const k = bkey(Math.floor(a.x / LMAX), Math.floor(a.y / LMAX)); let l = bk.get(k); if(!l) bk.set(k, l = []); l.push(i); });
     for(let i = 0; i < napex.length; i++){
-      const dists = [];
-      for(let j = 0; j < napex.length; j++){
-        if(j === i) continue;
-        const d = Math.hypot(napex[i].x - napex[j].x, napex[i].y - napex[j].y);
-        if(d > 1e-4) dists.push([d, j]);
+      const a = napex[i], gx = Math.floor(a.x / LMAX), gy = Math.floor(a.y / LMAX);
+      const near = [];   // 近い順に最大 4 件 (既に繋がった相手を飛ばしても 2 本取れるように)
+      for(let oy = -1; oy <= 1; oy++) for(let ox = -1; ox <= 1; ox++){
+        const l = bk.get(bkey(gx + ox, gy + oy)); if(!l) continue;
+        for(const j of l){
+          if(j === i) continue;
+          const d = Math.hypot(a.x - napex[j].x, a.y - napex[j].y);
+          if(d <= 1e-4 || d > LMAX) continue;
+          if(near.length < 4 || d < near[near.length - 1][0]){
+            near.push([d, j]); near.sort((x, y)=>x[0] - y[0]); if(near.length > 4) near.pop();
+          }
+        }
       }
-      dists.sort((a, b)=>a[0] - b[0]);
       let added = 0;
-      for(const [d, j] of dists){
+      for(const [, j] of near){
         if(added >= 2) break;
-        if(d > 7.0) break;
         const key = (i < j) ? i * 4096 + j : j * 4096 + i;
         if(!links.has(key)){ links.add(key); added++; }
       }
@@ -6005,12 +6035,12 @@ vec3 f3Paper(vec2 q, float lift){
       const dxy = Math.hypot(A2.x - B2.x, A2.y - B2.y);
       const mx2 = (A2.x + B2.x) / 2, my2 = (A2.y + B2.y) / 2;
       const dirx = (B2.x - A2.x) / dxy, diry = (B2.y - A2.y) / dxy;
-      const wd = 0.55;
+      const wd = 0.55 / NR;
       const gL = [mx2 - diry * wd, my2 + dirx * wd], gR = [mx2 + diry * wd, my2 - dirx * wd];
       const uL = uvOf(gL[0], gL[1]), uR = uvOf(gR[0], gR[1]);
       const ff = frac(A2.f + B2.f);
-      pushV(A2.x, A2.y, A2.z, A2.u, A2.v, ff); pushV(B2.x, B2.y, B2.z, B2.u, B2.v, ff); pushV(gL[0], gL[1], 0.15, uL[0], uL[1], ff);
-      pushV(B2.x, B2.y, B2.z, B2.u, B2.v, ff); pushV(A2.x, A2.y, A2.z, A2.u, A2.v, ff); pushV(gR[0], gR[1], 0.15, uR[0], uR[1], ff);
+      pushV(A2.x, A2.y, A2.z, A2.u, A2.v, ff); pushV(B2.x, B2.y, B2.z, B2.u, B2.v, ff); pushV(gL[0], gL[1], 0.15 / NR, uL[0], uL[1], ff);
+      pushV(B2.x, B2.y, B2.z, B2.u, B2.v, ff); pushV(A2.x, A2.y, A2.z, A2.u, A2.v, ff); pushV(gR[0], gR[1], 0.15 / NR, uR[0], uR[1], ff);
     }
     const vertCount = verts.length / 6;
     if(!this._needleVBO){
@@ -6607,7 +6637,8 @@ vec3 f3Paper(vec2 q, float lift){
     const onN = (x=>x * x * (3 - 2 * x))(Math.min(1, aN / 0.16));   // デッドゾーンを抜けた所から 0 で立ち上げる
     const spikeF = spike ? { a: aN * onN, beat: App.visualBeat ? App.visualBeat() : BPM.beatCount(), bm: App.beatMode === 'beat' ? 1 : 0,
       hit: (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0,
-      t: (this.postClock != null ? this.postClock : this.clock) * 0.5 } : null;
+      t: (this.postClock != null ? this.postClock : this.clock) * 0.5,
+      scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) } : null;
     for(const name of Fx3d.ORDER){
       const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
       if(e <= 0.001 || !Fx3d.has(name)) continue;
@@ -7088,7 +7119,7 @@ void main(){
     const rollDir = [Math.cos(rollAng), Math.sin(rollAng)];
     const rollOff = Math.hypot(asp, 1) * (1 - 1.5 * aR * onF);
 
-    return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5 };
+    return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5, scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) };
   },
   // 統合折りの uniform を prog へ送る。pre は _foldPaperGLSL の接頭辞 ('u' = 統合パス / 'uF3' = フック)
   _foldUpload(prog, pre, F){
@@ -7097,7 +7128,8 @@ void main(){
     gl.uniform1f(U('Twist'), F.twist);
     gl.uniform1f(U('Warp2'), F.warp2);
     gl.uniform1f(U('Wt2'), F.wt2);
-    gl.uniform1f(U('NeedleAmt'), F.aN * F.onF);          // needle 変位も onset で 0 から立ち上げ
+    gl.uniform1f(U('NeedleAmt'), F.aN * F.onF);
+    gl.uniform1f(U('NeedleScat'), F.scat);          // needle 変位も onset で 0 から立ち上げ
     gl.uniform1f(U('Nt'), F.nt);   // 統合時は needle の動きを控えめに
     gl.uniform1f(U('Beat'), F.beatId);
     gl.uniform1f(U('BeatMode'), F.beatMode ? 1 : 0);
@@ -7321,6 +7353,78 @@ vec4 fx3dApply(vec4 clip){
 `;
   },
   // fx3dApply で折った面の陰影 (FS 用)。fx3dFoldShade(色) を呼ぶ。折りが掛かっていないとき (uFx3dOn = 0) は色をそのまま返す
+  // ── 面を覆う針 (Needle を面へ隙間なく生やす。Origami などと重ねた紙 / 3D FX の Cubes が使う) ──
+  // 領域 (ab = 0..1) を gx × gy の揺らした種の格子で区切り、四角形のまま / 三角形 2 枚に割った面 (三角形が約 2/3) ごとに、
+  // 面の重心の真上を頂点とする角錐にする。隣の面とは底の辺で接する = 生えていない面がない。扇 1 枚を sub × sub に割る (折りで曲がる)。
+  //   fx3dNeedleVert(vid, grid, sub, salt, ab, w, key): vid = 0 .. (gx+2)(gy+2)·18·sub² - 1。w = 種の真上 1 → 底 0、key = 種ごとの値
+  //   fx3dNeedleH(key, at) = 針の高さ (格子間隔 = 1)。at = 面上の位置 (Scatter の高低の群れ)。uniform uSp* は Fx3d.spikeUniforms が送る
+  needleCellGLSL(){
+    return `uniform float uSpA, uSpBeat, uSpBM, uSpHit, uSpT, uSpScat;
+float spH(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
+float spVn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(spH(i), spH(i + vec2(1.0, 0.0)), f.x), mix(spH(i + vec2(0.0, 1.0)), spH(i + vec2(1.0, 1.0)), f.x), f.y); }
+float fx3dNeedleH(vec2 key, vec2 at){
+  // 高さは単体 Needle と同じ二極化 (低い針と高い針が隣り合う)。符号で突起 (+) / 凹み (-)。拍ごとの目標へ Ease Out / drone は連続サイン
+  float jr = spH(key + 9.9);
+  float amp = (jr < 0.45) ? mix(0.05, 0.35, jr / 0.45) : mix(1.05, 1.9, pow(spH(key + 1.1), 3.0));
+  float osc = sin(uSpT * (0.22 + 0.26 * spH(key + 0.13)) + spH(key + 5.5) * 6.2831);
+  float bid = floor(uSpBeat);
+  float ease = 1.0 - pow(1.0 - clamp(fract(uSpBeat) / 0.24, 0.0, 1.0), 3.0);
+  float bosc = mix(spH(key + bid * 7.7 + 11.3), spH(key + (bid + 1.0) * 7.7 + 11.3), ease) * 2.0 - 1.0;
+  osc = mix(osc, bosc, uSpBM);
+  float patchF = mix(1.0, 0.2 + 1.6 * spVn(at + 7.1), uSpScat);   // Scatter: 高い針の群れと低い針の群れ
+  return 3.0 * amp * sign(osc) * sqrt(abs(osc)) * patchF * uSpA * (1.0 + mix(0.10, 0.46, uSpBM) * pow(clamp(uSpHit, 0.0, 1.0), 0.65));
+}
+vec2 nvSeed(ivec2 c, vec2 salt){
+  vec2 k = vec2(c) * vec2(1.37, 2.11) + salt;
+  return vec2(c) + 0.5 + (vec2(spH(k + 0.5), spH(k + 9.6)) - 0.5) * (0.35 + 0.5 * uSpScat);   // Scatter: 種の揺らし幅
+}
+// 格子の四角形 q (左下の種の番号) の割り方: 0 = 四角形のまま (半分) / 1 = 対角線 左下-右上 / 2 = 右下-左上 で三角形 2 枚
+int nvSplit(ivec2 q, vec2 salt){ float h = spH(vec2(q) * vec2(2.71, 1.93) + salt + 17.3); return h < 0.5 ? 0 : (h < 0.75 ? 1 : 2); }
+void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out float w, out vec2 key){
+  int n = int(sub), perFan = n * n * 3, gxs = int(grid.x) + 2;
+  int qd = vid / (perFan * 6), r = vid - qd * perFan * 6;
+  int fan = r / perFan; r -= fan * perFan;
+  int tri = r / 3, cn = r - tri * 3;
+  ivec2 c = ivec2(qd - (qd / gxs) * gxs, qd / gxs) - 1;
+  vec2 LL = nvSeed(c, salt), LR = nvSeed(c + ivec2(1, 0), salt), UR = nvSeed(c + ivec2(1, 1), salt), UL = nvSeed(c + ivec2(0, 1), salt);
+  int t = nvSplit(c, salt);
+  // 面 (四角形 1 枚 か 三角形 2 枚) の重心の真上を頂点、面の辺を底にした角錐。扇 = (頂点, 辺の始点, 辺の終点)
+  vec2 A, B, C; int face = 0;
+  if(t == 0){
+    if(fan >= 4){ w = 0.0; ab = clamp(LL / grid, 0.0, 1.0); key = vec2(0.0); return; }   // 使わない扇は縮退
+    A = (LL + LR + UR + UL) * 0.25;
+    B = fan == 0 ? LL : fan == 1 ? LR : fan == 2 ? UR : UL;
+    C = fan == 0 ? LR : fan == 1 ? UR : fan == 2 ? UL : LL;
+  } else {
+    face = fan / 3; int e = fan - face * 3;
+    vec2 v0 = t == 1 ? LL : (face == 0 ? LL : LR);
+    vec2 v1 = t == 1 ? (face == 0 ? LR : UR) : (face == 0 ? LR : UR);
+    vec2 v2 = t == 1 ? (face == 0 ? UR : UL) : UL;
+    A = (v0 + v1 + v2) / 3.0;
+    B = e == 0 ? v0 : e == 1 ? v1 : v2;
+    C = e == 0 ? v1 : e == 1 ? v2 : v0;
+  }
+  key = vec2(c) * vec2(1.37, 2.11) + salt + 31.7 + float(face) * 5.13;
+  ivec2 p0 = ivec2(0), p1 = ivec2(0), p2 = ivec2(0);
+  int k = 0;
+  for(int i = 0; i < 4; i++){
+    if(i >= n) break;
+    for(int j = 0; j < 4; j++){
+      if(j >= n - i) break;
+      if(k == tri){ p0 = ivec2(i, j); p1 = ivec2(i + 1, j); p2 = ivec2(i, j + 1); }
+      k++;
+      if(j < n - 1 - i){ if(k == tri){ p0 = ivec2(i + 1, j); p1 = ivec2(i + 1, j + 1); p2 = ivec2(i, j + 1); } k++; }
+    }
+  }
+  vec2 L = vec2(cn == 0 ? p0 : (cn == 1 ? p1 : p2)) / float(n);
+  w = 1.0 - L.x - L.y;
+  ab = clamp((A + (B - A) * L.x + (C - A) * L.y) / grid, 0.0, 1.0);
+}
+`;
+  },
+  // fx3dNeedleVert の 1 領域の頂点数
+  needleCellVerts(gx, gy, sub){ return (gx + 2) * (gy + 2) * 18 * sub * sub; },
   fx3dShadeGLSL(){
     return `uniform float uFx3dOn, uFx3dShade;
 uniform vec3 uFx3dEye;
@@ -7458,8 +7562,20 @@ vec3 fx3dFoldShade(vec3 c){
     }
     gl.uniform1f(U('uMode'), 0.0);
     if(!uzOn) gl.drawArrays(gl.TRIANGLES, 0, 3);   // Uzumaki 統合時は背景を描かない = 透過
-    gl.uniform1f(U('uMode'), 1.0);
-    gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * GRID[0] * GRID[1] * 6);
+    gl.uniform1f(U('uCrystal'), F.aN * F.onF);
+    if(aN > 0.001 && typeof Fx3d !== 'undefined'){
+      // Needle: 紙を針の面で覆って描く (格子の高さ場は使わない = 針の縁が格子で崩れない)
+      const nvGy = 10, nvGx = Math.max(1, Math.round(10 * w / Math.max(1, h))), nvSub = uzOn ? 1 : 3;
+      gl.uniform1f(U('uNeedleAmt'), 0);
+      gl.uniform2f(U('uNvGrid'), nvGx, nvGy);
+      gl.uniform1f(U('uNvSub'), nvSub);
+      Fx3d.spikeUniforms(gl, P, { a: F.aN * F.onF, beat: F.beatId, bm: F.beatMode ? 1 : 0, hit: F.hit, t: F.nt, scat: F.scat });
+      gl.uniform1f(U('uMode'), 2.0);
+      gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * this.needleCellVerts(nvGx, nvGy, nvSub));
+    } else {
+      gl.uniform1f(U('uMode'), 1.0);
+      gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * GRID[0] * GRID[1] * 6);
+    }
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._foldStackTmp.fbo);
@@ -10112,7 +10228,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dCubesGrid:[1,16], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dCubesGrid:[1,16], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -10319,7 +10435,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Cubes', fx3dCubesGrid:'Cubes Grid', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dScale:'3D Res', fx3dBg:'3D BG', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Cubes', fx3dCubesGrid:'Cubes Grid', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dScale:'3D Res', fx3dBg:'3D BG', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -12786,7 +12902,7 @@ const App = {
     gloss:1, glossBump:1, glossSharp:1, glossShine:1, glossWet:1, glossLight:1,
     // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
     fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dScale:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dCubesGrid:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGlobeDetail:1,
+    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dCubesGrid:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGlobeDetail:1, needleScatter:1,
     pollockGloss:1, pollockMatt:1, pollockFlat:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
@@ -13210,7 +13326,7 @@ const App = {
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
-    dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dCubesGrid:1, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
     fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dScale:1, fx3dBg:'auto',
@@ -13318,7 +13434,7 @@ const App = {
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','waveform','mosaic','shake','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
     pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
-    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dCubesGrid','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGlobe','fx3dGlobeDetail','origami','kaiser','kaiserOld','fx3dRoll','uzumaki','river','fx3dScale','fx3dBg'],
+    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dCubesGrid','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','uzumaki','river','fx3dScale','fx3dBg'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline'],
     glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
@@ -13390,7 +13506,7 @@ const App = {
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, slitScan:0.0, palette:8, paletteAmt:0,
-    dither:0.0, candy:0.0, origami:0.0, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dCubesGrid:1, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
     fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dScale:1, fx3dBg:'auto',
@@ -19287,6 +19403,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxDither','dither', f2);
     slid('pxCandy','candy', f2);
     slid('pxOrigami','origami', f2);
+    slid('pxNeedleScatter','needleScatter', f2);
     slid('pxKaiser','kaiser', f2);
     slid('pxKaiserOld','kaiserOld', f2);
     slid('pxUzumaki','uzumaki', f2);
@@ -19535,6 +19652,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxDither', p.dither || 0, f2);
     set('pxCandy', p.candy || 0, f2);
     set('pxOrigami', p.origami || 0, f2);
+    set('pxNeedleScatter', p.needleScatter != null ? p.needleScatter : 0.6, f2);
     set('pxKaiser', p.kaiser || 0, f2);
     set('pxKaiserOld', p.kaiserOld || 0, f2);
     set('pxUzumaki', p.uzumaki || 0, f2);
