@@ -6616,15 +6616,9 @@ vec3 f3Paper(vec2 q, float lift){
     const fw = this._finalFBO.w, fh = this._finalFBO.h;
     const s = [1, 0.75, 0.5].includes(+App.post.fx3dScale) ? +App.post.fx3dScale : 1;
     const tw = Math.max(2, Math.round(fw * s)), th = Math.max(2, Math.round(fh * s));
-    // 元の画面を暗くするのは最初に描く 1 段だけ (有効な段の最大の bgDim)。2 段目以降は前段の出力をそのまま敷く
-    let dimLeft = 0;
-    // 後ろに折り系 / Uzumaki があるときは、抜いた背景を 3D BG で埋めずに透過 (alpha) のまま渡す。
-    //   折り系は透過の所に紙を描かない = 3D の物体だけが折られ、背景は最後に _fx3dBgUnder が一度だけ敷く
+    // 各段は素材 (前の段の出力) を bgDim(e) だけ抜いて、自分の物体をその上に置く。抜いた所は透過 (alpha) のまま次へ渡し、
+    //   次の段・折り系は透過の所を描かない = 前の段の物体だけが次の段に乗る (重ねがけ)。背景は最後に _fx3dBgUnder が一度だけ敷く
     const foldNext = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'].some(k=>(+(p && p[k]) || 0) > 0.001);
-    for(const name of Fx3d.ORDER){
-      const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
-      if(e > 0.001 && Fx3d.has(name)) dimLeft = Math.max(dimLeft, Fx3d.bgDim(e));
-    }
     for(const name of Fx3d.ORDER){
       const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
       if(e <= 0.001 || !Fx3d.has(name)) continue;
@@ -6659,7 +6653,7 @@ vec3 f3Paper(vec2 q, float lift){
       if(!ok) continue;
       // 合成: エンジンは透明背景 (rgb=色, a=被覆) で描いてある。元の画面を (1 - bgDim) に暗くした上に重ねる
       //   結果 = fx + src * (1 - bgDim) * (1 - a)。_finalFBO を読まずに書くのでフィードバックにならない
-      if(!this._fx3dOverProgram() || !this._fx3dBg) continue;
+      if(!this._fx3dOverProgram()) continue;
       if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
       gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
       gl.useProgram(this._fx3dOverProg);
@@ -6669,32 +6663,25 @@ vec3 f3Paper(vec2 q, float lift){
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, T.tex);
       gl.uniform1i(gl.getUniformLocation(this._fx3dOverProg, 'uTex'), 0);
-      gl.activeTexture(gl.TEXTURE1);
-      gl.bindTexture(gl.TEXTURE_2D, this._fx3dBg.tex);
-      gl.uniform1i(gl.getUniformLocation(this._fx3dOverProg, 'uFill'), 1);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), dimLeft); dimLeft = 0;
-      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uFillAmt'), foldNext ? 0 : 1);
+      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), Fx3d.bgDim(e));
       gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uAlphaOnly'), 0);
       // 3D Res < 100% のときは 3D 側が低解像度 (元の画面より柔らかい) ので、出始めだけ元の画面から短く混ぜて段差を消す
       const mx = Math.min(1, e / 0.12);
       gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uMix'), s < 1 ? mx * mx * (3 - 2 * mx) : 1);
-      if(foldNext){
-        // 透過で渡す: alpha = 物体の被覆 + 元の alpha × 暗くしなかった分。1 回目で dstA·(1 - 被覆 - 暗くした分)、2 回目 (alpha だけ) で被覆を足す
-        gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.colorMask(false, false, false, true);
-        gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
-        gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uAlphaOnly'), 1);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.colorMask(true, true, true, true);
-      } else {
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-      }
+      // 透過で渡す: alpha = 物体の被覆 + 元の alpha × 抜かなかった分。1 回目で dstA·(1 - 被覆 - 抜いた分)、2 回目 (alpha だけ) で被覆を足す
+      gl.blendFuncSeparate(gl.ONE, gl.ONE_MINUS_SRC_ALPHA, gl.ZERO, gl.ONE_MINUS_SRC_ALPHA);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.colorMask(false, false, false, true);
+      gl.blendFuncSeparate(gl.ONE, gl.ONE, gl.ONE, gl.ONE);
+      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uAlphaOnly'), 1);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+      gl.colorMask(true, true, true, true);
+      this._fx3dBgNeed = true;
       gl.disable(gl.BLEND);
       gl.bindVertexArray(null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
+    if(!foldNext) this._fx3dBgUnder();   // 折り系が続くときは、折ったあと (Uzumaki の後) に敷く
   },
   // 3D 段の背景 (3D BG) を小さなテクスチャ _fx3dBg に作る。3D 段に入る前の画面から 1 フレームに 1 回。
   //   Auto = 元の画面を大きくぼかして沈めた絵 / Color = Params の背景色 (App.bgTarget: uBgColor → エンジンの背景 → Slot A 背景色) のベタ
@@ -6799,12 +6786,11 @@ out vec2 vUv;
 void main(){ vec2 q = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = q; gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0); }`);
     const fsh = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
 precision highp float;
-in vec2 vUv; uniform sampler2D uTex, uFill; uniform float uDim, uMix, uFillAmt, uAlphaOnly; out vec4 frag;
+in vec2 vUv; uniform sampler2D uTex; uniform float uDim, uMix, uAlphaOnly; out vec4 frag;
 void main(){
   vec4 t = texture(uTex, vUv);
   if(uAlphaOnly > 0.5){ frag = vec4(0.0, 0.0, 0.0, t.a * uMix); return; }
-  float k = uDim * (1.0 - t.a);
-  frag = vec4(t.rgb + texture(uFill, vUv).rgb * (k * uFillAmt), t.a + k) * uMix;
+  frag = vec4(t.rgb, t.a + uDim * (1.0 - t.a)) * uMix;
 }`);
     const pr = this._link(vsh, fsh);
     this._fx3dOverProg = (pr && !pr.err) ? pr : null;

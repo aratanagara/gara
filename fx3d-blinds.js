@@ -47,7 +47,9 @@ out vec4 frag;
 void main(){
   vec2 uv = vUv;
   if(!gl_FrontFacing) uv.y = 2.0 * vVc - uv.y;   // 裏面は帯の中で上下反転 (反転しきった帯が元の絵に戻る)
-  vec3 alb = texture(uTex, uv).rgb;
+  vec4 t0 = texture(uTex, uv);
+  if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
+  vec3 alb = t0.rgb;
   vec3 V = normalize(uEye - vW);
   vec3 N = normalize(vN);
   if(dot(N, V) < 0.0) N = -N;

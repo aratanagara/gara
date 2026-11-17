@@ -11,13 +11,16 @@ uniform sampler2D uTex;
 uniform mat4 uView, uProj;
 uniform float uAsp, uCols, uRows, uK, uHit, uT, uSign, uCellPx, uDist, uMaxPt;
 out vec3 vCol;
+out float vA;
 float h1(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 void main(){
   int cols = int(uCols);
   int cx = gl_VertexID % cols, cy = gl_VertexID / cols;
   vec2 cell = vec2(float(cx), float(cy));
   vec2 uv = (cell + 0.5) / vec2(uCols, uRows);
-  vec3 c = textureLod(uTex, uv, 0.0).rgb;
+  vec4 c4 = textureLod(uTex, uv, 0.0);
+  vec3 c = c4.rgb;
+  vA = c4.a;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   vec2 q = (uv - 0.5) * 2.0 * vec2(uAsp, 1.0);
   vec3 P = vec3(q, (l - 0.5) * 1.2 * uK * uSign);
@@ -34,10 +37,11 @@ void main(){
 precision highp float;
 uniform float uA0;
 in vec3 vCol;
+in float vA;
 out vec4 frag;
 void main(){
   float d = length(gl_PointCoord - 0.5);
-  if(d > 0.5) discard;
+  if(d > 0.5 || vA < 0.5) discard;   // 前の段が抜いた背景の点は出さない
   frag = vec4(vCol, 1.0) * uA0;
 }`;
 
