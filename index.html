@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794919295">
+<link rel="stylesheet" href="style.css?v=1794919424">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1266,9 +1266,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
         <div class="section">
           <h3>3D <span class="default-actions"><button class="saveDefBtn" data-kind="post:fx3d" title="3Dの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:fx3d" title="保存した3Dの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
-          <div class="row"><label for="pxFx3dPhoto">Photo</label><input type="range" id="pxFx3dPhoto" min="0" max="1" step="0.01" value="0" title="Photo: 画面をランダムな矩形に切り抜き、3D 空間に浮かせる (Code の PhotoPlane を画面素材で描く)。値=展開量 (0=元画像→1=全開)。後段の Needle / Origami / Kaiser はこの結果ごと折る"><div class="val" id="pxFx3dPhotoVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dPhotoCount" class="sub-label">Photo Count</label><input type="range" id="pxFx3dPhotoCount" data-sub-of="pxFx3dPhoto" min="4" max="80" step="1" value="24" title="切り抜きの枚数"><div class="val" id="pxFx3dPhotoCountVal">24</div></div>
-          <div class="row"><label for="pxFx3dPhotoCrop" class="sub-label">Photo Crop</label><input type="range" id="pxFx3dPhotoCrop" data-sub-of="pxFx3dPhoto" min="30" max="100" step="1" value="70" title="切り抜きの大きさ (画面比の長辺の上限)"><div class="val" id="pxFx3dPhotoCropVal">70%</div></div>
+          <div class="row"><label for="pxFx3dPhoto">Photos</label><input type="range" id="pxFx3dPhoto" min="0" max="1" step="0.01" value="0" title="Photos: 画面をランダムな矩形に切り抜き、3D 空間に浮かせる (Code の PhotoPlane を画面素材で描く)。値=展開量 (0=元画像→1=全開)。後段の Needle / Origami / Kaiser はこの結果ごと折る"><div class="val" id="pxFx3dPhotoVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dPhotoCount" class="sub-label">Photos Count</label><input type="range" id="pxFx3dPhotoCount" data-sub-of="pxFx3dPhoto" min="4" max="80" step="1" value="24" title="切り抜きの枚数"><div class="val" id="pxFx3dPhotoCountVal">24</div></div>
+          <div class="row"><label for="pxFx3dPhotoCrop" class="sub-label">Photos Crop</label><input type="range" id="pxFx3dPhotoCrop" data-sub-of="pxFx3dPhoto" min="30" max="100" step="1" value="70" title="切り抜きの大きさ (画面比の長辺の上限)"><div class="val" id="pxFx3dPhotoCropVal">70%</div></div>
           <div class="row"><label for="pxFx3dSlicer">Slicer</label><input type="range" id="pxFx3dSlicer" min="0" max="1" step="0.01" value="0" title="Slicer: 画面を多角形の断片に砕いて 3D 空間に散らす (Code の Slicer を画面素材で描く)。値=砕け方 (0=元画像→1=全開)。後段の Layers / Needle / Origami / Kaiser はこの結果ごと処理する"><div class="val" id="pxFx3dSlicerVal">0.00</div></div>
           <div class="row"><label for="pxFx3dSlicerPieces" class="sub-label">Slicer Pieces</label><input type="range" id="pxFx3dSlicerPieces" data-sub-of="pxFx3dSlicer" min="20" max="400" step="5" value="150" title="断片の数"><div class="val" id="pxFx3dSlicerPiecesVal">150</div></div>
           <div class="row"><label for="pxFx3dLayer">Layers</label><input type="range" id="pxFx3dLayer" min="0" max="1" step="0.01" value="0" title="Layers: 画面を同じ 1 枚の板として何枚も重ね、奥行き方向に離して回す (Code の Layer を画面素材で描く)。値=離れ方 (0=元画像→1=全開)。後段の Needle / Origami / Kaiser はこの結果ごと折る"><div class="val" id="pxFx3dLayerVal">0.00</div></div>
@@ -1912,54 +1912,54 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794919295"></script>
-<script src="mode/layer.js?v=1794919295"></script>
-<script src="vendor/iro.min.js?v=1794919295"></script>
-<script src="vendor/mediabunny.min.js?v=1794919295"></script>
-<script src="mode/textdeform.js?v=1794919295"></script>
-<script src="mode/textdeform-comp.js?v=1794919295"></script>
-<script src="mode/ugomeki.js?v=1794919295"></script>
-<script src="mode/slicer.js?v=1794919295"></script>
-<script src="mode/video.js?v=1794919295"></script>
-<script src="mode/aratanagara.js?v=1794919295"></script>
-<script src="vendor/p5.min.js?v=1794919295"></script>
-<script src="mode/cyberui.js?v=1794919295"></script>
-<script src="mode/novel.js?v=1794919295"></script>
-<script src="shaders/inkelly.js?v=1794919295"></script>
-<script src="sketchfx.js?v=1794919295"></script>
-<script src="pixelsortfx.js?v=1794919295"></script>
-<script src="shaders/boltzmann.js?v=1794919295"></script>
-<script src="mode/pen.js?v=1794919295"></script>
-<script src="shaders/caverns.js?v=1794919295"></script>
-<script src="mode/shelf.js?v=1794919295"></script>
-<script src="shaders/ribbon.js?v=1794919295"></script>
-<script src="mode/photoplane.js?v=1794919295"></script>
-<script src="mode/shredder.js?v=1794919295"></script>
-<script src="mode/transflock.js?v=1794919295"></script>
-<script src="mode/liquidpeel.js?v=1794919295"></script>
-<script src="mode/windflock.js?v=1794919295"></script>
-<script src="mode/rhizome.js?v=1794919295"></script>
-<script src="mode/surrealfloat.js?v=1794919295"></script>
-<script src="mode/chrometype.js?v=1794919295"></script>
-<script src="mode/tower4149.js?v=1794919295"></script>
-<script src="mode/fude.js?v=1794919295"></script>
-<script src="mode/image.js?v=1794919295"></script>
-<script src="mode/spacetype.js?v=1794919295"></script>
-<script src="fx3d.js?v=1794919295"></script>
-<script src="fx3d-cubes.js?v=1794919295"></script>
-<script src="fx3d-blinds.js?v=1794919295"></script>
-<script src="fx3d-diorama.js?v=1794919295"></script>
-<script src="fx3d-points.js?v=1794919295"></script>
-<script src="fx3d-gravity.js?v=1794919295"></script>
-<script src="fx3d-globe.js?v=1794919295"></script>
-<script src="pollockfx.js?v=1794919295"></script>
-<script src="overlay.js?v=1794919295"></script>
-<script src="gif.js?v=1794919295"></script>
-  <script src="ui-icons.js?v=1794919295"></script>
-  <script src="app.js?v=1794919295"></script>
-  <script src="ui-scrollbar.js?v=1794919295"></script>
-  <script src="ui-settings.js?v=1794919295"></script>
-<script src="camroll.js?v=1794919295" defer></script>
-<script src="dbltap.js?v=1794919295" defer></script>
+<script src="presets.js?v=1794919424"></script>
+<script src="mode/layer.js?v=1794919424"></script>
+<script src="vendor/iro.min.js?v=1794919424"></script>
+<script src="vendor/mediabunny.min.js?v=1794919424"></script>
+<script src="mode/textdeform.js?v=1794919424"></script>
+<script src="mode/textdeform-comp.js?v=1794919424"></script>
+<script src="mode/ugomeki.js?v=1794919424"></script>
+<script src="mode/slicer.js?v=1794919424"></script>
+<script src="mode/video.js?v=1794919424"></script>
+<script src="mode/aratanagara.js?v=1794919424"></script>
+<script src="vendor/p5.min.js?v=1794919424"></script>
+<script src="mode/cyberui.js?v=1794919424"></script>
+<script src="mode/novel.js?v=1794919424"></script>
+<script src="shaders/inkelly.js?v=1794919424"></script>
+<script src="sketchfx.js?v=1794919424"></script>
+<script src="pixelsortfx.js?v=1794919424"></script>
+<script src="shaders/boltzmann.js?v=1794919424"></script>
+<script src="mode/pen.js?v=1794919424"></script>
+<script src="shaders/caverns.js?v=1794919424"></script>
+<script src="mode/shelf.js?v=1794919424"></script>
+<script src="shaders/ribbon.js?v=1794919424"></script>
+<script src="mode/photoplane.js?v=1794919424"></script>
+<script src="mode/shredder.js?v=1794919424"></script>
+<script src="mode/transflock.js?v=1794919424"></script>
+<script src="mode/liquidpeel.js?v=1794919424"></script>
+<script src="mode/windflock.js?v=1794919424"></script>
+<script src="mode/rhizome.js?v=1794919424"></script>
+<script src="mode/surrealfloat.js?v=1794919424"></script>
+<script src="mode/chrometype.js?v=1794919424"></script>
+<script src="mode/tower4149.js?v=1794919424"></script>
+<script src="mode/fude.js?v=1794919424"></script>
+<script src="mode/image.js?v=1794919424"></script>
+<script src="mode/spacetype.js?v=1794919424"></script>
+<script src="fx3d.js?v=1794919424"></script>
+<script src="fx3d-cubes.js?v=1794919424"></script>
+<script src="fx3d-blinds.js?v=1794919424"></script>
+<script src="fx3d-diorama.js?v=1794919424"></script>
+<script src="fx3d-points.js?v=1794919424"></script>
+<script src="fx3d-gravity.js?v=1794919424"></script>
+<script src="fx3d-globe.js?v=1794919424"></script>
+<script src="pollockfx.js?v=1794919424"></script>
+<script src="overlay.js?v=1794919424"></script>
+<script src="gif.js?v=1794919424"></script>
+  <script src="ui-icons.js?v=1794919424"></script>
+  <script src="app.js?v=1794919424"></script>
+  <script src="ui-scrollbar.js?v=1794919424"></script>
+  <script src="ui-settings.js?v=1794919424"></script>
+<script src="camroll.js?v=1794919424" defer></script>
+<script src="dbltap.js?v=1794919424" defer></script>
 </body>
 </html>

@@ -233,7 +233,7 @@ vec3 fx3dSpike(int vid, vec2 cell){
       P.count = Math.max(4, Math.min(80, Math.round(+(post.fx3dPhotoCount) || 24)));
       P.cropMax = cropMax; P.cropMin = cropMax * 0.36;
       P.spread = 2 + 7 * e;
-      P.bend = F.bend * k; P.warpAmp = F.warpAmp * k;
+      P.bend = F.bend * k;
       P.size = F.size * (0.8 + 0.6 * e);
       o.textures[0] = srcTex;
       o.texAspects[0] = asp;

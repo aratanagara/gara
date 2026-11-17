@@ -130,12 +130,24 @@ precision highp float;
 in vec2 aPos;   // -0.5..0.5
 in vec2 aUV;    // 0..1
 uniform mat4 uMVP, uModel;
-uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq, uWarpYR, uFold, uTwist;
+uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq, uWarpYR, uFold, uTwist, uPaper;
 uniform vec2 uBend;      // 端の反り x,y
 uniform vec4 uCrop;      // u0,v0,u1,v1
 out vec2 vUv; out vec3 vN; out vec3 vWorld; out vec2 vL; out vec2 vQ;
 vec3 displace(vec2 q){
   vec2 p = q; p.x *= uAspect;
+  if(uPaper > 0.5){
+    // 3D FX (Photos): 柔らかい紙のしなり。紙の上の 1 方向に沿って弧長を保ったまま曲げる (伸び縮みしない = 波打たない)。
+    //   曲率は中心で k0、そこから k1 で変わる (片反り ↔ S 字)。どちらも板ごとの周期でゆっくり行き来し、曲げの向きも少し漂う
+    float a = atan(uBend.y, uBend.x) + 0.35 * sin(uTime * 0.13 + uSeed);
+    vec2 d = vec2(cos(a), sin(a)), n = vec2(-d.y, d.x);
+    float u = dot(p, d), v = dot(p, n);
+    float k0 = uBendMul * 2.0 * sin(uTime * (0.45 + 0.05 * uSeed) + uSeed * 2.1);
+    float k1 = uBendMul * 3.2 * sin(uTime * (0.31 + 0.04 * uSeed) + uSeed * 3.7);
+    float x = 0.0, z = 0.0, h = u / 6.0;
+    for(int i = 0; i < 6; i++){ float s = (float(i) + 0.5) * h; float th = k0 * s + 0.5 * k1 * s * s; x += cos(th) * h; z += sin(th) * h; }
+    return vec3(d * x + n * v, z);
+  }
   float z = 0.0;
   z += uBend.x*uBendMul * (p.x*p.x - 0.0833);
   z += uBend.y*uBendMul * (p.y*p.y - 0.0833);
@@ -214,7 +226,7 @@ void main(){
   _link(vs,fs){ const gl=this.gl; const v=this._compile(gl.VERTEX_SHADER,vs), f=this._compile(gl.FRAGMENT_SHADER,fs); if(!v||!f) return null;
     const p=gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.bindAttribLocation(p,0,'aPos'); gl.bindAttribLocation(p,1,'aUV'); gl.linkProgram(p);
     if(!__glReady(gl, p, true)){ console.error('[PhotoPlane link]', gl.getProgramInfoLog(p)); return null; }
-    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
+    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
 
   // 細分プレーン (N×N グリッド) — bend/warp をなめらかに
   _buildGeo(N){
@@ -422,6 +434,7 @@ void main(){
     gl.uniform1f(this.loc.uWarpAmp,P.warpAmp*(1.0+pulse*0.5));
     gl.uniform1f(this.loc.uWarpFreq,P.warpFreq);
     gl.uniform1f(this.loc.uBendMul,P.bend);
+    gl.uniform1f(this.loc.uPaper,this._fx ? 1 : 0);
     gl.uniform1i(this.loc.uTex,0);
     gl.activeTexture(gl.TEXTURE0);
 
