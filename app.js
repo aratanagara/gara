@@ -6915,7 +6915,7 @@ vec4 fx3dApply(vec4 clip){
   // fx3dApply で折った面の陰影 (FS 用)。fx3dFoldShade(色) を呼ぶ。折りが掛かっていないとき (uFx3dOn = 0) は色をそのまま返す
   // ── 面を覆う針 (Needle を面へ隙間なく生やす。Origami などと重ねた紙 / 3D FX の Cubes が使う) ──
   // 領域 (ab = 0..1) を gx × gy の揺らした種の格子で区切り、四角形のまま / 三角形 2 枚に割った面 (三角形が約 2/3) ごとに、
-  // 面の重心から細い針 (底 = 面の NV_BASE 倍) を立て、その外は平らな地にする = どの面にも針が立つ (ウニ / 針山)。扇 1 枚を sub × sub に割る (折りで曲がる)。
+  // 面をそのまま底にして、重心の真上を頂点とする錐にする。隣の面とは底の辺で接する = 隙間なく針が立つ (ウニ / 針山)。扇 1 枚を sub × sub に割る (折りで曲がる)。
   //   fx3dNeedleVert(vid, grid, sub, salt, ab, w, key): vid = 0 .. (gx+2)(gy+2)·18·sub² - 1。w = 種の真上 1 → 底 0、key = 種ごとの値
   //   fx3dNeedleH(key, at) = 針の高さ (格子間隔 = 1)。at = 面上の位置 (Scatter の高低の群れ)。uniform uSp* は Fx3d.spikeUniforms が送る
   needleCellGLSL(){
@@ -6942,9 +6942,8 @@ vec2 nvSeed(ivec2 c, vec2 salt){
 }
 // 格子の四角形 q (左下の種の番号) の割り方: 0 = 四角形のまま (半分) / 1 = 対角線 左下-右上 / 2 = 右下-左上 で三角形 2 枚
 int nvSplit(ivec2 q, vec2 salt){ float h = spH(vec2(q) * vec2(2.71, 1.93) + salt + 17.3); return h < 0.5 ? 0 : (h < 0.75 ? 1 : 2); }
-const float NV_BASE = 0.3;   // 針の底の幅 (面の大きさに対する比)。細いほどウニの棘 / 針山の針
 void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out float w, out vec2 key){
-  int n = max(int(sub), 2), perFan = n * n * 3, gxs = int(grid.x) + 2;
+  int n = int(sub), perFan = n * n * 3, gxs = int(grid.x) + 2;
   int qd = vid / (perFan * 6), r = vid - qd * perFan * 6;
   int fan = r / perFan; r -= fan * perFan;
   int tri = r / 3, cn = r - tri * 3;
@@ -6979,13 +6978,9 @@ void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out f
       if(j < n - 1 - i){ if(k == tri){ p0 = ivec2(i + 1, j); p1 = ivec2(i + 1, j + 1); p2 = ivec2(i, j + 1); } k++; }
     }
   }
-  // 針は細く: 扇の最初の段 (頂点から 1/n) を底の幅 NV_BASE までの針にし、その外は平らな地 (ウニの殻 / 針山の台)
   vec2 L = vec2(cn == 0 ? p0 : (cn == 1 ? p1 : p2)) / float(n);
-  float rho = L.x + L.y, r1 = 1.0 / float(n);
-  float rp = rho <= r1 ? rho / r1 * NV_BASE : NV_BASE + (rho - r1) / (1.0 - r1) * (1.0 - NV_BASE);
-  vec2 Ld = rho > 0.0 ? L * (rp / rho) : L;
-  w = rho <= r1 ? 1.0 - rho / r1 : 0.0;
-  ab = clamp((A + (B - A) * Ld.x + (C - A) * Ld.y) / grid, 0.0, 1.0);
+  w = 1.0 - L.x - L.y;
+  ab = clamp((A + (B - A) * L.x + (C - A) * L.y) / grid, 0.0, 1.0);
 }
 `;
   },
@@ -7132,7 +7127,7 @@ vec3 fx3dFoldShade(vec3 c){
     if(aN > 0.001 && typeof Fx3d !== 'undefined'){
       // Needle: 紙を針の面で覆って描く (格子の高さ場は使わない = 針の縁が格子で崩れない)
       const nvM = (aO > 0.001 || aK > 0.001 || aR > 0.001 || uzOn) ? 1 : 1.8;   // Needle だけ = 折らないので紙を画面の外まで広げる
-      const nvGy = Math.round(10 * nvM), nvGx = Math.max(1, Math.round(10 * nvM * w / Math.max(1, h))), nvSub = uzOn ? 2 : 3;
+      const nvGy = Math.round(14 * nvM), nvGx = Math.max(1, Math.round(14 * nvM * w / Math.max(1, h))), nvSub = uzOn ? 2 : 3;
       gl.uniform1f(U('uNeedleAmt'), 0);
       gl.uniform2f(U('uNvGrid'), nvGx, nvGy);
       gl.uniform1f(U('uNvSub'), nvSub);
