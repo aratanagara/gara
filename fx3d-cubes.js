@@ -65,7 +65,9 @@ out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
   vec2 u = 1.0 - abs(1.0 - mod(vUv, 2.0));
-  vec3 col = texture(uTex, u).rgb;
+  vec4 t0 = texture(uTex, u);
+  if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
+  vec3 col = t0.rgb;
   frag = vec4(fx3dLit(col, vW, uEye, uShade), 1.0);
 }`;
 const U = {};

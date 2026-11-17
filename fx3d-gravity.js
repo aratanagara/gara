@@ -34,7 +34,9 @@ uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uK;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
-  vec3 col = fx3dLit(texture(uTex, vUv).rgb, vW, uEye, uShade);
+  vec4 t0 = texture(uTex, vUv);
+  if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
+  vec3 col = fx3dLit(t0.rgb, vW, uEye, uShade);
   float deep = smoothstep(-3.6, -1.2, vW.z / max(uK, 1e-3));   // 喉の奥を暗く (出始めは Shade と同じ立ち上がり)
   col *= mix(1.0, mix(0.15, 1.0, deep), uShade);
   frag = vec4(col, 1.0);

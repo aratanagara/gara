@@ -34,7 +34,9 @@ float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
 vec2 mirror(vec2 p){ return 1.0 - abs(1.0 - mod(p, 2.0)); }
 void main(){
   vec2 uv = mirror(vUv);
-  vec3 c = texture(uTex, uv).rgb;
+  vec4 t0 = texture(uTex, uv);
+  if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
+  vec3 c = t0.rgb;
   float l = luma(c);
   float layer = float(vLayer);
   float thr = layer / uN;

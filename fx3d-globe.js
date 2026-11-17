@@ -40,7 +40,9 @@ in vec2 vUv; in vec3 vW, vN;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uMirror, uFacet, uSeam;
 out vec4 frag;
 void main(){
-  vec3 alb = texture(uTex, vUv).rgb;
+  vec4 t0 = texture(uTex, vUv);
+  if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
+  vec3 alb = t0.rgb;
   if(uSeam > 0.0){   // 画面の左右端が球の裏で合う継ぎ目: 端から uSeam の幅で反対側の絵と混ぜて、段差を消す
     float d = min(vUv.x, 1.0 - vUv.x);
     float w = 0.5 * (1.0 - smoothstep(0.0, uSeam, d));

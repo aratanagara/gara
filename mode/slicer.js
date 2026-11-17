@@ -140,7 +140,9 @@ uniform float u_camDist;
 in vec2 v_uv;
 out vec4 fragOut;
 void main(){
-  vec3 c = texture(u_map, v_uv).rgb;
+  vec4 t0 = texture(u_map, v_uv);
+  if(t0.a < 0.5) discard;   // 透過の所 (3D FX で前の段が抜いた背景 / 透過画像) は断片を描かない
+  vec3 c = t0.rgb;
   if(u_sat != 1.0){
     float l = dot(c, vec3(0.299, 0.587, 0.114));
     c = mix(vec3(l), c, u_sat);
