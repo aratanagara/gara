@@ -1693,146 +1693,6 @@ void main(){
   frag = vec4(col, 1.0);
 }`);
 
-    // Needle: shared crystal nuclei grow connected planar facets on an irregular triangle mesh.
-    {
-      const gl = this.gl;
-      const OGVS = `#version 300 es
-precision highp float;
-in vec3 aPos;
-in vec2 aUv;
-in float aFacet;
-uniform vec2 uRes; uniform float uAmount, uTime, uHit, uBeat, uBeatMode, uShadowPass;
-out vec2 vSrcUv; out vec3 vWorld; out vec3 vEye; out vec4 vLightClip; flat out float vFacet; flat out vec3 vLightPos;
-float hash21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
-vec2 hash22(vec2 p){ float n=hash21(p); return vec2(n,hash21(p+n+19.19)); }
-vec3 movingLight(){
-  float motion=mix(uTime*1.26,uBeat*0.55,step(0.5,uBeatMode));
-  float k=floor(motion), ph=fract(motion); ph=ph*ph*(3.0-2.0*ph);
-  vec3 a=vec3(hash21(vec2(k,11.7)),hash21(vec2(k,37.1)),hash21(vec2(k,73.9)));
-  vec3 b=vec3(hash21(vec2(k+1.0,11.7)),hash21(vec2(k+1.0,37.1)),hash21(vec2(k+1.0,73.9)));
-  vec3 r=mix(a,b,ph);
-  return vec3(mix(-7.5,7.5,r.x),mix(-5.5,6.5,r.y),mix(7.0,13.0,r.z));
-}
-vec4 lightClipAt(vec3 world,vec3 lightPos){
-  vec3 target=vec3(0.0,0.0,0.8), lz=normalize(lightPos-target);
-  vec3 lx=normalize(cross(vec3(0.0,1.0,0.0),lz)), ly=cross(lz,lx);
-  vec3 d=world-lightPos;
-  float z=dot(lz,d), nearZ=0.1, farZ=32.0, extent=12.0;
-  return vec4(dot(lx,d)/extent,dot(ly,d)/extent,(-2.0*z-(farZ+nearZ))/(farZ-nearZ),1.0);
-}
-void main(){
-  // 結晶ジオメトリは JS 側でベクター生成 (グリッド量子化なし)。VS は変換のみ。
-  vec3 world=aPos;
-  vSrcUv=aUv;
-  vFacet=aFacet;
-  vWorld=world;
-  vLightPos=movingLight();
-  vLightClip=lightClipAt(world,vLightPos);
-  float asp=uRes.x/max(uRes.y,1.0);
-  float t=uTime*1.5;
-  vec2 droneEye=vec2(0.6*sin(t*0.2),0.4*cos(t*0.15));
-  float camBeatId=floor(uBeat), camBp=fract(uBeat);
-  float camQ=clamp(camBp/0.24,0.0,1.0), camEase=1.0-pow(1.0-camQ,3.0);
-  vec2 camA=(hash22(vec2(camBeatId*5.7+301.1,camBeatId*11.3+337.9))-0.5)*vec2(1.2,0.8);
-  vec2 camB=(hash22(vec2((camBeatId+1.0)*5.7+301.1,(camBeatId+1.0)*11.3+337.9))-0.5)*vec2(1.2,0.8);
-  vec2 eyeXY=mix(droneEye,mix(camA,camB,camEase),step(0.5,uBeatMode));
-  vec3 eye=vec3(eyeXY,9.2);                                        // beat mode snaps, drone mode drifts
-  vEye=eye;
-  vec3 tgt=vec3(0.0,0.0,0.6);
-  vec3 up=vec3(0.0,1.0,0.0);
-  vec3 zc=normalize(eye-tgt), xc=normalize(cross(up,zc)), yc=cross(zc,xc);
-  mat4 view=mat4(xc.x,yc.x,zc.x,0.0, xc.y,yc.y,zc.y,0.0, xc.z,yc.z,zc.z,0.0, -dot(xc,eye),-dot(yc,eye),-dot(zc,eye),1.0);
-  float fov=radians(52.0), f=1.0/tan(fov*0.5), zn=0.1, zf=60.0;
-  mat4 proj=mat4(f/asp,0.0,0.0,0.0, 0.0,f,0.0,0.0, 0.0,0.0,(zf+zn)/(zn-zf),-1.0, 0.0,0.0,(2.0*zf*zn)/(zn-zf),0.0);
-  vec4 cameraClip=proj*view*vec4(world,1.0);
-  gl_Position=mix(cameraClip,vLightClip,step(0.5,uShadowPass));
-}`;
-      const OGFS = `#version 300 es
-precision highp float;
-in vec2 vSrcUv; in vec3 vWorld; in vec3 vEye; in vec4 vLightClip; flat in float vFacet; flat in vec3 vLightPos; out vec4 frag;
-uniform sampler2D uTex, uShadowTex; uniform float uAmount, uTime, uShadowEnabled; uniform vec2 uShadowTexel;
-float castShadow(vec3 N,vec3 L){
-  if(uShadowEnabled<0.5) return 0.0;
-  vec3 sc=vLightClip.xyz/max(vLightClip.w,0.0001)*0.5+0.5;
-  if(sc.x<=0.0||sc.x>=1.0||sc.y<=0.0||sc.y>=1.0||sc.z<=0.0||sc.z>=1.0) return 0.0;
-  float bias=max(0.0007,0.0032*(1.0-max(dot(N,L),0.0)));
-  float shadow=0.0;
-  for(int y=-1;y<=1;y++) for(int x=-1;x<=1;x++){
-    float dep=texture(uShadowTex,sc.xy+vec2(float(x),float(y))*uShadowTexel).r;
-    shadow+=step(dep+bias,sc.z);
-  }
-  return shadow/9.0;
-}
-// Neutral studio environment: broad panels and a horizon, without synthetic rainbow bands.
-vec3 oreEnv(vec3 r){
-  float sky=clamp(r.y*0.5+0.5,0.0,1.0);
-  float panelA=pow(max(dot(r,normalize(vec3(-0.62,0.48,0.62))),0.0),22.0);
-  float panelB=pow(max(dot(r,normalize(vec3(0.73,-0.18,0.66))),0.0),34.0);
-  float horizon=pow(max(0.0,1.0-abs(r.y)),10.0);
-  return mix(vec3(0.035,0.042,0.055),vec3(0.62,0.68,0.78),sky)
-       +vec3(1.0)*panelA*1.15+vec3(0.78,0.84,0.94)*panelB*0.82
-       +vec3(0.32,0.36,0.42)*horizon;
-}
-void main(){
-  vec3 N=normalize(cross(dFdx(vWorld), dFdy(vWorld)));
-  vec3 V=normalize(vEye-vWorld);
-  if(dot(N,V)<0.0) N=-N;
-  vec3 L=normalize(vLightPos-vWorld);
-  float amp=uAmount*uAmount*(3.0-2.0*uAmount);
-  vec2 uv=clamp(vSrcUv,0.0,1.0);
-  float NoV=max(dot(N,V),0.0);
-  vec2 refrOff=N.xy*(0.0015+0.0095*amp)*(0.35+0.65*(1.0-NoV));
-  vec4 albA=texture(uTex,uv);
-  if(albA.a<0.5) discard;   // 3D FX が抜いた背景は結晶に乗せない
-  vec3 alb=albA.rgb;
-  vec3 frontSample=texture(uTex,clamp(uv+refrOff,0.0,1.0)).rgb;
-  vec3 innerSample=texture(uTex,clamp(uv-refrOff*1.85,0.0,1.0)).rgb;
-  float albPeak=max(max(alb.r,alb.g),alb.b);
-  vec3 gemHue=albPeak>0.025?alb/albPeak:vec3(1.0);
-  float ndl=clamp(dot(N,L),0.0,1.0);
-  float shadow=castShadow(N,L);
-  float direct=ndl*(1.0-shadow);
-  vec3 Hh=normalize(L+V);
-  float rough=mix(0.07,0.21,vFacet);
-  float specPower=clamp(2.0/(rough*rough)-2.0,18.0,180.0);
-  float spec=pow(max(dot(N,Hh),0.0),specPower);
-  vec3 L2=normalize(vec3(0.7,-0.25,0.65));
-  float spec2=pow(max(dot(N,normalize(L2+V)),0.0),specPower*1.35);
-  float fres=0.055+0.945*pow(1.0-NoV,5.0);
-  vec3 R=reflect(-V,N);
-  vec3 env=oreEnv(R);
-  float envLum=dot(env,vec3(0.2126,0.7152,0.0722));
-  vec2 reflectUv=clamp(uv+R.xy*(0.014+0.050*amp),0.0,1.0);
-  vec3 reflectedSample=texture(uTex,reflectUv).rgb;
-  vec3 transmitted=mix(alb,frontSample,0.14*amp);
-  transmitted=mix(transmitted,innerSample,0.10+0.08*amp);
-  float facetShade=mix(0.58,1.18,smoothstep(0.08,0.92,direct+envLum*0.16));
-  vec3 col=transmitted*facetShade;
-  col*=mix(1.0,0.62,shadow);
-  float tir=smoothstep(0.18,0.82,1.0-NoV);
-  col=mix(col,reflectedSample*(0.72+0.22*envLum)+transmitted*0.18,tir*(0.10+0.22*amp));
-  col+=vec3(1.0)*(spec*2.15*(1.0-shadow)+spec2*1.18);
-  float internal=pow(max(dot(R,normalize(vec3(-0.35,0.18,0.92))),0.0),18.0);
-  col+=gemHue*albPeak*internal*(0.22+0.38*amp);
-  col+=gemHue*albPeak*envLum*fres*0.12;
-  col+=vec3(1.0)*fres*fres*(0.045+0.11*envLum);
-  col=mix(col,alb,0.24);                                            // retain readable source pattern on every facet
-  frag=vec4(mix(alb,col,amp),1.0);
-}`;
-      const ovs=this._compile(gl.VERTEX_SHADER, OGVS);
-      const ofs=this._compile(gl.FRAGMENT_SHADER, OGFS);
-      const prog=this._link(ovs, ofs);
-      this.origamiProg=(prog && !prog.err)?prog:null;
-      if(!prog || prog.err) console.error('origami crystal program failed:', prog && prog.err);
-      const shadowFs=this._compile(gl.FRAGMENT_SHADER, `#version 300 es
-precision highp float;
-out vec4 frag;
-void main(){ frag=vec4(1.0); }`);
-      const shadowProg=this._link(this._compile(gl.VERTEX_SHADER, OGVS),shadowFs);
-      this.origamiShadowProg=(shadowProg && !shadowProg.err)?shadowProg:null;
-      if(!shadowProg || shadowProg.err) console.error('origami shadow program failed:',shadowProg && shadowProg.err);
-    }
-
     // Relief is a standalone pass so it remains available while the large
     // composite shader is still compiling or has fallen back on a given GPU.
     this._linkDeferred('reliefProg', `#version 300 es
@@ -3305,7 +3165,7 @@ void main(){
       if(!kprog || kprog.err) console.error('kaiser(grid) program failed:', kprog && kprog.err);
 
       // ── 統合折りエンジン (Needle 変位 + Origami 折り + Kaiser 折り + ひねり を1メッシュの頂点で合成) ──
-      // スライダーが2つ以上上がったとき起動。単体時は従来の各パスを使う。
+      // スライダーが2つ以上上がったとき、または Needle が上がったとき (Needle は単体でもここで描く) に起動。それ以外の単体は各パス。
       const FVS = `#version 300 es
 precision highp float;
 uniform vec2 uRes, uGrid;
@@ -3314,7 +3174,7 @@ uniform mat4 uView, uProj;
 uniform float uUzN, uUzTH, uUzSpin, uUzShr, uUzZStep, uUzCard, uUzOrbR;
 uniform vec2 uUzCw;
 uniform vec2 uNvGrid;
-uniform float uNvSub;
+uniform float uNvSub, uNvMargin;
 out vec2 vUv; out vec3 vWorld;
 ${this._foldPaperGLSL('u')}
 ${this.needleCellGLSL()}
@@ -3336,7 +3196,8 @@ void main(){
   if(uMode > 1.5){
     float w; vec2 key;
     fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(0.0), uv, w, key);
-    lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 / uNvGrid.y);
+    uv = 0.5 + (uv - 0.5) * uNvMargin;   // Needle だけのときは紙を画面の外まで広げる (絵はミラー) = 紙の縁が見えない
+    lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 * uNvMargin / uNvGrid.y);
   } else {
     int cell = vid / 6, corner = vid - cell * 6;
     int GW = int(uGrid.x);
@@ -3375,7 +3236,7 @@ void main(){
     frag = vec4(b * (1.0 - uBgDark), bA.a * (1.0 - uBgDark));   // 暗転しきった背景は alpha も 0 (Uzumaki が紙だけを渦に乗せられる)
     return;
   }
-  vec2 uv = clamp(vUv, 0.0, 1.0);
+  vec2 uv = 1.0 - abs(1.0 - mod(vUv, 2.0));   // 0..1 の外 (Needle だけのときの余白) はミラー
   vec4 albA = texture(uTex, uv);
   if(albA.a < 0.5) discard;          // 3D FX が抜いた背景は紙に乗せない (3D の物体だけが折られる)
   vec3 alb = albA.rgb;
@@ -5298,7 +5159,6 @@ vec3 f3Paper(vec2 q, float lift){
     const _stacked = _fx3dDone || this._applyFoldStack(_pF, _safe);
     this._foldPrebuilt = null;
     if(!_stacked){
-      this._applyOrigamiPost(_pF, _safe);    // 表示: Needle
       this._applyKaiserPost(_pF, _safe);     // 表示: Origami
       this._applyKaiserOldPost(_pF, _safe);  // 表示: Kaiser
     }
@@ -5817,307 +5677,6 @@ vec3 f3Paper(vec2 q, float lift){
       this._slitRunning = false;
       this._slitTail = 0;
     }
-  },
-
-  _applyOrigamiPost(p, safe){
-    const gl = this.gl;
-    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.origami) || 0));
-    if(amount <= 0.001 || !this.origamiProg || !this._finalFBO) return;
-    const w = this._finalFBO.w, h = this._finalFBO.h;
-    // 2x スーパーサンプリング + MSAA: 結晶エッジをベクター品質で解決 (等倍 FBO 直描きだとラスターのギザが出る)
-    const SSn = 2;
-    const w2 = w * SSn, h2 = h * SSn;
-    if(!this._origamiTmp || this._origamiTmp.w !== w2 || this._origamiTmp.h !== h2){
-      if(this._origamiTmp){
-        gl.deleteRenderbuffer(this._origamiTmp.color); gl.deleteRenderbuffer(this._origamiTmp.depth); gl.deleteFramebuffer(this._origamiTmp.fbo);
-        gl.deleteTexture(this._origamiTmp.rtex); gl.deleteFramebuffer(this._origamiTmp.rfbo); gl.deleteTexture(this._origamiTmp.srcTex);
-      }
-      const samples = Math.min(8, gl.getParameter(gl.MAX_SAMPLES) || 0);
-      const color = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, color);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.RGBA8, w2, h2);
-      const depth = gl.createRenderbuffer();                        // 交差する結晶の前後関係を解くための深度
-      gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
-      gl.renderbufferStorageMultisample(gl.RENDERBUFFER, samples, gl.DEPTH_COMPONENT24, w2, h2);
-      const fbo = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.RENDERBUFFER, color);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
-      const rtex = gl.createTexture();                              // MSAA 解決先 (2x テクスチャ)
-      gl.bindTexture(gl.TEXTURE_2D, rtex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w2, h2, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      const rfbo = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, rfbo);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, rtex, 0);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      // 紙テクスチャ用ソース: ミップマップ + 異方性 (急斜面の縮小サンプルのドットノイズ防止)
-      const srcTex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, srcTex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      const aniso = gl.getExtension('EXT_texture_filter_anisotropic');
-      if(aniso){
-        const maxA = gl.getParameter(aniso.MAX_TEXTURE_MAX_ANISOTROPY_EXT) || 1;
-        gl.texParameterf(gl.TEXTURE_2D, aniso.TEXTURE_MAX_ANISOTROPY_EXT, Math.min(8, maxA));
-      }
-      this._origamiTmp = {fbo, color, depth, rtex, rfbo, srcTex, w: w2, h: h2};
-    }
-    const shadowSize = 1024;
-    if(this.origamiShadowProg && !this._origamiShadow && !this._origamiShadowFailed){
-      const tex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, tex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, shadowSize, shadowSize, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
-      const fbo = gl.createFramebuffer();
-      gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, tex, 0);
-      gl.drawBuffers([gl.NONE]);
-      gl.readBuffer(gl.NONE);
-      const complete = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      this._origamiShadow = complete ? {tex, fbo, size:shadowSize} : null;
-      if(!complete){ this._origamiShadowFailed = true; gl.deleteFramebuffer(fbo); gl.deleteTexture(tex); }
-    }
-    const P = this.origamiProg;
-    const SP = this.origamiShadowProg;
-    const postTime = this.postClock != null ? this.postClock : this.clock;
-    const visualBeat = (typeof App !== 'undefined' && App.visualBeat) ? App.visualBeat() : ((typeof BPM !== 'undefined' && BPM.beatCount) ? BPM.beatCount() : 0);
-    const hit = (typeof Audio !== 'undefined') ? (Audio.hit || 0) : 0;
-    const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat') ? 1 : 0;
-
-    // ── 結晶ジオメトリを CPU で生成 (ベクター方式: グリッド量子化のギザギザが原理的に出ない) ──
-    // 各結晶 = 三角錐 (底面三角形 + 頂点)。crystalLayer のセル列挙/ビート駆動を JS に移植。
-    const asp = w / Math.max(1, h);
-    const extX = 4.4 * asp, extY = 4.4;
-    const amp = amount * amount * (3 - 2 * amount);
-    const hitBoost = beatMode ? 0.46 : 0.10;
-    // onset エンベロープ: デッドゾーン直後の depth 下駄(0.10)による突然の凹凸を抑え、0 から立ち上げる。
-    const onF = (a=>{ const t = Math.max(0, Math.min(1, a / 0.16)); return t*t*(3-2*t); })(amount);
-    const depth = onF * (0.10 + 3.65 * amp) * (1 + hitBoost * Math.pow(Math.max(0, Math.min(1, hit)), 0.65));
-    const frac = (x)=>x - Math.floor(x);
-    const h21 = (px, py)=>{
-      let ax = frac(px * 123.34), ay = frac(py * 456.21);
-      const d = ax * (ax + 45.32) + ay * (ay + 45.32);
-      ax += d; ay += d;
-      return frac(ax * ay);
-    };
-    const h22 = (px, py)=>{ const n = h21(px, py); return [n, h21(px + n + 19.19, py + n + 19.19)]; };
-    const sstep = (a, b, x)=>{ const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
-    const mixf = (a, b, t)=>a + (b - a) * t;
-    // Scatter: 種点の揺らし幅を広げ、針の生える確率を低周波ノイズで偏らせる (密な群れと空き地ができる = 格子が見えない)
-    const scat = Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6)));
-    const vnz = (x, y)=>{ const ix = Math.floor(x), iy = Math.floor(y), fx = x - ix, fy = y - iy, ux = fx * fx * (3 - 2 * fx), uy = fy * fy * (3 - 2 * fy);
-      return mixf(mixf(h21(ix + 0.5, iy + 0.5), h21(ix + 1.5, iy + 0.5), ux), mixf(h21(ix + 0.5, iy + 1.5), h21(ix + 1.5, iy + 1.5), ux), uy); };
-    const jLo = 0.18 - 0.16 * scat, jHi = 0.82 + 0.16 * scat;
-    const beatId = Math.floor(visualBeat), bp = visualBeat - beatId;
-    const beatQ = Math.max(0, Math.min(1, bp / 0.24));
-    const beatEase = 1 - Math.pow(1 - beatQ, 3);
-    const beatPulse = Math.pow(Math.sin(beatQ * Math.PI), 2) * beatMode;
-    const motionTime = postTime * mixf(3.0, 1.0, beatMode);        // Droneだけ連続運動を前倒し。Beatの拍頭変形は維持
-    const verts = [];
-    const pushV = (x, y, z, u, v, f2)=>{ verts.push(x, y, z, u, v, f2); };
-    const uvOf = (wx, wy)=>[wx / (2 * extX) + 0.5, wy / (2 * extY) + 0.5];
-    // ── キャンバスをランダム三角形分割した一枚のメッシュ。丘も針も同じメッシュの種点の隆起 ──
-    // として生やす (別ジオメトリの円錐を置かない) = 飛び地が構造的に発生しない。
-    const NR = 1.6;                                                // 針の密度 (本数の倍率)。大きさ・長さ・橋は 1/NR で縮めて比率は保つ
-    const S = 6.4 * NR;                                            // 格子密度
-    const nxC = Math.ceil(S * asp) + 1, nyC = Math.ceil(S) + 1;
-    const seeds = [];
-    const napex = [];                                              // 針の頂点 (橋用)
-    for(let cy = -1; cy <= nyC; cy++){
-      const row = [];
-      for(let cx = -1; cx <= nxC; cx++){
-        const rnd = h22(cx + 17.3, cy + 41.9);
-        let sx = cx + mixf(jLo, jHi, rnd[0]), sy = cy + mixf(jLo, jHi, rnd[1]);
-        const phase = h21(cx + 54.6, cy + 77.1) * Math.PI * 2;
-        const mA = h22(cx + beatId * 7.13 + 31.7, cy + beatId * 3.91 + 83.2);
-        const mB = h22(cx + (beatId + 1) * 7.13 + 31.7, cy + (beatId + 1) * 3.91 + 83.2);
-        const bmx = mixf(mA[0] - 0.5, mB[0] - 0.5, beatEase), bmy = mixf(mA[1] - 0.5, mB[1] - 0.5, beatEase);
-        const dmx = Math.sin(motionTime * 0.075 + phase) * 0.5, dmy = Math.cos(motionTime * 0.061 + phase * 1.37) * 0.5;
-        const travel = mixf(0.16, 0.5, beatMode);
-        sx += mixf(dmx, bmx, beatMode) * travel;
-        sy += mixf(dmy, bmy, beatMode) * travel;
-        const su = sx / (S * asp), sv2 = sy / S;
-        // 針 (約半数の種点): 平らな地から角錐が立つ + リーン。丘 (丸い起伏) は持たない = 面がまっすぐな多面体
-        let nx3 = 0, ny3 = 0, nz3 = 0;
-        const isN = true;   // どの種にも針を立てる (生えていない面を作らない)。低い針はほぼ平らでも残す
-        let dispN = 0;
-        if(isN){
-          const speed = mixf(0.22, 0.68, h21(cx + 93.4, cy + 5.2));
-          const droneCycle = motionTime * speed * 0.38 + phase;
-          const rA = h21(cx + beatId * 17.7 + 104.8, cy + beatId * 7.3 + 18.3);
-          const rB = h21(cx + (beatId + 1) * 17.7 + 104.8, cy + (beatId + 1) * 7.3 + 18.3);
-          let rise = mixf(0.5 + 0.5 * Math.sin(droneCycle), mixf(rA, rB, beatEase), beatMode);
-          rise = rise * rise * (3 - 2 * rise);
-          let density = h21(cx + 181.3, cy + 9.4);
-          const centerW = 1 - sstep(0.06, 0.52, Math.hypot(su - 0.5, sv2 - 0.5));
-          density = Math.max(0, Math.min(1, density + centerW * 0.14));
-          const primary = sstep(0.62, 0.84, density);
-          const slender = Math.pow(h21(cx + 219.4, cy + 47.3), 1.2);
-          const summit = mixf(0.22, 1.0, sstep(0.48, 0.82, density));
-          const peak = mixf(1.90, 9.20, Math.pow(density, 3.15)) * summit * mixf(1.0, 1.55, slender) * mixf(1.0, 1.82, primary);
-          let growth = mixf(mixf(0.78, 1.22, rise), mixf(0.48, 1.72, rise) * (1 + beatPulse * 0.82), beatMode);
-          const primaryGrowth = mixf(1.02, 1.58, rise) * (1 + beatPulse * 0.42);
-          growth = mixf(growth, primaryGrowth, primary);
-          // 高さを二極化: 低い針と高い針が隣り合い、横から見た輪郭が極端なギザギザになる
-          const jagR = h21(cx + 331.9, cy + 157.1);
-          const jag = jagR < 0.45 ? mixf(0.06, 0.32, jagR / 0.45) : mixf(0.9, 1.8, (jagR - 0.45) / 0.55);
-          const raw = peak * growth * 1.05 * depth * jag / NR * mixf(1, 0.2 + 1.6 * vnz(cx * 0.19 + 7.1, cy * 0.19 + 3.3), scat);   // Scatter: 高低の群れ
-          const heightCap = mixf(7.2, 10.8, primary) / NR;
-          dispN = raw / Math.sqrt(1 + raw * raw / (heightCap * heightCap));
-          const lA = h21(cx + beatId * 9.7 + 121.7, cy + 31.6) * 2 - 1;
-          const lB = h21(cx + (beatId + 1) * 9.7 + 121.7, cy + 31.6) * 2 - 1;
-          const leanMotion = mixf(Math.sin(droneCycle * 0.73), mixf(lA, lB, beatEase), beatMode);
-          const leanAng = h21(cx + 121.7, cy + 31.6) * Math.PI * 2 + 0.72 * leanMotion;
-          const leanAmt = mixf(0.48, 0.98, rnd[0]) / NR * (0.82 + 0.32 * rise + 0.34 * beatPulse) * mixf(1.0, 0.24, primary);
-          const lxv = Math.cos(leanAng) * leanAmt, lyv = Math.sin(leanAng) * leanAmt;
-          const sl = Math.hypot(lxv, lyv, 1);
-          // 鍾乳洞: 針を上下(±z)両面に生やす。約半数を下向き(石筍↑ / 鍾乳石↓)= 山と谷が交互に突き出す
-          const zdir = h21(cx + 61.3, cy + 137.9) < 0.5 ? 1 : -1;
-          const cap = mixf(7.6, 11.3, primary) / NR;
-          nx3 = (lxv / sl) * dispN;
-          ny3 = (lyv / sl) * dispN;
-          const zext = (1 / sl) * dispN;
-          nz3 = zdir > 0 ? Math.min(cap, zext) : Math.max(-cap, -zext);
-        }
-        const pt = { x: (su - 0.5) * 2 * extX + nx3, y: (sv2 - 0.5) * 2 * extY + ny3, z: nz3, u: su, v: sv2, d: isN ? dispN : 0 };
-        row.push(pt);
-        if(isN && dispN > 1.0 / NR) napex.push({ x: pt.x, y: pt.y, z: pt.z, u: pt.u, v: pt.v, f: h21(cx + 101.0, cy + 211.7) });
-      }
-      seeds.push(row);
-    }
-    const rawTri = (a, b, c, ff)=>{ pushV(a.x, a.y, a.z, a.u, a.v, ff); pushV(b.x, b.y, b.z, b.u, b.v, ff); pushV(c.x, c.y, c.z, c.u, c.v, ff); };
-    // 三角形分割 (対角線は市松で交互)
-    for(let cy = 0; cy < seeds.length - 1; cy++) for(let cx = 0; cx < seeds[0].length - 1; cx++){
-      const s00 = seeds[cy][cx], s10 = seeds[cy][cx + 1], s01 = seeds[cy + 1][cx], s11 = seeds[cy + 1][cx + 1];
-      const ff1 = h21(cx * 3.1 + 11.3, cy * 7.7 + 5.9), ff2 = h21(cx * 9.2 + 1.7, cy * 2.9 + 40.1);
-      if(((cx + cy) & 1) === 0){ rawTri(s00, s10, s11, ff1); rawTri(s00, s11, s01, ff2); }
-      else                     { rawTri(s10, s11, s01, ff1); rawTri(s10, s01, s00, ff2); }
-    }
-    // 橋: 各針を近い順に 2 本まで鞍状の屋根で接続 (最近傍グラフ)
-    const links = new Set();
-    // 近傍探索はマス目 (一辺 = 橋の最大長) で候補を絞る (総当たり + 並べ替えは針が増えると重い)
-    const LMAX = 7.0 / NR, bk = new Map(), bkey = (gx, gy)=>gx * 65536 + gy;
-    napex.forEach((a, i)=>{ const k = bkey(Math.floor(a.x / LMAX), Math.floor(a.y / LMAX)); let l = bk.get(k); if(!l) bk.set(k, l = []); l.push(i); });
-    for(let i = 0; i < napex.length; i++){
-      const a = napex[i], gx = Math.floor(a.x / LMAX), gy = Math.floor(a.y / LMAX);
-      const near = [];   // 近い順に最大 4 件 (既に繋がった相手を飛ばしても 2 本取れるように)
-      for(let oy = -1; oy <= 1; oy++) for(let ox = -1; ox <= 1; ox++){
-        const l = bk.get(bkey(gx + ox, gy + oy)); if(!l) continue;
-        for(const j of l){
-          if(j === i) continue;
-          const d = Math.hypot(a.x - napex[j].x, a.y - napex[j].y);
-          if(d <= 1e-4 || d > LMAX) continue;
-          if(near.length < 4 || d < near[near.length - 1][0]){
-            near.push([d, j]); near.sort((x, y)=>x[0] - y[0]); if(near.length > 4) near.pop();
-          }
-        }
-      }
-      let added = 0;
-      for(const [, j] of near){
-        if(added >= 2) break;
-        const key = (i < j) ? i * 4096 + j : j * 4096 + i;
-        if(!links.has(key)){ links.add(key); added++; }
-      }
-    }
-    for(const key of links){
-      const A2 = napex[Math.floor(key / 4096)], B2 = napex[key % 4096];
-      const dxy = Math.hypot(A2.x - B2.x, A2.y - B2.y);
-      const mx2 = (A2.x + B2.x) / 2, my2 = (A2.y + B2.y) / 2;
-      const dirx = (B2.x - A2.x) / dxy, diry = (B2.y - A2.y) / dxy;
-      const wd = 0.55 / NR;
-      const gL = [mx2 - diry * wd, my2 + dirx * wd], gR = [mx2 + diry * wd, my2 - dirx * wd];
-      const uL = uvOf(gL[0], gL[1]), uR = uvOf(gR[0], gR[1]);
-      const ff = frac(A2.f + B2.f);
-      pushV(A2.x, A2.y, A2.z, A2.u, A2.v, ff); pushV(B2.x, B2.y, B2.z, B2.u, B2.v, ff); pushV(gL[0], gL[1], 0.15 / NR, uL[0], uL[1], ff);
-      pushV(B2.x, B2.y, B2.z, B2.u, B2.v, ff); pushV(A2.x, A2.y, A2.z, A2.u, A2.v, ff); pushV(gR[0], gR[1], 0.15 / NR, uR[0], uR[1], ff);
-    }
-    const vertCount = verts.length / 6;
-    if(!this._needleVBO){
-      this._needleVBO = gl.createBuffer();
-      const mkVAO = (prog)=>{
-        const vao = gl.createVertexArray();
-        gl.bindVertexArray(vao);
-        gl.bindBuffer(gl.ARRAY_BUFFER, this._needleVBO);
-        const lp = gl.getAttribLocation(prog, 'aPos');
-        const lu = gl.getAttribLocation(prog, 'aUv');
-        const lf = gl.getAttribLocation(prog, 'aFacet');
-        if(lp >= 0){ gl.enableVertexAttribArray(lp); gl.vertexAttribPointer(lp, 3, gl.FLOAT, false, 24, 0); }
-        if(lu >= 0){ gl.enableVertexAttribArray(lu); gl.vertexAttribPointer(lu, 2, gl.FLOAT, false, 24, 12); }
-        if(lf >= 0){ gl.enableVertexAttribArray(lf); gl.vertexAttribPointer(lf, 1, gl.FLOAT, false, 24, 20); }
-        gl.bindVertexArray(null);
-        return vao;
-      };
-      this._needleVAO = mkVAO(this.origamiProg);
-      if(this.origamiShadowProg) this._needleShadowVAO = mkVAO(this.origamiShadowProg);
-    }
-    gl.bindBuffer(gl.ARRAY_BUFFER, this._needleVBO);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(verts), gl.DYNAMIC_DRAW);
-    gl.bindBuffer(gl.ARRAY_BUFFER, null);
-
-    const setGeomUniforms = (prog, shadowPass)=>{
-      gl.uniform2f(gl.getUniformLocation(prog, 'uRes'), w, h);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uAmount'), amount);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uTime'), postTime);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uHit'), hit);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uBeat'), visualBeat);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uBeatMode'), beatMode);
-      gl.uniform1f(gl.getUniformLocation(prog, 'uShadowPass'), shadowPass);
-    };
-    gl.disable(gl.BLEND);
-    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
-    if(SP && this._origamiShadow){
-      gl.useProgram(SP);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, this._origamiShadow.fbo);
-      gl.viewport(0, 0, shadowSize, shadowSize);
-      gl.colorMask(false, false, false, false);
-      gl.clearDepth(1.0); gl.clear(gl.DEPTH_BUFFER_BIT);
-      setGeomUniforms(SP, 1);
-      gl.bindVertexArray(this._needleShadowVAO);
-      gl.drawArrays(gl.TRIANGLES, 0, vertCount);
-      gl.colorMask(true, true, true, true);
-    }
-    gl.useProgram(P);
-    // 現フレームをミップマップ付きソースへコピー
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this._origamiTmp.srcTex);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._finalFBO.fbo);
-    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
-    gl.generateMipmap(gl.TEXTURE_2D);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this._origamiTmp.fbo);
-    gl.viewport(0, 0, w2, h2);
-    gl.clearColor(0, 0, 0, 0); gl.clearDepth(1.0);   // 背景は透過 (_fx3dBgUnder が 3D BG を敷く)
-    this._fx3dBgNeed = true;
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.uniform1i(gl.getUniformLocation(P, 'uTex'), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, this._origamiShadow ? this._origamiShadow.tex : null);
-    gl.uniform1i(gl.getUniformLocation(P, 'uShadowTex'), 1);
-    gl.uniform1f(gl.getUniformLocation(P, 'uShadowEnabled'), (SP && this._origamiShadow) ? 1 : 0);
-    gl.uniform2f(gl.getUniformLocation(P, 'uShadowTexel'), 1/shadowSize, 1/shadowSize);
-    gl.activeTexture(gl.TEXTURE0);
-    setGeomUniforms(P, 0);
-    gl.bindVertexArray(this._needleVAO);
-    gl.drawArrays(gl.TRIANGLES, 0, vertCount);
-    gl.disable(gl.DEPTH_TEST);
-    gl.bindVertexArray(null);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._origamiTmp.fbo);   // MSAA resolve (同サイズ)
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._origamiTmp.rfbo);
-    gl.blitFramebuffer(0,0,w2,h2, 0,0,w2,h2, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._origamiTmp.rfbo);  // 2x → 1x LINEAR 縮小
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._finalFBO.fbo);
-    gl.blitFramebuffer(0,0,w2,h2, 0,0,w,h, gl.COLOR_BUFFER_BIT, gl.LINEAR);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
 
   _runFinalPost(P, tmpKey, setup){
@@ -7356,7 +6915,7 @@ vec4 fx3dApply(vec4 clip){
   // fx3dApply で折った面の陰影 (FS 用)。fx3dFoldShade(色) を呼ぶ。折りが掛かっていないとき (uFx3dOn = 0) は色をそのまま返す
   // ── 面を覆う針 (Needle を面へ隙間なく生やす。Origami などと重ねた紙 / 3D FX の Cubes が使う) ──
   // 領域 (ab = 0..1) を gx × gy の揺らした種の格子で区切り、四角形のまま / 三角形 2 枚に割った面 (三角形が約 2/3) ごとに、
-  // 面の重心の真上を頂点とする角錐にする。隣の面とは底の辺で接する = 生えていない面がない。扇 1 枚を sub × sub に割る (折りで曲がる)。
+  // 面の重心から細い針 (底 = 面の NV_BASE 倍) を立て、その外は平らな地にする = どの面にも針が立つ (ウニ / 針山)。扇 1 枚を sub × sub に割る (折りで曲がる)。
   //   fx3dNeedleVert(vid, grid, sub, salt, ab, w, key): vid = 0 .. (gx+2)(gy+2)·18·sub² - 1。w = 種の真上 1 → 底 0、key = 種ごとの値
   //   fx3dNeedleH(key, at) = 針の高さ (格子間隔 = 1)。at = 面上の位置 (Scatter の高低の群れ)。uniform uSp* は Fx3d.spikeUniforms が送る
   needleCellGLSL(){
@@ -7373,8 +6932,9 @@ float fx3dNeedleH(vec2 key, vec2 at){
   float ease = 1.0 - pow(1.0 - clamp(fract(uSpBeat) / 0.24, 0.0, 1.0), 3.0);
   float bosc = mix(spH(key + bid * 7.7 + 11.3), spH(key + (bid + 1.0) * 7.7 + 11.3), ease) * 2.0 - 1.0;
   osc = mix(osc, bosc, uSpBM);
+  osc = clamp(osc + 0.45, -1.0, 1.0);   // 大半は外へ伸び、2〜3 割が内へ刺さる (凹み)
   float patchF = mix(1.0, 0.2 + 1.6 * spVn(at + 7.1), uSpScat);   // Scatter: 高い針の群れと低い針の群れ
-  return 3.0 * amp * sign(osc) * sqrt(abs(osc)) * patchF * uSpA * (1.0 + mix(0.10, 0.46, uSpBM) * pow(clamp(uSpHit, 0.0, 1.0), 0.65));
+  return 4.0 * amp * sign(osc) * sqrt(abs(osc)) * patchF * uSpA * (1.0 + mix(0.10, 0.46, uSpBM) * pow(clamp(uSpHit, 0.0, 1.0), 0.65));
 }
 vec2 nvSeed(ivec2 c, vec2 salt){
   vec2 k = vec2(c) * vec2(1.37, 2.11) + salt;
@@ -7382,8 +6942,9 @@ vec2 nvSeed(ivec2 c, vec2 salt){
 }
 // 格子の四角形 q (左下の種の番号) の割り方: 0 = 四角形のまま (半分) / 1 = 対角線 左下-右上 / 2 = 右下-左上 で三角形 2 枚
 int nvSplit(ivec2 q, vec2 salt){ float h = spH(vec2(q) * vec2(2.71, 1.93) + salt + 17.3); return h < 0.5 ? 0 : (h < 0.75 ? 1 : 2); }
+const float NV_BASE = 0.3;   // 針の底の幅 (面の大きさに対する比)。細いほどウニの棘 / 針山の針
 void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out float w, out vec2 key){
-  int n = int(sub), perFan = n * n * 3, gxs = int(grid.x) + 2;
+  int n = max(int(sub), 2), perFan = n * n * 3, gxs = int(grid.x) + 2;
   int qd = vid / (perFan * 6), r = vid - qd * perFan * 6;
   int fan = r / perFan; r -= fan * perFan;
   int tri = r / 3, cn = r - tri * 3;
@@ -7418,9 +6979,13 @@ void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out f
       if(j < n - 1 - i){ if(k == tri){ p0 = ivec2(i + 1, j); p1 = ivec2(i + 1, j + 1); p2 = ivec2(i, j + 1); } k++; }
     }
   }
+  // 針は細く: 扇の最初の段 (頂点から 1/n) を底の幅 NV_BASE までの針にし、その外は平らな地 (ウニの殻 / 針山の台)
   vec2 L = vec2(cn == 0 ? p0 : (cn == 1 ? p1 : p2)) / float(n);
-  w = 1.0 - L.x - L.y;
-  ab = clamp((A + (B - A) * L.x + (C - A) * L.y) / grid, 0.0, 1.0);
+  float rho = L.x + L.y, r1 = 1.0 / float(n);
+  float rp = rho <= r1 ? rho / r1 * NV_BASE : NV_BASE + (rho - r1) / (1.0 - r1) * (1.0 - NV_BASE);
+  vec2 Ld = rho > 0.0 ? L * (rp / rho) : L;
+  w = rho <= r1 ? 1.0 - rho / r1 : 0.0;
+  ab = clamp((A + (B - A) * Ld.x + (C - A) * Ld.y) / grid, 0.0, 1.0);
 }
 `;
   },
@@ -7493,10 +7058,10 @@ vec3 fx3dFoldShade(vec3 c){
     const aU = safe ? 0 : Math.max(0, Math.min(1, +(p && p.uzumaki) || 0));   // Uzumaki
     const aR = safe ? 0 : Math.max(0, Math.min(1, +(p && p.fx3dRoll) || 0));   // Roll (単体でも統合パスで描く)
     const active = (aN > 0.001 ? 1 : 0) + (aO > 0.001 ? 1 : 0) + (aK > 0.001 ? 1 : 0);
-    // fold 2 系以上、または fold 1 系以上 + Uzumaki で統合パス起動 (折った紙そのものを螺旋に複製)
+    // fold 2 系以上、Needle、または fold 1 系以上 + Uzumaki で統合パス起動 (折った紙そのものを螺旋に複製)
     const uzOn = aU > 0.001;
     this._foldStackTookUzumaki = false;
-    if((!(aR > 0.001) && active < 2 && !(uzOn && active >= 1) && !((this._foldStackForce || this._fx3dFlatStack) && active >= 1)) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
+    if((!(aR > 0.001) && active < 2 && !(uzOn && active >= 1) && !((this._foldStackForce || this._fx3dFlatStack || aN > 0.001) && active >= 1)) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
     this._foldStackActive = true;
     if(uzOn) this._foldStackTookUzumaki = true;
     // Uzumaki 統合時はグリッドを粗く (頂点数 = カード枚数 × セル数 を抑える)
@@ -7566,10 +7131,12 @@ vec3 fx3dFoldShade(vec3 c){
     gl.uniform1f(U('uCrystal'), F.aN * F.onF);
     if(aN > 0.001 && typeof Fx3d !== 'undefined'){
       // Needle: 紙を針の面で覆って描く (格子の高さ場は使わない = 針の縁が格子で崩れない)
-      const nvGy = 10, nvGx = Math.max(1, Math.round(10 * w / Math.max(1, h))), nvSub = uzOn ? 1 : 3;
+      const nvM = (aO > 0.001 || aK > 0.001 || aR > 0.001 || uzOn) ? 1 : 1.8;   // Needle だけ = 折らないので紙を画面の外まで広げる
+      const nvGy = Math.round(10 * nvM), nvGx = Math.max(1, Math.round(10 * nvM * w / Math.max(1, h))), nvSub = uzOn ? 2 : 3;
       gl.uniform1f(U('uNeedleAmt'), 0);
       gl.uniform2f(U('uNvGrid'), nvGx, nvGy);
       gl.uniform1f(U('uNvSub'), nvSub);
+      gl.uniform1f(U('uNvMargin'), nvM);
       Fx3d.spikeUniforms(gl, P, { a: F.aN * F.onF, beat: F.beatId, bm: F.beatMode ? 1 : 0, hit: F.hit, t: F.nt, scat: F.scat });
       gl.uniform1f(U('uMode'), 2.0);
       gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * this.needleCellVerts(nvGx, nvGy, nvSub));

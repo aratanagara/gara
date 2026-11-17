@@ -539,6 +539,7 @@ void main(){
     const SP = 1/(3*1.6);   // 単体 Needle と同じ間隔 (密度 1.6 倍)
     const JW = 0.35 + 0.5 * Math.max(0, Math.min(1, App.deadParam(App.post && App.post.needleScatter != null ? +App.post.needleScatter : 0.6)));   // Scatter: 種の揺らし幅 (次の組み直しで反映)
     const nvSeed=(cx,cy)=>[(cx+0.5+(rnd(cx*1.37+cy*2.11+0.5)-0.5)*JW)*SP, (cy+0.5+(rnd(cx*1.37+cy*2.11+9.6)-0.5)*JW)*SP];
+    const NB = 0.3;   // 針の底の幅 (面の大きさに対する比。GL.needleCellGLSL の NV_BASE と同じ)
     const nvSplit=(cx,cy)=>{ const h=rnd(cx*2.71+cy*1.93+17.3); return h<0.5 ? 0 : (h<0.75 ? 1 : 2); };
     function clipTri(poly, t){   // 凸の三角形 t で多角形を切る (Sutherland–Hodgman)
       const o = (t[2]-t[0])*(t[5]-t[1])-(t[4]-t[0])*(t[3]-t[1]) >= 0 ? 1 : -1;
@@ -578,12 +579,16 @@ void main(){
           const key = cx*1.37 + cy*2.11 + fi*5.13 + 31.7;
           for(let e=0;e<f.length;e++){
             const B=f[e], C=f[(e+1)%f.length];
-            const den=(B[0]-A[0])*(C[1]-A[1])-(C[0]-A[0])*(B[1]-A[1]);
-            if(Math.abs(den)<1e-12) continue;
-            const wOf=(q)=>1-(((q[0]-A[0])*(C[1]-A[1])-(C[0]-A[0])*(q[1]-A[1]))+((B[0]-A[0])*(q[1]-A[1])-(q[0]-A[0])*(B[1]-A[1])))/den;
-            for(const st of fragTris){
-              const poly=clipTri([A,B,C], st);
-              for(let i=1;i+1<poly.length;i++) for(const q of [poly[0],poly[i],poly[i+1]]) vtx(q[0],q[1],Math.max(0,Math.min(1,wOf(q))),key);
+            // 細い針: 頂点から底の幅 NB までを針 (w = 頂点 1 → 底 0)、その外は平らな地 (w = 0)
+            const Bn=[A[0]+(B[0]-A[0])*NB, A[1]+(B[1]-A[1])*NB], Cn=[A[0]+(C[0]-A[0])*NB, A[1]+(C[1]-A[1])*NB];
+            const den=(Bn[0]-A[0])*(Cn[1]-A[1])-(Cn[0]-A[0])*(Bn[1]-A[1]);
+            if(Math.abs(den)<1e-14) continue;
+            const wOf=(q)=>1-(((q[0]-A[0])*(Cn[1]-A[1])-(Cn[0]-A[0])*(q[1]-A[1]))+((Bn[0]-A[0])*(q[1]-A[1])-(q[0]-A[0])*(Bn[1]-A[1])))/den;
+            for(const [tri, spike] of [[[A,Bn,Cn], true], [[Bn,C,Cn], false], [[Bn,B,C], false]]){
+              for(const st of fragTris){
+                const poly=clipTri(tri, st);
+                for(let i=1;i+1<poly.length;i++) for(const q of [poly[0],poly[i],poly[i+1]]) vtx(q[0],q[1],spike ? Math.max(0,Math.min(1,wOf(q))) : 0,key);
+              }
             }
           }
         });
