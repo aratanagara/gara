@@ -86,7 +86,7 @@ Fx3d.EXTRA.cubes = {
     const pr = Fx3d.prog(gl, 'cubes', VS, FS);
     if(!pr) return false;
     const post = o.post || {};
-    const N = Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 6)));
+    const N = Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 1)));
     const asp = o.asp, k = o.k, t = o.clock || 0;
     // カメラは軽く振るだけ (断面が短辺 = 画面を満たしたまま回るのを見せる)
     const cam = Fx3d.camera(asp, 0.16 * k * Math.sin(0.19 * t), 0.10 * k * Math.sin(0.13 * t + 1), 1.35 - 0.08 * k);
