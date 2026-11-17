@@ -7,8 +7,8 @@
    布は画面の外まで余白を持たせ (絵はミラー)、引き込み・めくれでも縁が見えないようにする。 */
 (function(){
 const COLS = 288, ROWS = 180, MARGIN = 3.0, NW = 6;
-const VS = `#version 300 es
-precision highp float;
+// 布の形: 格子座標 g (0..1, 余白込み) → 位置。uv = 絵の座標 (余白はミラー前)、deep = 喉の深さ (陰影)
+const SURF = `
 uniform mat4 uView, uProj;
 uniform float uAsp, uK, uSpin, uHit, uT, uMargin;
 uniform vec2 uC[${NW}];
@@ -16,15 +16,10 @@ uniform float uW[${NW}];   // 井戸ごとの深さ (負 = 井戸 / 正 = 丘)
 uniform float uR[${NW}];   // 井戸ごとの広がり
 uniform vec2 uFD;          // めくれの線の向き (単位)
 uniform float uFS, uFT, uFR;   // めくれの線の位置 / 返す角度 (π = 裏返し) / 巻きの半径
-out vec2 vUv; out vec3 vW; out float vDeep;
-void main(){
-  int id = gl_VertexID, quad = id / 6, tv = id - quad * 6;
-  int iy = quad / ${COLS}, ix = quad - iy * ${COLS};
-  vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
-  vec2 g = (vec2(float(ix), float(iy)) + ab) / vec2(${COLS}.0, ${ROWS}.0);
-  vec2 uv = 0.5 + (g - 0.5) * uMargin;                         // 余白ぶん画面の外まで
+vec3 gSurf(vec2 g, out vec2 uv, out float deep){
+  uv = 0.5 + (g - 0.5) * uMargin;                              // 余白ぶん画面の外まで
   vec2 q = (uv - 0.5) * 2.0 * vec2(uAsp, 1.0);
-  vec2 off = vec2(0.0); float z = 0.0, deep = 0.0;
+  vec2 off = vec2(0.0); float z = 0.0; deep = 0.0;
   float kq = 1.0 - (1.0 - uK) * (1.0 - uK) * (1.0 - uK);   // 早く立ち上がる量 (0 → 0 / 少しで大きく)
   for(int i = 0; i < ${NW}; i++){
     vec2 d = q - uC[i];
@@ -57,7 +52,45 @@ void main(){
       P = vec3(uFD * (uFS + x) + nv * v, zz);
     }
   }
+  return P;
+}
+`;
+const VS = `#version 300 es
+precision highp float;
+${SURF}
+out vec2 vUv; out vec3 vW; out float vDeep;
+void main(){
+  int id = gl_VertexID, quad = id / 6, tv = id - quad * 6;
+  int iy = quad / ${COLS}, ix = quad - iy * ${COLS};
+  vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
+  vec2 g = (vec2(float(ix), float(iy)) + ab) / vec2(${COLS}.0, ${ROWS}.0);
+  vec2 uv; float deep;
+  vec3 P = gSurf(g, uv, deep);
   P *= fx3dPop(0.0);   // ポップ: 布ごと中心から
+  vUv = uv; vW = P; vDeep = deep;
+  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+}`;
+// Needle (最後に掛かる): 布を GL.needleCellGLSL の針の面で覆い、布の法線方向へ突起 / 凹み。元の布の代わりに描く
+const NV_VS = `#version 300 es
+precision highp float;
+${SURF}
+uniform vec2 uNvGrid;
+uniform float uNvSub;
+uniform vec3 uEye;
+out vec2 vUv; out vec3 vW; out float vDeep;
+void main(){
+  vec2 g; float w; vec2 key;
+  fx3dNeedleVert(gl_VertexID, uNvGrid, uNvSub, vec2(3.3, 7.1), g, w, key);
+  const float E = 1e-3;
+  vec2 uv, uvd; float deep, dd;
+  vec3 P0 = gSurf(g, uv, deep);
+  vec3 T = (gSurf(g + vec2(E, 0.0), uvd, dd) - P0) / E;
+  vec3 B = (gSurf(g + vec2(0.0, E), uvd, dd) - P0) / E;
+  vec3 N = normalize(cross(T, B));
+  float cell = min(0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y), 2.0 / 14.0);   // 引き伸ばされた所 (カメラの近く) でも針は大きくしない
+  cell *= clamp((length(uEye - P0) - 0.25) / 1.1, 0.12, 1.0);   // カメラのすぐ近くの針は短く (遠近で画面を塞がない)
+  vec3 P = P0 + N * (w * fx3dNeedleH(key, (uv - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
+  P *= fx3dPop(0.0);
   vUv = uv; vW = P; vDeep = deep;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
@@ -97,6 +130,7 @@ function layout(m, asp, t){
 
 Fx3d.EXTRA.gravity = {
   foldHook: true,
+  spikes: true,
   render(gl, o){
     const pr = Fx3d.prog(gl, 'gravity', VS, FS);
     if(!pr) return false;
@@ -127,32 +161,46 @@ Fx3d.EXTRA.gravity = {
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
     gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.useProgram(pr);
-    if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
-    gl.bindVertexArray(GL._emptyVAO);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
-    gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
-    gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
-    gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
-    gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
-    gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
-    gl.uniform1f(uloc(gl, pr, 'uK'), k);
-    gl.uniform1f(uloc(gl, pr, 'uSpin'), spin);
-    gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
-    gl.uniform1f(uloc(gl, pr, 'uT'), t);
-    gl.uniform1f(uloc(gl, pr, 'uMargin'), Fx3d.foldFrame ? 1 : MARGIN);   // 折りを掛けるときは紙と同じ大きさ (余白まで折ると手前へ飛び出す)
-    gl.uniform2fv(uloc(gl, pr, 'uC'), C);
-    gl.uniform1fv(uloc(gl, pr, 'uW'), W);
-    gl.uniform1fv(uloc(gl, pr, 'uR'), R);
-    gl.uniform2f(uloc(gl, pr, 'uFD'), Math.cos(fa), Math.sin(fa));
-    gl.uniform1f(uloc(gl, pr, 'uFS'), fsd);
-    gl.uniform1f(uloc(gl, pr, 'uFT'), ft);
-    gl.uniform1f(uloc(gl, pr, 'uFR'), 0.18);   // 小さい巻き = 裏返った布は元の布のすぐ上に重なる (カメラの前を塞がない)
-    gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
-    Fx3d.popUniforms(gl, pr, 'gravity');
-    Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
-    gl.drawArrays(gl.TRIANGLES, 0, COLS * ROWS * 6);
+    const setU = (pr)=>{
+      gl.useProgram(pr);
+      if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
+      gl.bindVertexArray(GL._emptyVAO);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
+      gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
+      gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
+      gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
+      gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
+      gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
+      gl.uniform1f(uloc(gl, pr, 'uK'), k);
+      gl.uniform1f(uloc(gl, pr, 'uSpin'), spin);
+      gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
+      gl.uniform1f(uloc(gl, pr, 'uT'), t);
+      gl.uniform1f(uloc(gl, pr, 'uMargin'), Fx3d.foldFrame ? 1 : MARGIN);   // 折りを掛けるときは紙と同じ大きさ (余白まで折ると手前へ飛び出す)
+      gl.uniform2fv(uloc(gl, pr, 'uC'), C);
+      gl.uniform1fv(uloc(gl, pr, 'uW'), W);
+      gl.uniform1fv(uloc(gl, pr, 'uR'), R);
+      gl.uniform2f(uloc(gl, pr, 'uFD'), Math.cos(fa), Math.sin(fa));
+      gl.uniform1f(uloc(gl, pr, 'uFS'), fsd);
+      gl.uniform1f(uloc(gl, pr, 'uFT'), ft);
+      gl.uniform1f(uloc(gl, pr, 'uFR'), 0.18);   // 小さい巻き = 裏返った布は元の布のすぐ上に重なる (カメラの前を塞がない)
+      gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
+      Fx3d.popUniforms(gl, pr, 'gravity');
+      Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+    };
+    const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'gravityNeedle', NV_VS, FS) : null;
+    if(nvp){
+      // Needle: 布を針の面で覆う (重ねたときの紙と同じ間隔 = 画面の高さを 14 分割。布は余白ぶん大きい)
+      const m = Fx3d.foldFrame ? 1 : MARGIN, gy = Math.round(14 * m), gx = Math.round(14 * m * asp);
+      setU(nvp);
+      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);
+      gl.uniform1f(uloc(gl, nvp, 'uNvSub'), 1);
+      Fx3d.spikeUniforms(gl, nvp);
+      gl.drawArrays(gl.TRIANGLES, 0, GL.needleCellVerts(gx, gy, 1));
+    } else {
+      setU(pr);
+      gl.drawArrays(gl.TRIANGLES, 0, COLS * ROWS * 6);
+    }
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);
     return true;
