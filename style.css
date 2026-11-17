@@ -80,6 +80,7 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 #topbar #statCpu,#topbar #statGpu{min-width:32px}
 #topbar #statAtk{min-width:30px}
 #topbar #statMidi{max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+#topbar #topRes select{height:26px;max-width:150px;font-size:var(--fs-sm)}
 /* 幅 420px 以下: ボタン群 + FPS が 1 行に収まるようロゴを畳む (横スクロール回避) */
 @media (max-width:420px){ #topbar .title-logo{display:none} }
 /* トップバーのボタン: アイコン(上)+ラベル(下)の縦2段。幅を詰めて統一。
