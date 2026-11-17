@@ -28,7 +28,7 @@ void main(){
   vec3 dir = vec3(r1, r2, h1(cell + 9.1)) * 2.0 - 1.0;
   P += dir * (0.08 * uK * uK * sin(uT * 0.6 + r1 * 6.2832) + 0.45 * uHit * uK * r2);   // 漂い + ヒットで散る
   vec4 vp = uView * vec4(P, 1.0);
-  gl_Position = uProj * vp;
+  gl_Position = fx3dApply(uProj * vp);
   float viewZ = max(0.05, -vp.z);
   gl_PointSize = min(uMaxPt, max(1.0, uCellPx * (1.15 - 0.45 * uK) * (uDist / viewZ)));
   vCol = c;
@@ -49,6 +49,7 @@ void main(){
   const smooth01 = (a, b, x)=>{ const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
   Fx3d.EXTRA.points = {
+    foldHook: true,
     render(gl, o){
       const p = Fx3d.prog(gl, 'points', VS, FS);
       if(!p) return false;
@@ -96,6 +97,7 @@ void main(){
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
       gl.uniform1i(u('uTex'), 0);
+      Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
       gl.drawArrays(gl.POINTS, 0, D * rows);
       return true;
     },

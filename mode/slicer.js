@@ -128,7 +128,7 @@ void main(){
   pos.x += sin(u_time*0.17 + a_seed*13.7) * d;
   pos.y += cos(u_time*0.13 + a_seed*7.31) * d * 0.7;
   pos.z += sin(u_time*0.11 + a_seed*5.17) * d * 0.4;
-  gl_Position = u_proj * u_view * vec4(pos, 1.0);
+  gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));   // 3D FX の Slicer に折りを掛けるフック (Code の Slicer では素通し)
 }`,
   FS:`#version 300 es
 precision highp float;
@@ -281,7 +281,8 @@ void main(){
     this.gl = gl;
     this.PDefaults = JSON.parse(JSON.stringify(this.P));
     // メインシェーダ
-    this.prog = this._compileProg(this.VS, this.FS);
+    // 折りの頂点フック (GL.fx3dHookGLSL) を #version の直後へ差し込む。uFx3dOn = 0 (既定) では gl_Position をそのまま返す
+    this.prog = this._compileProg(this.VS.replace('#version 300 es\n', '#version 300 es\nprecision highp float;\n' + GL.fx3dHookGLSL()), this.FS);
     this.postProg = this._compileProg(this.POST_VS, this.POST_FS);
     if(!this.prog || !this.postProg){ console.error('Slicer: shader compile failed'); return false; }
     this.locs = {
@@ -957,6 +958,8 @@ void main(){
       const view = this.m4.lookAt([ex, ey, ez], [dz(this.P.lookX) * 0.01 * this.imgAsp, dz(this.P.lookY) * 0.01, 0], [0,1,0]);
       gl.uniformMatrix4fv(this.locs.u_proj, false, proj);
       gl.uniformMatrix4fv(this.locs.u_view, false, view);
+      // 3D FX の最後の段のときだけ Fx3d.foldFrame が立つ (紙の距離 = w=0 の正面距離)。Code の Slicer は常に OFF
+      GL.fx3dUniforms(this.prog, proj, 1 / Math.tan(fovRad * 0.5), (this._fx && typeof Fx3d !== 'undefined') ? Fx3d.foldFrame : null);
       gl.uniform1f(this.locs.u_time, this._t);
       gl.uniform1f(this.locs.u_warpAmp,  this.P.warpAmp || 0);
       gl.uniform1f(this.locs.u_warpFreq, this.P.warpFreq || 2.0);
