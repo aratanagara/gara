@@ -72,32 +72,32 @@ void main(){
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
-// 面ごとの針 (Needle): 側面ごとに uGX × uGY の格子へ種を置き、面の法線方向へ角錐を立てる (fx3d.js の SPIKE_GLSL)
-const SPK_VS = `#version 300 es
+// 面を覆う針 (Needle): 各面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐) で覆い、面の法線方向へ突起 / 凹み。元の面の代わりに描く
+const NV_VS = `#version 300 es
 precision highp float;
 uniform mat4 uView, uProj;
-uniform float uGX, uGY;
+uniform vec2 uNvGrid;
+uniform float uNvSub, uNvCaps;
 out vec2 vUv; out vec3 vW;
 ${SURF}
 void main(){
-  int gx = int(uGX), gy = int(uGY), per = gx * gy;
-  int inst = gl_InstanceID, fq = inst / per, c = inst - fq * per;
-  int seg = fq / 4, face = fq - seg * 4;
-  int cy = c / gx, cx = c - cy * gx;
-  vec2 key = vec2(float(inst) * 1.37 + 0.5, float(seg) * 3.1 + 2.3);
-  vec2 ab0 = (vec2(float(cx), float(cy)) + 0.4 + 0.2 * vec2(h1(key.x), h1(key.x + 9.1))) / vec2(uGX, uGY);
+  int per = (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * int(uNvSub) * int(uNvSub);
+  int fq = gl_VertexID / per, vid = gl_VertexID - fq * per;
+  int seg, face;
+  if(uNvCaps > 0.5){ seg = fq / 2; face = 4 + fq - seg * 2; } else { seg = fq / 4; face = fq - seg * 4; }
+  vec2 ab; float w; vec2 key;
+  fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(float(fq) * 5.3 + uNvCaps * 91.0, 1.7), ab, w, key);
   const float E = 1e-3;
-  vec2 uv0, uvA, uvB;
-  vec3 P0 = cubeSurf(seg, face, ab0, uv0);
-  vec3 T = (cubeSurf(seg, face, ab0 + vec2(E, 0.0), uvA) - P0) / E;
-  vec3 B = (cubeSurf(seg, face, ab0 + vec2(0.0, E), uvB) - P0) / E;
-  float lT = length(T), lB = length(B);
-  vec3 Tn = T / lT, Bn = B / lB;
-  vec3 N = normalize(cross(Tn, Bn)) * (uAsp >= 1.0 ? 1.0 : -1.0);   // 縦長は xy を入れ替えている = 向きが反転
-  float r = 0.4 * min(lT / uGX, lB / uGY);
-  vec3 s = fx3dSpike(gl_VertexID, key);
-  vec3 P = P0 + (Tn * s.x + Bn * s.y + N * s.z) * r;
-  vUv = uv0 + (uvA - uv0) / E * (s.x * r / lT) + (uvB - uv0) / E * (s.y * r / lB);
+  vec2 uv0, uvd;
+  vec3 P0 = cubeSurf(seg, face, ab, uv0);
+  vec3 T = (cubeSurf(seg, face, ab + vec2(E, 0.0), uvd) - P0) / E;
+  vec3 B = (cubeSurf(seg, face, ab + vec2(0.0, E), uvd) - P0) / E;
+  vec3 N = normalize(cross(T, B));
+  vec3 ctr = 0.5 * (cubeSurf(seg, 0, vec2(0.5), uvd) + cubeSurf(seg, 2, vec2(0.5), uvd));   // 本の中心 (向かい合う面の中点)
+  if(dot(N, P0 - ctr) < 0.0) N = -N;                                                      // 外向きに揃える
+  float cell = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);                     // 格子 1 つぶんの長さ
+  vec3 P = P0 + N * (w * fx3dNeedleH(key, uv0 * vec2(uAsp, 1.0) * 3.2) * cell);
+  vUv = uv0;
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
@@ -156,21 +156,24 @@ Fx3d.EXTRA.cubes = {
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
-    setU(pr);
-    gl.drawArrays(gl.TRIANGLES, 0, N * PER);
-    if(Fx3d.spikeFrame){
-      const sp = Fx3d.prog(gl, 'cubesSpike', SPK_VS, FS);
-      if(sp){
-        // 格子: 短辺方向 6 (単体 Needle と同じ間隔)、長辺方向はその間隔で 1 本の長さを割る
-        const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
-        const gy = 6, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy)));
-        setU(sp);
-        gl.uniform1f(uloc(gl, sp, 'uShade'), 1);
-        gl.uniform1f(uloc(gl, sp, 'uGX'), gx);
-        gl.uniform1f(uloc(gl, sp, 'uGY'), gy);
-        Fx3d.spikeUniforms(gl, sp);
-        gl.drawArraysInstanced(gl.TRIANGLES, 0, Fx3d.SPIKE_VERTS, N * 4 * gx * gy);
-      }
+    const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;
+    if(nvp){
+      // Needle: 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。側面は短辺方向 10 (単体 Needle と同じ間隔)、端面は 10 × 10
+      const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
+      const gy = 10, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy))), sub = Fx3d.foldFrame ? 2 : 1;
+      setU(nvp);
+      gl.uniform1f(uloc(gl, nvp, 'uShade'), 1);
+      gl.uniform1f(uloc(gl, nvp, 'uNvSub'), sub);
+      Fx3d.spikeUniforms(gl, nvp);
+      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);
+      gl.uniform1f(uloc(gl, nvp, 'uNvCaps'), 0);
+      gl.drawArrays(gl.TRIANGLES, 0, N * 4 * GL.needleCellVerts(gx, gy, sub));
+      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gy, gy);
+      gl.uniform1f(uloc(gl, nvp, 'uNvCaps'), 1);
+      gl.drawArrays(gl.TRIANGLES, 0, N * 2 * GL.needleCellVerts(gy, gy, sub));
+    } else {
+      setU(pr);
+      gl.drawArrays(gl.TRIANGLES, 0, N * PER);
     }
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);
