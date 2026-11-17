@@ -165,7 +165,7 @@ Fx3d.EXTRA.cubes = {
     if(nvp){
       // Needle: 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。側面は短辺方向 10 (単体 Needle と同じ間隔)、端面は 10 × 10
       const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
-      const gy = 10, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy))), sub = Fx3d.foldFrame ? 2 : 1;
+      const gy = 10, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy))), sub = Fx3d.foldFrame ? 3 : 2;
       setU(nvp);
       gl.uniform1f(uloc(gl, nvp, 'uShade'), 1);
       gl.uniform1f(uloc(gl, nvp, 'uNvSub'), sub);
