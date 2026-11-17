@@ -4532,7 +4532,7 @@ float f3h1(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32);
 // Needle: 格子状に丘 + 針(尖ったコーン)。針座標を max 合成 → 鋭い先端
 float f3NeedleH(vec2 q, float t){
   vec2 g = q * 3.0, gi = floor(g);
-  float hill = 0.0, C = 0.0;   // hill=緩やかな起伏, C=最も突出した凹凸(山/谷)
+  float C = 0.0;   // 最も突出した凹凸 (山/谷)
   // Beat モード: 単体 Needle と同じく拍ごとの乱数目標へ Ease Out で変形 (拍頭で大きく動く)
   float bid = floor(uBeat);
   float ease = 1.0 - pow(1.0 - clamp(fract(uBeat) / 0.24, 0.0, 1.0), 3.0);
@@ -4550,8 +4550,17 @@ float f3NeedleH(vec2 q, float t){
         cos(t*driftRate*0.83+r3*6.2831)
       )*driftAmp;
       c += drift;
-      float d = length(q - c);
-      hill += 0.04 * exp(-d * d * 6.0) * (0.4 * sin(t * 0.32 + r1 * 6.2831));
+      // 底は 3〜5 角形 (向きも種ごと) = 円錐でなく面のまっすぐな角錐
+      vec2 dq = q - c;
+      float ns = 3.0 + floor(f3h1(cell + 23.9) * 2.999);
+      float rot0 = f3h1(cell + 41.3) * 6.2831;
+      float d = 0.0;
+      for(int k = 0; k < 5; k++){
+        if(float(k) >= ns) break;
+        float a = rot0 + float(k) * 6.2831 / ns;
+        d = max(d, dot(dq, vec2(cos(a), sin(a))));
+      }
+      d /= cos(3.14159265 / ns);                             // 外接円の半径で正規化 (角錐の大きさを円錐と揃える)
       if(r2 < 0.5){
         // 高さを二極化: 低い針と高い針が隣り合う極端なギザギザ (単体 Needle と同じ)
         float jr = f3h1(cell + 9.9);
@@ -4564,12 +4573,12 @@ float f3NeedleH(vec2 q, float t){
         float bosc = mix(bA, bB, ease);
         bosc = sign(bosc) * pow(abs(bosc), 0.5);
         osc = mix(osc, bosc, uBeatMode);                   // beat: 拍ごとの目標 / drone: 連続サイン
-        float cone = osc * amp * max(0.0, 1.0 - d * 6.0);  // 山も谷も同じ鋭い円錐
+        float cone = osc * amp * max(0.0, 1.0 - d * 6.0);  // 山も谷も同じ鋭い角錐
         if(abs(cone) > abs(C)) C = cone;                   // 最も突出した凹凸を採用
       }
     }
   }
-  return C + hill;
+  return C;
 }
 vec3 f3Paper(vec2 q, float lift){
   // Needle 変位を折り前に足す。ヒット増幅は単体 Needle の depth 係数と同じ (beat 0.46 / drone 0.10)
@@ -5916,15 +5925,8 @@ vec3 f3Paper(vec2 q, float lift){
         sx += mixf(dmx, bmx, beatMode) * travel;
         sy += mixf(dmy, bmy, beatMode) * travel;
         const su = sx / (S * asp), sv2 = sy / S;
-        // 丘 (全種点): 低い起伏
-        const hdens = h21(cx + 281.3, cy + 109.4);
-        let hrise = 0.5 + 0.5 * Math.sin(motionTime * mixf(0.1, 0.25, h21(cx + 293.4, cy + 105.2)) + phase);
-        hrise = hrise * hrise * (3 - 2 * hrise);
-        // 丘は低く抑える (丸い土台がギザギザの輪郭を埋めないように)
-        const hillRaw = mixf(0.02, 0.9, Math.pow(hdens, 3.5)) * mixf(0.4, 1.1, hrise) * depth * 0.2;
-        const hillDisp = hillRaw / Math.sqrt(1 + hillRaw * hillRaw / (7.2 * 7.2));
-        // 針 (約 1/3 の種点): 高い隆起 + リーン。同じ種点から生える
-        let nx3 = 0, ny3 = 0, nz3 = hillDisp;
+        // 針 (約半数の種点): 平らな地から角錐が立つ + リーン。丘 (丸い起伏) は持たない = 面がまっすぐな多面体
+        let nx3 = 0, ny3 = 0, nz3 = 0;
         const isN = h21(cx + 401.7, cy + 77.3) < 0.55;
         let dispN = 0;
         if(isN){
@@ -5963,7 +5965,7 @@ vec3 f3Paper(vec2 q, float lift){
           nx3 = (lxv / sl) * dispN;
           ny3 = (lyv / sl) * dispN;
           const zext = (1 / sl) * dispN;
-          nz3 = zdir > 0 ? Math.min(cap, hillDisp + zext) : Math.max(-cap, hillDisp - zext);
+          nz3 = zdir > 0 ? Math.min(cap, zext) : Math.max(-cap, -zext);
         }
         const pt = { x: (su - 0.5) * 2 * extX + nx3, y: (sv2 - 0.5) * 2 * extY + ny3, z: nz3, u: su, v: sv2, d: isN ? dispN : 0 };
         row.push(pt);
@@ -5971,48 +5973,13 @@ vec3 f3Paper(vec2 q, float lift){
       }
       seeds.push(row);
     }
-    // ── 局所適応テッセレーション (針の周辺だけ細分化) ──
-    // エッジの分割判定は両端の種点の針高 d のみで決まる(=そのエッジを共有する隣接三角形で
-    // 必ず一致)→ T字クラックが出ない。細分頂点には二次変位を足し、針の岩肌を細かく刻む。
-    const DTHR = 1.4;                                              // このエッジ長以上の針高で細分
     const rawTri = (a, b, c, ff)=>{ pushV(a.x, a.y, a.z, a.u, a.v, ff); pushV(b.x, b.y, b.z, b.u, b.v, ff); pushV(c.x, c.y, c.z, c.u, c.v, ff); };
-    const needSplit = (a, b)=> Math.max(a.d, b.d) > DTHR;
-    // エッジ中点 (a,b に対して対称に計算 → 呼び順に依らず同一頂点)
-    const edgeMid = (a, b)=>{
-      const u = (a.u + b.u) * 0.5, v = (a.v + b.v) * 0.5;
-      const localD = 0.5 * (a.d + b.d);                            // 針が高いエッジほど岩肌を強く刻む
-      const hz = h21(u * 96.7 + 5.3, v * 96.7 + 11.9) - 0.5;       // ±z の細かい凹凸 (二次針)
-      const hx = h21(u * 71.3 + 23.1, v * 71.3 + 3.7) - 0.5;
-      const hy = h21(u * 58.9 + 41.7, v * 58.9 + 61.3) - 0.5;
-      return { x: (a.x + b.x) * 0.5 + hx * localD * 0.10,
-               y: (a.y + b.y) * 0.5 + hy * localD * 0.10,
-               z: (a.z + b.z) * 0.5 + hz * localD * 0.42,
-               u, v, d: localD };
-    };
-    // A,B,C を分割エッジに応じてクラックなく再分割 (red-green パターン)
-    const emitTri = (A, B, C, ff)=>{
-      const sAB = needSplit(A, B), sBC = needSplit(B, C), sCA = needSplit(C, A);
-      const n = (sAB ? 1 : 0) + (sBC ? 1 : 0) + (sCA ? 1 : 0);
-      if(n === 0){ rawTri(A, B, C, ff); return; }
-      const ab = sAB ? edgeMid(A, B) : null, bc = sBC ? edgeMid(B, C) : null, ca = sCA ? edgeMid(C, A) : null;
-      if(n === 3){
-        rawTri(A, ab, ca, ff); rawTri(ab, B, bc, ff); rawTri(ca, bc, C, ff); rawTri(ab, bc, ca, ff);
-      } else if(n === 1){
-        if(ab){ rawTri(A, ab, C, ff); rawTri(ab, B, C, ff); }
-        else if(bc){ rawTri(A, B, bc, ff); rawTri(A, bc, C, ff); }
-        else { rawTri(A, B, ca, ff); rawTri(ca, B, C, ff); }
-      } else { // n === 2
-        if(ab && bc){ rawTri(ab, B, bc, ff); rawTri(A, ab, bc, ff); rawTri(A, bc, C, ff); }
-        else if(ab && ca){ rawTri(A, ab, ca, ff); rawTri(ab, B, C, ff); rawTri(ab, C, ca, ff); }
-        else { rawTri(bc, C, ca, ff); rawTri(A, B, bc, ff); rawTri(A, bc, ca, ff); }
-      }
-    };
-    // 三角形分割 (対角線は市松で交互) → 各三角形を適応再分割
+    // 三角形分割 (対角線は市松で交互)
     for(let cy = 0; cy < seeds.length - 1; cy++) for(let cx = 0; cx < seeds[0].length - 1; cx++){
       const s00 = seeds[cy][cx], s10 = seeds[cy][cx + 1], s01 = seeds[cy + 1][cx], s11 = seeds[cy + 1][cx + 1];
       const ff1 = h21(cx * 3.1 + 11.3, cy * 7.7 + 5.9), ff2 = h21(cx * 9.2 + 1.7, cy * 2.9 + 40.1);
-      if(((cx + cy) & 1) === 0){ emitTri(s00, s10, s11, ff1); emitTri(s00, s11, s01, ff2); }
-      else                     { emitTri(s10, s11, s01, ff1); emitTri(s10, s01, s00, ff2); }
+      if(((cx + cy) & 1) === 0){ rawTri(s00, s10, s11, ff1); rawTri(s00, s11, s01, ff2); }
+      else                     { rawTri(s10, s11, s01, ff1); rawTri(s10, s01, s00, ff2); }
     }
     // 橋: 各針を近い順に 2 本まで鞍状の屋根で接続 (最近傍グラフ)
     const links = new Set();
