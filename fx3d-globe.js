@@ -3,18 +3,12 @@
    契約は fx3d.js の EXTRA のコメント参照。k = 0 で曲率 0 の平面・正面カメラ = 元画面と画素一致。
    平面 → 球を直接混ぜると面が交差するので、まず曲げ (交差しない) で筒にし、そこから球へ混ぜる。 */
 (function(){
-const VS = `#version 300 es
-precision highp float;
+// 球 (筒 → 球) の形: 絵の座標 uv (0..1) → 位置。N = 外向きの法線
+const SURF = `
 uniform mat4 uView, uProj;
 uniform float uAsp, uCols, uRows, uK, uSpin, uHit;
-out vec2 vUv; out vec3 vW, vN;
 float ss(float a, float b, float x){ float t = clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
-void main(){
-  int id = gl_VertexID, quad = id / 6, tv = id - quad * 6;
-  int icols = int(uCols);
-  int iy = quad / icols, ix = quad - iy * icols;
-  vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
-  vec2 uv = (vec2(float(ix), float(iy)) + ab) / vec2(uCols, uRows);
+vec3 gSurf(vec2 uv, out vec3 N){
   vec2 q = (uv - 0.5) * 2.0 * vec2(uAsp, 1.0);
   float m1 = ss(0.0, 0.55, uK), m2 = ss(0.35, 1.0, uK);
   float kap = m1 * 3.14159265 / uAsp;
@@ -23,16 +17,49 @@ void main(){
   vec3 Ps = vec3(R * cos(phi) * sin(lam), R * sin(phi), R * cos(phi) * cos(lam) - R);
   vec3 Nc = kap < 1e-5 ? vec3(0.0, 0.0, 1.0) : vec3(sin(kap * q.x), 0.0, cos(kap * q.x));
   vec3 Ns = vec3(cos(phi) * sin(lam), sin(phi), cos(phi) * cos(lam));
-  vec3 N = normalize(mix(Nc, Ns, m2));
+  N = normalize(mix(Nc, Ns, m2));
   vec3 P = mix(Pc, Ps, m2);
   P.z += R * ss(0.3, 0.8, uK);
   float sp = uSpin * ss(0.5, 0.8, uK);
   float cs = cos(sp), sn = sin(sp);
   P.xz = vec2(P.x * cs + P.z * sn, -P.x * sn + P.z * cs);
   N.xz = vec2(N.x * cs + N.z * sn, -N.x * sn + N.z * cs);
-  P *= mix(1.0, 1.6, m2) * (1.0 + 0.08 * uHit * uK);
+  return P * mix(1.0, 1.6, m2) * (1.0 + 0.08 * uHit * uK);
+}
+`;
+const VS = `#version 300 es
+precision highp float;
+${SURF}
+out vec2 vUv; out vec3 vW, vN;
+void main(){
+  int id = gl_VertexID, quad = id / 6, tv = id - quad * 6;
+  int icols = int(uCols);
+  int iy = quad / icols, ix = quad - iy * icols;
+  vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
+  vec2 uv = (vec2(float(ix), float(iy)) + ab) / vec2(uCols, uRows);
+  vec3 N;
+  vec3 P = gSurf(uv, N);
   vUv = uv; vW = P; vN = N;
   gl_Position = fx3dApply(uProj * uView * vec4(P * fx3dPop(0.0), 1.0));   // ポップ: 球ごと中心から
+}`;
+// Needle (最後に掛かる): 球を GL.needleCellGLSL の針の面で覆い、外向きに突起 / 内向きに凹み (ウニ)。元の球の代わりに描く
+const NV_VS = `#version 300 es
+precision highp float;
+${SURF}
+uniform vec2 uNvGrid;
+uniform float uNvSub;
+out vec2 vUv; out vec3 vW, vN;
+void main(){
+  vec2 uv; float w; vec2 key;
+  fx3dNeedleVert(gl_VertexID, uNvGrid, uNvSub, vec2(5.7, 2.9), uv, w, key);
+  const float E = 1e-3;
+  vec3 N, Nd;
+  vec3 P0 = gSurf(uv, N);
+  float lT = length(gSurf(uv + vec2(E, 0.0), Nd) - P0) / E, lB = length(gSurf(uv + vec2(0.0, E), Nd) - P0) / E;
+  float cell = 0.5 * (lT / uNvGrid.x + lB / uNvGrid.y);
+  vec3 P = P0 + N * (w * fx3dNeedleH(key, (uv - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
+  vUv = uv; vW = P; vN = N;
+  gl_Position = fx3dApply(uProj * uView * vec4(P * fx3dPop(0.0), 1.0));
 }`;
 const FS = `#version 300 es
 precision highp float;
@@ -68,6 +95,7 @@ const ss = (a, b, x)=>{ const y = Math.max(0, Math.min(1, (x - a) / (b - a))); r
 
 Fx3d.EXTRA.globe = {
   foldHook: true,
+  spikes: true,
   render(gl, o){
     const pr = Fx3d.prog(gl, 'globe', VS, FS);
     if(!pr) return false;
@@ -87,28 +115,43 @@ Fx3d.EXTRA.globe = {
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
     gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.useProgram(pr);
-    if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
-    gl.bindVertexArray(GL._emptyVAO);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
-    gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
-    gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
-    gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
-    gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
-    gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
-    gl.uniform1f(uloc(gl, pr, 'uCols'), cols);
-    gl.uniform1f(uloc(gl, pr, 'uRows'), rows);
-    gl.uniform1f(uloc(gl, pr, 'uK'), k);
-    gl.uniform1f(uloc(gl, pr, 'uSpin'), spin);
-    gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
-    gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
-    gl.uniform1f(uloc(gl, pr, 'uSeam'), 0.1 * ss(0.4, 0.8, k));
-    gl.uniform1f(uloc(gl, pr, 'uFacet'), 1 - ss(16, 56, detail));
-    gl.uniform1f(uloc(gl, pr, 'uMirror'), m2 * (0.9 + (0.15 - 0.9) * detail / 96));
-    Fx3d.popUniforms(gl, pr, 'globe');
-    Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
-    gl.drawArrays(gl.TRIANGLES, 0, cols * rows * 6);
+    const setU = (pr)=>{
+      gl.useProgram(pr);
+      if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
+      gl.bindVertexArray(GL._emptyVAO);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
+      gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
+      gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
+      gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
+      gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
+      gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
+      gl.uniform1f(uloc(gl, pr, 'uCols'), cols);
+      gl.uniform1f(uloc(gl, pr, 'uRows'), rows);
+      gl.uniform1f(uloc(gl, pr, 'uK'), k);
+      gl.uniform1f(uloc(gl, pr, 'uSpin'), spin);
+      gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
+      gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
+      gl.uniform1f(uloc(gl, pr, 'uSeam'), 0.1 * ss(0.4, 0.8, k));
+      gl.uniform1f(uloc(gl, pr, 'uFacet'), 1 - ss(16, 56, detail));
+      gl.uniform1f(uloc(gl, pr, 'uMirror'), m2 * (0.9 + (0.15 - 0.9) * detail / 96));
+      Fx3d.popUniforms(gl, pr, 'globe');
+      Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+    };
+    const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'globeNeedle', NV_VS, FS) : null;
+    if(nvp){
+      // Needle: 球を針の面で覆う (ウニ)。面は角張らせる (uFacet = 1)
+      const gy = 14, gx = Math.round(14 * asp);
+      setU(nvp);
+      gl.uniform1f(uloc(gl, nvp, 'uFacet'), 1);
+      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);
+      gl.uniform1f(uloc(gl, nvp, 'uNvSub'), 1);
+      Fx3d.spikeUniforms(gl, nvp);
+      gl.drawArrays(gl.TRIANGLES, 0, GL.needleCellVerts(gx, gy, 1));
+    } else {
+      setU(pr);
+      gl.drawArrays(gl.TRIANGLES, 0, cols * rows * 6);
+    }
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);
     return true;
