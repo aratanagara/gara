@@ -82,11 +82,27 @@ const Fx3d = {
     return o;
   },
 
+  // ── 折り (Needle / Origami / Kaiser / Roll) を物体へ同じ 3D 空間で掛ける ──
+  //   VS で gl_Position = fx3dApply(...) を呼ぶ / FS で fx3dFoldShade(色) を呼ぶと、prog() がフック (GL.fx3dHookGLSL / fx3dShadeGLSL) を差し込む。
+  //   GL が最後の段を描く間だけ foldFrame = { g, F } を立てる。レンダラは uniform を送ったあと Fx3d.fold(gl, pr, proj, paperD) を呼ぶ
+  //   (paperD = z=0 の紙が画面をちょうど満たすカメラ距離。camera() なら 1.35)
+  foldFrame: null,
+  canFold(name){ const x = this.EXTRA[name]; return name === 'slicer' || !!(x && x.foldHook); },
+  fold(gl, pr, proj, paperD){ GL.fx3dUniforms(pr, proj, paperD, this.foldFrame); },
+  _withHooks(src, use, glsl){
+    if(!src.includes(use)) return src;
+    const at = src.indexOf('precision');
+    const i = src.indexOf('\n', at >= 0 ? at : src.indexOf('#version'));
+    return src.slice(0, i + 1) + glsl + src.slice(i + 1);
+  },
+
   // ── 自前レンダラ共有ヘルパ ──
   // プログラムをリンクしてキャッシュ。失敗時は null (失敗も覚えて再試行しない)
   prog(gl, id, vs, fs){
     const c = this._progs || (this._progs = {});
     if(id in c) return c[id];
+    vs = this._withHooks(vs, 'fx3dApply(', GL.fx3dHookGLSL());
+    fs = this._withHooks(fs, 'fx3dFoldShade(', GL.fx3dShadeGLSL());
     const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);
     const p = GL._link(v, f);
     if(!p || p.err){ console.error('fx3d program failed:', id, p && p.err); return (c[id] = null); }

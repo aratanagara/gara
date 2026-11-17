@@ -3356,7 +3356,7 @@ void main(){
 precision highp float;
 in vec2 vUv; in vec3 vWorld; out vec4 frag;
 uniform sampler2D uTex;
-uniform float uMode, uShade, uBgDark, uNeedleAmt, uNeedleMix;
+uniform float uMode, uShade, uBgDark, uNeedleAmt, uNeedleMix, uPaperFade;
 uniform vec3 uEye;
 void main(){
   if(uMode < 0.5){
@@ -3394,7 +3394,7 @@ void main(){
   crystal += vec3(1.0) * (pow(specBase, 96.0) * 1.6 + fres * fres * 0.10);
   crystal = mix(crystal, alb, 0.24);
   vec3 res = mix(paper, crystal, uNeedleMix);
-  frag = vec4(mix(alb, res, uShade), 1.0);
+  frag = vec4(mix(alb, res, uShade), 1.0) * (1.0 - uPaperFade);   // uPaperFade: 3D FX の段で物体に抜けた分だけ紙を薄く (前乗算)
 }`;
       const fvs = this._compile(gl.VERTEX_SHADER, FVS);
       const ffs = this._compile(gl.FRAGMENT_SHADER, FFS);
@@ -5266,7 +5266,7 @@ vec3 f3Paper(vec2 q, float lift){
     // 4) 3D 段 (Needle → Origami → Kaiser)。2つ以上有効なら統合パスで頂点ごと重ねがけ。
     // 3D のまま掛けているフレーム (g > 0) は、折りを対象スロットの頂点で掛け済み。画面段の折りは飛ばす
     // 切り替わり (_blend) のフレームは、_finalFBO の平面の絵を平面方式と同じ折りで折り、そこへ 3D の絵を重ねる
-    const _fx3dDone = !!this._fx3dFrame && !_blend;
+    const _fx3dDone = (!!this._fx3dFrame && !_blend) || !!this._fx3dPostFold;   // 3D FX の段で物体へ折りを掛け済みなら画面段の折りは飛ばす
     if(_fx3dDone){ this._foldStackActive = false; this._foldStackTookUzumaki = false; }
     this._foldPrebuilt = _blend ? this._fx3dFrame.F : null;
     const _stacked = _fx3dDone || this._applyFoldStack(p, _safe);
@@ -6611,6 +6611,7 @@ vec3 f3Paper(vec2 q, float lift){
   // 3D FX (Fx3d.ORDER の各エンジン): 現在フレーム (_finalFBO) を素材に 3D シーンを描き、_finalFBO へ戻す。
   //   エンジンは透明背景で描き、元の画面を e に応じて暗くした上に重ねる (暗くするのは最初の 1 段だけ。量 0 → 元の画面と一致、k のクロスフェードは無い)。
   _apply3dFx(p, safe){
+    this._fx3dPostFold = null;
     if(safe || typeof Fx3d === 'undefined' || !this._finalFBO) return;
     const gl = this.gl;
     const fw = this._finalFBO.w, fh = this._finalFBO.h;
@@ -6619,6 +6620,16 @@ vec3 f3Paper(vec2 q, float lift){
     // 各段は素材 (前の段の出力) を bgDim(e) だけ抜いて、自分の物体をその上に置く。抜いた所は透過 (alpha) のまま次へ渡し、
     //   次の段・折り系は透過の所を描かない = 前の段の物体だけが次の段に乗る (重ねがけ)。背景は最後に _fx3dBgUnder が一度だけ敷く
     const foldNext = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'].some(k=>(+(p && p[k]) || 0) > 0.001);
+    // 折り (Needle / Origami / Kaiser / Roll) は、最後の段が折りに対応したエンジンなら、その物体の頂点へ同じ 3D 空間で掛ける
+    //   (画面段の折りは飛ばす = 物体そのものが折れる)。それより前の段の物体は、最後の段の素材 (紙) として一緒に折れる
+    this._fx3dPostFold = null;
+    const av = (k)=>Math.max(0, Math.min(1, +(p && p[k]) || 0));
+    const aN = av('origami'), aO = av('kaiser'), aK = av('kaiserOld'), aR = av('fx3dRoll');
+    let lastName = null;
+    for(const name of Fx3d.ORDER){ if(av(Fx3d.KEY[name]) > 0.001 && Fx3d.has(name)) lastName = name; }
+    if(lastName && Fx3d.canFold(lastName) && (aN > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001) && !this._fx3dFrame && this.foldStackProg){
+      this._fx3dPostFold = { g: 1, zs: 0.3, F: this._foldBuild(p, aN, aO, aK, aR, false, fw, fh) };
+    }
     for(const name of Fx3d.ORDER){
       const e = Math.max(0, Math.min(1, +(p && p[Fx3d.KEY[name]]) || 0));
       if(e <= 0.001 || !Fx3d.has(name)) continue;
@@ -6644,11 +6655,15 @@ vec3 f3Paper(vec2 q, float lift){
       }
       const beat = App.visualBeat ? App.visualBeat() : BPM.beatCount();
       gl.bindVertexArray(null);   // Layer / Slicer は「いま bound の VAO」へ属性を張るので、必ず既定 VAO にしてから描かせる
+      const folded = !!this._fx3dPostFold && name === lastName;
+      Fx3d.foldFrame = folded ? this._fx3dPostFold : null;
       const ok = Fx3d.render(name, { srcTex:this._finalFBO.tex, fbo:T.fbo, w:tw, h:th, e, clock:this.postClock != null ? this.postClock : this.clock, beat });
+      Fx3d.foldFrame = null;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
       gl.bindVertexArray(null);
       gl.activeTexture(gl.TEXTURE0);
+      if(ok && folded) this._fx3dPaperUnder(T, this._finalFBO.tex, this._fx3dPostFold.F, 1 - Fx3d.bgDim(e));
       gl.viewport(0, 0, fw, fh);
       if(!ok) continue;
       // 合成: エンジンは透明背景 (rgb=色, a=被覆) で描いてある。元の画面を (1 - bgDim) に暗くした上に重ねる
@@ -6663,7 +6678,7 @@ vec3 f3Paper(vec2 q, float lift){
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, T.tex);
       gl.uniform1i(gl.getUniformLocation(this._fx3dOverProg, 'uTex'), 0);
-      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), Fx3d.bgDim(e));
+      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), folded ? 1 : Fx3d.bgDim(e));   // 折った段は紙まで T に入っている = 素材を全部置き換える
       gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uAlphaOnly'), 0);
       // 3D Res < 100% のときは 3D 側が低解像度 (元の画面より柔らかい) ので、出始めだけ元の画面から短く混ぜて段差を消す
       const mx = Math.min(1, e / 0.12);
@@ -7224,11 +7239,26 @@ void main(){
     if(!paperTex || !fr || !P) return;
     if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
     const F = fr.F, GRID = this._foldStackGrid;
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+    const U = this._foldPaperSetup(F, paperTex, w, h, 0);
+    // 紙の外側: 折りが浅いうちは元の背景が (1 - bgDark) で見える (平面方式と同じ onset)。深度は書かない
+    gl.disable(gl.DEPTH_TEST);
+    gl.uniform1f(U('uMode'), 0.0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.DEPTH_TEST);
+    gl.uniform1f(U('uMode'), 1.0);
+    gl.drawArrays(gl.TRIANGLES, 0, GRID[0] * GRID[1] * 6);
+    gl.bindVertexArray(null);
+  },
+  // 統合パスのプログラムで「紙」(折りの格子メッシュ) を描く準備。テクスチャ tex を貼り、fade (0..1) だけ薄く (前乗算) する。
+  //   戻り値は uniform を引く関数。描くのは呼び出し側 (uMode 1 + GRID の三角形)
+  _foldPaperSetup(F, tex, w, h, fade){
+    const gl = this.gl, P = this.foldStackProg, GRID = this._foldStackGrid;
+    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
     gl.useProgram(P);
     gl.bindVertexArray(this._emptyVAO);
-    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
     gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, paperTex);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
     const U = (n)=>gl.getUniformLocation(P, n);
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uRes'), w, h);
@@ -7240,15 +7270,34 @@ void main(){
     gl.uniform1f(U('uNeedleMix'), F.aN / Math.max(F.aN + F.aO + F.aK, 1e-6));
     gl.uniform3f(U('uEye'), F.eye[0], F.eye[1], F.eye[2]);
     gl.uniform1f(U('uUzN'), 0);
+    gl.uniform1f(U('uPaperFade'), fade);
     this._foldUpload(P, 'u', F);
-    // 紙の外側: 折りが浅いうちは元の背景が (1 - bgDark) で見える (平面方式と同じ onset)。深度は書かない
-    gl.disable(gl.DEPTH_TEST);
-    gl.uniform1f(U('uMode'), 0.0);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.enable(gl.DEPTH_TEST);
+    return U;
+  },
+  // 3D FX の段に折りを掛けたとき: エンジンが描いた T の下へ、物体に抜けきっていない元の絵 (= 紙、薄さ 1 - m) を折って敷く。
+  //   紙どうしの重なりは深度の先行パスで手前だけを残し、物体の下 (alpha) にだけ前乗算で潜らせる
+  _fx3dPaperUnder(T, srcTex, F, m){
+    if(m <= 0.002 || !this.foldStackProg) return;
+    const gl = this.gl, GRID = this._foldStackGrid;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, T.fbo);
+    gl.viewport(0, 0, T.w, T.h);
+    gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT);
+    const U = this._foldPaperSetup(F, srcTex, T.w, T.h, 1 - m);
     gl.uniform1f(U('uMode'), 1.0);
+    gl.enable(gl.DEPTH_TEST); gl.depthMask(true);
+    gl.disable(gl.BLEND);
+    gl.colorMask(false, false, false, false);
+    gl.depthFunc(gl.LESS);
     gl.drawArrays(gl.TRIANGLES, 0, GRID[0] * GRID[1] * 6);
+    gl.colorMask(true, true, true, true);
+    gl.depthFunc(gl.LEQUAL); gl.depthMask(false);
+    gl.enable(gl.BLEND);
+    gl.blendFuncSeparate(gl.ONE_MINUS_DST_ALPHA, gl.ONE, gl.ONE_MINUS_DST_ALPHA, gl.ONE);
+    gl.drawArrays(gl.TRIANGLES, 0, GRID[0] * GRID[1] * 6);
+    gl.uniform1f(U('uPaperFade'), 0);   // uniform はプログラムに残るので、画面段の統合パス用に戻す
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.depthMask(true); gl.depthFunc(gl.LESS);
     gl.bindVertexArray(null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
   // 紙の背景テクスチャ用 FBO (RGBA16F。スロット FBO と同じ形式)
   fx3dPaperTarget(w, h){
@@ -7275,17 +7324,37 @@ void main(){
   // g (uFx3dG) = 0 では各頂点が元の透視で映る位置の紙に乗る (平面方式と同じ絵)、1 で完全な立体。
   fx3dHookGLSL(){
     return this._foldPaperGLSL('uF3') + `
-uniform float uFx3dOn, uFx3dG, uFx3dD, uFx3dTan, uFx3dNear;
+uniform float uFx3dOn, uFx3dG, uFx3dD, uFx3dTan, uFx3dNear, uFx3dZ;
 uniform mat4 uFx3dInvProj, uFx3dView, uFx3dProj;
+out vec3 vFx3dP;   // 折ったあとの位置 (FS の fx3dFoldShade が面法線に使う)
 vec4 fx3dApply(vec4 clip){
+  vFx3dP = vec3(0.0);
   if(uFx3dOn < 0.5) return clip;
   vec3 pv = (uFx3dInvProj * clip).xyz;
   float s = uFx3dD * uFx3dTan;
   float zc = max(-pv.z, uFx3dNear);
   // xy は紙へ映した倍率 (D / zc) を指数で 1 へ戻す (線形に混ぜると、カメラの近くの頂点が g ≈ 1 で急に飛ぶ)。z は線形
   vec3 Pm = vec3(pv.xy * pow(uFx3dD / zc, 1.0 - uFx3dG), mix(0.002 * s / (1.0 + zc), pv.z + uFx3dD, uFx3dG)) / s;
-  vec3 P = f3Paper(Pm.xy, Pm.z);
+  vec3 P = f3Paper(Pm.xy, Pm.z * uFx3dZ);   // uFx3dZ: 紙からの高さの縮め (3D FX の段は紙に寄せる = 折りで返った奥の面がカメラへ飛び出さない)
+  vFx3dP = P;
   return uFx3dProj * (uFx3dView * vec4(P, 1.0));
+}
+`;
+  },
+  // fx3dApply で折った面の陰影 (FS 用)。fx3dFoldShade(色) を呼ぶ。折りが掛かっていないとき (uFx3dOn = 0) は色をそのまま返す
+  fx3dShadeGLSL(){
+    return `uniform float uFx3dOn, uFx3dShade;
+uniform vec3 uFx3dEye;
+in vec3 vFx3dP;
+vec3 fx3dFoldShade(vec3 c){
+  if(uFx3dOn < 0.5 || uFx3dShade <= 0.0) return c;
+  vec3 N = normalize(cross(dFdx(vFx3dP), dFdy(vFx3dP)));
+  vec3 V = normalize(uFx3dEye - vFx3dP);
+  if(dot(N, V) < 0.0) N = -N;
+  vec3 L = normalize(vec3(2.4, 2.0, 3.0));
+  vec3 light = vec3(1.06, 1.02, 0.96) * max(0.0, dot(N, L)) + mix(vec3(0.50, 0.52, 0.56), vec3(0.74), N.y * 0.5 + 0.5);
+  float spec = pow(max(0.0, dot(N, normalize(L + V))), 26.0);
+  return mix(c, c * light + vec3(spec * 0.20), uFx3dShade);
 }
 `;
   },
@@ -7313,19 +7382,23 @@ vec4 fx3dApply(vec4 clip){
   },
   // fx3dHookGLSL を組み込んだエンジンのプログラムへ uniform を一括で送る。engineProj = エンジンの proj (列優先)、
   // paperD = 紙までの距離 (ビュー空間の奥行き)。3D 方式のフレーム (this._fx3dFrame が立っている) 以外は uFx3dOn = 0。
-  fx3dUniforms(prog, engineProj, paperD){
+  //   frame = { g, F } (省略時は 3D Native の this._fx3dFrame。3D FX の段は _fx3dPostFold を渡す)
+  fx3dUniforms(prog, engineProj, paperD, frame){
     const gl = this.gl;
     const U = (n)=>gl.getUniformLocation(prog, n);
-    const fr = this._fx3dFrame;
+    const fr = frame === undefined ? this._fx3dFrame : frame;
     if(!fr || !engineProj){ gl.uniform1f(U('uFx3dOn'), 0); return; }
     gl.uniform1f(U('uFx3dOn'), 1);
     gl.uniform1f(U('uFx3dG'), fr.g);
+    gl.uniform1f(U('uFx3dZ'), fr.zs != null ? fr.zs : 1);
     gl.uniform1f(U('uFx3dD'), paperD);
     gl.uniform1f(U('uFx3dTan'), 1 / engineProj[5]);
     gl.uniform1f(U('uFx3dNear'), engineProj[14] / (engineProj[10] - 1));
     gl.uniformMatrix4fv(U('uFx3dInvProj'), false, this._mat4Inv(engineProj));
     gl.uniformMatrix4fv(U('uFx3dView'), false, fr.F.view);
     gl.uniformMatrix4fv(U('uFx3dProj'), false, fr.F.proj);
+    gl.uniform3f(U('uFx3dEye'), fr.F.eye[0], fr.F.eye[1], fr.F.eye[2]);
+    gl.uniform1f(U('uFx3dShade'), fr.F.shade);
     this._foldUpload(prog, 'uF3', fr.F);
   },
   _applyFoldStack(p, safe){

@@ -32,7 +32,7 @@ void main(){
   N.xz = vec2(N.x * cs + N.z * sn, -N.x * sn + N.z * cs);
   P *= mix(1.0, 1.6, m2) * (1.0 + 0.08 * uHit * uK);
   vUv = uv; vW = P; vN = N;
-  gl_Position = uProj * uView * vec4(P, 1.0);
+  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
 const FS = `#version 300 es
 precision highp float;
@@ -60,13 +60,14 @@ void main(){
   float spec = pow(max(0.0, dot(N, normalize(L + V))), 26.0);
   vec3 col = mix(alb, alb * light + vec3(spec * 0.10), uShade);
   col += vec3(pow(max(0.0, dot(reflect(-V, N), L)), 60.0) * uMirror);
-  frag = vec4(col, 1.0);
+  frag = vec4(fx3dFoldShade(col), 1.0);
 }`;
 const U = {};
 function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get(p); if(l === undefined){ l = gl.getUniformLocation(p, n); m.set(p, l); } return l; }
 const ss = (a, b, x)=>{ const y = Math.max(0, Math.min(1, (x - a) / (b - a))); return y * y * (3 - 2 * y); };
 
 Fx3d.EXTRA.globe = {
+  foldHook: true,
   render(gl, o){
     const pr = Fx3d.prog(gl, 'globe', VS, FS);
     if(!pr) return false;
@@ -105,6 +106,7 @@ Fx3d.EXTRA.globe = {
     gl.uniform1f(uloc(gl, pr, 'uSeam'), 0.1 * ss(0.4, 0.8, k));
     gl.uniform1f(uloc(gl, pr, 'uFacet'), 1 - ss(16, 56, detail));
     gl.uniform1f(uloc(gl, pr, 'uMirror'), m2 * (0.9 + (0.15 - 0.9) * detail / 96));
+    Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     gl.drawArrays(gl.TRIANGLES, 0, cols * rows * 6);
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);

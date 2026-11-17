@@ -10,17 +10,20 @@ uniform mat4 uView, uProj;
 uniform float uAsp, uN, uGap, uDist, uMargin;
 out vec2 vUv;
 flat out int vLayer;
+const int G = 12;   // 層を G×G に分割 (折りの線が層の中で曲がるように)
 void main(){
-  int layer = gl_VertexID / 6;
-  int c = gl_VertexID % 6;
+  int layer = gl_VertexID / (G * G * 6);
+  int r = gl_VertexID - layer * G * G * 6;
+  int cell = r / 6, c = r - cell * 6;
+  int gy = cell / G, gx = cell - gy * G;
   // 2 三角形: (0,0)(1,0)(0,1) (1,0)(1,1)(0,1)
-  vec2 u = vec2(float((c == 1 || c == 3 || c == 4) ? 1 : 0), float((c == 2 || c == 4 || c == 5) ? 1 : 0));
+  vec2 u = (vec2(float(gx), float(gy)) + vec2(float((c == 1 || c == 3 || c == 4) ? 1 : 0), float((c == 2 || c == 4 || c == 5) ? 1 : 0))) / float(G);
   float z = (float(layer) - (uN - 1.0) * 0.5) * uGap;
   vec2 q = (u - 0.5) * 2.0 * vec2(uAsp, 1.0);                 // 紙座標 (uv 0..1 が画面)
   float sc = (uDist - z) / 1.35 * uMargin;                    // 層ごとに画面を満たす大きさへ (正面から見たら全層が同じ大きさ)
   vUv = 0.5 + (u - 0.5) * uMargin;                            // 余白ぶんは uv が 0..1 の外へ出る (FS でミラー)
   vLayer = layer;
-  gl_Position = uProj * uView * vec4(q * sc, z, 1.0);
+  gl_Position = fx3dApply(uProj * uView * vec4(q * sc, z, 1.0));
 }`;
   const FS = `#version 300 es
 precision highp float;
@@ -49,12 +52,13 @@ void main(){
     float sh = smoothstep(t1 - 0.015, t1 + 0.015, l2) * (1.0 - smoothstep(t1 - 0.015, t1 + 0.015, l));
     c *= 1.0 - 0.35 * uK * sh;
   }
-  frag = vec4(c * a, a);
+  frag = vec4(fx3dFoldShade(c) * a, a);
 }`;
 
   const hash = (n)=>{ const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 
   Fx3d.EXTRA.diorama = {
+    foldHook: true,
     render(gl, o){
       const p = Fx3d.prog(gl, 'diorama', VS, FS);
       if(!p) return false;
@@ -99,7 +103,8 @@ void main(){
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
       gl.uniform1i(u('uTex'), 0);
-      gl.drawArrays(gl.TRIANGLES, 0, N * 6);
+      Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+      gl.drawArrays(gl.TRIANGLES, 0, N * 12 * 12 * 6);
       gl.disable(gl.BLEND);
       if(wasCull) gl.enable(gl.CULL_FACE);
       return true;
