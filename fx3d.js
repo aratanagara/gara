@@ -14,7 +14,6 @@ const Fx3d = {
   FACTORY: {
     photo:  (typeof PhotoPlane !== 'undefined') ? JSON.parse(JSON.stringify(PhotoPlane.P)) : null,
     slicer: (typeof Slicer !== 'undefined') ? JSON.parse(JSON.stringify(Slicer.P)) : null,
-    layer:  (typeof Layer !== 'undefined') ? JSON.parse(JSON.stringify(Layer.P)) : null,
   },
   inst: {},
   ORDER: ['photo', 'slicer', 'layer', 'diorama', 'points', 'cubes', 'blinds', 'gravity', 'globe'],
@@ -26,7 +25,7 @@ const Fx3d = {
   //   k = 0 で「dist 1.35 の正面カメラ + z=0 の平らな紙 + uShade 0」= 元画面と画素一致になること。
   //   未登録の名前は render() が false を返し、その段は飛ばされる。
   EXTRA: {},
-  BUILTIN: { photo: 1, slicer: 1, layer: 1 },
+  BUILTIN: { photo: 1, slicer: 1 },
   has(name){ return !!(this.BUILTIN[name] || this.EXTRA[name]); },
 
   // 立ち上がりが十分に平らな smootherstep (デッドゾーン境界 0.10 で絵が跳ねない)
@@ -37,7 +36,6 @@ const Fx3d = {
   base(name){
     if(name === 'photo')  return (typeof PhotoPlane !== 'undefined') ? PhotoPlane : null;
     if(name === 'slicer') return (typeof Slicer !== 'undefined') ? Slicer : null;
-    if(name === 'layer')  return (typeof Layer !== 'undefined') ? Layer : null;
     return null;
   },
 
@@ -70,14 +68,6 @@ const Fx3d = {
       o._meta3d = true;
       o.texFlipY = true;
       o._sig = ''; o._wq = -1;
-    } else if(name === 'layer'){
-      o.cam = { az:0, el:0.3, dist:15, target:[0, 0, 0] };
-      o.textures = [null];
-      o.texAspects = [1];
-      o.texKeyColors = [];
-      o.planes = [];
-      o._ar = []; o._tintPl = [];
-      o._layoutSig = '';
     }
     this.inst[name] = o;
     return o;
@@ -96,7 +86,7 @@ const Fx3d = {
   //   エンジンは元の面の代わりに、面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐。突起と凹み) で覆って描く。
   //   VS で fx3dNeedleH (と fx3dNeedleVert) を呼ぶと prog() がその GLSL を差し込む。uniform は spikeUniforms(gl, pr [, frame])
   spikeFrame: null,
-  canSpike(name){ const x = this.EXTRA[name]; return name === 'slicer' || name === 'photo' || name === 'layer' || !!(x && x.spikes); },
+  canSpike(name){ const x = this.EXTRA[name]; return name === 'slicer' || name === 'photo' || !!(x && x.spikes); },
   spikeUniforms(gl, pr, frame){
     const s = frame || this.spikeFrame || { a: 0, beat: 0, bm: 0, hit: 0, t: 0, scat: 0 };
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpA'), s.a);
@@ -362,23 +352,6 @@ float fx3dPop(float idx){
       o.update(beat, 1 / 60, clock);
       if(P.seed !== seed0) this.popEpoch('slicer');   // 拍の組み直し (配置替え) で断片が弾んで出直す
       o.render({ fbo, w, h, slot:'B' });
-      return true;
-    }
-    if(name === 'layer'){
-      const count = this.popCount('layer', Math.max(1, Math.min(40, Math.round(+(post.fx3dLayerCount) || 12))), true);
-      const pct = Math.max(20, Math.min(300, +(post.fx3dLayerSize) || 100)) / 100;
-      P.bgColor = [0, 0, 0]; P.bg = 1;
-      P.pngAlpha = false; P.showGround = false; P.shadowOn = false; P.gloss = 0;
-      P.count = count;
-      P.size = F.size * 3 * pct;   // 画面素材は大きく見せる (Code の Layer の既定は画像の小さな板)
-      P.sizeVar = 1.0;
-      P.spread = 3 + 9 * e;
-      P.curvature = F.curvature * k;
-      o.textures[0] = srcTex;
-      o.texAspects[0] = asp;
-      const sig = [count, P.spread.toFixed(3), asp.toFixed(3)].join('|');
-      if(sig !== o._layoutSig){ o._layoutSig = sig; o.generateLayout(); }
-      o.render({ fbo, w, h, slot:'B', clock, beatMode: App.beatMode, beat, beatPhase: (beat || 0) % 1 });
       return true;
     }
     return false;
