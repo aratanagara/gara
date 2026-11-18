@@ -18488,6 +18488,7 @@ void mainImage(out vec4 o, in vec2 f){
       O.strokeLen    = +R(0.3, 4.5).toFixed(2);
       O.strokeLenVar = +R(0, 1).toFixed(2);
       O.curveAmt     = +R(-1, 1).toFixed(2);
+      O.curveVar     = +R(0, 1).toFixed(2);
       O.freq         = 1 + ((Math.random()*5)|0);
       O.stamps       = 2 + ((Math.random()*118)|0);
       O.smudgeSpeed  = +R(0.1, 2.0).toFixed(2);
@@ -18540,6 +18541,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('ovStrokeLen',    'strokeLen',    f2);
     slid('ovStrokeLenVar', 'strokeLenVar', f2);
     slid('ovCurve',        'curveAmt',     f2);
+    slid('ovCurveVar',     'curveVar',     f2);
     slid('ovFreq',         'freq',         fi);
     slid('ovStamps',       'stamps',       fi);
     slid('ovSmudgeSpeed',  'smudgeSpeed',  f2);
@@ -18618,6 +18620,7 @@ void mainImage(out vec4 o, in vec2 f){
     setR('ovStrokeLen',    O.strokeLen,    f2, 'strokeLen');
     setR('ovStrokeLenVar', O.strokeLenVar, f2, 'strokeLenVar');
     setR('ovCurve',        O.curveAmt,     f2, 'curveAmt');
+    setR('ovCurveVar',     O.curveVar,     f2, 'curveVar');
     setR('ovFreq',         O.freq == null ? 1 : O.freq, fi, 'freq');
     setR('ovStamps',       O.stamps,       fi, 'stamps');
     setR('ovSmudgeSpeed',  O.smudgeSpeed == null ? 0.5 : O.smudgeSpeed, f2, 'smudgeSpeed');
