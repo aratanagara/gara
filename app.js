@@ -13487,34 +13487,53 @@ const App = {
     if(typeof p.inv === 'boolean') p.inv = p.inv ? 1 : 0;
     return p;
   },
-  fbSavedDefault(){
+  // Feedback の既定値は Mode (add / multiply / residue) ごとに保存する ('vj.fbDefault.<mode>')。
+  //   'vj.fbDefault' は最後に保存した Mode とその値 (起動時の Mode)。Mode を切り替えるとその Mode の保存値を呼び出す
+  FB_KEYS: ['fbAmount','fbSteps','fbFade','fbZoom','fbRot','fbResidueHold','fbResiduePull','fbResiduePoly','fbResidueFaceSize'],
+  FB_FACTORY: { fbAmount:0, fbSteps:1, fbFade:0.5, fbZoom:0, fbRot:0, fbResidueHold:0.55, fbResiduePull:0.35, fbResiduePoly:0, fbResidueFaceSize:0.5 },
+  _fbValid(v){ return !!v && this.FB_KEYS.every(k=>typeof v[k]==='number' && isFinite(v[k])); },
+  // Mode の保存値 (無ければ null)。Mode ごとの保存が無いときは、旧形式の保存がその Mode のものなら使う
+  _fbModeSaved(mode){
+    try{
+      const v=JSON.parse(localStorage.getItem('vj.fbDefault.'+mode)||'null');
+      if(this._fbValid(v)) return Object.fromEntries(this.FB_KEYS.map(k=>[k,v[k]]));
+    }catch(e){}
     try{
       const v=JSON.parse(localStorage.getItem('vj.fbDefault')||'null');
-      const keys=['fbAmount','fbSteps','fbFade','fbZoom','fbRot','fbResidueHold','fbResiduePull','fbResiduePoly','fbResidueFaceSize'];
-      if(v && ['add','multiply','residue'].includes(v.fbMode) && keys.every(k=>typeof v[k]==='number' && isFinite(v[k])))
-        return {fbMode:v.fbMode,...Object.fromEntries(keys.map(k=>[k,v[k]]))};
+      if(v && v.fbMode===mode && this._fbValid(v)) return Object.fromEntries(this.FB_KEYS.map(k=>[k,v[k]]));
     }catch(e){}
-    try{
-      const old=JSON.parse(localStorage.getItem('vj.fbResidueDefault')||'null');
-      if(old && typeof old.fbResidue==='number') return {fbMode:'residue',fbAmount:old.fbResidue,fbSteps:1,fbFade:0.5,fbZoom:0,fbRot:0,fbResidueHold:old.fbResidueHold??0.55,fbResiduePull:old.fbResiduePull??0.35,fbResiduePoly:old.fbResiduePoly??0,fbResidueFaceSize:old.fbResidueFaceSize??0.5};
-    }catch(e){}
-    return {fbMode:'residue',fbAmount:0,fbSteps:1,fbFade:0.5,fbZoom:0,fbRot:0,fbResidueHold:0.55,fbResiduePull:0.35,fbResiduePoly:0,fbResidueFaceSize:0.5};
+    if(mode==='residue'){
+      try{
+        const old=JSON.parse(localStorage.getItem('vj.fbResidueDefault')||'null');
+        if(old && typeof old.fbResidue==='number') return {...this.FB_FACTORY, fbAmount:old.fbResidue, fbResidueHold:old.fbResidueHold??0.55, fbResiduePull:old.fbResiduePull??0.35, fbResiduePoly:old.fbResiduePoly??0, fbResidueFaceSize:old.fbResidueFaceSize??0.5};
+      }catch(e){}
+    }
+    return null;
+  },
+  fbSavedDefault(){
+    let mode='residue';
+    try{ const v=JSON.parse(localStorage.getItem('vj.fbDefault')||'null'); if(v && ['add','multiply','residue'].includes(v.fbMode)) mode=v.fbMode; }catch(e){}
+    return {fbMode:mode, ...(this._fbModeSaved(mode) || this.FB_FACTORY)};
   },
   saveFbDefault(){
-    const keys=['fbMode','fbAmount','fbSteps','fbFade','fbZoom','fbRot','fbResidueHold','fbResiduePull','fbResiduePoly','fbResidueFaceSize'];
-    const v=Object.fromEntries(keys.map(k=>[k,this.post[k]]));
-    try{ localStorage.setItem('vj.fbDefault',JSON.stringify(v)); }catch(e){}
-    toast('デフォルト保存: FB');
+    const m=['add','multiply','residue'].includes(this.post.fbMode) ? this.post.fbMode : 'residue';
+    const v=Object.fromEntries(this.FB_KEYS.map(k=>[k,this.post[k]]));
+    try{
+      localStorage.setItem('vj.fbDefault.'+m,JSON.stringify(v));
+      localStorage.setItem('vj.fbDefault',JSON.stringify({fbMode:m,...v}));   // 起動時の Mode
+    }catch(e){}
+    toast('デフォルト保存: FB (' + m + ')');
   },
+  // いまの Mode の保存値へ戻す (保存が無ければ初期値)
   resetFbDefault(){
-    try{ localStorage.removeItem('vj.fbDefault'); localStorage.removeItem('vj.fbResidueDefault'); }catch(e){}
-    Object.assign(this.post,this.fbSavedDefault());
+    const m=['add','multiply','residue'].includes(this.post.fbMode) ? this.post.fbMode : 'residue';
+    Object.assign(this.post, this._fbModeSaved(m) || this.FB_FACTORY);
     if(typeof UI !== 'undefined' && UI.refreshPost) UI.refreshPost();
     ['pxFbAmount','pxFbSteps','pxFbFade','pxFbZoom','pxFbRot','pxFbResidueHold','pxFbResiduePull','pxFbResiduePoly','pxFbResidueFaceSize'].forEach(id=>{
       const el = document.getElementById(id);
       if(el) el.dataset.defval = el.value;
     });
-    toast('デフォルトをリセット: FB');
+    toast('デフォルトをリセット: FB (' + m + ')');
   },
   // Post FX のグループ既定値: 各見出し (Quality / Material / …) の Save で現在値を
   // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
@@ -18298,6 +18317,24 @@ void mainImage(out vec4 o, in vec2 f){
         Overlay.clear(); // 古いストロークは消す (異モードが混ざらないように)
         if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
       });
+      // ブラシはプルダウンではなくトグルボタンで選ぶ (FB の Mode と同じ見た目)。選択の本体は隠したプルダウン (change で従来の処理が走る)。
+      //   VJ Legacy (Curve / Swoosh) は古いプリセット用でボタンには出さない
+      const bx = document.createElement('div');
+      bx.id = 'ovBrushBtns'; bx.className = 'toggle-btns wrap';
+      for(const op of br.querySelectorAll(':scope > option')){
+        const b = document.createElement('button'); b.type = 'button'; b.dataset.type = op.value; b.textContent = op.textContent;
+        bx.appendChild(b);
+      }
+      br.style.display = 'none';
+      br.parentNode.insertBefore(bx, br);
+      UI._syncOvBrushBtns = ()=>{ for(const b of bx.children) b.setAttribute('aria-pressed', b.dataset.type === br.value ? 'true' : 'false'); };
+      bx.addEventListener('click', (e)=>{
+        const b = e.target.closest('button[data-type]'); if(!b || br.value === b.dataset.type) return;
+        br.value = b.dataset.type;
+        br.dispatchEvent(new Event('change'));
+        UI._syncOvBrushBtns();
+      });
+      UI._syncOvBrushBtns();
     }
     const sd = $('#ovSubdiv');    if(sd){
       O.subdiv = Overlay._normalizeSubdiv ? Overlay._normalizeSubdiv(O.subdiv) : parseFloat(O.subdiv);
@@ -18489,6 +18526,7 @@ void mainImage(out vec4 o, in vec2 f){
     setR('ovSpin',         O.spin,         f2, 'spin');
     setR('ovLife',         O.life,         f1, 'life');
     setSel('ovBrush',     isSmudgeMode(O.brushMode) ? 'smudge' : O.brushMode);
+    if(UI._syncOvBrushBtns) UI._syncOvBrushBtns();
     O.subdiv = Overlay._normalizeSubdiv ? Overlay._normalizeSubdiv(O.subdiv) : O.subdiv;
     setSel('ovSubdiv',    O.subdiv);
     setSel('ovCenter',    O.centerMode);
@@ -19760,6 +19798,8 @@ void mainImage(out vec4 o, in vec2 f){
     { const box=$('#pxFbMode'); if(box) box.addEventListener('click',(e)=>{
         const b = e.target.closest('button[data-type]'); if(!b) return;
         App.post.fbMode = b.dataset.type;   // FB は同時に 1 種類だけ
+        const sv = App._fbModeSaved(b.dataset.type);   // その Mode で保存した設定を呼び出す
+        if(sv) Object.assign(App.post, sv);
         UI.refreshPost();
       }); }
     slid('pxFbZoom', 'fbZoom', f2);
@@ -19928,7 +19968,7 @@ void mainImage(out vec4 o, in vec2 f){
       const lab = r.querySelector('label');
       const inp = r.querySelector('input');
       const cat = this._foldCat(lab.textContent, (inp && (inp.dataset.key || inp.id)) || '');
-      r.classList.remove('fold-hidden', 'fold-child');
+      r.classList.remove('fold-hidden');
       if(!cat) continue;
       if(!byCat.has(cat)) byCat.set(cat, []);
       byCat.get(cat).push(r);
@@ -19945,7 +19985,7 @@ void mainImage(out vec4 o, in vec2 f){
       head.textContent = cat;
       list[0].before(head);
       let prev = head;
-      for(const r of list){ prev.after(r); prev = r; r.classList.add('fold-child'); }   // 同じカテゴリの行を見出しの下へ集める (元の順のまま)
+      for(const r of list){ prev.after(r); prev = r; }   // 同じカテゴリの行を見出しの下へ集める (元の順のまま)
       const tog = this.foldToggle(head, list, 'cat.' + cat);
       head.addEventListener('click', ()=> tog && tog.click());
     });
