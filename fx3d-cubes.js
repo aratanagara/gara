@@ -1,57 +1,63 @@
 'use strict';
-/* 3D FX: cubes — 画面を「長辺に沿った直方体 (断面 = 短辺の正方形)」にし、長辺方向に N 本へ輪切りにして、
-   各本が長辺の軸まわりに 90° ずつ回る (Fx3d.EXTRA.cubes)。契約は fx3d.js の EXTRA のコメント参照。
-   断面が短辺と同じなので、回っている途中も画面の短辺方向は埋まったまま。側面 4 面はどれもその本の範囲の絵で、
-   回り終わって前に来た面は正立した同じ絵 = 拍の切り目で絵が跳ねない。k = 0 で回転 0・正面カメラ = 元画面と画素一致。
-   面は細かく分割してある (折り系を物体へ掛けたとき、折り線が面の中で曲がるように)。 */
+/* 3D FX: cubes — 画面を立方体の格子 (2D) にし、各キューブが画面の X 軸か Y 軸まわりに 90° ずつ転がる (Fx3d.EXTRA.cubes)。
+   契約は fx3d.js の EXTRA のコメント参照。fx3dCubesGrid = 短辺側のマス数 N、長辺側は round(N × 縦横比)。
+   1 マス = 1 個の立方体 (奥行き = マスの大きさ。前面が z = 0、奥へ伸びる)。6 面すべてにそのマスの絵を貼る。
+   転がり終わって前に来た面は正立した同じ絵 = 拍の切り目で絵が跳ねない。
+   beat = 拍ごとに選ばれたキューブが、ランダムな起点のマスから波紋のように遅れて転がる (軸 X / Y と向きはキューブごと)。
+   drone = 斜めへ流れる波で順に転がり続ける。転がっている間は少し縮んで手前へ出る = 隣と刺さらず、1 個ずつ飛び出して見える。
+   k = 0 で回転 0・正面カメラ = 元画面と画素一致。カメラは正面のまま振らない (傾けると画面の外が見えるため)。
+   面は 3 × 3 に分割してある (折り系を物体へ掛けたとき、折り線が面の中で曲がるように)。 */
 (function(){
-const SX = 8, SY = 8, SC = 4;                       // 側面の分割 (長辺 × 短辺方向) / 端面の分割
-const PER = 4 * SX * SY * 6 + 2 * SC * SC * 6;      // 1 本あたりの頂点数
-// 直方体の表面: 本 seg・面 face (0..3 = 側面 / 4, 5 = 端面) の面内座標 ab (0..1) → 位置。uvo = 貼る絵の uv
+const SUB = 3;                                     // 1 面の分割 (SUB × SUB マス)
+const FV = SUB * SUB * 6;                          // 1 面あたりの頂点数
+const PER = 6 * FV;                                // 1 キューブあたりの頂点数
+// キューブ cube (0 .. gx*gy-1) の面 face (0 前 / 1 奥 / 2 +x / 3 -x / 4 +y / 5 -y) の面内座標 ab (0..1) → 位置。uvo = 貼る絵の uv、ctr = キューブの中心
+// 回転は単位立方体 (-1..1) の上で行い、そのあと (hx, hy, hz) へ伸ばす = マスが正方形でなくても 90° 転がると隙間なく前面に収まる
 const SURF = `
-uniform float uAsp, uN, uK, uSel, uBeat, uBeatMode, uT, uHit, uGap;
+uniform float uAsp, uK, uSel, uBeat, uBeatMode, uT, uHit, uGap;
+uniform vec2 uCg;
 float h1(float p){ return fract(sin(p * 127.1 + 311.7) * 43758.5453); }
 float easeOut(float x){ float y = 1.0 - x; return 1.0 - y * y * y; }
-vec2 rot(vec2 v, float a){ float c = cos(a), s = sin(a); return vec2(v.x * c - v.y * s, v.x * s + v.y * c); }
-vec3 cubeSurf(int seg, int face, vec2 ab, out vec2 uvo){
-  bool land = uAsp >= 1.0;
-  float Lh = land ? uAsp : 1.0, Sh = land ? 1.0 : uAsp;   // 長辺・短辺の半分 (紙座標)
-  float fi = float(seg);
-  float L0 = -Lh + 2.0 * Lh * fi / uN, L1 = -Lh + 2.0 * Lh * (fi + 1.0) / uN;
-  float Lc = 0.5 * (L0 + L1), Lw = 0.5 * (L1 - L0) * uGap;
-  float L; vec2 sz;                                   // sz = 断面内の位置 (S, z) (軸からの相対)
-  vec2 img;                                           // この点に貼る絵の紙座標 (L, S)
-  if(face < 4){
-    L = Lc + (ab.x * 2.0 - 1.0) * Lw;
-    vec2 front = vec2(-Sh + 2.0 * Sh * ab.y, Sh);
-    sz = rot(front, -1.5707963 * float(face));        // 面 f は前面を -f×90° 回した位置 (+f×90° 回すと前で正立)
-    img = vec2(mix(L0, L1, ab.x), front.x);
-  } else {
-    L = face == 4 ? Lc - Lw : Lc + Lw;                // 端面: 断面の正方形。絵はその本の範囲を正方形へ縮めて貼る
-    sz = vec2(-Sh + 2.0 * Sh * ab.x, -Sh + 2.0 * Sh * ab.y);
-    img = vec2(mix(L0, L1, ab.y), sz.x);
-  }
-  // 回転: beat = 拍ごとに選ばれた本が 90° 回る (向きは拍で揃え、3 割は逆。起点の本から遅れて波のように伝わる)
-  //       drone = 長辺方向へ流れる波で順に回り続ける
+vec3 cubeSurf(int cube, int face, vec2 ab, out vec2 uvo, out vec3 ctr){
+  int gx = int(uCg.x);
+  int cyi = cube / gx, cxi = cube - cyi * gx;
+  vec2 cell = vec2(float(cxi), float(cyi));
+  vec2 hs = vec2(uAsp / uCg.x, 1.0 / uCg.y);
+  float hz = sqrt(hs.x * hs.y);
+  vec2 cc = vec2(-uAsp, -1.0) + hs * (2.0 * cell + 1.0);
+  float u = ab.x * 2.0 - 1.0, v = ab.y * 2.0 - 1.0;
+  // 各面の向き: 90° 転がって前に来たとき u が右・v が上になる (+y 面 = X 軸 +90° / -y 面 = X 軸 -90° / -x 面 = Y 軸 +90° / +x 面 = Y 軸 -90°)
+  vec3 p;
+  if(face == 0) p = vec3(u, v, 1.0);
+  else if(face == 1) p = vec3(-u, v, -1.0);
+  else if(face == 2) p = vec3(1.0, v, -u);
+  else if(face == 3) p = vec3(-1.0, v, u);
+  else if(face == 4) p = vec3(u, 1.0, -v);
+  else p = vec3(u, -1.0, v);
+  uvo = (cc + vec2(u, v) * hs) / (2.0 * vec2(uAsp, 1.0)) + 0.5;
+  // 回転: beat = 拍ごとに選ばれたキューブが 90° 転がる (起点のマスから遅れて波のように伝わる) / drone = 斜めへ流れる波で順に転がり続ける
+  float fi = float(cube);
   float tt, bid, delay;
   if(uBeatMode > 0.5){
     bid = floor(uBeat); tt = fract(uBeat);
-    float org = floor(h1(bid * 3.7) * uN);
-    delay = 0.35 * abs(fi - org) / max(uN, 1.0);
+    vec2 org = floor(vec2(h1(bid * 3.7), h1(bid * 8.1 + 2.3)) * uCg);
+    delay = 0.35 * length(cell - org) / length(uCg);
   } else {
-    float ph = uT * 0.32 - fi / max(uN, 1.0) * 0.6;
+    float ph = uT * 0.32 - (cell.x + cell.y) / (uCg.x + uCg.y) * 0.6;
     bid = floor(ph); tt = fract(ph); delay = 0.0;
   }
   float sel = step(h1(fi * 1.31 + bid * 7.7), uSel);
   float pr = easeOut(clamp((tt - delay) / 0.55, 0.0, 1.0)) * sel;
+  bool axisY = h1(fi * 3.1 + bid * 2.3) < 0.5;
   float sgn = (h1(bid * 5.3) < 0.5 ? 1.0 : -1.0) * (h1(fi * 2.9 + bid * 1.7) < 0.3 ? -1.0 : 1.0);
-  sz = rot(sz, 1.5707963 * pr * sgn);
-  // 回っている本は少し手前へ (端面の陰が見える) + ヒットで押し出し
-  float push = (0.18 * sin(3.14159265 * pr) + 0.12 * uHit) * uK * Sh;
-  vec3 P3 = vec3(L, sz.x, sz.y - Sh + push);         // 軸は z = -Sh (前面が z = 0)
-  vec2 im = land ? img : img.yx;
-  uvo = im / (2.0 * vec2(uAsp, 1.0)) + 0.5;
-  return land ? P3 : vec3(P3.y, P3.x, P3.z);
+  float ang = 1.5707963 * pr * sgn, c = cos(ang), s = sin(ang);
+  vec3 q = axisY ? vec3(p.x * c + p.z * s, p.y, -p.x * s + p.z * c) : vec3(p.x, p.y * c - p.z * s, p.y * s + p.z * c);
+  // 転がっている間は縮んで手前へ (隣と刺さらない) + ヒットで押し出し
+  float arc = sin(3.14159265 * pr);
+  float sc = uGap * (1.0 - 0.29 * arc);
+  float push = (0.25 * arc + 0.3 * uHit) * uK * hz;
+  ctr = vec3(cc, -hz + push);                         // 前面が z = 0
+  return ctr + q * vec3(hs, hz) * sc;
 }
 `;
 const VS = `#version 300 es
@@ -60,47 +66,43 @@ uniform mat4 uView, uProj;
 out vec2 vUv; out vec3 vW;
 ${SURF}
 void main(){
-  int id = gl_VertexID, seg = id / ${PER}, r = id - seg * ${PER};
-  // 面と面内の座標 (a = 長辺方向 0..1, b = 面の上方向 0..1)
-  int face, tv, cell, nx;
-  if(r < 4 * ${SX * SY * 6}){ face = r / ${SX * SY * 6}; int q = r - face * ${SX * SY * 6}; cell = q / 6; tv = q - cell * 6; nx = ${SX}; }
-  else { int q = r - 4 * ${SX * SY * 6}; face = 4 + q / ${SC * SC * 6}; q -= (face - 4) * ${SC * SC * 6}; cell = q / 6; tv = q - cell * 6; nx = ${SC}; }
+  int id = gl_VertexID, cube = id / ${PER}, r = id - cube * ${PER};
+  int face = r / ${FV}, q = r - face * ${FV};
+  int cell = q / 6, tv = q - cell * 6;
   vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
-  int cy = cell / nx, cx = cell - cy * nx;
-  ab = (vec2(float(cx), float(cy)) + ab) / float(nx);
-  vec3 P = cubeSurf(seg, face, ab, vUv);
-  vec2 uvd;
-  vec3 ctr = 0.5 * (cubeSurf(seg, 0, vec2(0.5), uvd) + cubeSurf(seg, 2, vec2(0.5), uvd));   // 本の中心
-  P = ctr + (P - ctr) * fx3dPop(float(seg));   // ポップ: 本ごとに中心から
+  int cy = cell / ${SUB}, cx = cell - cy * ${SUB};
+  ab = (vec2(float(cx), float(cy)) + ab) / float(${SUB});
+  vec3 ctr;
+  vec3 P = cubeSurf(cube, face, ab, vUv, ctr);
+  P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
-// 面を覆う針 (Needle): 各面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐) で覆い、面の法線方向へ突起 / 凹み。元の面の代わりに描く
+// 面を覆う針 (Needle): 各キューブの 6 面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐) で覆い、キューブの外向きへ突起 / 凹み。元の面の代わりに描く
 const NV_VS = `#version 300 es
 precision highp float;
 uniform mat4 uView, uProj;
 uniform vec2 uNvGrid;
-uniform float uNvSub, uNvCaps;
+uniform float uNvSub;
 out vec2 vUv; out vec3 vW;
 ${SURF}
 void main(){
   int per = (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * int(uNvSub) * int(uNvSub);
   int fq = gl_VertexID / per, vid = gl_VertexID - fq * per;
-  int seg, face;
-  if(uNvCaps > 0.5){ seg = fq / 2; face = 4 + fq - seg * 2; } else { seg = fq / 4; face = fq - seg * 4; }
+  int cube = fq / 6, face = fq - cube * 6;
   vec2 ab; float w; vec2 key;
-  fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(float(fq) * 5.3 + uNvCaps * 91.0, 1.7), ab, w, key);
+  fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(float(fq) * 5.3, 1.7), ab, w, key);
   const float E = 1e-3;
   vec2 uv0, uvd;
-  vec3 P0 = cubeSurf(seg, face, ab, uv0);
-  vec3 T = (cubeSurf(seg, face, ab + vec2(E, 0.0), uvd) - P0) / E;
-  vec3 B = (cubeSurf(seg, face, ab + vec2(0.0, E), uvd) - P0) / E;
+  vec3 ctr, c2;
+  vec3 P0 = cubeSurf(cube, face, ab, uv0, ctr);
+  vec3 T = (cubeSurf(cube, face, ab + vec2(E, 0.0), uvd, c2) - P0) / E;
+  vec3 B = (cubeSurf(cube, face, ab + vec2(0.0, E), uvd, c2) - P0) / E;
   vec3 N = normalize(cross(T, B));
-  vec3 ctr = 0.5 * (cubeSurf(seg, 0, vec2(0.5), uvd) + cubeSurf(seg, 2, vec2(0.5), uvd));   // 本の中心 (向かい合う面の中点)
-  if(dot(N, P0 - ctr) < 0.0) N = -N;                                                      // 外向きに揃える
-  float cell = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);                     // 格子 1 つぶんの長さ
-  vec3 P = P0 + N * (w * fx3dNeedleH(key, uv0 * vec2(uAsp, 1.0) * 3.2) * cell);
-  P = ctr + (P - ctr) * fx3dPop(float(seg));   // ポップ: 本ごとに中心から
+  if(dot(N, P0 - ctr) < 0.0) N = -N;                                                      // キューブの中心から外向きに揃える
+  float cl = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);                       // 格子 1 つぶんの長さ
+  vec3 P = P0 + N * (w * fx3dNeedleH(key, uv0 * vec2(uAsp, 1.0) * 3.2) * cl);
+  P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
   vUv = uv0;
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
@@ -127,10 +129,13 @@ Fx3d.EXTRA.cubes = {
     const pr = Fx3d.prog(gl, 'cubes', VS, FS);
     if(!pr) return false;
     const post = o.post || {};
-    const N = Fx3d.popCount('cubes', Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 1))), false);   // 本数を変えると区切りが全部変わる = 全部縮んでから出直す
+    const N = Fx3d.popCount('cubes', Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 1))), false);   // マス数を変えると区切りが全部変わる = 全部縮んでから出直す
     const asp = o.asp, k = o.k, t = o.clock || 0;
-    // カメラは軽く振るだけ (断面が短辺 = 画面を満たしたまま回るのを見せる)
-    const cam = Fx3d.camera(asp, 0.16 * k * Math.sin(0.19 * t), 0.10 * k * Math.sin(0.13 * t + 1), 1.35 - 0.08 * k);
+    const land = asp >= 1;
+    const gx = land ? Math.max(1, Math.round(N * asp)) : N, gy = land ? N : Math.max(1, Math.round(N / asp));   // 短辺側 = N マス
+    const cubes = gx * gy;
+    // カメラは正面のまま (傾けると画面の外が見える)
+    const cam = Fx3d.camera(asp, 0, 0, 1.35 - 0.08 * k);
     const M = Fx3d.msaa(gl, o.w, o.h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
     gl.viewport(0, 0, o.w, o.h);
@@ -149,36 +154,33 @@ Fx3d.EXTRA.cubes = {
       gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
       gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
       gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
-      gl.uniform1f(uloc(gl, pr, 'uN'), N);
+      gl.uniform2f(uloc(gl, pr, 'uCg'), gx, gy);
       gl.uniform1f(uloc(gl, pr, 'uK'), k);
-      gl.uniform1f(uloc(gl, pr, 'uSel'), ss(0.15, 0.7, k));   // 回る本の割合 (全開で全部)
+      gl.uniform1f(uloc(gl, pr, 'uSel'), ss(0.15, 0.7, k));   // 転がるキューブの割合 (全開で全部)
       gl.uniform1f(uloc(gl, pr, 'uBeat'), o.beat || 0);
       gl.uniform1f(uloc(gl, pr, 'uBeatMode'), o.beatMode ? 1 : 0);
       gl.uniform1f(uloc(gl, pr, 'uT'), t);
       gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
-      gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.06 * ss(0.1, 0.6, k));   // 本と本の隙間 (端面がのぞく)
+      gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.04 * ss(0.1, 0.6, k));   // キューブ同士の隙間 (側面がのぞく)
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'cubes');
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;
     if(nvp){
-      // Needle: 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。側面は短辺方向 14 (重ねたときの紙と同じ間隔)、端面は 14 × 14
-      const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
-      const gy = 14, gx = Math.max(1, Math.round((Lh / N) / (Sh / gy))), sub = Fx3d.foldFrame ? 3 : 2;
+      // Needle: 全キューブの 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。1 面の格子は max(2, round(14 / N))、頂点が多すぎるときは分割を粗くする
+      const g = Math.max(2, Math.round(14 / N));
+      let sub = Fx3d.foldFrame ? 3 : 2;
+      while(sub > 1 && cubes * 6 * GL.needleCellVerts(g, g, sub) > 1500000) sub--;
       setU(nvp);
       gl.uniform1f(uloc(gl, nvp, 'uShade'), 1);
       gl.uniform1f(uloc(gl, nvp, 'uNvSub'), sub);
       Fx3d.spikeUniforms(gl, nvp);
-      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);
-      gl.uniform1f(uloc(gl, nvp, 'uNvCaps'), 0);
-      gl.drawArrays(gl.TRIANGLES, 0, N * 4 * GL.needleCellVerts(gx, gy, sub));
-      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gy, gy);
-      gl.uniform1f(uloc(gl, nvp, 'uNvCaps'), 1);
-      gl.drawArrays(gl.TRIANGLES, 0, N * 2 * GL.needleCellVerts(gy, gy, sub));
+      gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), g, g);
+      gl.drawArrays(gl.TRIANGLES, 0, cubes * 6 * GL.needleCellVerts(g, g, sub));
     } else {
       setU(pr);
-      gl.drawArrays(gl.TRIANGLES, 0, N * PER);
+      gl.drawArrays(gl.TRIANGLES, 0, cubes * PER);
     }
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);

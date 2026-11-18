@@ -3176,7 +3176,7 @@ uniform mat4 uView, uProj;
 uniform float uUzN, uUzTH, uUzSpin, uUzShr, uUzZStep, uUzCard, uUzOrbR;
 uniform vec2 uUzCw;
 uniform vec2 uNvGrid;
-uniform float uNvSub, uNvMargin, uGravOn;
+uniform float uNvSub, uNvMargin, uGravOn, uPaperM;
 out vec2 vUv; out vec3 vWorld;
 ${this._foldPaperGLSL('u')}
 ${this.needleCellGLSL()}
@@ -3208,8 +3208,13 @@ void main(){
     vec2 co[6] = vec2[6](vec2(0.,0.), vec2(1.,0.), vec2(1.,1.), vec2(0.,0.), vec2(1.,1.), vec2(0.,1.));
     uv = (vec2(float(cx), float(cy)) + co[corner]) / uGrid;
   }
-  vUv = uv;
   vec2 q = (uv - 0.5) * 2.0 * vec2(asp, 1.0);
+  // Roll だけのときは紙を巻く向きにだけ画面の外まで伸ばす (絵はミラー)。筒の軸の向きは伸ばさない = 渦巻きの端面が画面に入る
+  if(uMode < 1.5 && uPaperM > 1.0){
+    q += uRollDir * (dot(q, uRollDir) * (uPaperM - 1.0));
+    uv = q / (2.0 * vec2(asp, 1.0)) + 0.5;
+  }
+  vUv = uv;
   vec3 P = f3Paper(q, lift);
   // Uzumaki 統合: 折り上がりの紙をカードとして複製し、対数螺旋 (らせん階段) に配置
   if(uUzN > 0.5){
@@ -4396,7 +4401,7 @@ void main(){
     const src = `uniform float uNeedleAmt, uNt, uWarp2, uWt2, uTwist, uFitScale, uNeedleScat;
 uniform float uBeat, uBeatMode, uHit;
 uniform vec2 uRollDir;
-uniform float uRollOff, uRollR;
+uniform float uRollOff, uRollR, uRollShift, uRollK;
 uniform vec3 uCenter;
 uniform int uFoldN;
 uniform vec2 uCreaseP[28];
@@ -4469,14 +4474,22 @@ vec3 f3Paper(vec2 q, float lift){
   // 蛇腹プリーツ (三角波): Kaiser 固有の折り前変形 (単体 Kaiser と同じ)
   float jab = uWarp2 * 0.30 * (abs(fract(q.x * 1.5 + uWt2 * 0.055) - 0.5) * 4.0 - 1.0);
   vec3 P = vec3(q, nz + jab + lift);
-  // Roll: 巻き始めの線 (uRollOff) から先の紙を、半径 uRollR の渦巻きの筒へ巻き取る (折りの前。折りは巻いた紙をそのまま折る)
+  // Roll: 巻き始めの線 (uRollOff) から先の紙を、外周の半径 uRollR から内へ細くなる渦巻き (spiral) に巻き取る (折りの前。折りは巻いた紙をそのまま折る)
+  //   uRollShift: 平らな残りと渦巻きを合わせた塊が画面の中央に来るよう、巻く向きに沿って寄せる
+  //   巻き始めの手前 (平らだった側) も半径 1/uRollK の大きな弧でゆるく丸める = 平面から急に巻かない。巻き始めは半径 1.7 倍から渦巻きへ締まっていく
   float rollS = dot(q, uRollDir) - uRollOff;
   if(uRollR > 0.0 && rollS > 0.0){
-    float phi = rollS / uRollR;
-    float rad = max(uRollR * (1.0 - 0.035 * phi), uRollR * 0.35);   // 内側ほど細く (層が重ならない)
+    float r0 = uRollR * 1.7;
+    float phi = rollS / mix(r0, uRollR, 0.5);
+    float rad = max(uRollR * (1.0 + 0.7 * exp(-phi * 0.9)) * (1.0 - 0.03 * phi), uRollR * 0.22);   // ゆるく入って締まり、一周ごとに細く (層が重ならない渦巻き)
     P.xy += uRollDir * (rad * sin(phi) - rollS);
-    P.z += uRollR - rad * cos(phi);
+    P.z += r0 - rad * cos(phi);
+  } else if(uRollR > 0.0 && uRollK > 1e-4){
+    float ak = rollS * uRollK;
+    P.xy += uRollDir * (sin(ak) / uRollK - rollS);
+    P.z += (1.0 - cos(ak)) / uRollK;
   }
+  P.xy -= uRollDir * uRollShift;
   for(int i = 0; i < 28; i++){
     if(i >= uFoldN) break;
     float s = dot(q - uCreaseP[i], uCreaseN[i]);   // 側判定は元の紙座標
@@ -4503,7 +4516,7 @@ vec3 f3Paper(vec2 q, float lift){
   return P;
 }
 `;
-    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|NeedleScat|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|RollDir|RollOff|RollR|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
+    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|NeedleScat|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|RollDir|RollOff|RollR|RollShift|RollK|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
   },
   _compile(type, src){
     const gl = this.gl;
@@ -6763,6 +6776,11 @@ void main(){
   // 戻り値 true = このパスで処理した(呼び出し側は個別パスを飛ばす)。
   // 統合折りの状態 (折り線・カメラ・フィット) を 1 フレーム分進めて組み立てる。_applyFoldStack と 3D のまま掛けるフック (fx3dApply) の共用。
   // 内部の積分 (_foldPh* / _foldClock / _foldCtr / _foldFit) は呼ぶたびに進むので、1 フレーム 1 回だけ呼ぶこと。
+  // Roll だけのとき (折り・Needle・Uzumaki・3D FX なし) の紙の広げ率。統合パスの格子もこの率で細かくする
+  _rollPaperM(aN, aO, aK, aR, uzOn){
+    return (aR > 0.001 && !(aO > 0.001) && !(aK > 0.001) && !(aN > 0.001) && !uzOn
+      && !(typeof Fx3d !== 'undefined' && Fx3d.ORDER.some(n=>Fx3d.effE[n] > 0.001))) ? 2.0 : 1;
+  },
   _foldBuild(p, aN, aO, aK, aR, uzOn, w, h){
     const asp = w / Math.max(1, h);
     const hit = (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0;
@@ -6901,32 +6919,7 @@ void main(){
     const hs = this._holeScale();                        // ブラックホール周期スケール
     const fitScale = this._foldFit * hs;
 
-    const T2 = this._foldClock;
-    const orb = aK * (0.34 * Math.sin(T2 * 0.19) + 0.16 * Math.sin(T2 * 0.077)) + aR * onF * 0.4 * Math.sin(T2 * 0.17);
-    const elv = aK * (0.22 * Math.sin(T2 * 0.143) + 0.08) + aR * onF * (0.4 + 0.1 * Math.sin(T2 * 0.13));   // Roll は筒が見えるよう斜め上から
-    // カメラ距離: 単体パスの遠い方を基準に、両方の折り系が強い分だけさらに引く。
-    // 2系の折りが重なると塊の密度/高さが増えて大きく見えるため、その分の画角余裕。
-    // 片方が 0 に近いときは単体パスと同一距離 → 単体⇔統合の切替でサイズが飛ばない。
-    const dK = aK > 0.001 ? (1.75 + 0.5 * aK) : 0;   // 単体 Kaiser
-    const dO = aO > 0.001 ? (1.7 + 0.45 * aO) : 0;   // 単体 Origami
-    const dR = aR > 0.001 ? (1.6 + 0.3 * aR) : 0;    // Roll (巻いた筒が手前へ出るぶん引く)
-    // onset シームレス: amount→0 でカメラを f(=1.35, 平らな紙が画面を満たす距離)へ収束させ、
-    // 背景の暗転も 0 から立ち上げる → パラメータ 0→0.1 で「元映像 → 折り」が連続的に繋がる。
-    const D = 1.35 + (((Math.max(dK, dO, dR) || 1.5) + 1.05 * Math.min(aO, aK)) - 1.35) * onF;
-    const eye = [D * Math.cos(elv) * Math.sin(orb), D * Math.sin(elv), D * Math.cos(elv) * Math.cos(orb)];
-    const norm3 = (v)=>{ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
-    const zc = norm3(eye);
-    const xc = norm3([zc[2], 0, -zc[0]]);
-    const yc = [ zc[1]*xc[2]-zc[2]*xc[1], zc[2]*xc[0]-zc[0]*xc[2], zc[0]*xc[1]-zc[1]*xc[0] ];
-    const dotv = (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-    const view = [ xc[0],yc[0],zc[0],0, xc[1],yc[1],zc[1],0, xc[2],yc[2],zc[2],0, -dotv(xc,eye),-dotv(yc,eye),-dotv(zc,eye),1 ];
-    const f = 1.35, zn = 0.03, zf = 30.0;   // 単体 Origami/Kaiser と同じ画角に揃える
-    const proj = [ f/asp,0,0,0, 0,f,0,0, 0,0,(zf+zn)/(zn-zf),-1, 0,0,2*zf*zn/(zn-zf),0 ];
-    const shade = Math.min(1, Math.max(0, Math.max(aO, aK, aN, aR * onF) / 0.22));
-    const bgDark = Math.max(onF, 1 - hs);   // 吸い込み(hs→0)で背景を黒へ → ブラックホールに呑まれる
-
-    // Roll: 巻く向きは drone でゆっくり回り、beat では拍ごとの乱数角へ Ease Out。巻き始めの線は紙の外 (R0) から、量に応じて内へ進む
-    const rollR = 0.22;
+    const rollR = 0.36;
     let rollAng = this._foldClock * 0.12;
     if(beatMode){
       const bid = Math.floor(beatId), fr = beatId - bid;
@@ -6936,9 +6929,58 @@ void main(){
       rollAng = a0 + da * ease;
     }
     const rollDir = [Math.cos(rollAng), Math.sin(rollAng)];
-    const rollOff = Math.hypot(asp, 1) * (1 - 1.5 * aR * onF);
+    // 巻き始めの線は紙の外から、量に応じて内へ (全開で紙の 6 割ほどが渦巻きに入る)。平らな残り + 渦巻きの塊の中心を画面中央へ寄せる
+    const rW = aR * onF;
+    // Roll だけのとき (折り・Needle・Uzumaki・3D FX なし) は紙を巻く向きに 2 倍へ伸ばし (絵はミラー)、平らな側の紙の縁を見せない
+    const rollM = this._rollPaperM(aN, aO, aK, aR, uzOn);
+    const rollExt = Math.abs(rollDir[0]) * asp + Math.abs(rollDir[1]);   // 巻く向きの画面の半分の長さ (外接矩形)
+    const rollOff = rollExt * rollM + (-0.15 * rollExt - rollExt * rollM) * rW;
+    // 広げた紙は平らな残りが画面の外まで続くので寄せない。広げないとき (折りと重ねたとき) は塊を中央へ
+    // 平らだった側の弧: 巻き始めから紙の端までで合わせて 0.6 rad ほど曲がる (量に比例。巻き始めの線が画面の外にあるうちから紙全体がゆるく丸まる)
+    const rollK = (0.6 * rW) / Math.max(0.5, rollOff + rollExt * rollM);
+    const rollShift = rollM > 1 ? 0 : rW * 0.5 * (-rollExt + Math.min(rollOff, rollExt) + 2 * rollR);
 
-    return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5, scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) };
+    const ROLL_D = 0.8, ROLL_WIDE = 0.4;
+    const T2 = this._foldClock;
+    // Roll が主役 (Origami / Kaiser が弱い) ほど、近く・広角・深い俯角のカメラで巻物を画面いっぱいにパースを効かせて見せる
+    const rDom = Math.min(1, aR / 0.35) * (1 - Math.min(1, 2 * Math.max(aO, aK)));
+    const rCam = rDom * onF;
+    const orb = aK * (0.34 * Math.sin(T2 * 0.19) + 0.16 * Math.sin(T2 * 0.077));
+    const elv = aK * (0.22 * Math.sin(T2 * 0.143) + 0.08);
+    // カメラ距離: 単体パスの遠い方を基準に、両方の折り系が強い分だけさらに引く。
+    // 2系の折りが重なると塊の密度/高さが増えて大きく見えるため、その分の画角余裕。
+    // 片方が 0 に近いときは単体パスと同一距離 → 単体⇔統合の切替でサイズが飛ばない。
+    const dK = aK > 0.001 ? (1.75 + 0.5 * aK) : 0;   // 単体 Kaiser
+    const dO = aO > 0.001 ? (1.7 + 0.45 * aO) : 0;   // 単体 Origami
+    const dR = aR > 0.001 ? ((1.6 + 0.3 * aR) * (1 - rDom) + ROLL_D * rDom) : 0;    // Roll (巻いた筒が手前へ出るぶん引く。主役のときは寄る)
+    // onset シームレス: amount→0 でカメラを f(=1.35, 平らな紙が画面を満たす距離)へ収束させ、
+    // 背景の暗転も 0 から立ち上げる → パラメータ 0→0.1 で「元映像 → 折り」が連続的に繋がる。
+    const D = 1.35 + (((Math.max(dK, dO, dR) || 1.5) + 1.05 * Math.min(aO, aK)) - 1.35) * onF;
+    const norm3 = (v)=>{ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
+    // Roll: 筒の端の少し外・斜め上にカメラを置き、渦巻きの断面と、奥へ続く平らな紙を見下ろす (巻く向きが変わっても同じ構図。drone はゆっくり揺れる)
+    const eye0 = [D * Math.cos(elv) * Math.sin(orb), D * Math.sin(elv), D * Math.cos(elv) * Math.cos(orb)];
+    const rAx = [-rollDir[1], rollDir[0]];
+    const rAxExt = Math.abs(rAx[0]) * asp + Math.abs(rAx[1]);          // 筒の軸方向の紙の半分の長さ = 筒の端
+    const rTube = -0.15 * rollExt + rollR;                              // 渦巻きの中心 (巻く向きの位置)
+    const sw = 0.12 * Math.sin(T2 * 0.13), sw2 = 0.1 * Math.sin(T2 * 0.17);
+    const at = (d, x, z)=>[rollDir[0] * d + rAx[0] * x, rollDir[1] * d + rAx[1] * x, z];
+    const eyeR = at(rTube - 0.75 + sw2, rAxExt + 0.12 + sw, ROLL_D);
+    const tgtR = at(rTube - 0.55, rAxExt * -0.25, 0.0);
+    const mix3 = (a, b, t)=>[a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+    const eye = mix3(eye0, eyeR, rCam);
+    const tgt = mix3([0, 0, 0], tgtR, rCam);
+    const zc = norm3([eye[0] - tgt[0], eye[1] - tgt[1], eye[2] - tgt[2]]);
+    const xc = norm3([zc[2], 0, -zc[0]]);
+    const yc = [ zc[1]*xc[2]-zc[2]*xc[1], zc[2]*xc[0]-zc[0]*xc[2], zc[0]*xc[1]-zc[1]*xc[0] ];
+    const dotv = (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+    const view = [ xc[0],yc[0],zc[0],0, xc[1],yc[1],zc[1],0, xc[2],yc[2],zc[2],0, -dotv(xc,eye),-dotv(yc,eye),-dotv(zc,eye),1 ];
+    const f = 1.35 - ROLL_WIDE * rCam, zn = 0.03, zf = 30.0;   // 単体 Origami/Kaiser と同じ画角 (Roll が主役のときだけ広角)
+    const proj = [ f/asp,0,0,0, 0,f,0,0, 0,0,(zf+zn)/(zn-zf),-1, 0,0,2*zf*zn/(zn-zf),0 ];
+    const shade = Math.min(1, Math.max(0, Math.max(aO, aK, aN, aR * onF) / 0.22));
+    const bgDark = Math.max(onF, 1 - hs);   // 吸い込み(hs→0)で背景を黒へ → ブラックホールに呑まれる
+
+    // Roll: 巻く向きは drone でゆっくり回り、beat では拍ごとの乱数角へ Ease Out。巻き始めの線は紙の外 (R0) から、量に応じて内へ進む
+    return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, rollShift, rollK, rollM, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5, scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) };
   },
   // 統合折りの uniform を prog へ送る。pre は _foldPaperGLSL の接頭辞 ('u' = 統合パス / 'uF3' = フック)
   _foldUpload(prog, pre, F){
@@ -6957,6 +6999,9 @@ void main(){
     gl.uniform2f(U('RollDir'), F.rollDir[0], F.rollDir[1]);
     gl.uniform1f(U('RollOff'), F.rollOff);
     gl.uniform1f(U('RollR'), F.aR * F.onF > 0 ? F.rollR : 0);
+    gl.uniform1f(U('RollShift'), F.aR * F.onF > 0 ? F.rollShift : 0);
+    gl.uniform1f(U('RollK'), F.aR * F.onF > 0 ? F.rollK : 0);
+    gl.uniform1f(gl.getUniformLocation(prog, 'uPaperM'), F.rollM || 1);   // 統合パスだけが持つ (フックでは null = 何もしない)
     gl.uniform3f(U('Center'), F.ctr[0], F.ctr[1], F.ctr[2]);
     gl.uniform1i(U('FoldN'), F.foldsU.length);
     for(let i = 0; i < F.foldsU.length; i++){
@@ -7319,7 +7364,7 @@ vec3 fx3dFoldShade(vec3 c){
     this._foldStackActive = true;
     if(uzOn) this._foldStackTookUzumaki = true;
     // Uzumaki 統合時はグリッドを粗く (頂点数 = カード枚数 × セル数 を抑える)
-    const GRID = uzOn ? (this._gravFold > 0 ? [56, 32] : [36, 21]) : (this._gravFold > 0 ? [160, 90] : this._foldStackGrid);   // Gravity の場は漏斗が深いので細かく
+    const GRID = uzOn ? (this._gravFold > 0 ? [56, 32] : [36, 21]) : (this._gravFold > 0 ? [160, 90] : (this._rollPaperM(aN, aO, aK, aR, uzOn) > 1 ? [200, 112] : this._foldStackGrid));   // Gravity の場は漏斗が深いので細かく / Roll だけ = 広げた紙のぶん細かく
     const UZ = uzOn ? this._uzuParams(aU, this._finalFBO.w, this._finalFBO.h) : null;
     const w = this._finalFBO.w, h = this._finalFBO.h;
     if(!this._foldStackTmp || this._foldStackTmp.w !== w || this._foldStackTmp.h !== h){
@@ -10057,7 +10102,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dCubesGrid:[1,16], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dCubesGrid:[1,16], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -10264,7 +10309,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Cubes', fx3dCubesGrid:'Cubes Grid', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Cubes', fx3dCubesGrid:'Cubes Grid', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -12732,7 +12777,7 @@ const App = {
     gloss:1, glossBump:1, glossSharp:1, glossShine:1, glossWet:1, glossLight:1,
     // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
     fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dScale:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dCubesGrid:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGlobeDetail:1, needleScatter:1,
+    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dCubesGrid:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleScatter:1,
     pollockGloss:1, pollockMatt:1, pollockFlat:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
@@ -12860,7 +12905,7 @@ const App = {
     glass:1, twist:1, origami:1, kaiser:1, kaiserOld:1,
     // 3D FX の離散値 (フェード中の中間値が無意味)
     fx3dScale:1, fx3dPhotoCount:1, fx3dSlicerPieces:1, fx3dLayerCount:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dCubesGrid:1, fx3dBlindsCount:1, fx3dGlobeDetail:1,
+    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dCubesGrid:1, fx3dBlindsCount:1, fx3dGravityPoints:1, fx3dGlobeDetail:1,
     fx3dRoll:1,
   },
   applyPostFaded(target){
@@ -13159,7 +13204,7 @@ const App = {
     dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dCubesGrid:1, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back',
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back',
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
     waveform:0.0,
@@ -13264,7 +13309,7 @@ const App = {
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','waveform','mosaic','shake','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
     pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
-    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dCubesGrid','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','uzumaki','river','fx3dScale','fx3dBg','fx3dPop'],
+    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dCubesGrid','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','uzumaki','river','fx3dScale','fx3dBg','fx3dPop'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline'],
     glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
@@ -13339,7 +13384,7 @@ const App = {
     dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dCubesGrid:1, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back',
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back',
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
     waveform:0.0,
@@ -19259,6 +19304,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dGravityDepth','fx3dGravityDepth', f2);
     slid('pxFx3dGravityFlip','fx3dGravityFlip', f2);
     slid('pxFx3dGravityWave','fx3dGravityWave', f2);
+    slid('pxFx3dGravityPoints','fx3dGravityPoints', fi);
     slid('pxFx3dGlobe','fx3dGlobe', f2);
     slid('pxFx3dGlobeDetail','fx3dGlobeDetail', fi);
     slid('pxFx3dRoll','fx3dRoll', f2);
@@ -19518,6 +19564,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxFx3dGravityDepth', p.fx3dGravityDepth != null ? p.fx3dGravityDepth : 0.5, f2);
     set('pxFx3dGravityFlip', p.fx3dGravityFlip != null ? p.fx3dGravityFlip : 0.5, f2);
     set('pxFx3dGravityWave', p.fx3dGravityWave != null ? p.fx3dGravityWave : 0.5, f2);
+    set('pxFx3dGravityPoints', p.fx3dGravityPoints != null ? p.fx3dGravityPoints : 2, fi);
     set('pxFx3dGlobe', p.fx3dGlobe || 0, f2);
     set('pxFx3dGlobeDetail', p.fx3dGlobeDetail, fi);
     set('pxFx3dRoll', p.fx3dRoll || 0, f2);

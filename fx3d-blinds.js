@@ -145,7 +145,7 @@ Fx3d.EXTRA.blinds = {
     const pat = Math.floor(h1(bid, 7.7) * 4);
     const org = Math.floor(h1(bid, 1.9) * nUse);
     const sgn = h1(bid, 5.5) < 0.5 ? 1 : -1;
-    const cam = Fx3d.camera(asp, 0.12 * k * Math.sin(0.2 * t), 0.08 * k * Math.sin(0.15 * t), 1.35);
+    const cam = Fx3d.camera(asp, 0, 0, 1.35);
     const M = Fx3d.msaa(gl, o.w, o.h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
     gl.viewport(0, 0, o.w, o.h);
