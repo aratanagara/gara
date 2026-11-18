@@ -168,5 +168,6 @@ vec3 bg_crystalnoise(vec2 fc){
   }
   // Slot B=透過(輝度をアルファに) / Slot A=不透明(黒背景)
   bgAlpha = clamp(lum * 3.0, 0.0, 1.0);
+  vjDepth = bgAlpha * clamp(1.0 - (z - 4.0) / 12.0, 0.0, 1.0);   // 深度 (グローの終端 z を中心 z=10 で 0.5 に正規化、輝度で重み付け)。折り系・3D FX が紙をこれで持ち上げる
   return col;
 }

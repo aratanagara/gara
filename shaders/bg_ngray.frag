@@ -149,6 +149,7 @@ vec3 ng_render(vec3 ro, vec3 rd, out float hitOut){
   vec3 col = vec3(0.0);   // 背景は黒 (entrypoint が uBgColor で塗る)
   if(m > -0.5){
     vec3 pos = ro + t*rd;
+    { float ngR = 5.0 * (uScale / 100.0); vjDepth = clamp(1.0 - (t - (length(ro) - ngR)) / (2.0 * ngR), 0.0, 1.0); }   // 深度 (塊の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 nor = ng_calcNormal(pos);
     vec3 ref = reflect(rd, nor);
     float occ = 0.5;

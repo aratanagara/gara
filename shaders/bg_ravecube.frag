@@ -251,6 +251,7 @@ vec3 bg_ravecube(vec2 fc){
     if(d.x > WR_MDIST){ dO = WR_MDIST; break; }
   }
   if(hit){
+    vjDepth = clamp(1.0 - (dO - (length(ro) - 16.0 * (uScale / 100.0))) / (32.0 * (uScale / 100.0)), 0.0, 1.0);   // 深度 (立方体の外接球で正規化 (手前 1 → 奥 0))。折り系・3D FX が紙をこれで持ち上げる
     vec3 n = wr_norm(p);
     vec3 rr = reflect(rd, n);
     // クローム(鏡面反射)

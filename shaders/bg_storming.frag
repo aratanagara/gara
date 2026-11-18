@@ -176,6 +176,7 @@ vec3 bg_storming(vec2 fc){
 
   // 原作の色処理そのまま(最後のガンマ pow(.4545) は原作に無い)
   float gray = o.r;
+  vjDepth = gray > 0.0 ? clamp(exp(-(total - 2.0) * 0.4), 0.0, 1.0) : 0.0;   // 深度 (ヒット距離 total。外れは 0)。折り系・3D FX が紙をこれで持ち上げる
   o *= vec3(0.8, 0.8, 0.9);
   if(uBlobTint != vec3(1.0)) o *= uBlobTint;
   float d = smoothstep(0.0, 2.0 * (uSkyReach / 100.0), length(uv));

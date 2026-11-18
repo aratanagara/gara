@@ -179,6 +179,7 @@ vec3 bg_flowingMetal(vec2 fc){
     return vec3(0.0);
   }
   vec3 p  = eye + dist*wd;
+  vjDepth = exp(-dist * 0.15);   // 深度 (近いほど 1。距離フォグ 0.06 より立たせる)。折り系・3D FX が紙をこれで持ち上げる
 
   // === 固有色のある金属(色付きクローム) ===
   vec3 n = fm_normal(p);

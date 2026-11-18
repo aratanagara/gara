@@ -227,6 +227,7 @@ vec3 bg_stractium(vec2 fc){
   bool hitObj = (abs(distAndMat.x) < 0.75);
 
   if(hitObj){
+    vjDepth = clamp(1.0 - t / (2.0 * 7.6 * (uScale / 100.0)), 0.0, 1.0);   // 深度 (外接球の入口 1 → 出口 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 sv = vec3(0.005, 0.0, 0.0);
     vec3 normalU = vec3(distAndMat.x - st_DistanceToObject(pos - sv.xyy).x,
                         distAndMat.x - st_DistanceToObject(pos - sv.yxy).x,

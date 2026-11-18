@@ -3177,20 +3177,7 @@ uniform float uUzN, uUzTH, uUzSpin, uUzShr, uUzZStep, uUzCard, uUzOrbR;
 uniform vec2 uUzCw;
 uniform vec2 uNvGrid;
 uniform float uNvSub, uNvMargin, uGravOn, uPaperM;
-// シェーダの深度 (vjDepth) で紙を持ち上げる = 立体のまま折る。uRelief = 量 × 表示の割合 (A / B)
-uniform sampler2D uDepthA;
-uniform sampler2D uDepthB;
-uniform vec2 uRelief;
-float vjDepthAt(sampler2D t, vec2 m){
-  // 深度の段差 (輪郭) で紙が壁のように裂けないよう、格子 1 つぶんほどの範囲を 5 点で均す
-  vec2 o = vec2(0.006, 0.0107);
-  return (texture(t, m).r * 2.0 + texture(t, m + vec2(o.x, 0.0)).r + texture(t, m - vec2(o.x, 0.0)).r
-        + texture(t, m + vec2(0.0, o.y)).r + texture(t, m - vec2(0.0, o.y)).r) / 6.0;
-}
-float vjRelief(vec2 uv){
-  vec2 m = 1.0 - abs(1.0 - mod(uv, 2.0));   // 紙を広げたときの余白はミラー
-  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, m) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, m) : 0.0);
-}
+${this.reliefGLSL()}
 out vec2 vUv; out vec3 vWorld;
 ${this._foldPaperGLSL('u')}
 ${this.needleCellGLSL()}
@@ -7288,6 +7275,25 @@ vec4 fx3dApply(vec4 clip){
   // 面をそのまま底にして、重心の真上を頂点とする錐にする。隣の面とは底の辺で接する = 隙間なく針が立つ (ウニ / 針山)。扇 1 枚を sub × sub に割る (折りで曲がる)。
   //   fx3dNeedleVert(vid, grid, sub, salt, ab, w, key): vid = 0 .. (gx+2)(gy+2)·18·sub² - 1。w = 種の真上 1 → 底 0、key = 種ごとの値
   //   fx3dNeedleH(key, at) = 針の高さ (格子間隔 = 1)。at = 面上の位置 (Scatter の高低の群れ)。uniform uSp* は Fx3d.spikeUniforms が送る
+  // シェーダの深度 (vjDepth) で面を持ち上げる GLSL。統合折りの紙と 3D FX エンジン (Fx3d.prog が fx3dRelief( を見て差し込む) が共有する。
+  //   uRelief = 量 × 表示の割合 (A / B)。uniform は _reliefBind(prog) が送る
+  reliefGLSL(){
+    return `uniform sampler2D uDepthA;
+uniform sampler2D uDepthB;
+uniform vec2 uRelief;
+float vjDepthAt(sampler2D t, vec2 m){
+  // 深度の段差 (輪郭) で面が壁のように裂けないよう、格子 1 つぶんほどの範囲を 5 点で均す
+  vec2 o = vec2(0.006, 0.0107);
+  return (texture(t, m).r * 2.0 + texture(t, m + vec2(o.x, 0.0)).r + texture(t, m - vec2(o.x, 0.0)).r
+        + texture(t, m + vec2(0.0, o.y)).r + texture(t, m - vec2(0.0, o.y)).r) / 6.0;
+}
+float vjRelief(vec2 uv){
+  vec2 m = 1.0 - abs(1.0 - mod(uv, 2.0));   // 紙を広げたときの余白はミラー
+  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, m) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, m) : 0.0);
+}
+float fx3dRelief(vec2 uv){ return (uRelief.x + uRelief.y > 0.0) ? vjRelief(uv) : 0.0; }
+`;
+  },
   needleCellGLSL(){
     return `uniform float uSpA, uSpBeat, uSpBM, uSpHit, uSpT, uSpScat;
 float spH(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }

@@ -192,6 +192,7 @@ vec3 bg_kuko(vec2 fc){
 
   if(dt > 0.0){
     vec3 p = ro + rd*dt;
+    vjDepth = (dt <= 20.0) ? exp(-dt * 0.2) : 0.0;   // 深度 (近いほど 1。ミスは 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 norm = kk_calcNorm(p);
 
     float scale = 2.0 * (uBumpScale / 100.0);

@@ -257,6 +257,7 @@ vec3 bg_ghost(vec2 fc){
     if(d > 320.0) break;
   }
 
+  vjDepth = exp(-d * 0.05);   // 深度 (トンネル壁までの距離で近いほど 1)。折り系・3D FX が紙をこれで持ち上げる
   vec3 n = gc_nrm(p);
   vec3 Rr = reflect(D, n);
   float fres = pow(1.0 - max(dot(n, -D), 0.0), 5.0);

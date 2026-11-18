@@ -131,6 +131,7 @@ vec3 bg_crystalice(vec2 u){
          + (1. + cos(.3*i + vec4(2,1,0,0)))/s;
     }
   }
+  vjDepth = exp(-d * 0.02);   // 深度 (march の到達距離。トンネル壁に近いほど 1、奥ほど 0)。折り系・3D FX が紙をこれで持ち上げる
   o = tanh(o*o/2e9);
   vec3 col = o.rgb;
   float L = dot(col, vec3(0.3333));

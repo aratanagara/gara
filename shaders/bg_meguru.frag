@@ -178,6 +178,7 @@ vec3 bg_meguru(vec2 fc){
   vec3 ds = bn_mrch(ro, rd);
   float d0 = ds.x;
   if(d0 <= 0.0){ bgAlpha = 0.0; return vec3(0.0); }   // 背景は黒 + 透明
+  vjDepth = clamp(1.0 - d0 / BN_DST, 0.0, 1.0);   // 深度 (ヒット距離 d0 / 最大距離 BN_DST)。折り系・3D FX が紙をこれで持ち上げる
   vec3 sp = ro + rd * d0;
   // OFF: 素のグレースケール / ON(uCosGrad): 固有の cosine gradient 彩色
   // 空間/距離による位相をソフト量子化してバンド状の濃淡にする

@@ -171,6 +171,7 @@ void cp_march(vec3 ro, vec3 rd){
     cpIfsColor *= cpIfsColor;
     if(d < 1e-5){
       if(numRF > 1.0) break;
+      if(numRF < 0.5) vjDepth = exp(-t * 0.5);   // 深度 (最初の命中面。近いほど 1)。折り系・3D FX が紙をこれで持ち上げる
       // パレットから色を取得 (cpIfsColor の輝度を位相に使う)
       float ph = 0.20 + 0.60 * (uPalRange / 100.0) * dot(cpIfsColor, vec3(0.299, 0.587, 0.114));
       if(uPalShift != 0.0) ph += uPalShift / 100.0;

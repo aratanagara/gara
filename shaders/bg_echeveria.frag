@@ -335,6 +335,7 @@ vec4 ec_render(vec3 ro, vec3 rd, float tOff, float full, float owidth){
     return vec4(vec3(0.88, 0.90, 0.97), outline);
   }
   if(bg) return vec4(0.0);
+  vjDepth = clamp(1.0 - (rayLength - (length(ro) - 2.0*scl)) / (4.0*scl), 0.0, 1.0);   // 深度 (外接球の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
   vec3 pos = ro + rd*rayLength;
   vec3 n = ec_calcNormal(pos);
   vec3 rr = reflect(rd, n);

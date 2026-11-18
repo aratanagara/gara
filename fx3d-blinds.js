@@ -54,6 +54,7 @@ void main(){
   vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
   vec3 Nn, Cs;
   vec3 P = bSurf(slat, vec2((float(seg) + ab.x) / ${SEG}.0, ab.y), vUv, Nn, vVc, Cs);
+  P += Nn * fx3dRelief(vUv);   // 立体シェーダの深度で帯の面を持ち上げる
   P = Cs + (P - Cs) * fx3dPop(float(slat));   // ポップ: 帯ごとに中心から
   vW = P;
   vN = Nn;
@@ -81,6 +82,7 @@ void main(){
   vec3 B = (bSurf(slat, ab + vec2(0.0, E), uvd, Nd, vcd, Cd) - P0) / E;
   vec3 N = normalize(cross(T, B));
   if(dot(N, Nn) < 0.0) N = -N;
+  P0 += N * fx3dRelief(vUv);
   float cell = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);
   vec3 P = P0 + N * (w * fx3dNeedleH(key, (vUv - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
   P = Cs + (P - Cs) * fx3dPop(float(slat));
@@ -177,6 +179,7 @@ Fx3d.EXTRA.blinds = {
       gl.uniform1fv(uloc(gl, pr, 'uEdge'), this._E);
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'blinds');
+      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'blindsNeedle', NV_VS, FS) : null;
