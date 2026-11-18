@@ -15,7 +15,7 @@ const TD_FONT_MINCHO = '"yu-mincho-pr6n","dnp-shuei-nmincho-std","Zen Old Mincho
 const TD_FONT_GOTHIC = '"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Zen Kaku Gothic New","Noto Sans JP",' + TD_UNICODE_FALLBACK + ',sans-serif';
 const TD_FONT_MONO = '"dnp-shuei-gothic-gin-std","Space Mono",' + TD_UNICODE_FALLBACK + ',"Noto Sans JP",monospace';
 const TD_MD_STYLE_KEYS = ['paper','ink','accent','accentRatio','fontFamily','fontSize','lineHeight','letterSpacing','vertical','stageW','marginPct','fitMode','zoom','panX','panY','randomLaw','rotation','randomness','geoRatio','stretchX','stretchY','flipRate',
-  'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap','comp',
+  'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap','comp','surf',
   'showPct','sizeVar','scatter','tremor','waveAmp','waveLen','lineStagger','slant','swirl','bulge','viewAngle','pivotX','pivotY','stepSize','misregAlpha','misregRatio','trailPct','accentOnMove','rainbow','rainbowSpan','vignette','vignetteColor','grain','grainSize'];
 
 /* ---- Confuse operator: 類字置換の Core 辞書 (元アプリの graded lookalike dictionary 移植) ----
@@ -370,6 +370,8 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     this._lastPresetI = i;
     // Composition は md 単位: 保存があれば適用、無ければデフォルト(Off)へ戻す
     if(typeof TDComp !== 'undefined') TDComp.applyMd(base.comp || null);
+    // Surface (上流 0.3 の描画エンジン) も md 単位
+    if(typeof TDSurf !== 'undefined') TDSurf.applyMd(base.surf || null);
     this.setText(base.text);
   },
 
@@ -1191,6 +1193,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     }
     // Composition Engine v6 のループ位相を進める (mode/textdeform-comp.js)
     if(typeof TDComp !== 'undefined') TDComp.advance(d, pulse);
+    if(typeof TDSurf !== 'undefined') TDSurf.advance(d, pulse);
   },
 
   // 各文字が独立の乱数タイミングで on/off。起動ごとに変形量・向き・強さ・モードをランダム化。
@@ -1375,6 +1378,29 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     return out;
   },
 
+  // _snapshotGlyphs の 1 文字を上流 type-deformer の snapshotGlyphs 形式へ変換 (Composition / Surface 共通)。
+  // off = ステージ座標に足す平行移動量。
+  _upstreamGlyph(g, offX, offY){
+    const P = this.P, fs = P.fontSize;
+    const x = g.x + offX, y = g.y + offY;
+    return {
+      ch: g.ch, sourceText: g.ch, direction: 'ltr', upright: !!g.upright, accent: !!g.accent, opacity: 1,
+      fontFamily: this._fontStack(P.fontFamily), fontWeight: P.fontWeight, fontAxes: null,
+      line: 0, word: 0, batchKey: '', textObject: '',
+      x: x, y: y, w: g.w, h: g.h,
+      bx: x, by: y, bw: g.w, bh: g.h,
+      grid: !!P.gridEnabled,
+      ox: g.ox + offX, oy: g.oy + offY,
+      tx: g.tx + (P.vertical ? (g.bl || 0)*fs : 0),
+      ty: g.ty + (P.vertical ? 0 : -(g.bl || 0)*fs),
+      rot: (g.rot || 0) + (g.opRot || 0),
+      skewX: g.skx || 0, skewY: g.sky || 0,
+      scaleX: (g.scaleX || 1)*(g.mirX == null ? 1 : g.mirX),
+      scaleY: (g.scaleY || 1)*(g.mirY == null ? 1 : g.mirY),
+      misregX: g.misX || 0, misregY: g.misY || 0
+    };
+  },
+
   // 毎フレームの追加 param (第 2 弾) を deadParam を通して読む。glyph = 文字ごとの加工が要るか
   _dp(v){ return (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v; },
   _h(i, k){ const v = Math.sin(i*12.9898 + k*78.233)*43758.5453; return v - Math.floor(v); },
@@ -1511,6 +1537,10 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const grid = !!P.gridEnabled;
     const fs = P.fontSize;
     const va = fx.viewAngle*Math.PI/180;
+    // Surface: 効果が掛かる文字は元の字を sourceAlpha で薄め (hide なら描かない)、上に効果レイヤーを重ねる
+    const surf = (typeof TDSurf !== 'undefined' && TDSurf.active()) ? TDSurf : null;
+    const surfSrcA = surf ? surf.sourceAlpha() : 1;
+    if(surf) surf.request(glyphs, w, h);
     // Operator を含む1パス描画。misreg のオフセットはフィット前のステージ座標系 (元アプリの page 座標に相当)
     const drawPass = (g, blX, blY, offX, offY, fill, alpha, blend)=>{
       ctx.setTransform(1,0,0,1,0,0);
@@ -1542,19 +1572,22 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     };
     for(let i=0; i<glyphs.length; i++){
       const g = glyphs[i];
+      const sa = (surf && surf.glyphActive(g.i)) ? surfSrcA : 1;
+      if(sa <= 0) continue;
       const blX = P.vertical ? g.bl*fs : 0;    // baseline shift: 縦組=左右 / 横組=上下
       const blY = P.vertical ? 0 : -g.bl*fs;
       if(g.misX || g.misY){
         // 版ずれ2色刷り: A=+offset / B=-ratio×offset を multiply で敷き、上に本来のインク
-        drawPass(g, blX, blY, g.misX, g.misY, P.misregColorA, fx.misA, 'multiply');
-        drawPass(g, blX, blY, -g.misX*fx.misR, -g.misY*fx.misR, P.misregColorB, fx.misA, 'multiply');
+        drawPass(g, blX, blY, g.misX, g.misY, P.misregColorA, fx.misA*sa, 'multiply');
+        drawPass(g, blX, blY, -g.misX*fx.misR, -g.misY*fx.misR, P.misregColorB, fx.misA*sa, 'multiply');
       }
       let ink = g.accent ? P.accent : P.ink;
       if(fx.rb || fx.aom) ink = this._glyphColor(g, ink, fx);
-      drawPass(g, blX, blY, 0, 0, ink, 1, 'source-over');
+      drawPass(g, blX, blY, 0, 0, ink, sa, 'source-over');
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
+    if(surf) surf.draw(ctx, w, h, va);
     this._overlayFx(ctx, w, h, fx);
     ctx.setTransform(1,0,0,1,0,0);
   },
