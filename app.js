@@ -9357,6 +9357,11 @@ float vjDepth = 0.0;
       params.push(p);
     }
 
+    // ---- 3D Mode: 深度 (vjDepth) を出すシェーダには Params の先頭にチェックを足す。ON = 3D FX が深度で立体に掛かる / OFF = 平面として描く ----
+    const uses3D = /\bvjDepth\s*=/.test(body) && !/\bu3DMode\b/.test(body);
+    if(uses3D) params.unshift({ name:'u3DMode', label:'3D Mode', type:'bool', value:1, defaultValue:1 });
+    const depthExpr = uses3D ? 'clamp(vjDepth, 0.0, 1.0) * u3DMode' : 'clamp(vjDepth, 0.0, 1.0)';
+
     // ---- 透過対応シェーダ (自前で uSlotIsA を宣言し、Slot A では不透明・B では実 alpha を出すもの) に背景色を付ける ----
     //   シェーダには uSlotIsA = 0 (常に実 alpha) を見せ、Slot A の不透明化と背景色 (uBgColor) の敷き込みは
     //   エントリポイント側で行う (bg_*.frag の bgAlpha と同じ規約)。uBgColor を自前で持つシェーダはそのまま。
@@ -9393,6 +9398,7 @@ float vjDepth = 0.0;
 
     const format = hasMainImage ? 'shadertoy' : (looksSandbox ? 'sandbox' : 'raw');
     if(bgWrap) inject += 'uniform float uSlotIsAReal;\nuniform vec3 uBgColor;\n';
+    if(uses3D) inject += 'uniform float u3DMode;\n';
     // 背景色の敷き込み: alpha<1 の所に uBgColor を加算し、Slot A では不透明にする
     const bgOut = bgWrap ? `  float _bgA = clamp(c.a, 0.0, 1.0);
   c.rgb += uBgColor * (1.0 - _bgA);
@@ -9406,7 +9412,7 @@ void main(){
   vec4 c;
   mainImage(c, gl_FragCoord.xy);
 ${bgOut}  _vjFragOut = c;
-  _vjDepthOut = vec4(clamp(vjDepth, 0.0, 1.0), 0.0, 0.0, 1.0);
+  _vjDepthOut = vec4(${depthExpr}, 0.0, 0.0, 1.0);
 }
 `;
     } else if(bgWrap && /\bgl_FragColor\b/.test(body) && /\bvoid\s+main\s*\(/.test(body)){
@@ -9417,7 +9423,7 @@ void main(){
   _vjUserMain();
   vec4 c = _vjCol;
 ${bgOut}  _vjFragOut = c;
-  _vjDepthOut = vec4(clamp(vjDepth, 0.0, 1.0), 0.0, 0.0, 1.0);
+  _vjDepthOut = vec4(${depthExpr}, 0.0, 0.0, 1.0);
 }
 `;
     } else {
@@ -9427,7 +9433,7 @@ ${bgOut}  _vjFragOut = c;
         ? this.HEADER + inject + translated.replace(/\bvoid\s+main\s*\(/, 'void _vjUserMain(') + `
 void main(){
   _vjUserMain();
-  _vjDepthOut = vec4(clamp(vjDepth, 0.0, 1.0), 0.0, 0.0, 1.0);
+  _vjDepthOut = vec4(${depthExpr}, 0.0, 0.0, 1.0);
 }
 `
         : this.HEADER + inject + translated;
@@ -23531,7 +23537,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(sec) sec.style.display = '';
     for(const p of slot.params){
       const row = document.createElement('div'); row.className='par';
-      const lab = document.createElement('label'); lab.textContent = p.name;
+      const lab = document.createElement('label'); lab.textContent = p.label || p.name;
       row.appendChild(lab);
       if(p.type==='float'){
         const r = document.createElement('input'); r.type='range'; r.min=p.min; r.max=p.max;
