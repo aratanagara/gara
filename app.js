@@ -14237,7 +14237,8 @@ ${outBlock}
     //     円盤・バーをクリック / ドラッグで背景色をライブ変更。カーソルが一定範囲の外へ出る / もう一度 Option /
     //     Esc / サークル外のクリックで消える。
     //   長押し (350ms 以上) → 押している間スポイト: カーソルがスポイトになり、ポインタ下の色を円で表示しながら
-    //     ライブで背景色へ入れ、離した位置の色で確定。拾う元: ステージ = 最終出力 / A・B タイル = タイルの画 /
+    //     ライブで背景色へ入れる (プレビュー)。クリックで確定 (ボタンを押したまま動かせば追従し、離した位置で確定)。
+    //     Option を押している間は何度でも拾い直せる。一度も確定せずに Option を離すと元の色に戻る。拾う元: ステージ = 最終出力 / A・B タイル = タイルの画 /
     //     カラーピッカー = その値 / 他の UI = 要素の背景色 (透明な所は下へ透過)。
     //   入れる先の優先順: アクティブスロットのシェーダの uBgColor → エンジン (transflock / liquidpeel /
     //   windflock 等) の Paper → Slot A 背景色 (Mix パネル)。
@@ -14337,7 +14338,8 @@ ${outBlock}
     eyeSwatch.style.cssText = 'position:fixed;left:0;top:0;width:30px;height:30px;border-radius:50%;border:2px solid #fff;'
       + 'box-shadow:0 0 0 1px #000,0 2px 8px rgba(0,0,0,.6);pointer-events:none;z-index:99999;display:none;background:#000';
     document.body.appendChild(eyeSwatch);
-    const E = { on:false, last:{x:0, y:0}, sampleT:0, timer:null, holdTimer:null, altDown:false, lastRgb:null, gradPicked:false };
+    const E = { on:false, last:{x:0, y:0}, sampleT:0, timer:null, holdTimer:null, altDown:false, lastRgb:null, gradPicked:false,
+                orig:null, committed:null, mouseHold:false };   // orig = スポイト開始時の色 (確定しなければ戻す) / committed = クリックで確定した色
     // Visual タブのタイル上では Option+クリック = そのタイルの絵から Grad Map を生成 (スポイトは使わない)
     const visTileAt = (x, y)=>{ const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('#thumbGrid .thumb-tile') : null; };
     const readCanvasAt = (cv, u, v)=>{
@@ -14397,18 +14399,27 @@ ${outBlock}
       E.on = true; hideWheel();
       document.body.classList.add('vjEyedrop');
       eyeSwatch.style.display = '';
-      E.lastRgb = null;
+      E.lastRgb = null; E.committed = null; E.mouseHold = false;
+      try{ E.orig = bgTarget().get(); }catch(e){ E.orig = null; }
       eyeUpdate(E.last.x, E.last.y, true);
     };
-    const eyeEnd = (cancel)=>{
+    // クリック (ボタンを離した位置) で確定。Option を押している間は何度でも
+    const eyeCommit = ()=>{
+      E.mouseHold = false;
+      const got = sampleColorAt(E.last.x, E.last.y) || (E.lastRgb ? { rgb:E.lastRgb, from:'' } : null);
+      if(got){ const T = bgTarget(); T.set(got.rgb); T.refresh(); E.committed = got.rgb.slice(); toast(T.label + ' ← ' + toHexRgb(got.rgb) + got.from); }
+      else toast('スポイト: 色を拾えませんでした');
+    };
+    // Option を離した: 確定した色があればそれ、なければ開始時の色に戻す (プレビューは残さない)
+    const eyeEnd = ()=>{
       if(!E.on) return;
       E.on = false; clearTimeout(E.timer);
       document.body.classList.remove('vjEyedrop');
       eyeSwatch.style.display = 'none';
-      if(cancel) return;
-      const got = sampleColorAt(E.last.x, E.last.y) || (E.lastRgb ? { rgb:E.lastRgb, from:'' } : null);
-      if(got){ const T = bgTarget(); T.set(got.rgb); T.refresh(); toast(T.label + ' ← ' + toHexRgb(got.rgb) + got.from); }
-      else toast('スポイト: 色を拾えませんでした');
+      E.mouseHold = false;
+      const T = bgTarget();
+      if(E.committed){ T.set(E.committed); T.refresh(); }
+      else if(E.orig){ T.set(E.orig); T.refresh(); }
     };
 
     // ── キー / マウス ──
@@ -14422,8 +14433,8 @@ ${outBlock}
     window.addEventListener('keyup', e=>{
       if(e.key !== 'Alt') return;
       E.altDown = false; clearTimeout(E.holdTimer);
-      if(E.gradPicked){ E.gradPicked = false; if(E.on) eyeEnd(true); return; }   // タイルから Grad を拾った押下はサークルを出さない
-      if(E.on){ eyeEnd(); return; }                                      // 長押し終了 → 確定
+      if(E.gradPicked){ E.gradPicked = false; if(E.on) eyeEnd(); return; }   // タイルから Grad を拾った押下はサークルを出さない
+      if(E.on){ eyeEnd(); return; }                                      // 長押し終了 (確定していなければ元の色へ)
       if(W.visible) hideWheel(); else showWheel(E.last.x, E.last.y);     // 短押し → サークルのトグル
     });
     window.addEventListener('keydown', e=>{ if(e.key === 'Escape' && W.visible) hideWheel(); });
@@ -14452,11 +14463,11 @@ ${outBlock}
         if(hit){ W.drag = hit; _eyeSwallowClick = true; e.preventDefault(); e.stopPropagation(); return; }
         hideWheel();                                                     // サークル外のクリック → 消す (クリック自体は通す)
       }
-      if(E.on){ eyeUpdate(e.clientX, e.clientY, true); _eyeSwallowClick = true; e.preventDefault(); e.stopPropagation(); }
+      if(E.on){ E.mouseHold = true; eyeUpdate(e.clientX, e.clientY, true); _eyeSwallowClick = true; e.preventDefault(); e.stopPropagation(); }
     }, true);
     window.addEventListener('mouseup', e=>{
       if(W.drag){ W.drag = null; applyWheel(true); e.preventDefault(); e.stopPropagation(); return; }
-      if(E.on){ e.preventDefault(); e.stopPropagation(); }
+      if(E.on){ E.last = { x:e.clientX, y:e.clientY }; if(E.mouseHold) eyeCommit(); e.preventDefault(); e.stopPropagation(); }
     }, true);
     for(const ev of ['click', 'dblclick']){
       window.addEventListener(ev, e=>{ if(_eyeSwallowClick || E.on){ e.preventDefault(); e.stopPropagation(); if(ev === 'click') _eyeSwallowClick = false; } }, true);
@@ -19445,7 +19456,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Grad Edit の右の ＋ = 現在のグラデを名前付きで新規保存
     const addCurrentGrad = ()=>{ const stops = GradEditor.get(); App._prompt('保存するグラデの名前:', 'grad '+(GradStore.list.length+1), (name)=>{ if(!name || !name.trim()) return; GradStore.add(name.trim(), stops); toast('グラデを保存: '+name.trim()); }); };
     { const b = $('#pxGradAdd'); if(b) b.addEventListener('click', addCurrentGrad); }
-    document.querySelectorAll('#pxGradFromVisual, #gradQuickRow > .gq-gen').forEach(b => b.addEventListener('click', ()=> App.gradFromVisual()));
+    document.querySelectorAll('#pxGradFromVisual').forEach(b => b.addEventListener('click', ()=> App.gradFromVisual()));
     // グラデリスト UI (色見本 + 番号 + 名前。番号 1〜9,0 がキーに対応。最上部=現在編集中で sticky)
     UI._refreshGradList = ()=>{
       const box = $('#pxGradList'); if(!box) return;
