@@ -439,7 +439,7 @@ vec3 bg_boogie_woogie(vec2 fc){
   float lw = 2.0 * 0.011 * uMbLine * 0.01 * 0.85 * (1.0 + audio * 0.5);   // 線の太さ (盤面の座標)
   float H = lw * zm / sc * uMbHeight * 0.01 * k3;            // 線の高さ = 線の太さ × Height (盤面の座標を世界の長さに直す。100 で断面が正方形)
   float HB = 0.12 * zm / sc * uMbBuild * 0.01 * k3;          // 建物 (色ブロック) の高さの最大
-  float pitch = radians(uMbPitch) * k3;
+  float pitch = -radians(uMbPitch) * k3;   // 上から見下ろす向き (地平線が画面の上)
   float yaw = time * 0.25 * uMbSpin * 0.01 * k3;
   vec2 uv = (fc - 0.5 * resolution) / resolution.y;
   vec3 ro = vec3(0.0, 0.0, mix(1.0, uMbDist * 0.01, k3));   // Dist で引いて俯瞰
