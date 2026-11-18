@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794980928">
+<link rel="stylesheet" href="style.css?v=1794981245">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1253,8 +1253,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxFx3dDioramaLayers" class="sub-label">Diorama Layers</label><input type="range" id="pxFx3dDioramaLayers" data-sub-of="pxFx3dDiorama" min="2" max="24" step="1" value="8" title="層の数"><div class="val" id="pxFx3dDioramaLayersVal">8</div></div>
           <div class="row"><label for="pxFx3dPoints">Points</label><input type="range" id="pxFx3dPoints" min="0" max="1" step="0.01" value="0" title="Points: 画面を点群にして、明るさを奥行きに取り、音で散らす。値=奥行き・散り・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dPointsVal">0.00</div></div>
           <div class="row"><label for="pxFx3dPointsDensity" class="sub-label">Points Density</label><input type="range" id="pxFx3dPointsDensity" data-sub-of="pxFx3dPoints" min="60" max="400" step="10" value="200" title="横の点の数"><div class="val" id="pxFx3dPointsDensityVal">200</div></div>
-          <div class="row"><label for="pxFx3dCubes">Cubes</label><input type="range" id="pxFx3dCubes" min="0" max="1" step="0.01" value="0" title="Cubes: 画面を長辺に沿った直方体 (断面=短辺の正方形) にして輪切りにし、各本が長辺の軸まわりに 90° ずつ回る。回っている間も画面は埋まったまま。値=回る本の割合・カメラの振り (0=元画像→1=全開)"><div class="val" id="pxFx3dCubesVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dCubesGrid" class="sub-label">Cubes Grid</label><input type="range" id="pxFx3dCubesGrid" data-sub-of="pxFx3dCubes" min="1" max="16" step="1" value="1" title="画面を立方体の格子にする。短辺側のマス数 (1〜16) で、長辺側は縦横比に合わせて増える。各立方体が拍ごとに X 軸か Y 軸まわりに転がる"><div class="val" id="pxFx3dCubesGridVal">1</div></div>
+          <div class="row"><label for="pxFx3dCubes">Box</label><input type="range" id="pxFx3dCubes" min="0" max="1" step="0.01" value="0" title="Box: 画面全体を 1 個の直方体にし、拍ごとに縦か横へ 90° 転がる。6 面すべてに画面の絵を貼るので、転がり終わると正立した同じ絵に戻る"><div class="val" id="pxFx3dCubesVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlinds">Blinds</label><input type="range" id="pxFx3dBlinds" min="0" max="1" step="0.01" value="0" title="Blinds: 画面を横長の帯に割り、ブラインドのように回転・らせん状にねじれる。値=回転の振れ幅・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dBlindsVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlindsCount" class="sub-label">Blinds Count</label><input type="range" id="pxFx3dBlindsCount" data-sub-of="pxFx3dBlinds" min="2" max="48" step="1" value="14" title="帯の本数"><div class="val" id="pxFx3dBlindsCountVal">14</div></div>
           <div class="row"><label for="pxFx3dBlindsTwist" class="sub-label">Blinds Twist</label><input type="range" id="pxFx3dBlindsTwist" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="回転が帯の長さ方向へ遅れる量 (0=板のまま回る→1=らせん)"><div class="val" id="pxFx3dBlindsTwistVal">0.50</div></div>
@@ -1928,54 +1927,54 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794980928"></script>
-<script src="mode/layer.js?v=1794980928"></script>
-<script src="vendor/iro.min.js?v=1794980928"></script>
-<script src="vendor/mediabunny.min.js?v=1794980928"></script>
-<script src="mode/textdeform.js?v=1794980928"></script>
-<script src="mode/textdeform-comp.js?v=1794980928"></script>
-<script src="mode/ugomeki.js?v=1794980928"></script>
-<script src="mode/slicer.js?v=1794980928"></script>
-<script src="mode/video.js?v=1794980928"></script>
-<script src="mode/aratanagara.js?v=1794980928"></script>
-<script src="vendor/p5.min.js?v=1794980928"></script>
-<script src="mode/cyberui.js?v=1794980928"></script>
-<script src="mode/novel.js?v=1794980928"></script>
-<script src="shaders/inkelly.js?v=1794980928"></script>
-<script src="sketchfx.js?v=1794980928"></script>
-<script src="pixelsortfx.js?v=1794980928"></script>
-<script src="shaders/boltzmann.js?v=1794980928"></script>
-<script src="mode/pen.js?v=1794980928"></script>
-<script src="shaders/caverns.js?v=1794980928"></script>
-<script src="mode/shelf.js?v=1794980928"></script>
-<script src="shaders/ribbon.js?v=1794980928"></script>
-<script src="mode/photoplane.js?v=1794980928"></script>
-<script src="mode/shredder.js?v=1794980928"></script>
-<script src="mode/transflock.js?v=1794980928"></script>
-<script src="mode/liquidpeel.js?v=1794980928"></script>
-<script src="mode/windflock.js?v=1794980928"></script>
-<script src="mode/rhizome.js?v=1794980928"></script>
-<script src="mode/surrealfloat.js?v=1794980928"></script>
-<script src="mode/chrometype.js?v=1794980928"></script>
-<script src="mode/tower4149.js?v=1794980928"></script>
-<script src="mode/fude.js?v=1794980928"></script>
-<script src="mode/image.js?v=1794980928"></script>
-<script src="mode/spacetype.js?v=1794980928"></script>
-<script src="fx3d.js?v=1794980928"></script>
-<script src="fx3d-cubes.js?v=1794980928"></script>
-<script src="fx3d-blinds.js?v=1794980928"></script>
-<script src="fx3d-diorama.js?v=1794980928"></script>
-<script src="fx3d-points.js?v=1794980928"></script>
-<script src="fx3d-gravity.js?v=1794980928"></script>
-<script src="fx3d-globe.js?v=1794980928"></script>
-<script src="pollockfx.js?v=1794980928"></script>
-<script src="overlay.js?v=1794980928"></script>
-<script src="gif.js?v=1794980928"></script>
-  <script src="ui-icons.js?v=1794980928"></script>
-  <script src="app.js?v=1794980928"></script>
-  <script src="ui-scrollbar.js?v=1794980928"></script>
-  <script src="ui-settings.js?v=1794980928"></script>
-<script src="camroll.js?v=1794980928" defer></script>
-<script src="dbltap.js?v=1794980928" defer></script>
+<script src="presets.js?v=1794981245"></script>
+<script src="mode/layer.js?v=1794981245"></script>
+<script src="vendor/iro.min.js?v=1794981245"></script>
+<script src="vendor/mediabunny.min.js?v=1794981245"></script>
+<script src="mode/textdeform.js?v=1794981245"></script>
+<script src="mode/textdeform-comp.js?v=1794981245"></script>
+<script src="mode/ugomeki.js?v=1794981245"></script>
+<script src="mode/slicer.js?v=1794981245"></script>
+<script src="mode/video.js?v=1794981245"></script>
+<script src="mode/aratanagara.js?v=1794981245"></script>
+<script src="vendor/p5.min.js?v=1794981245"></script>
+<script src="mode/cyberui.js?v=1794981245"></script>
+<script src="mode/novel.js?v=1794981245"></script>
+<script src="shaders/inkelly.js?v=1794981245"></script>
+<script src="sketchfx.js?v=1794981245"></script>
+<script src="pixelsortfx.js?v=1794981245"></script>
+<script src="shaders/boltzmann.js?v=1794981245"></script>
+<script src="mode/pen.js?v=1794981245"></script>
+<script src="shaders/caverns.js?v=1794981245"></script>
+<script src="mode/shelf.js?v=1794981245"></script>
+<script src="shaders/ribbon.js?v=1794981245"></script>
+<script src="mode/photoplane.js?v=1794981245"></script>
+<script src="mode/shredder.js?v=1794981245"></script>
+<script src="mode/transflock.js?v=1794981245"></script>
+<script src="mode/liquidpeel.js?v=1794981245"></script>
+<script src="mode/windflock.js?v=1794981245"></script>
+<script src="mode/rhizome.js?v=1794981245"></script>
+<script src="mode/surrealfloat.js?v=1794981245"></script>
+<script src="mode/chrometype.js?v=1794981245"></script>
+<script src="mode/tower4149.js?v=1794981245"></script>
+<script src="mode/fude.js?v=1794981245"></script>
+<script src="mode/image.js?v=1794981245"></script>
+<script src="mode/spacetype.js?v=1794981245"></script>
+<script src="fx3d.js?v=1794981245"></script>
+<script src="fx3d-cubes.js?v=1794981245"></script>
+<script src="fx3d-blinds.js?v=1794981245"></script>
+<script src="fx3d-diorama.js?v=1794981245"></script>
+<script src="fx3d-points.js?v=1794981245"></script>
+<script src="fx3d-gravity.js?v=1794981245"></script>
+<script src="fx3d-globe.js?v=1794981245"></script>
+<script src="pollockfx.js?v=1794981245"></script>
+<script src="overlay.js?v=1794981245"></script>
+<script src="gif.js?v=1794981245"></script>
+  <script src="ui-icons.js?v=1794981245"></script>
+  <script src="app.js?v=1794981245"></script>
+  <script src="ui-scrollbar.js?v=1794981245"></script>
+  <script src="ui-settings.js?v=1794981245"></script>
+<script src="camroll.js?v=1794981245" defer></script>
+<script src="dbltap.js?v=1794981245" defer></script>
 </body>
 </html>

@@ -1,10 +1,9 @@
 'use strict';
-/* 3D FX: cubes — 画面を立方体の格子 (2D) にし、各キューブが画面の X 軸か Y 軸まわりに 90° ずつ転がる (Fx3d.EXTRA.cubes)。
-   契約は fx3d.js の EXTRA のコメント参照。fx3dCubesGrid = 短辺側のマス数 N、長辺側は round(N × 縦横比)。
-   1 マス = 1 個の立方体 (奥行き = マスの大きさ。前面が z = 0、奥へ伸びる)。6 面すべてにそのマスの絵を貼る。
+/* 3D FX: cubes (表示名 Box) — 画面全体を 1 個の直方体にし、拍ごとに画面の X 軸か Y 軸まわりへ 90° 転がる (Fx3d.EXTRA.cubes)。
+   契約は fx3d.js の EXTRA のコメント参照。前面 = 画面 (z = 0)、奥行きは縦横の相乗平均。6 面すべてに画面の絵を貼る。
    転がり終わって前に来た面は正立した同じ絵 = 拍の切り目で絵が跳ねない。
-   beat = 拍ごとに選ばれたキューブが、ランダムな起点のマスから波紋のように遅れて転がる (軸 X / Y と向きはキューブごと)。
-   drone = 斜めへ流れる波で順に転がり続ける。転がっている間は少し縮んで手前へ出る = 隣と刺さらず、1 個ずつ飛び出して見える。
+   beat = 拍ごとに軸 X / Y と向きを選んで転がる / drone = 流れる波の位相で転がり続ける。転がっている間は少し縮んで手前へ出る。
+   (内部は格子の作り。uCg = 1 × 1 で描く)
    k = 0 で回転 0・正面カメラ = 元画面と画素一致。カメラは正面のまま振らない (傾けると画面の外が見えるため)。
    面は 3 × 3 に分割してある (折り系を物体へ掛けたとき、折り線が面の中で曲がるように)。 */
 (function(){
@@ -128,11 +127,9 @@ Fx3d.EXTRA.cubes = {
   render(gl, o){
     const pr = Fx3d.prog(gl, 'cubes', VS, FS);
     if(!pr) return false;
-    const post = o.post || {};
-    const N = Fx3d.popCount('cubes', Math.max(1, Math.min(16, Math.round(+post.fx3dCubesGrid || 1))), false);   // マス数を変えると区切りが全部変わる = 全部縮んでから出直す
+    const N = 1;   // 画面全体で 1 個の直方体
     const asp = o.asp, k = o.k, t = o.clock || 0;
-    const land = asp >= 1;
-    const gx = land ? Math.max(1, Math.round(N * asp)) : N, gy = land ? N : Math.max(1, Math.round(N / asp));   // 短辺側 = N マス
+    const gx = 1, gy = 1;
     const cubes = gx * gy;
     // カメラは正面のまま (傾けると画面の外が見える)
     const cam = Fx3d.camera(asp, 0, 0, 1.35 - 0.08 * k);
