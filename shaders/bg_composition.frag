@@ -34,6 +34,11 @@
 // @param uMcSeed    0..100   = 0.0
 // @param uMcGrain   0..100   = 25.0
 // @param uMcClear   0..100   = 0.0
+// @param uMc3D      0..100   = 0.0
+// @param uMcHeight  10..400  = 100.0
+// @param uMcPitch   0..80    = 45.0
+// @param uMcSpin    -100..100 = 20.0
+// @param uMcWallShade 0..100 = 55.0
 // @param uMcPaper   color = #f2f0e9
 // @param uMcInk     color = #141414
 // @param uMcRed     color = #cf1f18
@@ -60,6 +65,11 @@ uniform float uMcTilt;    // 構図の回転 (度)。45 で菱形のコンポジ
 uniform float uMcSeed;    // 乱数の種。値を変えると別の構図になる
 uniform float uMcGrain;   // 絵具のムラ (%)
 uniform float uMcClear;   // 白地を透過する量 (%)。Slot B で下の絵に線と色面だけを重ねる
+uniform float uMc3D;      // 3D の量 (%)。0 = 平面 (従来どおり)。上げると盤面が傾いて回り、線 (道) が厚みを持って立ち上がる
+uniform float uMcHeight;  // 線の高さ (厚み) (%)
+uniform float uMcPitch;   // 盤面の傾き (度)
+uniform float uMcSpin;    // 盤面の回転の速さ (%)。負で逆回転
+uniform float uMcWallShade; // 線の側面の陰の濃さ (%)
 uniform vec3 uMcPaper;    // 白地の色
 uniform vec3 uMcInk;      // 線と黒い面の色
 uniform vec3 uMcRed;      // 赤
@@ -210,21 +220,11 @@ bool mg_shownCell(float rid){ return mg_dp >= 0.6 + 0.4 * mg_h(vec3(rid, mg_gen,
 
 vec3 mc_ryb(float h){ return h < 0.3334 ? uMcRed : (h < 0.6667 ? uMcBlue : uMcYellow); }
 
-vec3 bg_composition(vec2 fc){
-  float kick = clamp(uMcKick * 0.01, 0.0, 1.0);
-  mg_setTime(getBeat(), uMcSpeed * 0.01, kick, uMcChange, uMcRedraw, uMcDrawIn, uMcSeed);
-  mg_lines = uMcLines * 0.01; mg_full = uMcFull * 0.01; mg_fullH = uMcFullH * 0.01;
-  mg_irreg = uMcIrreg * 0.01; mg_motion = uMcMotion * 0.01; mg_dyn = uMcDyn * 0.01;
-  float audio = clamp(iAudio, 0.0, 1.0) * uMcKick * 0.01;
-
-  float zm = max(bgZoom, 0.001);
-  vec2 q = ((fc - 0.5 * resolution) / zm + bgCamPx) / resolution.y;
-  float ta = radians(uMcTilt);
-  q = mat2(cos(ta), -sin(ta), sin(ta), cos(ta)) * q;
-  float sc = 100.0 / uMcScale;
-  q *= sc;
-  float aa = sc / (resolution.y * zm);
-
+// 盤面上の 1 点 q (傾き・大きさを掛けたあと) の線の覆い (0..1) だけを返す (3D の視線しらべ用。面の色は求めない)。
+//   格子の状態 (mg_*) と、伸び縮み後の座標 mc_q は mc_eval が面の色に使う
+vec2 mc_q;
+float mc_d;   // 線の縁までの距離 (盤面の座標。線の中は負)。3D の視線しらべが空いた所を読み飛ばす歩幅に使う
+float mc_cov(vec2 q, float aa, float audio){
   float w = 0.011 * uMcLine * 0.01 * (1.0 + audio * 0.5);   // 線の半幅
   mg_unit = 2.0 * w; mg_snap = 0.0;
   mg_pitch = 1.0 / uMcDensity;
@@ -238,19 +238,7 @@ vec3 bg_composition(vec2 fc){
   vec2 dq = 1.0 + jp * (0.62 * cos(q * wf1 + wp1) + 0.38 * cos(q * wf2 + wp2));
   q += jp * (0.62 * sin(q * wf1 + wp1) / wf1 + 0.38 * sin(q * wf2 + wp2) / wf2);
   mg_build(q);
-
-  // ── 面 (4 辺とも閉じた矩形) ──
-  float rid = mg_kL * 7.13 + mg_jB * 131.7;
-  float fr; float er = mg_epoch(rid + 0.25, fr);
-  vec3 col = uMcPaper;
-  float isPaper = 1.0;
-  if(mg_shownCell(rid)){
-    col *= 1.0 - 0.07 * mg_h(vec3(rid, 22.0, mg_seed));   // 白の面ごとのわずかな色むら (面が出てから)
-    float hc = mg_h(vec3(rid, mix(-1.0, er, step(mg_h(vec3(rid, er, mg_seed + 23.0)), 0.5)), mg_seed + 24.0));
-    if(hc < uMcColor * 0.01){ col = mc_ryb(mg_h(vec3(rid, er, mg_seed + 25.0))); isPaper = 0.0; }
-    else if(hc > 1.0 - uMcBlack * 0.01){ col = uMcInk; isPaper = 0.0; }
-  }
-
+  mc_q = q;
   // ── 線 (区間は端から端まで。端は直交する線に重なる) ──
   float BIG = 1e9;
   float sV = BIG, sH = BIG;
@@ -258,7 +246,27 @@ vec3 bg_composition(vec2 fc){
   if(mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)) sV = min(sV, mg_xR - q.x);
   if(mg_jB > -9e3 && mg_shownH(mg_jB)) sH = min(sH, q.y - mg_yB);
   if(mg_jT <  9e3 && mg_shownH(mg_jT)) sH = min(sH, mg_yT - q.y);
-  float cov = smoothstep(w + aa, w - aa, min(sV / dq.x, sH / dq.y));
+  float d = min(sV / dq.x, sH / dq.y);
+  mc_d = d - w;
+  return smoothstep(w + aa, w - aa, d);
+}
+// 盤面上の 1 点 q の色を返す。戻り値 = 線の覆い (0..1)。isPaper = 白地か
+float mc_eval(vec2 q, float aa, float audio, out vec3 col, out float isPaper){
+  float cov = mc_cov(q, aa, audio);
+  q = mc_q;
+
+  // ── 面 (4 辺とも閉じた矩形) ──
+  float rid = mg_kL * 7.13 + mg_jB * 131.7;
+  float fr; float er = mg_epoch(rid + 0.25, fr);
+  col = uMcPaper;
+  isPaper = 1.0;
+  if(mg_shownCell(rid)){
+    col *= 1.0 - 0.07 * mg_h(vec3(rid, 22.0, mg_seed));   // 白の面ごとのわずかな色むら (面が出てから)
+    float hc = mg_h(vec3(rid, mix(-1.0, er, step(mg_h(vec3(rid, er, mg_seed + 23.0)), 0.5)), mg_seed + 24.0));
+    if(hc < uMcColor * 0.01){ col = mc_ryb(mg_h(vec3(rid, er, mg_seed + 25.0))); isPaper = 0.0; }
+    else if(hc > 1.0 - uMcBlack * 0.01){ col = uMcInk; isPaper = 0.0; }
+  }
+
   col = mix(col, uMcInk, cov);
   isPaper *= 1.0 - cov;
 
@@ -268,7 +276,79 @@ vec3 bg_composition(vec2 fc){
     float nz = mg_vn(gp) * 0.6 + mg_vn(q * 900.0) * 0.4;
     col *= 1.0 + (nz - 0.5) * 0.12 * uMcGrain * 0.01;
   }
+  return cov;
+}
 
+vec3 bg_composition(vec2 fc){
+  float kick = clamp(uMcKick * 0.01, 0.0, 1.0);
+  mg_setTime(getBeat(), uMcSpeed * 0.01, kick, uMcChange, uMcRedraw, uMcDrawIn, uMcSeed);
+  mg_lines = uMcLines * 0.01; mg_full = uMcFull * 0.01; mg_fullH = uMcFullH * 0.01;
+  mg_irreg = uMcIrreg * 0.01; mg_motion = uMcMotion * 0.01; mg_dyn = uMcDyn * 0.01;
+  float audio = clamp(iAudio, 0.0, 1.0) * uMcKick * 0.01;
+
+  float zm = max(bgZoom, 0.001);
+  float ta = radians(uMcTilt);
+  mat2 tilt = mat2(cos(ta), -sin(ta), sin(ta), cos(ta));
+  float sc = 100.0 / uMcScale;
+  vec3 col; float isPaper;
+
+  if(uMc3D <= 0.0){
+    // 平面 (従来どおり)
+    vec2 q = ((fc - 0.5 * resolution) / zm + bgCamPx) / resolution.y;
+    q = tilt * q * sc;
+    float aa = sc / (resolution.y * zm);
+    mc_eval(q, aa, audio, col, isPaper);
+    float a = 1.0 - isPaper * uMcClear * 0.01;
+    bgAlpha = a;
+    return col * a;
+  }
+
+  // ── 3D: 盤面 (z = 0) を傾けて回し、線を高さ H の壁として押し出す。視線を盤面の上の層 (z = H → 0) で数点しらべ、
+  //    最初に線の中へ入った所を描く (天面 = 線の色 / 側面 = 陰)。深度 vjDepth も出す (3D FX が立体のまま掛かる)
+  float k3 = uMc3D * 0.01;
+  float H = 0.045 * uMcHeight * 0.01 * k3;                   // 線の高さ (盤面の画面の高さ 1 に対して)
+  float pitch = radians(uMcPitch) * k3;
+  float yaw = time * 0.25 * uMcSpin * 0.01 * k3;
+  vec2 uv = (fc - 0.5 * resolution) / resolution.y;
+  vec3 ro = vec3(0.0, 0.0, 1.0);
+  vec3 rd = normalize(vec3(uv, -1.0));
+  // カメラを原点まわりに回す (傾き = x 軸、回転 = z 軸)
+  float cp = cos(pitch), sp = sin(pitch);
+  ro.yz = mat2(cp, -sp, sp, cp) * ro.yz; rd.yz = mat2(cp, -sp, sp, cp) * rd.yz;
+  float cy = cos(yaw), sy = sin(yaw);
+  ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
+  if(rd.z >= -1e-4){ bgAlpha = 1.0 - uMcClear * 0.01; return uMcPaper * bgAlpha; }
+  float tTop = (H - ro.z) / rd.z, tBot = -ro.z / rd.z;
+  // 線の縁までの距離ぶん視線を進める (空いた面の上は 1〜2 歩で抜ける)。線の柱の中 (縁より内側 かつ 高さ H 以下) に入ったら当たり。
+  //   上限は uniform 依存 = 定数ループの展開を避ける
+  int N = int(clamp(12.0 + 0.0 * time, 2.0, 12.0));
+  float tHit = tBot; float side = 0.0; float hitI = -1.0;
+  float kxy = length(rd.xy) * sc / zm;                        // 視線 1 進むあいだの盤面の座標の進み
+  float t = tTop;
+  for(int i = 0; i < 12; i++){
+    if(i >= N || t > tBot) break;
+    vec3 p = ro + rd * t;
+    vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
+    mc_cov(q, 0.0, audio);
+    if(mc_d <= 0.0){
+      hitI = float(i);
+      tHit = t;
+      side = p.z < H * 0.96 ? 1.0 : 0.0;   // 線の天面より下で当たった = 側面
+      mc_eval(q, sc * t / (resolution.y * zm), audio, col, isPaper);
+      break;
+    }
+    t += max(mc_d / max(kxy, 1e-4), 0.002);
+  }
+  if(hitI < 0.0){   // 線に当たらなければ盤面 (z = 0)
+    vec3 p = ro + rd * tBot;
+    vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
+    mc_eval(q, sc * tBot / (resolution.y * zm), audio, col, isPaper);
+  } else if(side > 0.5){
+    // 側面: 線の色を陰で暗く (盤面の回転に合わせて面の向きで濃淡を変える)
+    float lit = 0.5 + 0.5 * sin(yaw + 0.7);
+    col = mix(col, col * (0.35 + 0.4 * lit), uMcWallShade * 0.01);
+  }
+  vjDepth = clamp(1.0 - (tHit - (length(ro) - 0.9)) / 1.8, 0.0, 1.0);   // 深度 (盤面の手前ほど 1)。折り系・3D FX が紙をこれで持ち上げる
   float a = 1.0 - isPaper * uMcClear * 0.01;
   bgAlpha = a;
   return col * a;
