@@ -19789,7 +19789,8 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxAudioFxAtk', 'audioFxAttack', f2);
     slid('pxAudioFxRel', 'audioFxRelease', f2);
     // 詳細行 ([data-sub-of="親 id"]) は親の量が実効 0 だと効かない。ON に見えるのに無反応、という誤解を避けるため
-    //   親が 0 の間は行を淡色 + disabled にする。親の input (手動 / MIDI / Random) と refreshPost (Reset / プリセット) で追従。
+    //   親が 0 の間は行を淡色にする (操作はできる = 親 0 のまま詳細の既定値を決めて Save できる)。
+    //   親の input (手動 / MIDI / Random) と refreshPost (Reset / プリセット) で追従。
     {
       const pane = document.querySelector('.pane[data-pane="post"]');
       if(pane) pane.addEventListener('input', ()=>UI._syncSubRows());
@@ -19901,7 +19902,6 @@ void mainImage(out vec4 o, in vec2 f){
     const on = id => { const r = (UI._postSlid || []).find(s => s.id === id); return !!r && App.deadParam(App.post[r.key] || 0) > 0.001; };
     pane.querySelectorAll('[data-sub-of]').forEach(el=>{
       const live = el.dataset.subOf.split(/\s+/).some(on);
-      el.disabled = !live;
       const row = el.closest('.row');
       if(row) row.style.opacity = live ? '' : '0.42';
     });
