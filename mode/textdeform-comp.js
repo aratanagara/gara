@@ -49,8 +49,7 @@ function updateCompositionStatus(){}
 // ソース座標はステージ左上基準なので、版面をシーン中央へ平行移動して渡す
 // (source 位置を直接使うエンジン = contourAtlas / feedbackChamber の構図が中央に来る)。
 function snapshotGlyphs(forceAll){
-  const src = TD._snapshotGlyphs();
-  const fs = params.fontSize;
+  const src = TD._snapshotGlyphs(TD._readFx());
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   for(const g of src){
     if(g.x < minX) minX = g.x;
@@ -61,26 +60,7 @@ function snapshotGlyphs(forceAll){
   const sw = compositionScene.width || 1080, sh = compositionScene.height || 1080;
   const offX = isFinite(minX) ? (sw - (maxX - minX))/2 - minX : 0;
   const offY = isFinite(minY) ? (sh - (maxY - minY))/2 - minY : 0;
-  const out = [];
-  for(let i=0; i<src.length; i++){
-    const g = src[i];
-    const x = g.x + offX, y = g.y + offY;
-    out.push({
-      ch: g.ch, upright: g.upright, accent: g.accent, opacity: 1,
-      x: x, y: y, w: g.w, h: g.h,
-      bx: x, by: y, bw: g.w, bh: g.h,
-      grid: !!params.gridEnabled,
-      ox: g.ox + offX, oy: g.oy + offY,
-      tx: g.tx + (params.vertical ? (g.bl || 0)*fs : 0),
-      ty: g.ty + (params.vertical ? 0 : -(g.bl || 0)*fs),
-      rot: (g.rot || 0) + (g.opRot || 0),
-      skewX: g.skx || 0, skewY: g.sky || 0,
-      scaleX: (g.scaleX || 1)*(g.mirX == null ? 1 : g.mirX),
-      scaleY: (g.scaleY || 1)*(g.mirY == null ? 1 : g.mirY),
-      misregX: g.misX || 0, misregY: g.misY || 0
-    });
-  }
-  return out;
+  return src.map(g => TD._upstreamGlyph(g, offX, offY));
 }
 
       // codepoint/glyph/box operators from that source glyph.

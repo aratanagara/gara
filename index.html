@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795044243">
+<link rel="stylesheet" href="style.css?v=1795045507">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -689,6 +689,44 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>FX Raster</label>
             <input type="range" id="tdCompRaster" min="0" max="1" step="0.01" value="0" title="FXラック: ラスタ質感 (スキャンライン/ノイズ。0で無効)">
             <div class="val" id="tdCompRasterVal">Off</div>
+          </div>
+          <!-- Surface: 上流 type-deformer 0.3 の Surface Operator 100 種 (mode/textdeform-surface.js)。md 単位。
+               fold-skip = カテゴリ折りたたみ (_initParamFold) で md 側の分類に混ざらないよう、ひとまとまりで置く -->
+          <div class="fold-skip">
+          <div class="row" style="margin-top:8px"><label>Surface</label>
+            <select id="tdSurfOn" data-norand style="flex:1;min-width:64px" title="Type Deformer 0.3 の Surface 効果 (100 種) を文字に重ねる。On にした時点でエンジン (約 2.7MB) を読み込む。md 単位 (Save で永続化、保存の無い md では Off)"><option value="off">Off</option><option value="on">On</option></select>
+          </div>
+          <div class="row" style="justify-content:flex-end"><span class="default-actions"><button id="tdSurfSave" title="選択中の md に Surface の設定を保存 (md の Save と同じ)">Save</button><button id="tdSurfReset" title="この Operator のパラメータを上流の既定値へ戻す">Reset</button><button id="tdSurfRand" title="この Operator のパラメータをランダムに変える (Strength / Chance / Speed / 色は変えない)">Random 🎲</button></span></div>
+          <div class="row"><label>S Op</label>
+            <select id="tdSurfOp" data-norand style="flex:1" title="Surface Operator (上流のカタログの分類順)"></select>
+          </div>
+          <div class="row"><label>S Str</label>
+            <input type="range" id="tdSurfStrength" data-norand min="0" max="1" step="0.01" value="1" title="効果の強さ">
+            <div class="val" id="tdSurfStrengthVal">1.00</div>
+          </div>
+          <div class="row"><label>S Chance</label>
+            <input type="range" id="tdSurfChance" data-norand min="0" max="1" step="0.01" value="1" title="効果を掛ける文字の割合">
+            <div class="val" id="tdSurfChanceVal">1.00</div>
+          </div>
+          <div class="row"><label>S Speed</label>
+            <input type="range" id="tdSurfSpeed" data-norand min="0" max="1" step="0.01" value="0.25" title="効果の位相の進み (1周/秒。beat モードは拍で脈打つ)。重い Operator は描き終えるまで位相が止まる">
+            <div class="val" id="tdSurfSpeedVal">0.25</div>
+          </div>
+          <div class="row"><label>S Source</label>
+            <select id="tdSurfSource" data-norand style="flex:1" title="効果が掛かった文字の元の字の見せ方"><option value="op">Operator default</option><option value="keep">Keep</option><option value="ghost">Ghost</option><option value="hide">Hide</option></select>
+          </div>
+          <div class="row"><label>S Opacity</label>
+            <input type="range" id="tdSurfOpacity" data-norand min="0" max="1" step="0.01" value="1" title="効果レイヤーの不透明度">
+            <div class="val" id="tdSurfOpacityVal">1.00</div>
+          </div>
+          <div class="row"><label>S Blend</label>
+            <select id="tdSurfBlend" data-norand style="flex:1" title="効果レイヤーの重ね方"><option value="op">Operator default</option><option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option><option value="difference">Difference</option><option value="lighter">Add</option></select>
+          </div>
+          <div class="row"><label>S Color</label>
+            <select id="tdSurfColor" data-norand style="flex:1" title="効果の色: Operator の既定色 / md の Ink / md の Accent"><option value="op">Operator default</option><option value="ink">Ink</option><option value="accent">Accent</option></select>
+          </div>
+          <div id="tdSurfParams"></div>
+          <div class="row"><div id="tdSurfStatus" style="font:600 10px var(--mono);color:var(--dim);flex:1"></div></div>
           </div>
         </div>
 
@@ -1931,55 +1969,56 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795044243"></script>
-<script src="mode/layer.js?v=1795044243"></script>
-<script src="vendor/iro.min.js?v=1795044243"></script>
-<script src="vendor/mediabunny.min.js?v=1795044243"></script>
-<script src="mode/textdeform.js?v=1795044243"></script>
-<script src="mode/textdeform-comp.js?v=1795044243"></script>
-<script src="mode/ugomeki.js?v=1795044243"></script>
-<script src="mode/slicer.js?v=1795044243"></script>
-<script src="mode/video.js?v=1795044243"></script>
-<script src="mode/aratanagara.js?v=1795044243"></script>
-<script src="vendor/p5.min.js?v=1795044243"></script>
-<script src="mode/cyberui.js?v=1795044243"></script>
-<script src="mode/novel.js?v=1795044243"></script>
-<script src="shaders/inkelly.js?v=1795044243"></script>
-<script src="sketchfx.js?v=1795044243"></script>
-<script src="pixelsortfx.js?v=1795044243"></script>
-<script src="shaders/boltzmann.js?v=1795044243"></script>
-<script src="mode/pen.js?v=1795044243"></script>
-<script src="shaders/caverns.js?v=1795044243"></script>
-<script src="mode/shelf.js?v=1795044243"></script>
-<script src="shaders/ribbon.js?v=1795044243"></script>
-<script src="mode/photoplane.js?v=1795044243"></script>
-<script src="mode/shredder.js?v=1795044243"></script>
-<script src="mode/transflock.js?v=1795044243"></script>
-<script src="mode/liquidpeel.js?v=1795044243"></script>
-<script src="mode/windflock.js?v=1795044243"></script>
-<script src="mode/rhizome.js?v=1795044243"></script>
-<script src="mode/surrealfloat.js?v=1795044243"></script>
-<script src="mode/chrometype.js?v=1795044243"></script>
-<script src="mode/tower4149.js?v=1795044243"></script>
-<script src="mode/fude.js?v=1795044243"></script>
-<script src="mode/image.js?v=1795044243"></script>
-<script src="mode/spacetype.js?v=1795044243"></script>
-<script src="fx3d.js?v=1795044243"></script>
-<script src="fx3d-layers.js?v=1795044243"></script>
-<script src="fx3d-cubes.js?v=1795044243"></script>
-<script src="fx3d-blinds.js?v=1795044243"></script>
-<script src="fx3d-diorama.js?v=1795044243"></script>
-<script src="fx3d-points.js?v=1795044243"></script>
-<script src="fx3d-gravity.js?v=1795044243"></script>
-<script src="fx3d-globe.js?v=1795044243"></script>
-<script src="pollockfx.js?v=1795044243"></script>
-<script src="overlay.js?v=1795044243"></script>
-<script src="gif.js?v=1795044243"></script>
-  <script src="ui-icons.js?v=1795044243"></script>
-  <script src="app.js?v=1795044243"></script>
-  <script src="ui-scrollbar.js?v=1795044243"></script>
-  <script src="ui-settings.js?v=1795044243"></script>
-<script src="camroll.js?v=1795044243" defer></script>
-<script src="dbltap.js?v=1795044243" defer></script>
+<script src="presets.js?v=1795045507"></script>
+<script src="mode/layer.js?v=1795045507"></script>
+<script src="vendor/iro.min.js?v=1795045507"></script>
+<script src="vendor/mediabunny.min.js?v=1795045507"></script>
+<script src="mode/textdeform.js?v=1795045507"></script>
+<script src="mode/textdeform-comp.js?v=1795045507"></script>
+<script src="mode/textdeform-surface.js?v=1795045507"></script>
+<script src="mode/ugomeki.js?v=1795045507"></script>
+<script src="mode/slicer.js?v=1795045507"></script>
+<script src="mode/video.js?v=1795045507"></script>
+<script src="mode/aratanagara.js?v=1795045507"></script>
+<script src="vendor/p5.min.js?v=1795045507"></script>
+<script src="mode/cyberui.js?v=1795045507"></script>
+<script src="mode/novel.js?v=1795045507"></script>
+<script src="shaders/inkelly.js?v=1795045507"></script>
+<script src="sketchfx.js?v=1795045507"></script>
+<script src="pixelsortfx.js?v=1795045507"></script>
+<script src="shaders/boltzmann.js?v=1795045507"></script>
+<script src="mode/pen.js?v=1795045507"></script>
+<script src="shaders/caverns.js?v=1795045507"></script>
+<script src="mode/shelf.js?v=1795045507"></script>
+<script src="shaders/ribbon.js?v=1795045507"></script>
+<script src="mode/photoplane.js?v=1795045507"></script>
+<script src="mode/shredder.js?v=1795045507"></script>
+<script src="mode/transflock.js?v=1795045507"></script>
+<script src="mode/liquidpeel.js?v=1795045507"></script>
+<script src="mode/windflock.js?v=1795045507"></script>
+<script src="mode/rhizome.js?v=1795045507"></script>
+<script src="mode/surrealfloat.js?v=1795045507"></script>
+<script src="mode/chrometype.js?v=1795045507"></script>
+<script src="mode/tower4149.js?v=1795045507"></script>
+<script src="mode/fude.js?v=1795045507"></script>
+<script src="mode/image.js?v=1795045507"></script>
+<script src="mode/spacetype.js?v=1795045507"></script>
+<script src="fx3d.js?v=1795045507"></script>
+<script src="fx3d-layers.js?v=1795045507"></script>
+<script src="fx3d-cubes.js?v=1795045507"></script>
+<script src="fx3d-blinds.js?v=1795045507"></script>
+<script src="fx3d-diorama.js?v=1795045507"></script>
+<script src="fx3d-points.js?v=1795045507"></script>
+<script src="fx3d-gravity.js?v=1795045507"></script>
+<script src="fx3d-globe.js?v=1795045507"></script>
+<script src="pollockfx.js?v=1795045507"></script>
+<script src="overlay.js?v=1795045507"></script>
+<script src="gif.js?v=1795045507"></script>
+  <script src="ui-icons.js?v=1795045507"></script>
+  <script src="app.js?v=1795045507"></script>
+  <script src="ui-scrollbar.js?v=1795045507"></script>
+  <script src="ui-settings.js?v=1795045507"></script>
+<script src="camroll.js?v=1795045507" defer></script>
+<script src="dbltap.js?v=1795045507" defer></script>
 </body>
 </html>

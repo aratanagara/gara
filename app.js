@@ -17770,6 +17770,58 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const tdCompReseed = $('#tdCompReseed');
     if(tdCompReseed) tdCompReseed.addEventListener('click', ()=>tdCompSet({ seed: Math.floor(Math.random()*1e6) }));
+    // Surface (上流 type-deformer 0.3 の Surface Operator。md 単位: live 適用 + 選択中 md へ書き込み → Save で永続化)
+    const tdSurfStore = ()=>{
+      const i = this._fixedTextDeformMdIndex ? this._fixedTextDeformMdIndex() : -1;
+      const pr = (i >= 0 && typeof TextDeform !== 'undefined') ? TextDeform.presets[i] : null;
+      if(pr) pr.p = Object.assign({}, pr.p || {}, { surf: TDSurf.snapshot() });
+      this.refreshTextDeform();
+      App._undoSchedule();
+    };
+    const tdSurfSet = (over)=>{
+      if(typeof TDSurf === 'undefined') return;
+      TDSurf.set(over);
+      tdSurfStore();
+    };
+    if(typeof TDSurf !== 'undefined') TDSurf.onStatus(()=>this.refreshTextDeformSurface());
+    const tdSurfOn = $('#tdSurfOn');
+    if(tdSurfOn) tdSurfOn.addEventListener('change', ()=>tdSurfSet({ enabled: tdSurfOn.value === 'on' }));
+    const tdSurfOp = $('#tdSurfOp');
+    if(tdSurfOp) tdSurfOp.addEventListener('change', ()=>{
+      tdSurfSet({ op: tdSurfOp.value });
+      toast('Surface: ' + tdSurfOp.options[tdSurfOp.selectedIndex].text);
+    });
+    [['tdSurfStrength','strength'],['tdSurfChance','chance'],['tdSurfSpeed','speed'],['tdSurfOpacity','opacity']].forEach(([id, key])=>{
+      const el = $('#'+id);
+      if(el) el.addEventListener('input', ()=>tdSurfSet({ [key]: parseFloat(el.value) }));
+    });
+    [['tdSurfSource','source'],['tdSurfBlend','blend'],['tdSurfColor','color']].forEach(([id, key])=>{
+      const el = $('#'+id);
+      if(el) el.addEventListener('change', ()=>tdSurfSet({ [key]: el.value }));
+    });
+    const tdSurfParams = $('#tdSurfParams');
+    if(tdSurfParams){
+      const onParam = (e)=>{
+        const el = e.target, key = el.dataset && el.dataset.surfKey;
+        if(!key || typeof TDSurf === 'undefined') return;
+        const v = el.type === 'range' ? parseFloat(el.value) : el.value;
+        tdSurfSet({ params: { [TDSurf.cfg.op]: { [key]: v } } });
+      };
+      tdSurfParams.addEventListener('input', onParam);
+      tdSurfParams.addEventListener('change', e=>{ if(e.target.tagName === 'SELECT') onParam(e); });
+    }
+    const tdSurfSave = $('#tdSurfSave');
+    if(tdSurfSave) tdSurfSave.addEventListener('click', ()=>this.saveTextDeformMdDefault());
+    const tdSurfReset = $('#tdSurfReset');
+    if(tdSurfReset) tdSurfReset.addEventListener('click', ()=>{
+      if(typeof TDSurf === 'undefined') return;
+      TDSurf.resetParams(TDSurf.cfg.op); tdSurfStore();
+    });
+    const tdSurfRand = $('#tdSurfRand');
+    if(tdSurfRand) tdSurfRand.addEventListener('click', ()=>{
+      if(typeof TDSurf === 'undefined') return;
+      TDSurf.randomize(TDSurf.cfg.op); tdSurfStore();
+    });
     const tdRandOne = $('#tdMdRandOne');
     if(tdRandOne) tdRandOne.addEventListener('click', ()=> UI.randomizeTextDeformMd());
     const bindComp = (id, fn)=>{
@@ -23627,6 +23679,7 @@ void mainImage(out vec4 o, in vec2 f){
     const gridSel = $('#tdMdGrid');
     if(gridSel) over.gridEnabled = gridSel.value === 'on';
     if(typeof TDComp !== 'undefined') over.comp = TDComp.snapshot();
+    if(typeof TDSurf !== 'undefined') over.surf = TDSurf.snapshot();
     const fontSel = $('#tdMdFont');
     if(fontSel) over.fontFamily = fontSel.value;
     const lawSel = $('#tdMdRandomLaw');
@@ -23812,6 +23865,87 @@ void mainImage(out vec4 o, in vec2 f){
       setComp('tdCompFeedback', 'tdCompFeedbackVal', c.fxRack.feedback.enabled ? c.fxRack.feedback.amount : 0, offPct);
       setComp('tdCompChroma', 'tdCompChromaVal', c.fxRack.chromaticSplit.enabled ? c.fxRack.chromaticSplit.amount : 0, offPct);
       setComp('tdCompRaster', 'tdCompRasterVal', c.fxRack.rasterMaterial.enabled ? c.fxRack.rasterMaterial.amount : 0, offPct);
+    }
+    this.refreshTextDeformSurface();
+  },
+
+  // Surface 欄 (md 単位 — 固定 md 選択時のみ編集可)。Operator のパラメータ行は選んだ Operator の表から作り直す
+  refreshTextDeformSurface(){
+    if(typeof TDSurf === 'undefined') return;
+    const S = TDSurf, c = S.cfg;
+    const fixed = (this._fixedTextDeformMdIndex ? this._fixedTextDeformMdIndex() : -1) >= 0;
+    const dz = v=> Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2);   // デッドゾーン表示 (規約)
+    const setSel = (id, v)=>{ const el = $('#'+id); if(el){ el.value = String(v); el.disabled = !fixed; } };
+    const setRange = (id, v, fmt)=>{
+      const el = $('#'+id), out = $('#'+id+'Val');
+      if(el){ el.value = String(v); el.disabled = !fixed; }
+      if(out) out.textContent = fmt(v);
+    };
+    setSel('tdSurfOn', c.enabled ? 'on' : 'off');
+    setRange('tdSurfStrength', c.strength, dz);
+    setRange('tdSurfChance', c.chance, dz);
+    setRange('tdSurfSpeed', c.speed, dz);
+    setRange('tdSurfOpacity', c.opacity, v=>v.toFixed(2));
+    setSel('tdSurfSource', c.source); setSel('tdSurfBlend', c.blend); setSel('tdSurfColor', c.color);
+    ['tdSurfSave','tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !fixed || !S.meta; });
+    const opSel = $('#tdSurfOp');
+    if(opSel){
+      if(S.meta && opSel.dataset.filled !== '1'){
+        opSel.innerHTML = '';
+        for(const g of S.meta.groups){
+          const og = document.createElement('optgroup'); og.label = g;
+          for(const [id, o] of Object.entries(S.meta.ops)) if(o.group === g){
+            const opt = document.createElement('option');
+            opt.value = id; opt.textContent = o.label + (S.HEAVY.includes(id) ? ' (重い)' : ''); opt.title = o.guide;
+            og.appendChild(opt);
+          }
+          opSel.appendChild(og);
+        }
+        opSel.dataset.filled = '1';
+      }
+      if(!S.meta && !opSel.options.length){ const opt = document.createElement('option'); opt.value = c.op; opt.textContent = c.op; opSel.appendChild(opt); }
+      opSel.value = c.op; opSel.disabled = !fixed || !S.meta;
+    }
+    const box = $('#tdSurfParams');
+    if(box){
+      const meta = S.meta && S.meta.ops[c.op];
+      const sig = meta ? c.op : '';
+      if(box.dataset.op !== sig){
+        box.innerHTML = '';
+        if(meta) for(const k of meta.keys){
+          const row = document.createElement('div'); row.className = 'row';
+          const lab = document.createElement('label'); lab.className = 'sub-label'; lab.textContent = k.label; lab.title = k.key;
+          row.appendChild(lab);
+          let el;
+          if(k.kind === 'select'){
+            el = document.createElement('select'); el.style.flex = '1';
+            for(const [v, t] of k.options){ const o = document.createElement('option'); o.value = v; o.textContent = t; el.appendChild(o); }
+          } else if(k.kind === 'color'){
+            el = document.createElement('input'); el.type = 'color';
+          } else {
+            el = document.createElement('input'); el.type = 'range'; el.min = k.min; el.max = k.max; el.step = k.step;
+          }
+          el.dataset.surfKey = k.key; el.dataset.norand = '1'; el.title = k.key;
+          row.appendChild(el);
+          if(k.kind === 'range'){ const v = document.createElement('div'); v.className = 'val'; row.appendChild(v); }
+          box.appendChild(row);
+        }
+        box.dataset.op = sig;
+      }
+      if(meta) box.querySelectorAll('[data-surf-key]').forEach(el=>{
+        const v = S.opValue(c.op, el.dataset.surfKey);
+        if(v != null) el.value = String(v);
+        el.disabled = !fixed;
+        const out = el.type === 'range' ? el.nextElementSibling : null;
+        if(out) out.textContent = String(+(+el.value).toFixed(3));
+      });
+    }
+    const st = $('#tdSurfStatus');
+    if(st){
+      st.textContent = S.status === 'loading' ? 'Surface: エンジンを読み込み中…'
+        : S.status === 'error' ? 'Surface: ' + S.error
+        : S.error ? 'Surface: ' + S.error
+        : (c.enabled && S.lastMs) ? 'Surface: ' + Math.round(S.lastMs) + 'ms / frame' : '';
     }
   },
 
