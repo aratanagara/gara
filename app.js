@@ -484,6 +484,7 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uA, uB;
 uniform float uMix;
 uniform float uShowA, uShowB;
+uniform int   uMatte;     // 3D FX 中の紙抜き (@matte): 1 = Slot A だけ / 2 = Slot B だけを実 alpha のまま通す (0 = 従来)
 uniform vec3  uBgColA;    // Slot A の背景色 (A の透明部分を埋める下地)。既定 黒
 uniform float uZoomA, uZoomB;   // mode エンジン用 テクスチャズーム (shader は iZoom で処理済のため 1.0)
 uniform vec2  uPanA, uPanB;     // mode エンジン用 テクスチャパン
@@ -693,6 +694,9 @@ vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
 vec4 sampleAB(vec2 uv){
   vec4 ca = texture(uA, fl_mirror((uv - 0.5) / uZoomA + 0.5 - uPanA));   // mode エンジンの user zoom/pan (領域外はミラー)
   vec4 cb = texture(uB, fl_mirror((uv - 0.5) / uZoomB + 0.5 - uPanB));
+  // 紙抜き: 映っているスロットの前乗算の色を戻して alpha ごと返す (紙 = alpha 0。紙の色は 3D 段の最後に敷く)
+  if(uMatte == 1) return vec4(ca.rgb / max(ca.a, 1e-4), ca.a);
+  if(uMatte == 2) return vec4(cb.rgb / max(cb.a, 1e-4), cb.a);
   // Slot A は出力の下地。透過している所を「A の背景色」で埋めて不透明にする (既定 黒 = 従来と同じ絵)
   ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);
   float showA = clamp(uShowA, 0.0, 1.0);
@@ -1690,7 +1694,7 @@ void main(){
     col = mix(col, fc, clamp(fl, 0.0, 1.0));
   }
 
-  frag = vec4(col, 1.0);
+  frag = (uMatte > 0) ? vec4(col * srcA, srcA) : vec4(col, 1.0);   // 紙抜き中は前乗算 + 実 alpha で 3D 段へ渡す
 }`;
     this._compositeFS = COMPOSITE_FS;   // Audio / Pattern を 3D のあとに掛けるパス (_applyAudioPatternPost) がこのソースから作る
     this._linkDeferred('compositeProg', COMPOSITE_FS);
@@ -4627,6 +4631,7 @@ vec3 f3Paper(vec2 q, float lift){
     slot.beatJump = !/_setBgTime|getBeat|iBeat\b|iBeatPhase|iBeatMode/.test(src);
     slot.gradMask = /@gradmask/.test(src);
     slot.bKey = /@bkey/.test(src);
+    slot.matte = (/@matte\s+(\w+)/.exec(src) || [])[1] || null;   // 3D FX 中に紙を透過で出せるシェーダの、紙の色の param 名
     slot.params = pp.params;
     if(typeof App !== 'undefined' && App.applyShaderParamDefaults) App.applyShaderParamDefaults(slot);   // 保存済みシェーダ既定値を反映
     // 状態の復元 (opts.params): 保存した値を同名のパラメータへ戻す。
@@ -4645,7 +4650,7 @@ vec3 f3Paper(vec2 q, float lift){
     for(const n of ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate',
                     'iChannel0','iChannel1','iChannel2','iChannel3',
                     'iBPM','iBeat','iBeatPhase','iEnergy','iAttack','iAttackEnv','iCrossfade','iBeatMode','iPan','iZoom',
-                    'time','mouse','resolution','backbuffer','beat','uCosGrad','uCosPalette','uFFT','uBsodText','uSlotIsA','uSlotIsAReal','iAudio','iAudioSeed','uGradStops[0]','uGradPos[0]','uGradN']){
+                    'time','mouse','resolution','backbuffer','beat','uCosGrad','uCosPalette','uFFT','uBsodText','uSlotIsA','uSlotIsAReal','uFx3dMatte','iAudio','iAudioSeed','uGradStops[0]','uGradPos[0]','uGradN']){
       slot.uniforms[n] = U(n);
     }
     slot.uniforms.iChannelResolution = U('iChannelResolution[0]');
@@ -4799,6 +4804,7 @@ vec3 f3Paper(vec2 q, float lift){
     if(u.uCosPalette) gl.uniform1i(u.uCosPalette, (App.post && App.post.cosPalette) || 0);
     if(u.uSlotIsA) gl.uniform1f(u.uSlotIsA, slotKey === 'A' ? 1.0 : 0.0);   // 透過対応シェーダが A=黒背景 判定に使用
     if(u.uSlotIsAReal) gl.uniform1f(u.uSlotIsAReal, slotKey === 'A' ? 1.0 : 0.0);   // 自前 uSlotIsA シェーダの背景色ラッパ用 (preprocess で差し替え)
+    if(u.uFx3dMatte) gl.uniform1f(u.uFx3dMatte, this._matte && this._matte.slot === slotKey ? 1.0 : 0.0);   // 3D FX 中は紙を透過で出す (@matte)
     if(u.iAudio) gl.uniform1f(u.iAudio, Audio.react || 0);                   // 音域+アタックで整形した音声リアクト
     if(u.iAudioSeed) gl.uniform1f(u.iAudioSeed, Audio.hitSeed || 0);         // アタックごとに変わる乱数
 
@@ -5028,6 +5034,7 @@ void main(){
     gl.uniform1f(U('uShowA'),     App.slotVisibleAmount ? App.slotVisibleAmount('A') : (App.slotVisible && App.slotVisible.A === false ? 0 : 1));
     gl.uniform1f(U('uShowB'),     (App.slotVisibleAmount ? App.slotVisibleAmount('B') : (App.slotVisible && App.slotVisible.B === false ? 0 : 1)) * (this._fx3dBMul == null ? 1 : this._fx3dBMul));
     { const bg = App.bgAColor(); gl.uniform3f(U('uBgColA'), bg[0], bg[1], bg[2]); }   // Slot A の背景色 (本命/フォールバック共通)
+    gl.uniform1i(U('uMatte'), (this._matte && P === this.compositeProg) ? (this._matte.slot === 'A' ? 1 : 2) : 0);
     // mode エンジン(FBO 独立描画)には user zoom/pan を合成段でテクスチャ適用 (shader は iZoom 済のため 1.0)
     { const modeSet = GL._modeZoomSet || (GL._modeZoomSet = new Set(App.modeStateKinds || []));
       const zp = (key)=>{
@@ -5266,6 +5273,7 @@ void main(){
     if(_blend) this._fx3dBlendOver(this._fx3dFrame.a);
     this._applyFlamesPost(p, _safe);
     this._applyUzumakiPost(p, _safe);   // 渦巻き展開 (折り紙系と同じ幾何変形枠)
+    if(this._matte) this._fx3dBgNeed = true;   // 紙抜き中は、どの段も描かなかったフレームでも紙を敷く (alpha 0 の紙を画面へ出さない)
     this._fx3dBgUnder();                // 折り系 / Uzumaki が抜いた背景 (alpha < 1) に 3D BG を敷く
     this._applyAudioPatternPost(p, _safe);   // 4.5) Audio / Pattern: 3D 段のあと (3D で折れた・吸い込まれた絵に乗る)
     this._applyShardsPost(p, _safe);         // 4.6) Shards: 3D / Audio・Pattern のあとの画面を多角形に切り抜いて音で拡縮
@@ -6671,6 +6679,40 @@ void main(){
     }
     if(!foldNext) this._fx3dBgUnder();   // 折り系が続くときは、折ったあと (Uzumaki の後) に敷く
   },
+  // 紙抜き (@matte): 3D FX / 折りが効いていて、@matte シェーダのスロットだけが映っているフレームなら {slot, paper()} を返す。
+  //   そのフレームは紙を透過 (alpha 0) のまま 3D 段まで運び、物体だけを 3D FX に乗せる。紙の色は 3D 段の最後 (_fx3dBgUnder) に敷く。
+  //   3D 段より前で画面の明るさ・alpha を読む段 (Water / Boltzmann / マチエール / Tunnel) やプリセット切替の最中は従来どおり
+  _matteFrame(p){
+    if(App.safeMode || !p || !this.compositeProg) return null;
+    const on = (k)=>(+p[k] || 0) > 0.001;
+    const fx = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'].some(on)
+      || (typeof Fx3d !== 'undefined' && Fx3d.ORDER.some(n=>on(Fx3d.KEY[n]) || Fx3d.effE[n] > 0.001));
+    if(!fx || ['sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','candy'].some(on)) return null;
+    if(this._presetTr && this._presetTr.on) return null;
+    const vis = (k)=>App.slotVisibleAmount ? App.slotVisibleAmount(k) : 1;
+    const has = (k)=>this.slots[k].kind !== 'none';
+    const bOn = has('B') && vis('B') > 0.001 && App.crossfade > 0.001;
+    const aOn = has('A') && vis('A') > 0.001;
+    const key = (aOn && !bOn) ? 'A' : (bOn && !aOn) ? 'B' : null;
+    const s = key && this.slots[key];
+    if(!s || !s.ready) return null;
+    if(s.kind && s.kind !== 'shader'){
+      // 3D で描くエンジン: そのフレームは背景を塗らずに描かせ (opaque:false)、エンジンの背景色を最後に敷く
+      if(!this.MATTE_KINDS.includes(s.kind)) return null;
+      const EP = App._engineP(s.kind);
+      if(!EP) return null;
+      if(s.kind === 'layer'){ const v = EP.bg != null ? EP.bg : 1, c = Array.isArray(EP.bgColor) ? EP.bgColor : [1, 1, 1]; return { slot:key, paper:()=>[c[0] * v, c[1] * v, c[2] * v] }; }
+      if(s.kind === 'slicer') return { slot:key, paper:()=>App.bgAColor().slice(0, 3) };   // Slicer は背景を alpha 0 で出し、合成が Slot A 背景色で埋めている
+      return { slot:key, paper:()=>App.bgTarget(key).get() };
+    }
+    if(!s.matte || !s.params) return null;
+    const q = s.params.find(x=>x.type === 'color' && x.name === s.matte);
+    return q ? { slot:key, paper:()=>q.value.slice(0, 3) } : null;
+  },
+  // 紙抜きに対応した 3D エンジン (render が opaque:false で背景を透過にできるもの)。tower4149 は自前の 3D FX 経路を持つので入れない
+  MATTE_KINDS: ['layer','photoplane','slicer','spacetype','shredder','transflock','windflock','liquidpeel','chrometype'],
+  // エンジンへ渡す opaque: 紙抜きフレームのスロットだけ false (それ以外は undefined = エンジンの従来の判定)
+  _matteOpaque(slotKey){ return (this._matte && this._matte.slot === slotKey) ? false : undefined; },
   // 3D 段の背景 (3D BG) を小さなテクスチャ _fx3dBg に作る。3D 段に入る前の画面から 1 フレームに 1 回。
   //   Auto = 元の画面を大きくぼかして沈めた絵 / Color = Params の背景色 (App.bgTarget: uBgColor → エンジンの背景 → Slot A 背景色) のベタ
   _fx3dBgPrep(p, safe){
@@ -6715,7 +6757,8 @@ void main(){
       if(!this._fx3dBgProg){ console.error('fx3d bg program failed:', pr && pr.err); return; }
     }
     const P = this._fx3dBgProg, U = (n)=>gl.getUniformLocation(P, n);
-    const color = App.post.fx3dBg === 'color';
+    const M = this._matte;   // 紙抜き中は 3D BG の設定によらず紙の色を敷く
+    const color = !!M || App.post.fx3dBg === 'color';
     if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
     gl.bindFramebuffer(gl.FRAMEBUFFER, T.fbo);
     gl.viewport(0, 0, bw, bh);
@@ -6727,7 +6770,7 @@ void main(){
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uCell'), 1 / bw, 1 / bh);
     gl.uniform1f(U('uMode'), color ? 1 : 0);
-    const c = color ? App.bgTarget().get() : [0, 0, 0];
+    const c = M ? M.paper() : color ? App.bgTarget().get() : [0, 0, 0];
     gl.uniform3f(U('uColor'), c[0], c[1], c[2]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
@@ -8900,6 +8943,7 @@ vec3 fx3dFoldShade(vec3 c){
       this._freezeSources(realDt);                 // シェーダ/mode/video の更新を停止(前フレーム保持)
     } else {
       if(this._wasFrozen && !freezeRequested) this._resumeVideos();     // フリーズ解除で動画を再開
+      this._matte = this._matteFrame(post);
       this._renderVisibleSlot('A', dt, realDt);
       this._renderVisibleSlot('B', dt, realDt);
     }
@@ -9039,6 +9083,7 @@ vec3 fx3dFoldShade(vec3 c){
         beat: slotScaledBeat,
         beatPhase: slotScaledBeat % 1,
         slot: slotKey,
+        opaque: this._matteOpaque(slotKey),
       });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -9087,7 +9132,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(typeof SpaceType === 'undefined') return;
       if(!SpaceType.initialized) SpaceType.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      SpaceType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock });
+      SpaceType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: this._matteOpaque(slotKey) });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9123,7 +9168,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!Slicer.initialized) Slicer.init(this.gl);
       Slicer.update(slotScaledBeat, 1/60);
       const target = slot.fbos[slot.fbIdx];
-      Slicer.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
+      Slicer.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, opaque: this._matteOpaque(slotKey) });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9230,7 +9275,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!PhotoPlane.initialized) PhotoPlane.init(this.gl);
       PhotoPlane.update();
       const target = slot.fbos[slot.fbIdx];
-      PhotoPlane.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock });
+      PhotoPlane.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: this._matteOpaque(slotKey) });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9242,7 +9287,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!Shredder.initialized) Shredder.init(this.gl);
       Shredder.update();
       const target = slot.fbos[slot.fbIdx];
-      Shredder.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      Shredder.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9254,7 +9299,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!TransFlock.initialized) TransFlock.init(this.gl);
       TransFlock.update();
       const target = slot.fbos[slot.fbIdx];
-      TransFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      TransFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9266,7 +9311,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!WindFlock.initialized) WindFlock.init(this.gl);
       WindFlock.update();
       const target = slot.fbos[slot.fbIdx];
-      WindFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      WindFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9312,7 +9357,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!ChromeType.initialized) ChromeType.init(this.gl);
       ChromeType.update({ beat: slotScaledBeat, clock: slot._clock });
       const target = slot.fbos[slot.fbIdx];
-      ChromeType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      ChromeType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9348,7 +9393,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!LiquidPeel.initialized) LiquidPeel.init(this.gl);
       LiquidPeel.update();
       const target = slot.fbos[slot.fbIdx];
-      LiquidPeel.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      LiquidPeel.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -12408,9 +12453,9 @@ const App = {
   },
   // 背景色の入れ先 (優先順) を {label, get, set, refresh} で返す: アクティブスロットのシェーダの uBgColor → エンジンの背景 (P の paper / bgColor / bg) → Slot A 背景色。
   //   Option のカラーサークル / スポイトと、3D 段の背景 (3D BG = Color) が共有する
-  bgTarget(){
+  bgTarget(key = this.activeSlot){
     const toHexRgb = (rgb)=>'#' + rgb.map(v=>Math.round(Math.max(0, Math.min(1, v))*255).toString(16).padStart(2,'0')).join('');
-    const slot = GL.slots[this.activeSlot];
+    const slot = GL.slots[key];
     const bgParam = (slot && (!slot.kind || slot.kind === 'shader') && slot.params) ? slot.params.find(q=>q.type === 'color' && q.name === 'uBgColor') : null;
     if(bgParam) return { label:'背景色 (uBgColor)', get:()=>bgParam.value.slice(), set:(rgb)=>{ bgParam.value = rgb.slice(); }, refresh:()=>{ if(UI.refreshParams) UI.refreshParams(); } };
     const EP = (slot && slot.kind && this._engineP) ? this._engineP(slot.kind) : null;
@@ -13929,11 +13974,22 @@ const App = {
     // 透過対応シェーダ (bgAlpha を書くもの) だけ背景色 uBgColor を持たせる。
     // 背景 (bgAlpha<1) に uBgColor を加算 → 既定 #000000 では従来と完全に同じ絵。
     const usesAlpha = /\bbgAlpha\s*=/.test(bgText);
+    // 紙抜き (@matte <紙の色の param>): 3D FX 中 (uFx3dMatte = 1) は紙を透過で出す = Slot A でも実 alpha・uBgColor を敷かない。紙の色は 3D 段の最後に敷く。
+    //   紙の色を rgb に焼き込むシェーダは自前で @matte と uFx3dMatte を持つ。3D 対応 (vjDepth を書く) の透過シェーダは、背景 = uBgColor として自動で付ける
+    const ownMatte = /@matte\s+\w+/.test(bgText) && /\buniform\s+float\s+uFx3dMatte\s*;/.test(bgText);
+    const autoMatte = usesAlpha && !ownMatte && /\bvjDepth\s*=/.test(bgText);
+    const matte = usesAlpha && (ownMatte || autoMatte);
     const bgColorDecl = usesAlpha ? `
 // @param uBgColor color = #000000
 uniform vec3 uBgColor;    // 背景色 (bgAlpha<1 の領域に加算。既定=黒)
-` : '';
-    const outBlock = usesAlpha
+` + (autoMatte ? `// @matte uBgColor
+uniform float uFx3dMatte; // app が設定: 1 = 3D FX 中 (背景を透過で出す)
+` : '') : '';
+    const outBlock = matte
+      ? `  float _bgA = clamp(bgAlpha, 0.0, 1.0);
+  if(uFx3dMatte < 0.5) col += uBgColor * (1.0 - _bgA);   // 背景を uBgColor で塗る
+  fragColor = vec4(col, (uSlotIsA > 0.5 && uFx3dMatte < 0.5) ? 1.0 : _bgA);   // Slot A は不透明 (3D FX 中は実 alpha) / それ以外は透過`
+      : usesAlpha
       ? `  float _bgA = clamp(bgAlpha, 0.0, 1.0);
   col += uBgColor * (1.0 - _bgA);                    // 背景を uBgColor で塗る
   fragColor = vec4(col, (uSlotIsA > 0.5) ? 1.0 : _bgA);   // Slot A は不透明 / それ以外は透過`

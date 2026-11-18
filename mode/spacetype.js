@@ -1343,7 +1343,8 @@ void main(){
     gl.viewport(0, 0, w, h);
     const bg = this._hex2rgb(P.paper);
     const transBg = (opts.slot === 'B') || P.transparentBg;
-    gl.clearColor(bg[0], bg[1], bg[2], transBg ? 0.0 : 1.0);   // Slot B / BG透過ON は背景透過
+    if(opts.opaque === false) gl.clearColor(0, 0, 0, 0);   // 3D FX の紙抜き: 背景を塗らず透過 (背景色は 3D 段の最後に敷かれる)
+    else gl.clearColor(bg[0], bg[1], bg[2], transBg ? 0.0 : 1.0);   // Slot B / BG透過ON は背景透過
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
     gl.enable(gl.BLEND); gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
