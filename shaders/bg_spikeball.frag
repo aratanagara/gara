@@ -239,6 +239,7 @@ vec3 bg_spikeball(vec2 fc){
     float t = sb_trace(ro, rd, t0, t1);
     if(t > 0.0){
       bgAlpha = 1.0;                                // 被写体は不透明
+      vjDepth = clamp(1.0 - (t - (length(ro) - R)) / (2.0 * R), 0.0, 1.0);   // 深度 (球の手前 1 → 奥 0)。折り系が紙をこれで持ち上げる
       vec3 p = ro + rd*t;
       vec3 nor = sb_normal(p);
       vec3 rr = reflect(rd, nor);

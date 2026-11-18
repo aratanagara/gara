@@ -177,6 +177,7 @@ vec3 bg_twistors(vec2 fc){
   bgAlpha = 0.0;                                     // 背景は透明
   if(march.x == 1.0){
     bgAlpha = 1.0;                                   // 被写体は不透明
+    vjDepth = exp(-march.y * 0.12);                  // 深度 (近いほど 1)。折り系が紙をこれで持ち上げる
     vec3 n = tw_normal(point, e);
     // クローム: 環境反射 + フレネル + 鋭いハイライト + AO
     vec3 rr = reflect(rayDir, n);
