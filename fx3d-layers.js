@@ -113,8 +113,8 @@ Fx3d.EXTRA.layer = {
     const spinY = this._spin + 0.9 * Math.sin(t * 0.23), spinX = 0.35 * Math.sin(t * 0.17);
     const spinW = Math.min(1, k / 0.35);
     const ph = beat - Math.floor(beat);
-    const gap = 0.22 * k * (1 + 0.9 * Math.exp(-ph * 5)) * Math.max(0.5, 12 / Math.max(n, 6));   // 拍頭で間隔が開く。枚数が多いほど詰める
-    const cam = Fx3d.camera(asp, 0.35 * k, 0.2 * k, 1.35 + 1.2 * k);
+    const gap = 1.5 / Math.max(n - 1, 1) * k * (1 + 0.45 * Math.exp(-ph * 5));   // 積層の厚みは枚数によらず一定 (拍頭で間隔が開く)
+    const cam = Fx3d.camera(asp, 0.35 * k, 0.2 * k, 1.35 + 0.85 * k);   // 積層で画面を埋める距離 (余白を作らない / 積層の中に入らない)
     const M = Fx3d.msaa(gl, o.w, o.h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
     gl.viewport(0, 0, o.w, o.h);
@@ -122,7 +122,7 @@ Fx3d.EXTRA.layer = {
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
     gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    const size = 1 + (0.62 * pct - 1) * k;
+    const size = 1 + (0.92 * pct - 1) * k;
     const setU = (pr)=>{
       gl.useProgram(pr);
       if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
