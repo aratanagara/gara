@@ -19862,32 +19862,6 @@ void mainImage(out vec4 o, in vec2 f){
       fxa.checked = !!App.post.fxaa;
       fxa.addEventListener('change', ()=>{ App.post.fxaa = fxa.checked; });
     }
-    // 欄へジャンプするチップ行 (見出し名を欄から拾う)
-    { const chips = $('#fxJumpChips'), pane = document.querySelector('.pane[data-pane="post"]');
-      if(chips && pane) pane.querySelectorAll(':scope > .section').forEach(sec=>{
-        const h3 = sec.querySelector(':scope > h3'); if(!h3) return;
-        const b = document.createElement('button'); b.type = 'button';
-        b.textContent = (h3.childNodes[0].textContent || '').trim();
-        b.addEventListener('click', ()=>sec.scrollIntoView({block:'start', behavior:'smooth'}));
-        chips.appendChild(b); b._sec = sec;
-      });
-      // チップ行の高さを欄の scroll-margin-top へ / スクロール位置の欄のチップに .on (タッチの横スクロールでも見えるよう寄せる)
-      const bar = chips && chips.closest('.fxjump');
-      if(bar && window.ResizeObserver) new ResizeObserver(()=>pane.style.setProperty('--fxjump-h', bar.offsetHeight+'px')).observe(bar);
-      if(chips && bar){
-        let cur = null;
-        const upd = ()=>{
-          const line = pane.getBoundingClientRect().top + bar.offsetHeight + 12; let hit = null;
-          for(const b of chips.children){ if(b._sec && b._sec.offsetParent && b._sec.getBoundingClientRect().top <= line) hit = b; }
-          if(!hit) hit = chips.firstElementChild;
-          if(pane.scrollTop + pane.clientHeight >= pane.scrollHeight - 2 && pane.scrollTop > 0){ for(const b of chips.children){ if(b._sec && b._sec.offsetParent) hit = b; } }   // 最下端では最後の欄
-          if(hit === cur) return;
-          if(cur) cur.classList.remove('on');
-          cur = hit; if(cur){ cur.classList.add('on'); if(!matchMedia('(hover:hover)').matches) cur.scrollIntoView({inline:'nearest', block:'nearest'}); }
-        };
-        let raf = 0; const sched = ()=>{ if(!raf) raf = requestAnimationFrame(()=>{ raf = 0; upd(); }); };
-        const sc = pane.closest('#side') || pane; sc.addEventListener('scroll', sched, {passive:true}); pane.addEventListener('scroll', sched, {passive:true}); sched();
-      } }
     const reset = $('#btnPostReset');
     if(reset) reset.addEventListener('click', ()=>App._confirm('FX をすべて既定値へ戻しますか？', ()=>{
       App.post = App.postDefaults();

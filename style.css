@@ -211,13 +211,8 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 
 /* Shader thumbnail grid */
 #thumbGrid{margin-top:8px}
-.fxjump{position:sticky;top:-10px;z-index:5;display:flex;align-items:center;gap:6px;margin:-10px -10px 6px;padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
-.fxjump-chips{flex:1;min-width:0;display:flex;gap:4px;overflow-x:auto;scrollbar-width:none}
-.fxjump-chips::-webkit-scrollbar{display:none}
-@media (hover:hover){ .fxjump-chips{flex-wrap:wrap;overflow-x:visible} .fxjump .fxjump-chips button{padding:0 6px} }
-.fxjump-chips button.on{background:var(--acc);color:var(--acc-fg);border-color:var(--acc)}
+.fxjump{position:sticky;top:-10px;z-index:5;display:flex;align-items:center;justify-content:flex-end;gap:6px;margin:-10px -10px 6px;padding:5px 10px;background:var(--panel);border-bottom:1px solid var(--line)}
 .fxjump button{flex:0 0 auto;height:var(--ctl-h);padding:0 8px;white-space:nowrap}
-.pane[data-pane=post] > .section{scroll-margin-top:calc(var(--fxjump-h,34px) + 10px)}
 @media (max-height:500px) and (orientation:landscape){ .fxjump{padding:3px 10px} }
 .row.sep-top{margin-top:8px;padding-top:8px;border-top:1px solid var(--line2)}
 .visGrid{--vis-cols:var(--thumb-cols);display:grid;grid-template-columns:repeat(var(--vis-cols),1fr);gap:6px;margin-top:6px;container-type:inline-size}
