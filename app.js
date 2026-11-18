@@ -5586,16 +5586,20 @@ void main(){
   // Slit-scan (移動式 / 参照元スクロール) を最終フレームに適用。前フレームバッファを ping-pong で保持。
   // Datamosh: 専用 ping-pong バッファでマクロブロックの時間残留を保持する。
   GLITCH_TRAIL_TYPES: ['mondrian', 'block', 'melt', 'tear', 'freeze'],
-  // post.glitchTrailType はカンマ区切りで複数持てる ('block,melt')。無効な指定は Mondrian
+  // post.glitchTrailType はカンマ区切りで複数持てる ('block,melt')。'' = 未選択 (Datamosh は掛からない)。
+  //   未設定 (古い保存) と無効な指定は Mondrian
   glitchTrailMask(types){
+    if(types == null) return 1;
+    const s = String(types).trim();
+    if(s === '') return 0;
     let mask = 0;
-    for(const t of String(types || '').split(',')){ const i = this.GLITCH_TRAIL_TYPES.indexOf(t.trim()); if(i >= 0) mask |= 1 << i; }
+    for(const t of s.split(',')){ const i = this.GLITCH_TRAIL_TYPES.indexOf(t.trim()); if(i >= 0) mask |= 1 << i; }
     return mask || 1;
   },
   _applyGlitchTrail(p){
     const gl = this.gl;
     if(!this.glitchProg || !this._finalFBO) return;
-    const amt = p ? (p.glitchTrail || 0) : 0;   // glitch は軽いので safe でも有効
+    const amt = (p && this.glitchTrailMask(p.glitchTrailType)) ? (p.glitchTrail || 0) : 0;   // glitch は軽いので safe でも有効。Type が未選択なら掛けない
     const w = this._finalFBO.w, h = this._finalFBO.h;
     if(!(amt > 0.001)){
       // 無効時はバッファを破棄(再有効化時に古い残像を出さない)
@@ -19769,8 +19773,9 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxGlitchTrail', 'glitchTrail', f2);
     { const box = $('#pxGlitchTrailTypes'); if(box) box.addEventListener('click', (e)=>{
         const b = e.target.closest('button[data-type]'); if(!b) return;
-        const on = new Set(String(App.post.glitchTrailType || 'mondrian').split(',').map(x=>x.trim()).filter(x=>GL.GLITCH_TRAIL_TYPES.includes(x)));
-        if(on.has(b.dataset.type)){ if(on.size > 1) on.delete(b.dataset.type); } else on.add(b.dataset.type);
+        const cur = App.post.glitchTrailType == null ? 'mondrian' : String(App.post.glitchTrailType);
+        const on = new Set(cur.split(',').map(x=>x.trim()).filter(x=>GL.GLITCH_TRAIL_TYPES.includes(x)));
+        if(on.has(b.dataset.type)) on.delete(b.dataset.type); else on.add(b.dataset.type);   // 全部外して未選択にもできる
         App.post.glitchTrailType = GL.GLITCH_TRAIL_TYPES.filter(t=>on.has(t)).join(',');
         UI.refreshPost();
       }); }
