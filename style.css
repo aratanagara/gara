@@ -566,7 +566,14 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 .fold-tog.open::before{transform:translateY(-1px) rotate(45deg)}
 .fold-tog:hover{color:var(--fg)}
 @media (min-resolution:2dppx){ .fold-tog::before{border-width:0 .5px .5px 0} }
-.fold-head{display:flex;align-items:center;margin:4px 0 2px;color:var(--dim);font-size:calc(var(--fs) - 1px);cursor:pointer;user-select:none}
+.fold-head{display:flex;align-items:center;min-height:var(--ctl-h);margin:2px 0;color:var(--dim);font-size:var(--fs);cursor:pointer;user-select:none}
+.fold-head > .fold-tog{width:14px;height:16px;margin:0;justify-content:flex-start;padding-left:3px;box-sizing:border-box}
+.fold-head > .fold-tog::before{width:6px;height:6px}
+/* Shader Params も FX と同じ印の欄: ラベルの左 14px に ・ (カテゴリの見出しは ›)。カテゴリの中の行は 20px 字下げで印なし */
+#params .par > label{position:relative;padding-left:14px;box-sizing:border-box}
+#params .par > label::after{content:"";position:absolute;left:5px;top:50%;width:3px;height:3px;margin-top:-1.5px;border-radius:50%;background:currentColor;opacity:.55}
+.fold-child > label{padding-left:20px !important}
+.fold-child > label::after{display:none !important}
 .fold-head:hover{color:var(--fg)}
 /* 折りたたみのあるパネル (FX など): どの欄もラベルの左に印の欄 (14px) を取り、子のある行は › / 子のない行は ・ を置いて文字の頭をそろえる。
    詳細行 (sub-label) は印の欄のさらに内側に字下げする */
