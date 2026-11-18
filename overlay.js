@@ -490,7 +490,7 @@ void main(){
       warp: P.warp,
       explode: P.explode,
       focal: P.focal,
-	      stamps: Math.max(2, Math.min(300, P.stamps|0)),
+	      stamps: Math.max(2, Math.min(1000, P.stamps|0)),
 	      smudgeSpeed,
 	      tipShape: P.tipShape || 'round',
 	      rotPerStamp: P.rotPerStamp,
@@ -1554,9 +1554,9 @@ void main(){
         const drawBeats = Math.max(0.05, s.drawBeats || s.lifeBeats || 1);
         const headT = Math.max(0.001, Math.min(1.0, s.elapsed / drawBeats));
         // stamp 密度: UI の Stamps を下限に、長いストロークは 0.18R 間隔まで補間して滑らかにする。
-        const requested = Math.max(40, Math.min(300, s.stamps|0));
+        const requested = Math.max(40, Math.min(1000, s.stamps|0));
         let denseN = Math.max(requested, Math.ceil(pathLen / Math.max(1, R * 0.18)));
-        denseN = Math.min(300, denseN);
+        denseN = Math.min(Math.max(300, requested), denseN);
         const ldt = (typeof GL !== 'undefined') ? (GL.lastDt || 0.016) : 0.016;
         if(ldt > 1/40) denseN = Math.max(requested, Math.floor(denseN * 0.75));
         if(ldt > 1/28) denseN = Math.max(requested, Math.floor(denseN * 0.65));
