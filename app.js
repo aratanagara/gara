@@ -14337,7 +14337,9 @@ ${outBlock}
     eyeSwatch.style.cssText = 'position:fixed;left:0;top:0;width:30px;height:30px;border-radius:50%;border:2px solid #fff;'
       + 'box-shadow:0 0 0 1px #000,0 2px 8px rgba(0,0,0,.6);pointer-events:none;z-index:99999;display:none;background:#000';
     document.body.appendChild(eyeSwatch);
-    const E = { on:false, last:{x:0, y:0}, sampleT:0, timer:null, holdTimer:null, altDown:false, lastRgb:null };
+    const E = { on:false, last:{x:0, y:0}, sampleT:0, timer:null, holdTimer:null, altDown:false, lastRgb:null, gradPicked:false };
+    // Visual タブのタイル上では Option+クリック = そのタイルの絵から Grad Map を生成 (スポイトは使わない)
+    const visTileAt = (x, y)=>{ const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('#thumbGrid .thumb-tile') : null; };
     const readCanvasAt = (cv, u, v)=>{
       if(cv === c){
         const fb = GL._finalFBO, gl = GL.gl; if(!fb || !gl) return null;
@@ -14384,6 +14386,7 @@ ${outBlock}
         return;
       }
       E.sampleT = now;
+      if(visTileAt(x, y)){ eyeSwatch.style.opacity = '0'; return; }   // タイル上は Grad 生成に使うので拾わない
       const got = sampleColorAt(x, y);
       eyeSwatch.style.background = got ? toHexRgb(got.rgb) : 'transparent';
       eyeSwatch.style.opacity = got ? '1' : '0.4';
@@ -14397,11 +14400,12 @@ ${outBlock}
       E.lastRgb = null;
       eyeUpdate(E.last.x, E.last.y, true);
     };
-    const eyeEnd = ()=>{
+    const eyeEnd = (cancel)=>{
       if(!E.on) return;
       E.on = false; clearTimeout(E.timer);
       document.body.classList.remove('vjEyedrop');
       eyeSwatch.style.display = 'none';
+      if(cancel) return;
       const got = sampleColorAt(E.last.x, E.last.y) || (E.lastRgb ? { rgb:E.lastRgb, from:'' } : null);
       if(got){ const T = bgTarget(); T.set(got.rgb); T.refresh(); toast(T.label + ' ← ' + toHexRgb(got.rgb) + got.from); }
       else toast('スポイト: 色を拾えませんでした');
@@ -14413,11 +14417,12 @@ ${outBlock}
       if(e.key !== 'Alt' || e.repeat || E.altDown) return;
       E.altDown = true;
       clearTimeout(E.holdTimer);
-      E.holdTimer = setTimeout(()=>{ if(E.altDown) eyeStart(); }, HOLD_MS);   // 長押し → スポイト
+      E.holdTimer = setTimeout(()=>{ if(E.altDown && !visTileAt(E.last.x, E.last.y)) eyeStart(); }, HOLD_MS);   // 長押し → スポイト
     });
     window.addEventListener('keyup', e=>{
       if(e.key !== 'Alt') return;
       E.altDown = false; clearTimeout(E.holdTimer);
+      if(E.gradPicked){ E.gradPicked = false; if(E.on) eyeEnd(true); return; }   // タイルから Grad を拾った押下はサークルを出さない
       if(E.on){ eyeEnd(); return; }                                      // 長押し終了 → 確定
       if(W.visible) hideWheel(); else showWheel(E.last.x, E.last.y);     // 短押し → サークルのトグル
     });
@@ -14432,6 +14437,16 @@ ${outBlock}
     let _eyeSwallowClick = false;
     window.addEventListener('mousedown', e=>{
       if(e.button !== 0) return;
+      const vt = e.altKey ? visTileAt(e.clientX, e.clientY) : null;
+      if(vt){
+        e.preventDefault(); e.stopPropagation(); _eyeSwallowClick = true;
+        E.gradPicked = true; clearTimeout(E.holdTimer); hideWheel();
+        const lb = vt.querySelector('.label');
+        const px = UI._tilePixels(vt);
+        if(px) App.gradFromVisual(px, lb ? lb.textContent : vt.title);
+        else toast('このタイルはまだ絵がありません');
+        return;
+      }
       if(W.visible){
         const hit = wheelPick(e);
         if(hit){ W.drag = hit; _eyeSwallowClick = true; e.preventDefault(); e.stopPropagation(); return; }
@@ -16380,8 +16395,9 @@ ${outBlock}
   // Visual からグラデーションマップを生成して適用する。
   //   輝度ごとの平均色 (= 元の絵に掛けても色がほぼ変わらない写像) を土台に、色相・彩度・明度で
   //   最も印象的な色 (2 色以上) をその色の平均輝度の位置へ置き、間をグレー寄りの平均色で埋める。
-  gradFromVisual(){
-    const px = GL.compositeSample();
+  //   px を渡すとその画素 (rgb を詰めた Float32Array) から作る (Visual タブのタイルの Option+クリック)。
+  gradFromVisual(px, label){
+    if(!px) px = GL.compositeSample();
     if(!px || px.length < 300){ toast('Visual の絵がまだ来ていません'); return; }
     const stops = this._gradStopsFromPixels(px);
     const curMix = this._gradFade ? this._gradFade.targetMix : (this.post.gradMix || 0);
@@ -16390,7 +16406,7 @@ ${outBlock}
     this._activeGradPreset = -1;
     if(UI.refreshPost) UI.refreshPost();
     if(UI._refreshGradList) UI._refreshGradList();
-    toast('Visual から Grad を生成 ('+stops.length+' stops)');
+    toast((label ? label + ' から' : 'Visual から') + ' Grad を生成 ('+stops.length+' stops)');
   },
   // 色は「数」より「印象」で拾う: 知覚的な色空間 (Oklab / OKLCH) で色相ごとにまとめ、
   //   代表色はその色相で彩度の高い上位 15% の画素 (平均はくすむので使わない = 記憶に残る色)。
@@ -19948,6 +19964,28 @@ void mainImage(out vec4 o, in vec2 f){
   _gifFor(map, name, prefix){
     const p = prefix || '';
     return (map && (map[p + this._gifKey(name)] || map[p + this._gifSlug(name)])) || null;
+  },
+  // Visual タブのタイルに見えている絵 (サムネ canvas / GIF の静止画 / ホバー中の GIF) を重ね順に描き、
+  //   rgb を詰めた Float32Array で返す (Grad Map 生成用)。絵が無ければ null
+  _tilePixels(tile){
+    const W = 160, H = 90, cv = document.createElement('canvas');
+    cv.width = W; cv.height = H;
+    const ctx = cv.getContext('2d', {willReadFrequently:true});
+    let drawn = false;
+    for(const el of tile.querySelectorAll(':scope > canvas, :scope > img')){
+      if(el.offsetWidth === 0 || getComputedStyle(el).display === 'none') continue;
+      if(el.tagName === 'IMG' && !(el.complete && el.naturalWidth)) continue;
+      try{ ctx.drawImage(el, 0, 0, W, H); drawn = true; }catch(e){}
+    }
+    if(!drawn) return null;
+    let d; try{ d = ctx.getImageData(0, 0, W, H).data; }catch(e){ return null; }
+    const out = new Float32Array(W * H * 3);
+    let o = 0;
+    for(let i = 0; i < d.length; i += 4){
+      if(d[i+3] < 8) continue;                    // まだ描かれていない所 (透明) は数えない
+      out[o++] = d[i]/255; out[o++] = d[i+1]/255; out[o++] = d[i+2]/255;
+    }
+    return o ? out.subarray(0, o) : null;
   },
   _gifStillHover(tile, ph, gifUrl){
     const cv = document.createElement('canvas');
