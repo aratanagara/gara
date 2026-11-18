@@ -19968,7 +19968,7 @@ void mainImage(out vec4 o, in vec2 f){
       const lab = r.querySelector('label');
       const inp = r.querySelector('input');
       const cat = this._foldCat(lab.textContent, (inp && (inp.dataset.key || inp.id)) || '');
-      r.classList.remove('fold-hidden');
+      r.classList.remove('fold-hidden', 'fold-child');
       if(!cat) continue;
       if(!byCat.has(cat)) byCat.set(cat, []);
       byCat.get(cat).push(r);
@@ -19985,7 +19985,7 @@ void mainImage(out vec4 o, in vec2 f){
       head.textContent = cat;
       list[0].before(head);
       let prev = head;
-      for(const r of list){ prev.after(r); prev = r; }   // 同じカテゴリの行を見出しの下へ集める (元の順のまま)
+      for(const r of list){ prev.after(r); prev = r; r.classList.add('fold-child'); }   // 同じカテゴリの行を見出しの下へ集める (元の順のまま)
       const tog = this.foldToggle(head, list, 'cat.' + cat);
       head.addEventListener('click', ()=> tog && tog.click());
     });
