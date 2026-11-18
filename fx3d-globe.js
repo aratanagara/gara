@@ -70,13 +70,19 @@ uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uMirror, uFacet
 out vec4 frag;
 void main(){
   vec4 t0 = texture(uTex, vUv);
-  if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
-  vec3 alb = t0.rgb;
+  float cut = 0.5;
   if(uSeam > 0.0){   // 画面の左右端が球の裏で合う継ぎ目: 端から uSeam の幅で反対側の絵と混ぜて、段差を消す
     float d = min(vUv.x, 1.0 - vUv.x);
     float w = 0.5 * (1.0 - smoothstep(0.0, uSeam, d));
-    alb = mix(alb, texture(uTex, vec2(1.0 - vUv.x, vUv.y)).rgb, w);
+    vec4 t1 = texture(uTex, vec2(1.0 - vUv.x, vUv.y));
+    // 抜いた背景 (alpha 0) が片側だけにある所は、物体を継ぎ目へ向けて粒状に溶かす (直線で切れない)。両側とも物体ならそのまま繋がる
+    float a = mix(t0.a, t0.a * t1.a, 2.0 * w);
+    t0 = vec4(mix(t0.rgb * t0.a, t1.rgb * t1.a, w) / max(mix(t0.a, t1.a, w), 1e-4), a);
+    vec2 g = floor(vUv * vec2(textureSize(uTex, 0)));   // 絵の画素ごとの閾値 (面に貼り付く = 回しても粒がちらつかない)
+    cut = mix(0.5, 0.01 + 0.98 * fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453), 2.0 * w);
   }
+  if(t0.a < cut) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
+  vec3 alb = t0.rgb;
   vec3 Nf = normalize(cross(dFdx(vW), dFdy(vW)));
   vec3 V = normalize(uEye - vW);
   if(dot(Nf, V) < 0.0) Nf = -Nf;
