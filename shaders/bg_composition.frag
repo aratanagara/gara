@@ -39,6 +39,8 @@
 // @param uMcPitch   0..80    = 45.0
 // @param uMcSpin    -100..100 = 20.0
 // @param uMcWallShade 0..100 = 55.0
+// @param uMcBuild   0..400   = 0.0
+// @param uMcDist    60..400  = 100.0
 // @param uMcPaper   color = #f2f0e9
 // @param uMcInk     color = #141414
 // @param uMcRed     color = #cf1f18
@@ -70,6 +72,8 @@ uniform float uMcHeight;  // 線の高さ (%)。100 = 線の太さと同じ = �
 uniform float uMcPitch;   // 盤面の傾き (度)
 uniform float uMcSpin;    // 盤面の回転の速さ (%)。負で逆回転
 uniform float uMcWallShade; // 線の側面の陰の濃さ (%)
+uniform float uMcBuild;   // 色面 (赤/青/黄/黒) を建物として立ち上げる高さ (%)。0 = 平ら。面ごとに高さがばらつく
+uniform float uMcDist;    // カメラの距離 (%)。上げると引いて盤面を俯瞰する
 uniform vec3 uMcPaper;    // 白地の色
 uniform vec3 uMcInk;      // 線と黒い面の色
 uniform vec3 uMcRed;      // 赤
@@ -219,6 +223,14 @@ bool mg_shownCell(float rid){ return mg_dp >= 0.6 + 0.4 * mg_h(vec3(rid, mg_gen,
 // ───────── ここまで共通 ─────────
 
 vec3 mc_ryb(float h){ return h < 0.3334 ? uMcRed : (h < 0.6667 ? uMcBlue : uMcYellow); }
+// 面 (いまの格子の面 = mg_build の直後) が色面 / 黒い面なら 1、白地なら 0 (mc_eval の塗り分けと同じ判定)
+float mc_cellSolid(){
+  float rid = mg_kL * 7.13 + mg_jB * 131.7;
+  if(!mg_shownCell(rid)) return 0.0;
+  float fr; float er = mg_epoch(rid + 0.25, fr);
+  float hc = mg_h(vec3(rid, mix(-1.0, er, step(mg_h(vec3(rid, er, mg_seed + 23.0)), 0.5)), mg_seed + 24.0));
+  return (hc < uMcColor * 0.01 || hc > 1.0 - uMcBlack * 0.01) ? 1.0 : 0.0;
+}
 
 // 盤面上の 1 点 q (傾き・大きさを掛けたあと) の線の覆い (0..1) だけを返す (3D の視線しらべ用。面の色は求めない)。
 //   格子の状態 (mg_*) と、伸び縮み後の座標 mc_q は mc_eval が面の色に使う
@@ -309,10 +321,11 @@ vec3 bg_composition(vec2 fc){
   // 線の高さ = 線の太さ (Height 100% で断面が正方形)。盤面の座標 q = 世界 × sc / zm なので、世界の長さに直す
   float lw = 2.0 * 0.011 * uMcLine * 0.01 * (1.0 + audio * 0.5);
   float H = lw * zm / sc * uMcHeight * 0.01 * k3;
+  float HB = 0.12 * zm / sc * uMcBuild * 0.01 * k3;           // 建物 (色面) の高さの最大
   float pitch = radians(uMcPitch) * k3;
   float yaw = time * 0.25 * uMcSpin * 0.01 * k3;
   vec2 uv = (fc - 0.5 * resolution) / resolution.y;
-  vec3 ro = vec3(0.0, 0.0, 1.0);
+  vec3 ro = vec3(0.0, 0.0, mix(1.0, uMcDist * 0.01, k3));   // Dist で引いて俯瞰
   vec3 rd = normalize(vec3(uv, -1.0));
   // カメラを原点まわりに回す (傾き = x 軸、回転 = z 軸)
   float cp = cos(pitch), sp = sin(pitch);
@@ -320,33 +333,38 @@ vec3 bg_composition(vec2 fc){
   float cy = cos(yaw), sy = sin(yaw);
   ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
   if(rd.z >= -1e-4){ bgAlpha = 1.0 - uMcClear * 0.01; return uMcPaper * bgAlpha; }
-  float tTop = (H - ro.z) / rd.z, tBot = -ro.z / rd.z;
-  // 線の縁までの距離ぶん視線を進める (空いた面の上は 1〜2 歩で抜ける)。線の柱の中 (縁より内側 かつ 高さ H 以下) に入ったら当たり。
-  //   上限は uniform 依存 = 定数ループの展開を避ける
-  int N = int(clamp(12.0 + 0.0 * time, 2.0, 12.0));
+  float tTop = (max(H, HB) - ro.z) / rd.z, tBot = -ro.z / rd.z;
+  // 線 (高さ H) と建物 (色面ごとに 0.35〜1 × HB) の柱の高さ場を視線で進む。線の縁までの距離ぶん横に進み (空いた面は 1〜2 歩)、
+  //   いる柱の天面より下へは一度に潜らない (天面で止める)。柱の中 (天面以下) に入ったら当たり。上限は uniform 依存
+  int N = int(clamp(20.0 + 0.0 * time, 2.0, 20.0));
   float tHit = tBot; float side = 0.0; float hitI = -1.0;
   float kxy = length(rd.xy) * sc / zm;                        // 視線 1 進むあいだの盤面の座標の進み
   float t = tTop;
-  for(int i = 0; i < 12; i++){
+  for(int i = 0; i < 20; i++){
     if(i >= N || t > tBot) break;
     vec3 p = ro + rd * t;
     vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
     mc_cov(q, 0.0, audio);
-    if(mc_d <= 0.0){
+    float hc = 0.0;
+    if(mc_d <= 0.0) hc = H;
+    else if(HB > 0.0 && mc_cellSolid() > 0.5) hc = HB * (0.35 + 0.65 * mg_h(vec3(mg_kL * 7.13 + mg_jB * 131.7, 81.0, mg_seed)));
+    if(p.z <= hc + 1e-5){
       hitI = float(i);
       tHit = t;
-      side = p.z < H * 0.96 ? 1.0 : 0.0;   // 線の天面より下で当たった = 側面
+      side = p.z < hc - 1e-3 * zm / sc ? 1.0 : 0.0;   // 天面より下で当たった = 側面
       mc_eval(q, sc * t / (resolution.y * zm), audio, col, isPaper);
       break;
     }
-    t += max(mc_d / max(kxy, 1e-4), 0.002);
+    float dxy = (mc_d > 0.0 ? mc_d : -mc_d + 1e-4) / max(kxy, 1e-4);   // 柱の縁まで
+    float dz = (p.z - hc) / max(-rd.z, 1e-4);                         // いる柱の天面まで
+    t += max(min(dxy, dz), 0.0015);
   }
   if(hitI < 0.0){   // 線に当たらなければ盤面 (z = 0)
     vec3 p = ro + rd * tBot;
     vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
     mc_eval(q, sc * tBot / (resolution.y * zm), audio, col, isPaper);
   } else if(side > 0.5){
-    // 側面: 線の色を陰で暗く (盤面の回転に合わせて面の向きで濃淡を変える)
+    // 側面: 線・建物の色を陰で暗く (盤面の回転に合わせて面の向きで濃淡を変える)
     float lit = 0.5 + 0.5 * sin(yaw + 0.7);
     col = mix(col, col * (0.35 + 0.4 * lit), uMcWallShade * 0.01);
   }

@@ -623,10 +623,13 @@ void main(){
     const gl = this.gl;
     this._remesh();
     const P = this.P, dz = (v)=>this._dz(v);
-    this._ensureDepth(w,h);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(fbo) : false;   // Code の 3D 深度: 共通の深度テクスチャを aaFbo に付けて描く
+    this.depthInfo = { linear:true, cam:0.6, R:0.2 };   // 頂点シェーダの z は線形 (±0.92 にクランプ) なので深度値をそのまま距離として使う
+    if(!kd) this._ensureDepth(w,h);
     this._ensureAA(w,h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, this.aaFbo);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depth);
+    if(kd) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, GL.kindDepthTex(), 0);
+    else gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depth);
     gl.viewport(0,0,w,h);
     const opaque = slot === 'A';
     const bgc = (this.P && Array.isArray(this.P.bgColor)) ? this.P.bgColor : [0.690, 0.733, 0.800];
@@ -686,7 +689,8 @@ void main(){
     gl.bindVertexArray(this.vao);
     gl.drawArrays(gl.TRIANGLES, 0, this.cap);
     gl.bindVertexArray(null);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(kd) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
+    else gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     this._applyAA(fbo,w,h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.disable(gl.DEPTH_TEST);

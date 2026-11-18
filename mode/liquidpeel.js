@@ -887,10 +887,12 @@ void main(){
     gl.bindVertexArray(null);
 
     const useRBO = !!opts.fbo;
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
+    { const eye = 3.6 * Math.max(0.3, Math.min(3, dz(this.P.lens) / 100)); this.depthInfo = { near:0.25, far:40.0, cam:eye*0.875, R:eye*0.725 }; }
     if(useRBO){
-      this._ensureDepth(w, h);
+      if(!kd) this._ensureDepth(w, h);
       gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+      if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
@@ -944,7 +946,7 @@ void main(){
     gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, this.stripVerts, N * N);
     gl.bindVertexArray(null);
 
-    if(useRBO) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(useRBO && !kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.disable(gl.DEPTH_TEST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },

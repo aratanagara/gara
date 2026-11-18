@@ -767,10 +767,11 @@ void main(){
     // fbo=null (aratanagara.com の default framebuffer) には RBO を付けられない。
     // その場合はコンテキスト作成時の depth:true の深度バッファをそのまま使う。
     const useRBO = !!opts.fbo;
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
     if(useRBO){
-      this._ensureDepth(w, h);
+      if(!kd) this._ensureDepth(w, h);
       gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+      if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
@@ -816,6 +817,7 @@ void main(){
     }
     const view = this.m4.lookAt(eye, tgt, up);
     const proj = this.m4.persp(P.fov*Math.PI/180, w/Math.max(1,h), 0.05, dist*6);
+    this.depthInfo = { near:0.05, far:dist*6, cam:dist*0.875, R:dist*0.725 };   // 深度の範囲: カメラから dist*0.15 〜 dist*1.6
     const mvp = this.m4.mul(proj, view);
 
     gl.useProgram(this.drawProg);
@@ -905,7 +907,7 @@ void main(){
     }
     gl.bindVertexArray(null);
 
-    if(useRBO) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(useRBO && !kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.disable(gl.DEPTH_TEST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },

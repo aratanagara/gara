@@ -164,5 +164,6 @@ vec3 bg_slimeframe(vec2 fc){
   if(uSpecGain != 100.0 || uEnvColor != vec3(1.0) || uSpecColor != vec3(1.0) || uFresnelColor != vec3(1.0))
     color = (env*uEnvColor + spec*(uSpecGain / 100.0)*uSpecColor + fres*(0.35*(uFresnelGain / 100.0))*uFresnelColor) * cov;
   bgAlpha = cov;                                           // 背景は透明
+  vjDepth = cov;                                           // 深度 (線=手前 1 / 背景 0)
   return color;
 }

@@ -4873,6 +4873,106 @@ vec3 f3Paper(vec2 q, float lift){
     gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT1, gl.TEXTURE_2D, o.dtex, 0);
   },
 
+  // ── Code (kind エンジン) の深度 → シェーダと同じ R8 の dtex (1 = 手前 → 0 = 奥・外れ) ──
+  //   _kdBegin: 3D で描くエンジンなら、描く先のスロット FBO に共通の深度テクスチャ (DEPTH24) を付けておく。
+  //     エンジンは GL.kindKeepsDepth(fbo) が真なら自前の深度を付け外ししない (付いている深度に描く)。
+  //   _kdEnd: 描き終えたら深度を視点からの距離に戻し、エンジンの depthInfo の範囲
+  //     (cam ± R = 被写体の手前〜奥。ROMHACK と同じ決まり) で 0..1 にして dtex へ書く。
+  //   エンジンは render のたびに this.depthInfo = { near, far, cam, R } (linear: true なら深度値そのものを距離として使う。
+  //   tex を渡すとそのテクスチャを深度として読む) を置く。
+  KIND_DEPTH: {
+    photoplane: ()=> (typeof PhotoPlane !== 'undefined') ? PhotoPlane : null,
+    shredder: ()=> (typeof Shredder !== 'undefined') ? Shredder : null,
+    liquidpeel: ()=> (typeof LiquidPeel !== 'undefined') ? LiquidPeel : null,
+    surrealfloat: ()=> (typeof SurrealFloat !== 'undefined') ? SurrealFloat : null,
+    transflock: ()=> (typeof TransFlock !== 'undefined') ? TransFlock : null,
+    windflock: ()=> (typeof WindFlock !== 'undefined') ? WindFlock : null,
+    spacetype: ()=> (typeof SpaceType !== 'undefined') ? SpaceType : null,
+    shelf: ()=> (typeof Shelf !== 'undefined') ? Shelf : null,
+    slicer: ()=> (typeof Slicer !== 'undefined') ? Slicer : null,
+    aratanagara: ()=> (typeof Aratanagara !== 'undefined') ? Aratanagara : null,
+    chrometype: ()=> (typeof ChromeType !== 'undefined') ? ChromeType : null,
+    tower4149: ()=> (typeof Tower4149 !== 'undefined') ? Tower4149 : null,
+  },
+  kindKeepsDepth(fbo){ return !!(this._kdCur && this._kdCur.target.fbo === fbo); },
+  kindDepthTex(){ return this._kdCur ? this._kdCur.target.ztex : null; },   // マスク等の別 FBO にも同じ深度を付けるとき
+  _kdBegin(slotKey, slot){
+    this._kdCur = null;
+    if(!slot || slot.kind === 'shader') return;   // シェーダは renderSlot が自分で深度を付ける
+    const target = slot.fbos[slot.fbIdx];
+    if(target) target.depthValid = false;          // Code はまず「深度なし」(前のシェーダの深度を残さない)
+    const get = this.KIND_DEPTH[slot.kind];
+    if(!get || !target || App.code3D === false) return;
+    const eng = get(); if(!eng) return;
+    const gl = this.gl;
+    if(!target.ztex || target.zw !== target.w || target.zh !== target.h){
+      if(!target.ztex) target.ztex = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0 + 15);
+      gl.bindTexture(gl.TEXTURE_2D, target.ztex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, target.w, target.h, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+      gl.activeTexture(gl.TEXTURE0);
+      target.zw = target.w; target.zh = target.h;
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, target.ztex, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    eng.depthInfo = null;
+    this._kdCur = { target, eng };
+  },
+  _kdEnd(){
+    const cur = this._kdCur; this._kdCur = null;
+    if(!cur) return;
+    const gl = this.gl, target = cur.target, info = cur.eng.depthInfo;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
+    if(!info){ gl.bindFramebuffer(gl.FRAMEBUFFER, null); return; }
+    if(!this._kdProg){
+      const vs = this._compile(gl.VERTEX_SHADER, '#version 300 es\nlayout(location=0) in vec2 aPos;\nvoid main(){ gl_Position = vec4(aPos, 0.0, 1.0); }');
+      const fs = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+uniform highp sampler2D uZ;
+uniform vec2 uRes;
+uniform vec4 uNF;      // near, far, 手前 (cam - R), 奥 (cam + R)
+uniform float uLin;
+out vec4 frag;
+void main(){
+  float d = texture(uZ, gl_FragCoord.xy / uRes).r;
+  if(d >= 0.99999){ frag = vec4(0.0, 0.0, 0.0, 1.0); return; }     // 何も描かれていない = 外れ
+  float z = d;
+  if(uLin < 0.5){ float n = uNF.x, f = uNF.y; z = 2.0 * n * f / (f + n - (d * 2.0 - 1.0) * (f - n)); }
+  frag = vec4(clamp(1.0 - (z - uNF.z) / max(uNF.w - uNF.z, 1e-5), 0.0, 1.0), 0.0, 0.0, 1.0);
+}`);
+      const p = this._link(vs, fs);
+      this._kdProg = (p && !p.err) ? p : false;
+      if(!this._kdProg) console.error('code depth program failed:', p && p.err);
+    }
+    if(!this._kdProg){ gl.bindFramebuffer(gl.FRAMEBUFFER, null); return; }
+    this._ensureSlotDepth(target);
+    if(!this._kdFBO) this._kdFBO = gl.createFramebuffer();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this._kdFBO);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target.dtex, 0);
+    gl.viewport(0, 0, target.w, target.h);
+    gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+    gl.useProgram(this._kdProg);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, info.tex || target.ztex);
+    const U = (n)=>gl.getUniformLocation(this._kdProg, n);
+    gl.uniform1i(U('uZ'), 0);
+    gl.uniform2f(U('uRes'), target.w, target.h);
+    const R = Math.max(1e-4, info.R);
+    gl.uniform4f(U('uNF'), info.near || 0.05, info.far || 100, info.cam - R, info.cam + R);
+    gl.uniform1f(U('uLin'), info.linear ? 1 : 0);
+    gl.bindVertexArray(this.quadVAO);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    target.depthValid = true;
+  },
+
   _ensureFinalFBO(){
     const gl = this.gl;
     const w = this.canvas.width, h = this.canvas.height;
@@ -8909,6 +9009,7 @@ vec3 fx3dFoldShade(vec3 c){
       : (App.visualBeat ? App.visualBeat(slotBeat) : slotBeat * (App.beatScale || 1));
     const prevClock = this.clock;
     if(slot && typeof slot._clock === 'number') this.clock = slot._clock;
+    this._kdBegin(slotKey, slot);
     try {
     if(slot.kind === 'none'){
       // 無選択: A の「なし」= 不透明な黒シェーダ(Post FX が乗る土台。gain 等で反応)。
@@ -9277,6 +9378,7 @@ vec3 fx3dFoldShade(vec3 c){
     this.renderSlot(slotKey);
     } finally {
       this.clock = prevClock;
+      this._kdEnd();
     }
   }
 };
@@ -19631,6 +19733,12 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dGlobeDetail','fx3dGlobeDetail', fi);
     slid('pxFx3dRoll','fx3dRoll', f2);
     slid('pxFx3dDepth','fx3dDepth', f2);
+    { const cb = $('#pxCode3D');   // Code の 3D 深度 (既定 ON。端末ごとに保存)
+      if(cb){
+        try{ App.code3D = localStorage.getItem('vj.code3D') !== '0'; }catch(e){}
+        cb.checked = App.code3D !== false;
+        cb.addEventListener('change', ()=>{ App.code3D = cb.checked; try{ localStorage.setItem('vj.code3D', cb.checked ? '1' : '0'); }catch(e){} });
+      } }
     { const nt = $('#pxFx3dNative'); if(nt){ nt.checked = Prefs.on('fx3dNative', '0'); nt.addEventListener('change', ()=>{ Prefs.set('fx3dNative', nt.checked ? '1' : '0'); }); } }
     { const sc = $('#pxFx3dScale'); if(sc){ sc.value = String(App.post.fx3dScale); sc.addEventListener('change', ()=>{ App.post.fx3dScale = parseFloat(sc.value); }); } }
     { const sb = $('#pxFx3dBg'); if(sb){ sb.value = App.post.fx3dBg === 'color' ? 'color' : 'auto'; sb.addEventListener('change', ()=>{ App.post.fx3dBg = sb.value; }); } }

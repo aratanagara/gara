@@ -141,6 +141,7 @@ vec3 bg_greyliquid(vec2 fc){
   vec3 lp2 = vec3(-2.1 * (uLightSpread / 100.0), -0.5 * (uLightHeight / 100.0), -0.1 + uLightDepth * 0.01);
   float h = lq_height(p);
   vec3 pp = vec3(p.x, h, p.y);
+  vjDepth = clamp(0.5 + 0.5 * h / max(0.35 / 3.0 * (uRelief / 100.0), 1e-4), 0.0, 1.0);   // 深度 (高さ場 → 0..1)
   float ll1 = length(lp1.xz - pp.xz);
   vec3 ld1 = normalize(lp1 - pp);
   vec3 ld2 = normalize(lp2 - pp);

@@ -284,6 +284,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   vec3 worldDir = -viewToWorld * viewDir;
   float dist = shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);
   if(dist > MAX_DIST - EPSILON){ fragColor = vec4(0.0); return; }
+  vjDepth = exp(-dist*0.03); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   vec3 p = eye + dist*worldDir;
   vec3 K_a = surface_color(p)*uSurfaceTint, K_d = K_a, K_s = vec3(1.0)*uSpecTint;
   vec3 color = phongIllumination(K_a, K_d, K_s, 7.0*(uShine/100.0), p, eye);
@@ -514,6 +515,7 @@ void mainImage(out vec4 fragColour, in vec2 fragCoord){
     colour = sandColour*uSandTint;
   } else { colour = vec3(1.0,0.0,1.0); }
   if(hit.materialId != MAT_SKY){
+    vjDepth = exp(-hit.distance*0.03); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 diffuseLight, specularLight;
     getLight(hit.origin, hit.surfaceNormal, r.direction, diffuseLight, specularLight, time);
     colour = colour*diffuseLight + specularLight;
@@ -702,6 +704,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   vec3 rd = normalize(rov + uv.x*u*fov.x + uv.y*v*fov.y);
   float s = 1., d = 0.;
   for(int i=0;i<52;i++){ if(d*d/s > 1e5) break; d += s = map(ro + rd*d).x * .6; }
+  vjDepth = exp(-d*0.1); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   vec4 f = shade(ro, rd, d, lp);
   f = f.zyww + f.x*0.2;
   f = mix(f, vec4(vec3(0.8)*uFogColor, 0.8), 1.0 - exp(-0.01*d*d*(uFogDensity/100.0)));
@@ -983,6 +986,7 @@ void mainImage(out vec4 o, in vec2 U){
   // rgb を黒にして背景を見せる。dens 小 → off が増え破片が減って Slot B(透過背景)が見える。
   float fld = sin(hp.x*0.9 + hp.z*0.63) + sin(hp.y*0.765 - hp.z*0.45 + 1.7) + sin((hp.x+hp.y)*0.54 + hp.z*0.36 + 3.1);
   float keep = hit * step(1.0 - dens, 0.5 + fld*0.16667);
+  vjDepth = keep * clamp(1.0 - l1/MAX_DIST, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   o.rgb *= keep;
   o.a = keep;
 }`
@@ -1213,6 +1217,8 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   n=doBumpMap(vec3(tuv.x,0.,tuv.y*2.*PI), n, .001*(uBumpStrength/100.0));
   vec3 colForAlpha = vec3(0.0);   // alpha 判定専用: 高周波の縞・反射・ディザを含めないマクロな陰影
   if(t < 50.){
+    float dgRz = 1.4*(uTorusRadius/100.0) + 0.6;
+    vjDepth = clamp(1.0 - (t - (4.0 - dgRz)) / (2.0*dgRz), 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 l=normalize(lp-p), l2=normalize(lp2-p);
     float dif=max(dot(n,l),.0), dif2=max(dot(n,l2),.0);
     float sss=smoothstep(0.,1.,dgmap(p+l*.4))/.4;
@@ -1388,6 +1394,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   if(uEyeShiftX != 0.0 || uEyeShiftY != 0.0 || uEyeShiftZ != 0.0){ eye += vec3(uEyeShiftX, uEyeShiftY, uEyeShiftZ); }
   float dist = march(eye, worldDir, MIN_DIST, MAX_DIST);
   if(dist > MAX_DIST - EPSILON){ fragColor = vec4(0.0); return; }
+  vjDepth = exp(-dist*0.01); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   vec3 p = eye + dist*worldDir;
   vec3 nrm = estimateNormal(p, max(EPSILON, dist*0.002));   // 法線epsは距離スケール(遠方のモアレ防止)
   vec3 K_a = surface_color(p)*uBoneTint;
@@ -1547,8 +1554,9 @@ vec3 oenv(vec3 rd){
   return c;
 }
 float g_hit;
+float g_t;
 vec3 manager(rayresult io){
-  g_hit = 0.0;
+  g_hit = 0.0; g_t = 0.0;
   vec3 skycol = vec3(0.0);   // 背景=黒
   float t = -1.00;
   for(int i=0;i<kRaymarchIterations;i++){
@@ -1567,7 +1575,7 @@ vec3 manager(rayresult io){
       }
       col *= oenv(sdir);        // 手続き環境で反射(オブジェクトが見える)
       if(uRimLight != 0.0){ col += vec3(0.6,0.75,1.0)*uRimTint*pow(1.0-max(dot(n,-io.v),0.0),3.0)*(uRimLight/100.0); }
-      g_hit = 1.0;
+      g_hit = 1.0; g_t = t;
       return col;
     }
     t += d/mapddivisor;
@@ -1595,6 +1603,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   rayresult ray;
   ray.o = campos; ray.v = v; ray.dist = 0.10;
   vec3 color = clamp(manager(ray), 0., 1.);
+  { float ostR = 8.0*(uCamDist/100.0); vjDepth = g_hit * clamp(1.0 - (g_t - (ostR - 2.0)) / 4.0, 0.0, 1.0); } // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   if(uToonLevels >= 2.0){ float tl = floor(uToonLevels+0.5); color = floor(color*tl+0.5)/tl; }
   if(uGrain != 0.0){
     float gn = fract(sin(dot(fragCoord + fract(iTime)*71.0, vec2(12.9898, 78.233)))*43758.5453);
@@ -1755,6 +1764,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   vec3 col = vec3(0);
   float d = RayMarch(ro, rd);
   if(d<MAX_DIST){
+    vjDepth = 1.0 - smoothstep(0., 7.*(uFogReach/100.0), d); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = ro + rd*d;
     vec3 n = GetNormal(p);
     p = Transform(p);
@@ -1896,6 +1906,7 @@ void mainImage(out vec4 color, in vec2 coord){
   float shade = 0.;
   float halo = 0.;
   vec2 seed = (coord.xy/iResolution.xy) + fract(iTime);
+  float tAcc = 0., tFirst = -1.;
   for(float i=0.; i<STEPS; ++i){
     vec3 mp = pos;
     if(uMirrorX != 0.0) mp.x = abs(mp.x) - uMirrorX/100.;
@@ -1903,12 +1914,13 @@ void mainImage(out vec4 color, in vec2 coord){
     float sqx = 1.;
     if(uSquashX != 100.0){ sqx = uSquashX/100.; mp.x /= sqx; }
     float dist = map(mp);
-    if(dist < BIAS) shade += 1. - (uDepthFade/100.)*(i/(STEPS-1.));
+    if(dist < BIAS){ shade += 1. - (uDepthFade/100.)*(i/(STEPS-1.)); if(tFirst < 0.) tFirst = tAcc; }
     if(uHalo != 0.0) halo += 1./(1.+60.*abs(dist));
     dist = abs(dist)*(.8+0.2*(uDither/100.)*rand(seed*vec2(i)));              // ディザ
     dist = max(DIST_MIN, dist);
-    pos += ray*dist;
+    pos += ray*dist; tAcc += dist;
   }
+  { float bcE = 3.*(uCamDist/100.); vjDepth = (tFirst < 0.) ? 0. : clamp(1. - (tFirst - (bcE - 2.)) / 4., 0., 1.); } // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   float v = shade/(STEPS-1.);
   if(uHalo != 0.0) v += (uHalo/100.)*halo/(STEPS-1.)*.6;
   // 旧クロマキー (smoothstep(0.03,0.16,lum)) と同じカーブを実 alpha として出力
@@ -2241,6 +2253,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     float tHit = t;
     vec3 n = normal(p);
     if (t < tmax && d < dmin) {
+      vjDepth = clamp(1.0 - (tHit - (length(ro) - 15.0)) / 30.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
       vec3 albedo = mix(vec3(1., .5, .1), vec3(1.0), surface);
   	  float diffuse = clamp(dot(n, light), 0.0, 1.0);
       
@@ -2558,6 +2571,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         return;
 	}
 	
+	vjDepth = exp(-depth*0.02); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
 	// shading
 	vec3 pos = eye + dir * depth;
 	vec3 n = normal( pos );
@@ -2938,6 +2952,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
         float dif = dot(n,ld);
         col = float3(dif);
         handAlpha = 1.0;
+        vjDepth = clamp(1.0 - (t - (length(ro) - 12.0)) / 24.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
         if(uWrap != 0.0){ col = float3((dif + uWrap/100.0)/(1.0 + uWrap/100.0)); }
         if(uAOReach != 0.0){
             float ah = 2.0*(uAOReach/100.0);
@@ -3359,6 +3374,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 	vec2 d = raymarch(camPos, rayDir, posOut, pp);
 	if (d.x < EPSILON )
 	{
+		vjDepth = clamp(1.0 - (length(pp - camPos) - (length(camPos - SPHERE1.xyz) - 3.0)) / 6.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
 		vec3 lightPos = gLightPos1;
 		if(uLightAzimuth != 0.0 || uLightElevation != 0.0){
 			float la = uLightAzimuth * 0.017453293;
@@ -3624,7 +3640,7 @@ float hash13(vec3 p){
 }
 
 void mainImage(out vec4 o, vec2 fragCoord) {
-    float z = 0.0;
+    float z = 0.0, zWsum = 0.0;
     o = vec4(0.0);
     vec2 u = (fragCoord - iResolution.xy * 0.5) / iResolution.y;
     float T = iTime * uSpeed;
@@ -3676,9 +3692,12 @@ void mainImage(out vec4 o, vec2 fragCoord) {
         // めり込み半透明 (WdVXRm 参考): 至近サンプル (z 小) の寄与を抑え、
         //   カメラがめり込んだ手前の壁を透過させて奥の構造を見せる。uEmbed=0 で従来通り。
         float nearFade = mix(1.0, smoothstep(0.0, 0.5, z), clamp(uEmbed / 1.5, 0.0, 1.0));
+        float wPrev = o.w;
         o += vec4(baseColor, 1.0) / max(d, 0.0002*(uCoreSoft/100.0)) * nearFade;
+        zWsum += z * (o.w - wPrev);
         z += 0.45 * (uStepScale/100.0) * d + 0.0001;
     }
+    vjDepth = exp(-(zWsum / max(o.w, 1e-6)) * 0.3); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     o = tanh(o / 30000.);
     if(uVignetteAmt != 0.0){ o.rgb *= 1.0 - uVignetteAmt/100.0*clamp(dot(uS*2.0, uS*2.0)*0.5, 0.0, 1.0); }
     if(uGrainAmt != 0.0){ o.rgb += (fract(sin(dot(fragCoord, vec2(12.9898, 78.233)) + iTime)*43758.5453) - 0.5)*uGrainAmt/100.0*0.6; }
@@ -3895,6 +3914,7 @@ vec3 shade_d(vec2 fragCoord){
   vec2 fc = fragCoord.xy;
   vec2 fh = fieldXf(fc);
   float height = heightAt_d(fh);
+  vjDepth = clamp(height, 0.0, 1.0); // 深度 (高さ場 0..1 → 3D FX がこれで持ち上げる)
   float occlusion = 0.0;
   for(float i=2.0;i<=5.0;i++){
     float mh = heightBlur_d(fh, i);
@@ -3925,6 +3945,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   vec2 fc = fragCoord.xy;
   vec2 fh = fieldXf(fc);
   float height = heightAt(fh);
+  vjDepth = clamp(height, 0.0, 1.0); // 深度 (高さ場 0..1 → 3D FX がこれで持ち上げる)
   float occlusion = 0.0;
   for(float i=2.0;i<=5.0;i++){
     float mh = heightBlur(fh, i);
@@ -4204,11 +4225,14 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
 
     // ---- めり込み半透明: 最初のヒットが至近なら手前を透過して奥を見せる ----
     float embed = pow(1.0 / (hit.len + 1.0), 6.0) * uEmbed;
+    float dLen = hit.len;   // 見えている面までの距離 (透過した分は奥の面を混ぜる)
     if (!hit.sky && embed > 0.02) {
         Hit hit2 = march(hit.pos + rayDir * 0.04, rayDir, 16.0);
         vec3 col2 = lightHit(hit2, rayDir, sunPos, sunColor, skyColor, bgCol);
         col = mix(col, col2, clamp(embed, 0.0, 0.9));
+        dLen = mix(hit.len, hit.len + 0.04 + hit2.len, clamp(embed, 0.0, 0.9));
     }
+    vjDepth = hit.sky ? 0.0 : exp(-dLen*2.5); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
 
     col *= 1.25;
     col = pow(max(vec3(0.0), col), vec3(0.4545));
@@ -4405,6 +4429,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     float firstT = t;
     bool hit1 = d < 0.001;
     if(hit1) col = shadeHit(ro, rd, t, bg);
+    vjDepth = hit1 ? clamp(1.0 - t / maxT, 0.0, 1.0) : 0.0; // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
 
     // --- めり込み半透明 (WdVXRm 参考) ---
     //   最初のヒットが近い = カメラがシェイプにめり込んでいる → 手前の面を半透明にして奥を透かす。
@@ -4542,9 +4567,10 @@ vec3 surfaceNormal (vec3 pos) {
 vec3 lightDirection;
 vec3 tint;
 float gHit;   // 1.0=ヒット / 0.0=背景 (Slot B で背景を透過させる alpha 用)
+float gT;   // 最初のヒットまでの距離 (深度用)
 vec3 trace (vec3 origin, vec3 direction) {
     float totalDistance = 0.0;
-    gHit = 0.0;
+    gHit = 0.0; gT = 0.0;
     for (float steps = 0.0; steps < 100.0; steps ++) {
         vec3 pos = origin + direction * totalDistance;
         float distance = map(pos);
@@ -4566,7 +4592,7 @@ vec3 trace (vec3 origin, vec3 direction) {
             else { col = (dterm + sterm) * tint; }
             if(sk != 1.0){ col *= sk; }
             if(uRimAmount != 0.0){ col += pow(1.0 - max(-dot(direction, normal), 0.0), 3.0)*(uRimAmount/100.0)*uRimColor; }
-            gHit = 1.0;
+            gHit = 1.0; gT = totalDistance;
             return col;
         }
     }
@@ -4605,6 +4631,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec3 ray = normalize(vec3(uv, rz)) * cameraMatrix;
 
     vec3 col = trace(cameraPosition, ray);
+    vjDepth = gHit * clamp(1.0 - (gT - (1.8*(uCamDist/100.0) - 1.2)) / 2.4, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     fragColor = vec4(col, gHit);   // 背景 alpha=0 → Slot B で透過
 }
 `
@@ -4812,6 +4839,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             col = c.rgb * (diff * shadow + ambient);
             if(uAmbientColor != vec3(1.0)){ col = c.rgb * (diff * shadow + ambient*uAmbientColor); }
             alpha = 1.0;
+            vjDepth = clamp(1.0 - (t - (length(ro) - 3.0)) / 6.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
             if(uRimWidth != 0.0){
                 float rm = pow(1.0 - clamp(dot(normal, -rd), 0.0, 1.0), 6.0 - uRimWidth*0.05);
                 col += rm*0.5*uRimColor;
@@ -4976,12 +5004,14 @@ vec4 surf(vec3 r, vec3 w, vec3 sn, float t){
     return vec4(vec3(fog), off);
 }
 
+float gT;   // 1 本目の shade のレイ距離 (深度用)
 vec3 shade(vec3 r, float time){
     r *= xrot(T + uCamPitch * 0.0174533) * zrot(time + uCamRoll * 0.0174533);
     vec3 o = vec3(0.0);
     o.z += time;
     if(uCamHeight != 0.0 || uCamSide != 0.0){ o.xy += vec2(uCamSide, uCamHeight) * 0.01; }
     float t = trace(o, r);
+    gT = t;
     vec3 w = o + r * t;
     vec3 sn = normal(w);
     vec4 ac = surf(r, w, sn, t);
@@ -5006,6 +5036,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 
     btime = 2.0; bspeed = 10.0;
     vec3 sa = shade(r, T);
+    vjDepth = 1.0 / (1.0 + gT * gT * (uFogDensity / 100.0)); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     float of = 0.01 * (uTrailGap / 100.0);
     btime = 4.0; bspeed = 20.0;
     vec3 sb = shade(r, T + of);
@@ -5324,6 +5355,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     vec3 worldDir = viewToWorld * viewDir;
     float dist = shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);
     if (dist > MAX_DIST - EPSILON) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
+    vjDepth = exp(-dist*0.005); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = eye + dist * worldDir;
     vec3 K_a = surface_colorW(p)*uWallTint;
     vec3 K_d = K_a;
@@ -5618,6 +5650,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
             shade(ro, rd, d, ro, 1.).x * (mat+0.5) * uSurfTint,
         0.8*(uSssMix/100.0));
         hit = 1.0;
+        vjDepth = clamp(1.0 - (d - (length(ro) - 2.0)) / 4.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     }
     fragColor = vec4(col, mix(hit, 1.0, uSlotIsA));
 }`
@@ -5855,6 +5888,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     float t = inn.x;
     if (t < maxd){
         vec3 tra = inn.yzw;
+        vjDepth = clamp(1.0 - (t - 1.0) / (maxd - 1.0), 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
         vec3 pos = ro + t * rd;
         vec3 nor = calcNormal(pos);
         col = 0.5 + 0.1 * cos(tra.y * 0.4 + vec3(0.6, 0.1, 0.2));
@@ -6191,6 +6225,7 @@ vec3 color(vec3 p, vec3 v){
     }
     vec3 n = normal(pos);
     if(c.t == 1 || (c.t==-1 && v.y < 0.)) { c = C(-p.y/v.y,1); d = c.d; pos = p+c.d*v; n = vec3(0,1,0); }
+    vjDepth = (c.t == -1) ? 0.0 : exp(-d*0.05); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 col = vec3(0);
     gSky = 0.0;
     if(c.t==-1){
@@ -6447,6 +6482,7 @@ void mainImage0( out vec4 fragColor, in vec2 fragCoord ){
     vec3 worldDir = viewToWorld * viewDir;
     float dist = shortestDistanceToSurface(eye, worldDir, MIN_DIST, MAX_DIST);
     if (dist > MAX_DIST - EPSILON) { fragColor = vec4(vec3(0.0), uSlotIsA); return; }
+    vjDepth = exp(-dist*0.05); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = eye + dist * worldDir;
     vec3 K_a = hash33(p/500.0);
     vec3 K_d = K_a;
@@ -6510,6 +6546,7 @@ void mainImageX( out vec4 fragColor, in vec2 fragCoord ){
     vec3 worldDir = viewToWorld * viewDir;
     float dist = shortestDistanceToSurfaceX(eye, worldDir, MIN_DIST, MAX_DIST);
     if (dist > MAX_DIST - EPSILON) { fragColor = vec4(vec3(0.0), uSlotIsA); return; }
+    vjDepth = exp(-dist*0.05); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = eye + dist * worldDir;
     vec3 K_a = hash33(p/(500.0*(uColorCell/100.0)));
     if(uColorSteps != 0.0){ K_a = floor(K_a * uColorSteps + 0.5) / uColorSteps; }
@@ -6654,6 +6691,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
         t += d;
     }
     if (hit > .5){
+        vjDepth = clamp(1. - (t - (length(ro) - 1.2)) / 2.4, 0., 1.); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
         vec3 n = normal(p,d);
         vec3 ld = normalize(vec3(1,1,-1));
         if(uLightAzimuth != 0.0 || uLightElevation != 0.0){
@@ -6755,7 +6793,7 @@ void mainImage(out vec4 O, in vec2 U){
     q0 -= vec2(uCenterX, uCenterY) / 100.0;
     vec3 d = vec3(q0, .5+(sin(t + uBreathePhase * 0.0174533)*.1+.1) * (uBreathe / 100.0));
     vec3 dn = vec3(.314 * (uPlaneTilt / 100.0), 1.57 * (uPlaneTilt / 100.0), 6.28), dc = vec3(uRigX / 100.0, uRigY / 100.0, 3.0 * (uDepth / 100.0)), c = vec3(sin(t) * .3 * (uBgSway / 100.0), .2, .89);
-    float ringAlpha = 0.;
+    float ringAlpha = 0., ringZ = 0.;
     int nr = int(uRings + 0.5);
     for (int i = 0; i < 6; ++i){
       if (i < nr){
@@ -6769,11 +6807,12 @@ void mainImage(out vec4 O, in vec2 U){
             float hl = max(0., 1. - dot(l + p, -p));
             if(uFlareSharp != 100.0) hl = pow(hl, uFlareSharp / 100.0);
             c = .58 - length(r) + vec3(1, .415, .1) * uFlareColor * (uFlare / 100.0) * hl;
-            ringAlpha = max(ringAlpha, smoothstep(.5, .72, r));
+            { float ra2 = smoothstep(.5, .72, r); if(ra2 >= ringAlpha) ringZ = D.z; ringAlpha = max(ringAlpha, ra2); }
         }
         d += dot(-.0215 * (uSpread / 100.0) * dc, 2. * d) * dc;
       }
     }
+    vjDepth = (ringAlpha > 0.) ? clamp(.5 - ringZ * .28, 0., 1.) : 0.; // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     c = uPaperColor - dot(vec3(.2, .5, 1), c) * vec3(.9 * (uInkDepth / 100.0)) * uInkColor;
     if(uVignette != 0.0) c *= 1. - (uVignette / 100.0) * clamp(dot(q0, q0) * 1.6, 0., 1.);
     if(uGrain != 0.0){ vec2 gp = floor(U); c += (fract(sin(dot(gp, vec2(12.9898, 78.233)) + iTime) * 43758.5453) - .5) * (uGrain / 100.0) * .5; }
@@ -6955,6 +6994,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     vec3 lightE = vec3(0.);
     float transmittance = 1.;
     float suma = 0.;
+    float depthHit = 0.;
     // 画素ごとに開始位置をずらし、固定stepが同心円状の層として見えるのを防ぐ
     float rayJitter = fract(52.9829189*fract(dot(fragCoord,vec2(.06711056,.00583715))));
     for (int i = 0; i < 96; i++){                           // 666→96 に短縮
@@ -6965,6 +7005,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
             float alpha = fbm(ray);
             alpha = (1.0 - suma) * alpha;
             if(alpha > 0.){
+                if(depthHit == 0.) depthHit = depth;
                 float lightTransmittance = lightmarch(ray);
                 lightE += alpha*_StepSize*transmittance*lightTransmittance*_PhaseVal;
                 float absK = _LightAbsorbtion;
@@ -6975,6 +7016,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
             suma += alpha;
         }
     }
+    vjDepth = (1.0 - transmittance) * exp(-depthHit / 20000.); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     float sundot = clamp(dot(fragAt, lightDir), 0.0, 1.0);
     vec3 col = 0.8 * (vec3(0,0,1));
     if(uSkyTint != vec3(1.0)){ col *= uSkyTint; }
@@ -7558,6 +7600,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     }
     
     // The closest point on the surface to the eyepoint along the view ray
+    vjDepth = exp(-dist*0.005); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = eye + dist * worldDir;
     
     // Use the surface normal as the ambient color of the material
@@ -7976,6 +8019,7 @@ void mainImage2( out vec4 fragColor, in vec2 fragCoord )
     }
     
     // The closest point on the surface to the eyepoint along the view ray
+    vjDepth = exp(-dist*0.003); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = eye + dist * worldDir;
     
     // Use the surface normal as the ambient color of the material
@@ -8017,6 +8061,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     }
     
     // The closest point on the surface to the eyepoint along the view ray
+    vjDepth = exp(-dist*0.003); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 p = eye + dist * worldDir;
     
     // Use the surface normal as the ambient color of the material
@@ -9275,6 +9320,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     toWorld(n, pitchA, yawA, rollA);
     col = shade(rd, normalize(n), bestId);
     alpha = 1.0;
+    vjDepth = clamp(1.0 - (bestT - (length(ro) - 2.0)) / 4.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   }
   // Coverage stays in alpha. Shader.preprocess forces uSlotIsA to 0 and
   // composites Slot A (opaque + uBgColor) in the entrypoint.
@@ -9440,6 +9486,7 @@ void mainImage(out vec4 finalColor, in vec2 pixelCoordinate) {
         pt = t; ph = h; hitUV = sp; hitH = h;
     }
 
+    vjDepth = clamp(hitH, 0.0, 1.0); // 深度 (高さ場 0..1 → 3D FX がこれで持ち上げる)
     // 法線 (低イテレーションの高さ場から中央差分)
     float e = 1.6/iResolution.y;
     if(uNormalRadius != 100.0){ e *= uNormalRadius / 100.0; }
@@ -9925,6 +9972,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float coverage = 0.0;
 
     if(hit > 0.5){
+        vjDepth = clamp(1.0 - (bestT - (ro.z - 1.0)) / 2.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
         // 高さ場の勾配から丸く膨らんだ面の法線を作る。
         const float e = 0.0025;
         float hx = (spiralHeight(pos.xy+vec2(e,0.0),pieceId)-
@@ -10202,6 +10250,7 @@ void mainImage(out vec4 fragColor,in vec2 fragCoord){
         vec3 farCol = shadeRibbon(farP,rd,radius,farField,width)*0.78*uInnerTint;
         col = nearCol*nearMask+farCol*farMask*(1.0-nearMask);
         alpha = nearMask+farMask*(1.0-nearMask);
+        vjDepth = (alpha > 0.001) ? clamp(1.0 - ((nearMask > 0.5 ? bound.x : bound.y) - (length(ro) - radius)) / (2.0*radius), 0.0, 1.0) : 0.0; // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
 
         // 無彩色を維持したままクロムの黒締まりと白い映り込みを調整。
         float c = clamp(contrastPct/100.0,0.0,1.5);

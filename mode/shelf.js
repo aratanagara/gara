@@ -349,9 +349,11 @@ void main(){
     const ce=Math.cos(camElev), se=Math.sin(camElev), ca=Math.cos(camAngle), sa=Math.sin(camAngle);
     const ex=camRadius*ce*ca, ey=camRadius*se+camTargetY, ez=camRadius*ce*sa;
 
-    this._ensureDepth(w, h);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
+    this.depthInfo = { near:0.05, far:80.0, cam:camRadius + 1.5, R:camRadius + 1.2 };   // 塔の内側: 手前 0.3 〜 奥 (反対側の壁) 2*camRadius+2.7
+    if(!kd) this._ensureDepth(w, h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+    if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
     gl.viewport(0,0,w,h);
 
     if(wire){
@@ -392,7 +394,7 @@ void main(){
 
     // 後始末(他パスへ影響させない)
     gl.bindVertexArray(null);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
   }

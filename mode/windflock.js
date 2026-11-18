@@ -519,7 +519,9 @@ void main(){
     const angle = dz(P.angle) * Math.PI / 180, yaw = dz(P.yaw) * Math.PI / 180;
 
     const useRBO = !!opts.fbo;
-    if(useRBO) this._ensureDepth(w, h);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度): マスクも同じ深度テクスチャに描く
+    { const eye = 3.6 * lensK; this.depthInfo = { near:0.25, far:40.0, cam:eye*0.875, R:eye*0.725 }; }
+    if(useRBO && !kd) this._ensureDepth(w, h);
     const useMask = useRBO && this._ensureMask(w, h);
     gl.viewport(0, 0, w, h);
     gl.disable(gl.CULL_FACE);
@@ -606,18 +608,20 @@ void main(){
     // 1) 被覆マスク (深度プリパス): 全板の形を 1 で描く。ここで確定した深度を 2) でそのまま使う
     if(useMask){
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.maskFBO);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+      if(kd) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, GL.kindDepthTex(), 0);
+      else gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
       gl.clearColor(0, 0, 0, 0); gl.clearDepth(1.0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
       gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
       gl.uniform1f(U('uPass'), 0);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, nVerts, g.instances);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+      if(kd) gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
+      else gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     }
     // 2) 本描画 (マスクを参照して Line Skip の内側の縁を落とす)
     if(useRBO){
       gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+      if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
@@ -631,7 +635,7 @@ void main(){
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.bindVertexArray(null);
 
-    if(useRBO) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(useRBO && !kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.disable(gl.DEPTH_TEST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },

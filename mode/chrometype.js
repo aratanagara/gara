@@ -1314,6 +1314,8 @@ void main(){
     const halfW = camZ*Math.tan(fov/2)*aspect, halfH = camZ*Math.tan(fov/2);
     const scale = fit*Math.max(0.05, dz(P.size)*0.01);
     const f = 1/Math.tan(fov/2), near = 0.1, far = 40;
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // Code の 3D 深度: 共通の深度テクスチャへ描く (MSAA は解決時に深度も写す)
+    this.depthInfo = { near, far, cam:camZ, R:Math.max(1.5, camZ*0.45) };
     const proj = [f/aspect,0,0,0, 0,f,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
     const view = [1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,-camZ,1];
     const vp = new Float32Array(16);
@@ -1329,7 +1331,7 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.msaa.fbo);
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo || null);
-      if(opts.fbo){ this._ensureDepth(w, h); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO); }
+      if(opts.fbo && !kd){ this._ensureDepth(w, h); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO); }
     }
     gl.viewport(0, 0, w, h);
     gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
@@ -1430,10 +1432,10 @@ void main(){
     if(useMS){
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.msaa.fbo);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, opts.fbo);
-      gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT | (kd ? gl.DEPTH_BUFFER_BIT : 0), gl.NEAREST);
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, null);
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, null);
-    } else if(opts.fbo){
+    } else if(opts.fbo && !kd){
       gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

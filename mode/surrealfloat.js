@@ -1484,7 +1484,9 @@ void main(){
     // ── 描画 ──
     const useRBO = !!opts.fbo;
     gl.bindFramebuffer(gl.FRAMEBUFFER, useRBO ? opts.fbo : null);
-    if(useRBO){ this._ensureDepth(w, h); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO); }
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
+    this.depthInfo = { near, far, cam:30.0, R:29.5 };   // 深度の範囲: 0.5 〜 59.5 (地平線の先は奥 = 0)
+    if(useRBO && !kd){ this._ensureDepth(w, h); gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO); }
     gl.viewport(0, 0, w, h);
     gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
     gl.clearColor(0, 0, 0, 1); gl.clearDepth(1.0);
@@ -1602,7 +1604,7 @@ void main(){
     }
     gl.bindVertexArray(null);
     gl.bindBuffer(gl.ARRAY_BUFFER, null);
-    if(useRBO) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(useRBO && !kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.disable(gl.DEPTH_TEST); gl.depthMask(true);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },

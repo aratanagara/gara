@@ -1077,6 +1077,7 @@ void main(){
         proj[4] = -sn / asp * m11; proj[5] = cs * m11;
       }
       const az = this.cam.az + dz(this.P.camAz) * Math.PI / 180, el = this.cam.el, d = this.cam.dist;
+      this.depthInfo = { near:0.01, far:100, cam:d*0.875, R:d*0.725, tex:this.sceneDepthTex };   // Code の 3D 深度: シーンの深度テクスチャをそのまま読む
       let ex = Math.cos(el) * Math.sin(az) * d;
       let ey = Math.sin(el) * d;
       let ez = Math.cos(el) * Math.cos(az) * d;
