@@ -3,6 +3,7 @@
 //   半径違いの CD(円柱)を「外周が小さいものほど高い段」に積んだ ziggurat を
 //   実際に SDF レイマーチ → 段差・厚み・遮蔽が本物の立体として出る(山状)。
 //   中心は1つの穴。各段の縁内側に白リング(枚数分)+ シルバー地金 + 異方性回折の虹。
+//   枚数は 3〜32 枚。8 枚までは従来どおり、9 枚以上は外周の間隔と段の厚みを詰めて山の大きさを保つ。
 //   カメラは横スピン+縦タンブルで回転。iTime,iResolution → time,resolution。
 //   cosGrad 対応 / Slot B はミス(背景)透過。helpers は rh_ で名前空間化。
 // =====================================================
@@ -36,7 +37,8 @@ vec3 rh_diffract(float d){
   return c1 + 0.35*c2;
 }
 
-const int   RH_RINGS = 8;          // CD の枚数(積む枚数)
+const int   RH_RINGS = 32;         // CD の最大枚数(配列の容量。実際の枚数は uCdCount)
+const float RH_BASE_N = 8.0;       // 外周の間隔・段の厚みの基準枚数(これ以下は従来の配置、超えると詰める)
 const float RH_HUB   = 2.0/3.0;    // 白域スケール
 const float RH_HOLE  = 0.087;      // スピンドル穴
 #define RH_T (0.015 * (uStep / 100.0))      // 1枚の厚み(段の高さ=CD くらい薄く)
@@ -51,7 +53,9 @@ float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * R
 // @param uAngle -180..180 = 0.0
 // @param uTilt -90..90 = 0.0
 // @param uSteps 30..64 = 64.0
-// @param uCdCount 3..8 = 8
+// @param uCdCount 3..32 = 8
+// @param uProfile 30..300 = 100
+// @param uSeed 0..99 = 0
 // @param uHoleSize 40..500 = 100
 // @param uTaper 30..120 = 100
 // @param uClearSize 0..200 = 100
@@ -82,7 +86,9 @@ uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uTilt; // 縦の傾き・仰角 (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
-uniform float uCdCount; // 積む CD の枚数 (外周の大きいものから消える)
+uniform float uCdCount; // 積む CD の枚数 (8 枚までは外周の大きいものから消える。9 枚以上は間隔と厚みを詰めて山の大きさを保つ)
+uniform float uProfile; // 山の断面の曲がり (%)。100 で直線、小さいと下が急で上が平ら、大きいと下が平らで上が急
+uniform float uSeed; // 各段の伸び縮みの乱数の種。値を変えると動きの組み合わせが変わる
 uniform float uHoleSize; // 中心のスピンドル穴の大きさ (%)
 uniform float uTaper; // 外周の大きさの段差の付き方 (%)。小さいと段が詰まる
 uniform float uClearSize; // 中央の透明なガラス領域の大きさ (%)
@@ -107,12 +113,14 @@ uniform vec3 uBackTint; // 裏面のシルバーと虹の帯にかけるティ�
 uniform vec3 uHighlightTint; // 鏡面ハイライトにかけるティント。既定は白で変化なし
 uniform vec3 uGlassTint; // 中央のガラスの色にかけるティント。既定は白で変化なし
 
+int rh_count(){ return int(clamp(uCdCount + 0.5, 1.0, float(RH_RINGS))); }
+
 // CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。
 float rh_outer(int k){
   float fk = float(k);
-  vec4 h = rh_hash4(fk + 5.0);
+  vec4 h = rh_hash4(fk + 5.0 + floor(uSeed + 0.5)*37.0);
   float span    = 1.0 - 0.34*RH_HUB;
-  float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/float(RH_RINGS));
+  float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/max(float(rh_count()), RH_BASE_N));
   float amp     = (0.10 + 0.24*h.x) * span * (uMotion / 100.0);
   float rate    = 0.15 + 0.75*h.y;
   float phase   = h.z * 6.2831;
@@ -132,8 +140,8 @@ float rh_zig(vec3 p){
   float ky = uOval / 100.0;
   if(ky != 1.0){ p.y *= ky; }
   float d = 1e9;
-  int ncd = int(uCdCount + 0.5);   // ループは定数回のまま (展開させる)。枚数を超えた CD は距離を遠くして消す
-  for(int i = 0; i < RH_RINGS; i++) d = min(d, (i < ncd) ? rh_cyl(p, rh_R[i], rh_H[i]) : 1e9);
+  int ncd = rh_count();            // ループ上限を uniform 依存にして ANGLE の強制展開 (TDR) を避ける
+  for(int i = 0; i < ncd; i++) d = min(d, rh_cyl(p, rh_R[i], rh_H[i]));
   float hole = length(p.xy) - RH_HOLE*RH_HUB*RH_RDISC*(uHoleSize / 100.0);   // 無限縦シリンダ
   if(ky > 1.0){ return max(d, -hole) * sc / ky; }
   return max(d, -hole) * sc;                                   // 穴をくり抜く
@@ -185,12 +193,14 @@ vec3 bg_romhack(vec2 fc){
   crd = vec3(rcy*crd.x + rsy*crd.z, crd.y, -rsy*crd.x + rcy*crd.z);
 
   // 各 CD の外周(ワールド)と rank 高さ → ziggurat を組む(外周が小=高い段)
-  int ncd = int(uCdCount + 0.5);
-  for(int i = 0; i < RH_RINGS; i++) rh_R[i] = (i < ncd) ? rh_outer(i) * RH_RDISC : 0.0;
-  for(int i = 0; i < RH_RINGS; i++){
+  int ncd = rh_count();
+  float ncf = float(ncd);
+  float tz = RH_T * RH_BASE_N / max(ncf, RH_BASE_N);   // 9 枚以上は 1 枚の厚みを詰めて山の高さを保つ
+  for(int i = 0; i < ncd; i++) rh_R[i] = rh_outer(i) * RH_RDISC;
+  for(int i = 0; i < ncd; i++){
     float rank = 1.0;
-    for(int j = 0; j < RH_RINGS; j++){ if(rh_R[j] > rh_R[i]) rank += 1.0; }
-    rh_H[i] = rank * RH_T;
+    for(int j = 0; j < ncd; j++){ if(rh_R[j] > rh_R[i]) rank += 1.0; }
+    rh_H[i] = (uProfile != 100.0) ? ncf * tz * pow(rank / ncf, uProfile / 100.0) : rank * tz;
   }
 
   // レイマーチ
@@ -248,8 +258,7 @@ vec3 bg_romhack(vec2 fc){
 
   // 各段の縁の黒ボンディング線(フロントの段の区切り)
   float bond = 0.0;
-  for(int i = 0; i < RH_RINGS; i++){
-    if(i >= ncd) continue;
+  for(int i = 0; i < ncd; i++){
     float edge = rh_R[i] / RH_RDISC;
     bond = max(bond, smoothstep(0.009 * (uThick / 100.0), 0.0, abs(rn - (edge - 0.010))));
   }
