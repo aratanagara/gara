@@ -16158,8 +16158,7 @@ ${outBlock}
       this._captureGifThumb({ maxW:128, frames:16, delay:70 }).then(gif=>{
         this._capturingGif = false;
         if(!gif){ toast('GIF生成に失敗'); return; }
-        const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        this._saveModeGif(slug, gif);   // サーバー(全端末共通)に保存・固定
+        this._saveModeGif(UI._gifKey(p.name), gif);   // サーバー(全端末共通)に保存・固定
         if(UI && UI.populatePresets) UI.populatePresets();
         toast(p.name + ' GIFサムネ更新完了');
       });
@@ -16175,8 +16174,7 @@ ${outBlock}
       this._captureGifThumb({ maxW:128, frames:16, delay:70 }).then(gif=>{
         this._capturingGif = false;
         if(!gif){ toast('GIF生成に失敗'); return; }
-        const slug = 'movie_' + (name||'').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        this._saveModeGif(slug, gif);
+        this._saveModeGif('movie_' + UI._gifKey(name), gif);
         if(UI && UI.populatePresets) UI.populatePresets();
         toast((name||'動画') + ' GIFサムネ更新完了');
       });
@@ -19635,6 +19633,23 @@ void mainImage(out vec4 o, in vec2 f){
   },
 
   // GIFサムネを通常は静止(1フレーム目をcanvas)、ホバー時のみアニメ(img)で表示
+  // Visual の Code / Movie タイルの GIF サムネのキー (サーバー modegifs)。英数字だけにすると日本語の部分が落ち、
+  //   「★ RHIZOME (リゾーム)」と「★ RHIZOME 扇 (逃走線)」が同じキーになって 1 つの更新が他にも映るため、
+  //   ★ 以外の非 ASCII を含む名前は名前全体のハッシュ (FNV-1a 32bit, UTF-16 単位) を足して一意にする。
+  //   scripts/gen_code_thumbs.py の gif_key と同じ規則
+  _gifSlug(name){ return String(name || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, ''); },
+  _gifKey(name){
+    const s = String(name || ''), base = this._gifSlug(s);
+    if(!/[^\x00-\x7F\u2605]/.test(s)) return base;
+    let h = 0x811c9dc5;
+    for(let i = 0; i < s.length; i++){ h ^= s.charCodeAt(i); h = Math.imul(h, 0x01000193) >>> 0; }
+    return base + '_' + h.toString(16).padStart(8, '0');
+  },
+  // 表示用: 一意キーの GIF が無ければ旧キー (英数字だけ) の GIF を使う (作り直すまでの間)
+  _gifFor(map, name, prefix){
+    const p = prefix || '';
+    return (map && (map[p + this._gifKey(name)] || map[p + this._gifSlug(name)])) || null;
+  },
   _gifStillHover(tile, ph, gifUrl){
     const cv = document.createElement('canvas');
     cv.width = Preview.W; cv.height = Preview.H;
@@ -19855,9 +19870,8 @@ void mainImage(out vec4 o, in vec2 f){
       tile.appendChild(ph);
       // Mode: GIF サムネ (サーバー modegifs = ⟳ で生成・固定) + 生成(⟳)ボタン
       if(MODE_KINDS.includes(p.kind)){
-        const slug = p.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-        const smap = UI._modeGifMap || {};
-        if(smap[slug]) UI._gifStillHover(tile, ph, smap[slug]);   // 通常静止/ホバーでアニメ
+        const g = UI._gifFor(UI._modeGifMap, p.name);
+        if(g) UI._gifStillHover(tile, ph, g);   // 通常静止/ホバーでアニメ
         const b = document.createElement('div');
         b.className = 'ico-btn'; b.style.cssText = 'top:2px;right:2px'; b.title = 'このモードに切替してGIFサムネを生成';
         VJIcon.set(b, 'refresh');
@@ -19919,9 +19933,8 @@ void mainImage(out vec4 o, in vec2 f){
       img.onerror = ()=>{};
       img.src = item.url.replace(/([^/]+)\.[^.]+$/, 'thumbs/$1.jpg');
       // サーバー共通 GIF サムネ (あれば) + 生成(⟳)ボタン
-      const mslug = 'movie_' + item.name.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
-      const smap = UI._modeGifMap || {};
-      if(smap[mslug]) UI._gifStillHover(tile, ph, smap[mslug]);   // 通常静止/ホバーでアニメ
+      const mg = UI._gifFor(UI._modeGifMap, item.name, 'movie_');
+      if(mg) UI._gifStillHover(tile, ph, mg);   // 通常静止/ホバーでアニメ
       const gb = document.createElement('div');
       gb.className = 'ico-btn'; gb.style.cssText = 'top:2px;right:2px'; gb.title = 'この動画でGIFサムネを生成';
       VJIcon.set(gb, 'refresh');
