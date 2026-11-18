@@ -1,8 +1,9 @@
 'use strict';
 /* 3D FX: gravity — 画面の布がブラックホール (台風の目) に吸い込まれる (Fx3d.EXTRA.gravity)。
    契約は fx3d.js の EXTRA のコメント参照。k = 0 で深さ 0・ねじれ 0・めくれ 0・正面カメラ = 元画面と画素一致。
-   主の井戸 = 1/r の深い漏斗 (喉の奥は暗い) + 中心ほど強い渦巻きのねじれ (有界の角度でゆっくり呼吸 = 絵が千切れない)。
-   副の井戸 5 つは主の周りを公転する (降着円盤の破片)。拍ごとに布の一部がページのようにめくれて裏返り、拍の終わりに戻る。
+   主の井戸 (喉) = 1/r の深い漏斗 (喉の奥は暗い) + 中心ほど強い渦巻きのねじれ (有界の角度でゆっくり呼吸 = 絵が千切れない)。
+   喉の数は Gravity Points (1〜4、既定 2) で選ぶ。喉は画面に構図として散らし、渦の向きは喉ごとに交互にする。
+   残りの井戸 (全 6 つのうち喉でないもの) は最寄りの喉の周りを公転する (降着円盤の破片)。拍ごとに布の一部がページのようにめくれて裏返り、拍の終わりに戻る。
    変形は量に対して早く立ち上がり (少し上げただけで平面でなくなる)、布全体も大きくうねる。
    布は画面の外まで余白を持たせ (絵はミラー)、引き込み・めくれでも縁が見えないようにする。 */
 (function(){
@@ -14,6 +15,7 @@ const FIELD = `
 uniform float uGAsp, uGK, uGSpin, uGHit, uGT, uGDepth, uGWave;   // uGDepth / uGWave: Depth / Wave (1 = 標準)
 uniform vec2 uGC[${NW}];
 uniform float uGW[${NW}];   // 井戸ごとの深さ (負 = 井戸 / 正 = 丘)
+uniform float uGM[${NW}];   // 井戸ごとの喉度 (1 = 主の喉 / 0 = 副の井戸。拍の移り変わりで滑らかに入れ替わる)
 uniform float uGR[${NW}];   // 井戸ごとの広がり
 uniform vec2 uGFD;          // めくれの線の向き (単位)
 uniform float uGFS, uGFT, uGFR;   // めくれの線の位置 / 返す角度 (π = 裏返し) / 巻きの半径
@@ -27,13 +29,15 @@ vec3 gField(vec3 P0, out float deep){
     float f = r0 * r0 / (r2 + r0 * r0);                         // 中心 1 → 遠方 0
     float w = uGW[i];
     // 渦: 中心ほど強いねじれ (主の井戸は最大 1 周強)。丘は逆向きに弱く
-    float sw = i == 0 ? 1.0 : 0.45;
-    float ang = kq * mix(0.45, 1.0, uGSpin) * sw * (5.5 + 2.0 * sin(uGT * 0.35 + float(i) * 2.1)) * pow(f, 0.8) * sign(-w) * min(1.0, abs(w));
+    float th = uGM[i];
+    float sw = mix(0.45, 1.0, th);
+    float alt = mix(1.0, (i - 2 * (i / 2)) == 0 ? 1.0 : -1.0, th);   // 喉は渦の向きを交互に
+    float ang = kq * mix(0.45, 1.0, uGSpin) * sw * alt * (5.5 + 2.0 * sin(uGT * 0.35 + float(i) * 2.1)) * pow(f, 0.8) * sign(-w) * min(1.0, abs(w));
     float cs = cos(ang), sn = sin(ang);
     vec2 d2 = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs) * (1.0 - 0.5 * kq * f * step(w, 0.0));   // 井戸へ引き込む
     off += d2 - d;
     float rr = sqrt(r2);
-    float fw = i == 0 ? r0 / (rr + r0) : pow(r0 * r0 * 0.75 / (r2 + r0 * r0 * 0.75), 0.55);   // 主 = 1/r の深い喉 / 副 = 裾の広い漏斗
+    float fw = mix(pow(r0 * r0 * 0.75 / (r2 + r0 * r0 * 0.75), 0.55), r0 / (rr + r0), th);   // 主 = 1/r の深い喉 / 副 = 裾の広い漏斗
     z += w * kq * uGDepth * (1.0 + 0.6 * uGHit) * fw;
     deep = min(deep, w * fw);
   }
@@ -123,19 +127,42 @@ function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get
 const h1 = (n, s)=>{ const x = Math.sin(n * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
 const easeOut = (x)=>{ const y = 1 - Math.max(0, Math.min(1, x)); return 1 - y * y * y; };
 
-// 拍 m の配置: 主の井戸は画面の中ほど (拍で少し移る)、副の 5 つは主の周りを公転する (t で回り続ける。外ほどゆっくり)
-function layout(m, asp, t){
+// 喉の数 (1〜4)。拍が変わった所で切り替える (拍の間に変わると配置が 1 フレームで飛ぶため。前の拍の配置から Ease で移る)
+const gst = { n: null, cur: 2, prev: 2 };
+
+// 拍 m の配置: 主の井戸 (喉) P 個を画面に散らす (P=1 は中ほど / 2 = 乱数の軸の両側 / 3・4 = 三角・四角 + 拍ごとの揺らぎ)。
+//   残りは最寄りの喉 (順番に割り当て) の周りを公転する (t で回り続ける。外ほどゆっくり)。喉は P>1 のとき少し浅く・狭くして間の布も読めるようにする
+function layout(m, asp, t, P){
   const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
-  const C = [], W = [-5.2, -1.6, -1.2, 1.1, -0.9, 0.8], R = [0.55, 0.28, 0.24, 0.30, 0.22, 0.26];
-  const c0 = [(h1(m, 3.1) * 2 - 1) * 0.35 * Lh, (h1(m, 5.9) * 2 - 1) * 0.25 * Sh];
-  C.push(c0);
-  const dir = h1(m, 8.8) < 0.5 ? 1 : -1;
-  for(let i = 1; i < NW; i++){
-    const r = (0.7 + 0.18 * i + 0.25 * h1(m, 2.3 + i)) * Sh;
+  const hx = asp, hy = 1;   // 紙の座標での半幅・半高
+  const C = [], M = [];
+  const W = [], R = [];
+  const SW = [-1.6, -1.2, 1.1, -0.9, 0.8], SR = [0.28, 0.24, 0.30, 0.22, 0.26];
+  const tw = P > 1 ? -5.2 * 0.85 : -5.2, tr = P > 1 ? 0.5 : 0.55;
+  if(P === 1){
+    C.push([(h1(m, 3.1) * 2 - 1) * 0.35 * Lh, (h1(m, 5.9) * 2 - 1) * 0.25 * Sh]);
+  } else if(P === 2){
+    const a = h1(m, 3.1) * Math.PI, d = 0.45 * Lh;
+    const x = Math.min(Math.abs(Math.cos(a)) * d, 0.8 * hx) * Math.sign(Math.cos(a) || 1), y = Math.min(Math.abs(Math.sin(a)) * d, 0.8 * hy) * Math.sign(Math.sin(a) || 1);
+    C.push([x, y], [-x, -y]);
+  } else {
+    const a0 = h1(m, 3.1) * 6.2832, rad = P === 3 ? 0.5 : 0.55;
+    for(let j = 0; j < P; j++){
+      const a = a0 + 6.2832 * j / P + (h1(m, 9.1 + j) * 2 - 1) * 0.25;
+      const rj = rad * (0.85 + 0.3 * h1(m, 5.9 + j));
+      C.push([Math.cos(a) * hx * rj, Math.sin(a) * hy * rj]);
+    }
+  }
+  for(let j = 0; j < P; j++){ W.push(tw); R.push(tr); M.push(1); }
+  const dir = h1(m, 8.8) < 0.5 ? 1 : -1, sc = P > 1 ? 0.75 : 1;
+  for(let i = P; i < NW; i++){
+    const c0 = C[(i - P) % P];
+    const r = (0.7 + 0.18 * i + 0.25 * h1(m, 2.3 + i)) * Sh * sc;
     const a = h1(i, 7.7) * 6.2832 + h1(m, 4.4 + i) * 1.2 + dir * t * 0.55 / r;
     C.push([c0[0] + Math.cos(a) * r * (land ? 1.4 : 1), c0[1] + Math.sin(a) * r * (land ? 1 : 1.4)]);
+    W.push(SW[i - P]); R.push(SR[i - P]); M.push(0);
   }
-  return { C, W, R };
+  return { C, W, R, M };
 }
 
 // 場のパラメータ (井戸の配置・めくれ)。o = { asp, k, clock, beat, beatMode, hit, spin }
@@ -144,11 +171,14 @@ function fieldParams(o){
   // beat = 拍ごとの配置へ Ease Out / drone = 0.25 拍/秒相当でゆっくり移り変わる
   const b = o.beatMode ? (o.beat || 0) : t * 0.25;
   const n = Math.floor(b), e = o.beatMode ? easeOut((b - n) / 0.6) : (b - n) * (b - n) * (3 - 2 * (b - n));
-  const A = layout(n - 1, asp, t), B = layout(n, asp, t);
-  const C = [], W = [], R = [];
+  const P = Math.max(1, Math.min(4, Math.round(+((o.post || {}).fx3dGravityPoints != null ? o.post.fx3dGravityPoints : 2)) || 2));
+  if(gst.n === null){ gst.cur = gst.prev = P; gst.n = n; }
+  else if(gst.n !== n){ gst.prev = gst.cur; gst.cur = P; gst.n = n; }
+  const A = layout(n - 1, asp, t, gst.prev), B = layout(n, asp, t, gst.cur);
+  const C = [], W = [], R = [], M = [];
   for(let i = 0; i < NW; i++){
     C.push(A.C[i][0] + (B.C[i][0] - A.C[i][0]) * e, A.C[i][1] + (B.C[i][1] - A.C[i][1]) * e);
-    W.push(A.W[i] + (B.W[i] - A.W[i]) * e); R.push(A.R[i] + (B.R[i] - A.R[i]) * e);
+    M.push(A.M[i] + (B.M[i] - A.M[i]) * e); W.push(A.W[i] + (B.W[i] - A.W[i]) * e); R.push(A.R[i] + (B.R[i] - A.R[i]) * e);
   }
   // めくれ: 拍ごとに線の向き・位置・返す角度を選び、拍の前半で返して後半で戻す (拍頭は 0 = 線が変わっても跳ねない)
   const kq = 1 - Math.pow(1 - k, 3);
@@ -156,7 +186,7 @@ function fieldParams(o){
   const ph = b - n, env = easeOut(ph / 0.26) * (1 - (x=>x * x * (3 - 2 * x))(Math.max(0, Math.min(1, (ph - 0.74) / 0.26))));
   const fa = h1(n, 6.1) * 6.2832, fsd = (0.35 + 0.55 * h1(n, 7.3)) * (asp >= 1 ? 1 : asp);   // 線は中心から外寄り = 画面の端の側がめくれ返る
   const ft = Math.PI * Math.min(1, kq * 1.6) * env;
-  return { C, W, R, fa, fsd, ft, kq };
+  return { C, W, R, M, fa, fsd, ft, kq };
 }
 
 Fx3d.EXTRA.gravity = {
@@ -174,6 +204,7 @@ Fx3d.EXTRA.gravity = {
     gl.uniform2fv(U('uGC'), F.C.flat ? F.C.flat() : F.C);
     gl.uniform1fv(U('uGW'), F.W);
     gl.uniform1fv(U('uGR'), F.R);
+    gl.uniform1fv(U('uGM'), F.M);
     gl.uniform2f(U('uGFD'), Math.cos(F.fa), Math.sin(F.fa));
     gl.uniform1f(U('uGFS'), F.fsd);
     const post = o.post || {}, dz = (v, d)=>Math.max(0, Math.min(1, App.deadParam(v != null ? +v : d)));
