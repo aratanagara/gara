@@ -66,7 +66,7 @@ uniform float uMcSeed;    // 乱数の種。値を変えると別の構図にな
 uniform float uMcGrain;   // 絵具のムラ (%)
 uniform float uMcClear;   // 白地を透過する量 (%)。Slot B で下の絵に線と色面だけを重ねる
 uniform float uMc3D;      // 3D の量 (%)。0 = 平面 (従来どおり)。上げると盤面が傾いて回り、線 (道) が厚みを持って立ち上がる
-uniform float uMcHeight;  // 線の高さ (厚み) (%)
+uniform float uMcHeight;  // 線の高さ (%)。100 = 線の太さと同じ = 断面が正方形
 uniform float uMcPitch;   // 盤面の傾き (度)
 uniform float uMcSpin;    // 盤面の回転の速さ (%)。負で逆回転
 uniform float uMcWallShade; // 線の側面の陰の濃さ (%)
@@ -306,7 +306,9 @@ vec3 bg_composition(vec2 fc){
   // ── 3D: 盤面 (z = 0) を傾けて回し、線を高さ H の壁として押し出す。視線を盤面の上の層 (z = H → 0) で数点しらべ、
   //    最初に線の中へ入った所を描く (天面 = 線の色 / 側面 = 陰)。深度 vjDepth も出す (3D FX が立体のまま掛かる)
   float k3 = uMc3D * 0.01;
-  float H = 0.045 * uMcHeight * 0.01 * k3;                   // 線の高さ (盤面の画面の高さ 1 に対して)
+  // 線の高さ = 線の太さ (Height 100% で断面が正方形)。盤面の座標 q = 世界 × sc / zm なので、世界の長さに直す
+  float lw = 2.0 * 0.011 * uMcLine * 0.01 * (1.0 + audio * 0.5);
+  float H = lw * zm / sc * uMcHeight * 0.01 * k3;
   float pitch = radians(uMcPitch) * k3;
   float yaw = time * 0.25 * uMcSpin * 0.01 * k3;
   vec2 uv = (fc - 0.5 * resolution) / resolution.y;
