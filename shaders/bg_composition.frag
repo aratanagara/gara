@@ -322,7 +322,7 @@ vec3 bg_composition(vec2 fc){
   float lw = 2.0 * 0.011 * uMcLine * 0.01 * (1.0 + audio * 0.5);
   float H = lw * zm / sc * uMcHeight * 0.01 * k3;
   float HB = 0.12 * zm / sc * uMcBuild * 0.01 * k3;           // 建物 (色面) の高さの最大
-  float pitch = radians(uMcPitch) * k3;
+  float pitch = -radians(uMcPitch) * k3;   // 上から見下ろす向き (地平線が画面の上)
   float yaw = time * 0.25 * uMcSpin * 0.01 * k3;
   vec2 uv = (fc - 0.5 * resolution) / resolution.y;
   vec3 ro = vec3(0.0, 0.0, mix(1.0, uMcDist * 0.01, k3));   // Dist で引いて俯瞰
