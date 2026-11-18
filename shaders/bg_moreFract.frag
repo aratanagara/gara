@@ -173,6 +173,7 @@ vec3 bg_moreFract(vec2 fc){
   float d = mfRayMarch(ro, rd, tm);
   if(d < MF_MAX_DIST){
     vec3 p = ro + rd*d;
+    { float mfR = 2.5 * (uScale / 100.0); vjDepth = clamp(1.0 - (d - (length(ro.xz) - mfR)) / (2.0 * mfR), 0.0, 1.0); }   // 深度 (柱の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 nrm = mfNormal(p, tm);
     vec3 rfl = reflect(rd, nrm);
 

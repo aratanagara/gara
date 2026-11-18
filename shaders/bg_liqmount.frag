@@ -227,6 +227,7 @@ vec3 lm_custom(vec2 fc){
   bgAlpha = 0.0;   // 背景は透過
   if(hit && t < 20.0){
     bgAlpha = 1.0;                          // 山(被写体)は不透明
+    vjDepth = clamp(exp(-(t - 0.5 * length(ro)) * 0.12), 0.0, 1.0);   // 深度 (カメラ距離の半分を 1 に、遠景ほど 0)。折り系・3D FX が紙をこれで持ち上げる
     col = lm_shade(p, rd);
     if(uFog != 0.0) col *= exp(-t * uFog / 100.0 * 0.12);
     if(uGrain != 0.0) col += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain / 100.0 * 0.6;
@@ -269,6 +270,7 @@ vec3 bg_liqmount(vec2 fc){
   bgAlpha = 0.0;   // 背景は透過
   if(hit && t < 20.0){
     bgAlpha = 1.0;                          // 山(被写体)は不透明
+    vjDepth = clamp(exp(-(t - 0.5 * length(ro)) * 0.12), 0.0, 1.0);   // 深度 (カメラ距離の半分を 1 に、遠景ほど 0)。折り系・3D FX が紙をこれで持ち上げる
     col = lm_shade(p, rd);
   } else {
     col = vec3(0.0);   // 背景は黒 (entrypoint が uBgColor で塗る)

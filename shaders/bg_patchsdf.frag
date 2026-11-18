@@ -229,6 +229,7 @@ vec3 bg_patchsdf(vec2 fc){
   if(obj > 0){
     bgAlpha = 1.0;                                       // 被写体は不透明
     float t = uvt.z;
+    { float bpR = 1.75 * max(uScale / 100.0, 0.3); vjDepth = clamp(1.0 - (t - (length(ro) - bpR)) / (2.0 * bpR), 0.0, 1.0); }   // 深度 (立方体の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 pos = ro + t*rd;
     vec3 nor = bp_calcNormal(pos);
     // クローム: 環境反射 + フレネル + 鋭いハイライト(テクスチャを置換)

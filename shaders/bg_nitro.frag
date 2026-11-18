@@ -198,5 +198,6 @@ vec3 bg_nitro(vec2 fc){
   float surfaceAlpha = 1.0 - smoothstep(0.012, 0.115, minSurfaceDist);
   float actualHit = step(abs(distAndMat.x), 0.0025) * step(t, maxDepth);
   bgAlpha = max(surfaceAlpha, actualHit);
+  vjDepth = actualHit * exp(-t * 0.35);   // 深度 (実ヒットの距離 t。外れは 0)。折り系・3D FX が紙をこれで持ち上げる
   return c;
 }

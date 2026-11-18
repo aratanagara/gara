@@ -171,6 +171,7 @@ vec3 bg_flower(vec2 fc){
   }
 
   if(hit < 0.5){ bgAlpha = 0.0; return vec3(0.0); }
+  vjDepth = clamp(1.0 - (t - (camD - RAD)) / (2.0 * RAD), 0.0, 1.0);   // 深度 (外接球の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
 
   // 法線: F(p)=abs(p.z)-THICK*h(p.xy) の勾配(実ジオメトリ → ノイズなし)
   vec2 e = vec2(0.004, 0.0);

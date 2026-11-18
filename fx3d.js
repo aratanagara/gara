@@ -227,6 +227,7 @@ float fx3dPop(float idx){
     if(id in c) return c[id];
     vs = this._withHooks(vs, 'fx3dNeedleH(', GL.needleCellGLSL());
     vs = this._withHooks(vs, 'fx3dPop(', this.POP_GLSL);
+    vs = this._withHooks(vs, 'fx3dRelief(', GL.reliefGLSL());   // シェーダの深度 (vjDepth) で面を持ち上げる
     vs = this._withHooks(vs, 'fx3dApply(', GL.fx3dHookGLSL());
     fs = this._withHooks(fs, 'fx3dFoldShade(', GL.fx3dShadeGLSL());
     const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);
@@ -288,6 +289,8 @@ float fx3dPop(float idx){
 }
 `,
   shade(k){ return Math.min(1, k / 0.22); },
+  // シェーダの深度で面を持ち上げる uniform (VS で fx3dRelief(uv) を呼ぶエンジン用。3D Depth × 表示中のシェーダの深度)
+  reliefUniforms(gl, pr){ GL._reliefBind(pr); },
 
   // e = 0..1 の量。戻り値: 描けたか
   render(name, o){

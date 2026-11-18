@@ -176,6 +176,7 @@ vec3 bg_sinedeform(vec2 fc){
   float t = sd_trace(ro, rd);
   if(t > 0.0){
     bgAlpha = 1.0;                        // チューブ本体は不透明
+    { float sdR = 2.5 * (uScale / 100.0); vjDepth = clamp(1.0 - (t - (length(ro) - sdR)) / (2.0 * sdR), 0.0, 1.0); }   // 深度 (チューブの手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 pos = ro + t*rd;
     vec3 nor = sd_nor(pos);
     vec3 uvw = sd_warp(pos / (uScale / 100.0));

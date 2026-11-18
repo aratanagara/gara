@@ -154,6 +154,7 @@ vec3 bg_ribpillar(vec2 fc){
   o = tanh(o*o / 8e9 * exp(d/9e1*(uDepthGlow / 100.0))
      + abs(vec4(1,2,7,0) / dot(cos(p*.03), vec3(4e1)))*(uPathGlow / 100.0));
 
+  vjDepth = exp(-d * 0.01);   // 深度 (コースの先ほど 0 へ)。折り系・3D FX が紙をこれで持ち上げる
   vec3 col = o.rgb;
 
   // 白い部分にシルバー感(明部をわずかに脱色・寒色化)

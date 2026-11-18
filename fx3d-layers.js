@@ -3,9 +3,9 @@
    契約は fx3d.js の EXTRA のコメント参照。fx3dLayerCount = 板の枚数 / fx3dLayerSize = 板の大きさ (%) / fx3dLayerEdge = 板の縁の線。
    回転は拍ごとに軸 (縦 / 横 / 面内) と向きを選んで 1 周 (1 周なので拍の切り目で絵が跳ねない)。積層全体も回り続け、拍頭で板の間隔がふっと開く。
    drone は 0.5 拍/秒の仮想の拍で同じ動き。k = 0 で全部の板が z = 0 で画面に重なり、回転 0・正面カメラ = 元画面と画素一致。
-   板は 8 × 8 に分割してある (折り系を物体へ掛けたとき、折り線が板の中で曲がるように)。 */
+   板は 24 × 24 に分割してある (折り線が板の中で曲がり、立体シェーダの深度で持ち上げても縁が粗くならないように)。 */
 (function(){
-const SUB = 8;                                     // 板の分割 (SUB × SUB マス)
+const SUB = 24;                                    // 板の分割 (SUB × SUB マス。立体シェーダの深度で持ち上げても縁が粗くならない細かさ)
 const PER = SUB * SUB * 6;                         // 板 1 枚あたりの頂点数
 // 板 pl の面内座標 ab (0..1) → 位置。ctr = 板の中心
 const SURF = `
@@ -42,8 +42,16 @@ void main(){
   vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
   int cy = cell / ${SUB}, cx = cell - cy * ${SUB};
   ab = (vec2(float(cx), float(cy)) + ab) / float(${SUB});
-  vec3 ctr;
+  vec3 ctr, c2;
   vec3 P = layerSurf(pl, ab, ctr);
+  {   // 立体シェーダの深度で板の面を持ち上げる (板の法線は差分で求める)
+    float rl = fx3dRelief(ab);
+    if(rl > 0.0){
+      const float E = 1e-3;
+      vec3 N = normalize(cross(layerSurf(pl, ab + vec2(E, 0.0), c2) - P, layerSurf(pl, ab + vec2(0.0, E), c2) - P));
+      P += N * rl;
+    }
+  }
   P = ctr + (P - ctr) * fx3dPop(float(pl));   // ポップ: 板ごとに中心から
   vUv = ab;
   vW = P;
@@ -69,6 +77,7 @@ void main(){
   vec3 B = (layerSurf(pl, ab + vec2(0.0, E), c2) - P0) / E;
   vec3 N = normalize(cross(T, B));
   float cl = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);   // 格子 1 つぶんの長さ
+  P0 += N * fx3dRelief(ab);
   vec3 P = P0 + N * (w * fx3dNeedleH(key, ab * vec2(uAsp, 1.0) * 3.2) * cl);
   P = ctr + (P - ctr) * fx3dPop(float(pl));
   vUv = ab;
@@ -145,6 +154,7 @@ Fx3d.EXTRA.layer = {
       gl.uniform1f(uloc(gl, pr, 'uEdge'), edge);
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'layer');
+      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'layersNeedle', NV_VS, FS) : null;

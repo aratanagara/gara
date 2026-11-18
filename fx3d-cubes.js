@@ -73,6 +73,16 @@ void main(){
   ab = (vec2(float(cx), float(cy)) + ab) / float(${SUB});
   vec3 ctr;
   vec3 P = cubeSurf(cube, face, ab, vUv, ctr);
+  {   // 立体シェーダの深度で面を外向きに持ち上げる (面の法線は差分で求める)
+    float rl = fx3dRelief(vUv);
+    if(rl > 0.0){
+      const float E = 1e-3;
+      vec2 uvd; vec3 c2;
+      vec3 N = normalize(cross(cubeSurf(cube, face, ab + vec2(E, 0.0), uvd, c2) - P, cubeSurf(cube, face, ab + vec2(0.0, E), uvd, c2) - P));
+      if(dot(N, P - ctr) < 0.0) N = -N;
+      P += N * rl;
+    }
+  }
   P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
   vW = P;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
@@ -99,6 +109,7 @@ void main(){
   vec3 B = (cubeSurf(cube, face, ab + vec2(0.0, E), uvd, c2) - P0) / E;
   vec3 N = normalize(cross(T, B));
   if(dot(N, P0 - ctr) < 0.0) N = -N;                                                      // キューブの中心から外向きに揃える
+  P0 += N * fx3dRelief(uv0);
   float cl = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);                       // 格子 1 つぶんの長さ
   vec3 P = P0 + N * (w * fx3dNeedleH(key, uv0 * vec2(uAsp, 1.0) * 3.2) * cl);
   P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
@@ -161,6 +172,7 @@ Fx3d.EXTRA.cubes = {
       gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.04 * ss(0.1, 0.6, k));   // キューブ同士の隙間 (側面がのぞく)
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'cubes');
+      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;

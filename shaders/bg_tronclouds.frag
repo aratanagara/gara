@@ -256,6 +256,7 @@ vec3 bg_tronclouds(vec2 fc){
     float tt = (floorY - 1.0) / el;     // 視点高さ1.0 から床へ
     if(tt > 0.0){
       vec3 hit = vec3(0.0,1.0,0.0) + uvVec*tt;
+      vjDepth = exp(-tt * 0.08);   // 深度 (床の手前 1 → 奥 0)。空・雲・山は 0。折り系・3D FX が紙をこれで持ち上げる
       // 原色マゼンタの範囲を広く、奥(地平線付近)だけ濃いマゼンタに(pow で遠方寄せ)
       float depth = pow(clamp(tt * 0.045, 0.0, 1.0), 3.0 * (uFloorRamp / 100.0));
       vec3 floorGrad = mix(vec3(0.95, 0.0, 0.95), vec3(0.16, 0.0, 0.22), depth) * uFloorTint;

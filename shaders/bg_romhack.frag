@@ -215,6 +215,7 @@ vec3 bg_romhack(vec2 fc){
   }
   if(!hit){ bgAlpha = 0.0; return vec3(0.0); }
 
+  { float rhR = 1.0 * (uScale / 100.0); vjDepth = clamp(1.0 - (t - (length(cro) - rhR)) / (2.0 * rhR), 0.0, 1.0); }   // 深度 (円盤の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
   vec3 nor = rh_zigN(p);
   vec2  po  = p.xy / (uScale / 100.0);
   if(uOval != 100.0){ po.y *= uOval / 100.0; }

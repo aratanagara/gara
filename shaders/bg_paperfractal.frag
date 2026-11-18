@@ -164,6 +164,7 @@ vec3 bg_paperfractal(vec2 fc){
   }
 
   if(hit){
+    { float pfR = 1.6 * (uScale / 100.0); vjDepth = clamp(1.0 - (length(p - ro) - (length(ro) - pfR)) / (2.0 * pfR), 0.0, 1.0); }   // 深度 (オブジェクトの手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
     // 単純なグレースケール陰影(グレインなし)
     float sd = 1.0 - shad;
     if(uShadeCurve != 100.0) sd = pow(sd, uShadeCurve / 100.0);

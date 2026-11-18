@@ -164,6 +164,7 @@ vec3 bg_formation(vec2 fc){
     return backgroundColor;
   }
   vec3 position = marchResult.xyz;
+  vjDepth = exp(-length(position - cameraPosition) * 0.2);   // 深度 (近いほど 1。距離フォグ 4〜 に合わせる)。折り系・3D FX が紙をこれで持ち上げる
   float fogDistance = max(0.0, length(position - cameraPosition) - 4.0);
   vec3 litColor = fm_lightSurface(position, fm_gradient(position, marchResult.w), -rayDirection);
   if(uFogDensity > 100.0){ litColor *= exp(-fogDistance * 0.1 * (uFogDensity - 100.0) / 100.0); }

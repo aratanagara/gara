@@ -276,6 +276,7 @@ vec3 bg_spiky(vec2 fc){
   bgAlpha = 0.0;                                         // 背景は透明
   if(sp_Spiky(pos) < 0.05 && ts < 79.0){
     bgAlpha = 1.0;                                       // 被写体は不透明
+    { float spR = 6.0 * (uScale / 100.0); vjDepth = clamp(1.0 - (ts - (length(vpos) - spR)) / (2.0 * spR), 0.0, 1.0); }   // 深度 (トゲ玉の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
     vec3 nor = sp_calcNormal(pos);
     // クローム: 環境反射 + フレネル + 鋭いハイライト
     vec3 rr = reflect(vdir, nor);

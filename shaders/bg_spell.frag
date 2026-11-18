@@ -177,14 +177,18 @@ vec3 bg_spell(vec2 fc){
 
   vec3 pos = eye;
   float shade = 0.;
+  float spTrav = 0.0, spFirst = -1.0;
   for(float i=0.; i<=1.; i += SP_STEPS){
     if(i > uSteps / 50.) break;
     float dist = sp_map(pos);
+    if(dist < SP_VOLUME_BIAS * (uShellThick / 100.0) && spFirst < 0.0) spFirst = spTrav;
     if(dist < SP_VOLUME_BIAS * (uShellThick / 100.0)) shade += SP_STEPS * (1.0 - (uDepthFade / 100.0) * i);
     if(shade >= 1.) break;
     dist *= SP_STEP_DAMPING + .1*(uVolumeGrain / 100.0)*sp_rng(uv+fract(time));
     dist = max(SP_MIN_DIST, dist);
     pos += dist * ray;
+    spTrav += dist;
   }
+  vjDepth = spFirst < 0.0 ? 0.0 : clamp(exp(-(spFirst - 3.0) * 0.15), 0.0, 1.0);   // 深度 (殻に最初に入った距離)。折り系・3D FX が紙をこれで持ち上げる
   return vec3(shade) * uLightColor + uVoidColor * (1.0 - shade);
 }

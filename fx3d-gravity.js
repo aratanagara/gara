@@ -67,7 +67,7 @@ uniform float uMargin;
 ${FIELD}
 vec3 gSurf(vec2 g, out vec2 uv, out float deep){
   uv = 0.5 + (g - 0.5) * uMargin;                              // 余白ぶん画面の外まで
-  return gField(vec3((uv - 0.5) * 2.0 * vec2(uGAsp, 1.0), 0.0), deep);
+  return gField(vec3((uv - 0.5) * 2.0 * vec2(uGAsp, 1.0), fx3dRelief(uv)), deep);   // 立体シェーダの深度で持ち上げた布を吸い込む
 }
 `;
 const VS = `#version 300 es
@@ -253,6 +253,7 @@ Fx3d.EXTRA.gravity = {
       this.fieldUniforms(gl, pr, Object.assign({}, o, { spin }));
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'gravity');
+      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'gravityNeedle', NV_VS, FS) : null;

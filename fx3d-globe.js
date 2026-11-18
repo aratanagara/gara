@@ -39,6 +39,7 @@ void main(){
   vec2 uv = (vec2(float(ix), float(iy)) + ab) / vec2(uCols, uRows);
   vec3 N;
   vec3 P = gSurf(uv, N);
+  P += N * fx3dRelief(uv);   // 立体シェーダの深度で球の面を持ち上げる
   vUv = uv; vW = P; vN = N;
   gl_Position = fx3dApply(uProj * uView * vec4(P * fx3dPop(0.0), 1.0));   // ポップ: 球ごと中心から
 }`;
@@ -57,6 +58,7 @@ void main(){
   vec3 P0 = gSurf(uv, N);
   float lT = length(gSurf(uv + vec2(E, 0.0), Nd) - P0) / E, lB = length(gSurf(uv + vec2(0.0, E), Nd) - P0) / E;
   float cell = 0.5 * (lT / uNvGrid.x + lB / uNvGrid.y);
+  P0 += N * fx3dRelief(uv);
   vec3 P = P0 + N * (w * fx3dNeedleH(key, (uv - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
   vUv = uv; vW = P; vN = N;
   gl_Position = fx3dApply(uProj * uView * vec4(P * fx3dPop(0.0), 1.0));
@@ -136,6 +138,7 @@ Fx3d.EXTRA.globe = {
       gl.uniform1f(uloc(gl, pr, 'uFacet'), 1 - ss(16, 56, detail));
       gl.uniform1f(uloc(gl, pr, 'uMirror'), m2 * (0.9 + (0.15 - 0.9) * detail / 96));
       Fx3d.popUniforms(gl, pr, 'globe');
+      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'globeNeedle', NV_VS, FS) : null;

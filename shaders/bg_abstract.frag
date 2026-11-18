@@ -148,6 +148,7 @@ vec3 bg_abstract(vec2 fc){
   float orbR = 1e-3 * abs(sin(t * 0.4) * (0.5 * (uOrbPulse / 100.0)) + 2.0);
 
   vec3 l = vec3(0.0);   // accumulated radiance
+  vec3 aaP0 = p;
 
   // Raymarch loop
   for(float i = 0.0; i < 150.0; i++){
@@ -170,6 +171,8 @@ vec3 bg_abstract(vec2 fc){
                            -0.4 + sin(t * 0.25) * (0.3 * (uOrbBob / 100.0))))
           * orbR);
   }
+
+  vjDepth = exp(-distance(p, aaP0) * 0.2);   // 深度 (march の到達距離。面に近いほど 1、奥ほど 0)。折り系・3D FX が紙をこれで持ち上げる
 
   // Tonemap + gamma correction (l*l = 様式的なコントラスト強調)
   //   オーブ項が length→0 で発散するため hdr をクランプ (Inf→ACES→NaN を防ぐ)。
