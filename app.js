@@ -14308,7 +14308,7 @@ ${outBlock}
         if(typeof Overlay !== 'undefined'){
           Overlay.P.enabled = !Overlay.P.enabled;
           if(!Overlay.P.enabled && Overlay.clear) Overlay.clear();
-          const cb = document.getElementById('ovEnable'); if(cb) cb.checked = Overlay.P.enabled;
+          if(typeof UI !== 'undefined' && UI._syncOvBrushBtns) UI._syncOvBrushBtns();   // Brush のボタンが ON / OFF を兼ねる
           if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
           toast('IMAGON: ' + (Overlay.P.enabled ? 'ON' : 'OFF'));
         }
@@ -18358,7 +18358,6 @@ void mainImage(out vec4 o, in vec2 f){
     }
 
     // チェックボックス
-    const en = $('#ovEnable');  if(en){ en.checked = O.enabled; en.addEventListener('change', ()=>{ O.enabled = en.checked; if(!en.checked) Overlay.clear(); if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds()); }); }
     const pe = $('#ovPersist'); if(pe){ pe.checked = O.persist; pe.addEventListener('change', ()=>{ O.persist = pe.checked; if(!pe.checked) Overlay.clear(); }); }
 
     // select
@@ -18374,6 +18373,7 @@ void mainImage(out vec4 o, in vec2 f){
         if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
       });
       // ブラシはプルダウンではなくトグルボタンで選ぶ (FB の Mode と同じ見た目)。選択の本体は隠したプルダウン (change で従来の処理が走る)。
+      //   ボタンは IMAGON の ON / OFF も兼ねる: ブラシを押すと ON、点灯中のブラシをもう一度押すと OFF (全部消灯)。
       //   VJ Legacy (Curve / Swoosh) は古いプリセット用でボタンには出さない
       const bx = document.createElement('div');
       bx.id = 'ovBrushBtns'; bx.className = 'toggle-btns wrap';
@@ -18383,11 +18383,16 @@ void mainImage(out vec4 o, in vec2 f){
       }
       br.style.display = 'none';
       br.parentNode.insertBefore(bx, br);
-      UI._syncOvBrushBtns = ()=>{ for(const b of bx.children) b.setAttribute('aria-pressed', b.dataset.type === br.value ? 'true' : 'false'); };
+      UI._syncOvBrushBtns = ()=>{ for(const b of bx.children) b.setAttribute('aria-pressed', (O.enabled && b.dataset.type === br.value) ? 'true' : 'false'); };
       bx.addEventListener('click', (e)=>{
-        const b = e.target.closest('button[data-type]'); if(!b || br.value === b.dataset.type) return;
-        br.value = b.dataset.type;
-        br.dispatchEvent(new Event('change'));
+        const b = e.target.closest('button[data-type]'); if(!b) return;
+        if(O.enabled && br.value === b.dataset.type){
+          O.enabled = false; Overlay.clear();                   // 点灯中をもう一度 = OFF
+        } else {
+          if(br.value !== b.dataset.type){ br.value = b.dataset.type; br.dispatchEvent(new Event('change')); }
+          O.enabled = true;
+        }
+        if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
         UI._syncOvBrushBtns();
       });
       UI._syncOvBrushBtns();
@@ -18555,7 +18560,6 @@ void mainImage(out vec4 o, in vec2 f){
     };
     const f2 = v=>v.toFixed(2), f3 = v=>v.toFixed(3), f1 = v=>v.toFixed(1), fi = v=>String(v|0);
 
-    setCb('ovEnable',  O.enabled);
     setCb('ovPersist', O.persist);
     setR('ovMaxStr',       O.maxStrokes,   fi, 'maxStrokes');
     setR('ovSpawnCnt',     O.spawnCount,   fi, 'spawnCount');
