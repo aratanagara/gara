@@ -14443,7 +14443,7 @@ ${outBlock}
     const E = { on:false, last:{x:0, y:0}, sampleT:0, timer:null, holdTimer:null, altDown:false, lastRgb:null, gradPicked:false,
                 orig:null, committed:null, mouseHold:false };   // orig = スポイト開始時の色 (確定しなければ戻す) / committed = クリックで確定した色
     // Visual タブのタイル上では Option+クリック = そのタイルの絵から Grad Map を生成 (スポイトは使わない)
-    const visTileAt = (x, y)=>{ const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('#thumbGrid .thumb-tile') : null; };
+    const visTileAt = (x, y)=>{ const el = document.elementFromPoint(x, y); return el && el.closest ? el.closest('#thumbGrid .thumb-tile, #presetList .thumb-tile') : null; };
     const readCanvasAt = (cv, u, v)=>{
       if(cv === c){
         const fb = GL._finalFBO, gl = GL.gl; if(!fb || !gl) return null;
