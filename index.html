@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1794927119">
+<link rel="stylesheet" href="style.css?v=1794978513">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1299,6 +1299,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Strobe</label><input type="range" id="pxAStrobe" min="0" max="1" step="0.01" value="0" title="アタックで一瞬フラッシュ (発火ごとに白/反転がランダム)"><div class="val" id="pxAStrobeVal">0.00</div></div>
           <div class="row"><label>Shockwave</label><input type="range" id="pxAShock" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)で中心から屈折の衝撃波リング"><div class="val" id="pxAShockVal">0.00</div></div>
           <div class="row"><label>Pixel Expl</label><input type="range" id="pxAExplode" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)でセルが粒子状に飛散→吸い戻し"><div class="val" id="pxAExplodeVal">0.00</div></div>
+          <div class="row"><label>Shards</label><input type="range" id="pxAShards" min="0" max="1" step="0.01" value="0" title="画面上のランダムな点を結んだ多角形を切り抜き、片ごとに別の帯域の音量で拡大縮小する (静か = 縮む / 大きい音 = 膨らむ)。配置は beat で拍ごと、drone でアタックごとに変わる。値=拡縮の強さ"><div class="val" id="pxAShardsVal">0.00</div></div>
+          <div class="row"><label for="pxAShardsCount" class="sub-label">Shards Count</label><input type="range" id="pxAShardsCount" data-sub-of="pxAShards" min="1" max="64" step="1" value="12" title="多角形の数"><div class="val" id="pxAShardsCountVal">12</div></div>
+          <div class="row"><label for="pxAShardsSides" class="sub-label">Shards Sides</label><input type="range" id="pxAShardsSides" data-sub-of="pxAShards" min="3" max="12" step="1" value="5" title="多角形の頂点の数"><div class="val" id="pxAShardsSidesVal">5</div></div>
+          <div class="row"><label for="pxAShardsSize" class="sub-label">Shards Size</label><input type="range" id="pxAShardsSize" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.5" title="頂点を拾う範囲: 0 = 小さな破片 → 1 = 画面全体にまたがる大きな多角形"><div class="val" id="pxAShardsSizeVal">0.50</div></div>
+          <div class="row"><label for="pxAShardsHole" class="sub-label">Shards Hole</label><input type="range" id="pxAShardsHole" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0" title="切り抜いた元の場所を黒く抜く量 (0 = 元の絵のまま / 1 = 真っ黒の穴)"><div class="val" id="pxAShardsHoleVal">0.00</div></div>
+          <div class="row"><label for="pxAShardsLine" class="sub-label">Shards Line</label><input type="range" id="pxAShardsLine" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.3" title="多角形の縁の線の太さ (色は Slice / Mondrian と同じ線の色)。0 = 線なし"><div class="val" id="pxAShardsLineVal">0.30</div></div>
           <div class="row"><label>Waveform</label><input type="range" id="pxWaveform" min="0" max="1" step="0.01" value="0" title="画面を 32 本の縦帯に分け、帯ごとに音声スペクトルの高さへ縦に圧縮する (帯の幅はゆっくり揺れる)。1.0 で無音の帯は高さ 0。0=OFF"><div class="val" id="pxWaveformVal">0.00</div></div>
           <div class="row"><label>Mosaic</label><input type="range" id="pxMos" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダムなブロック色swap"><div class="val" id="pxMosVal">0.00</div></div>
           <div class="row"><label>Shake</label><input type="range" id="pxShake" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダム方向へ画面シェイク"><div class="val" id="pxShakeVal">0.00</div></div>
@@ -1921,54 +1927,54 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1794927119"></script>
-<script src="mode/layer.js?v=1794927119"></script>
-<script src="vendor/iro.min.js?v=1794927119"></script>
-<script src="vendor/mediabunny.min.js?v=1794927119"></script>
-<script src="mode/textdeform.js?v=1794927119"></script>
-<script src="mode/textdeform-comp.js?v=1794927119"></script>
-<script src="mode/ugomeki.js?v=1794927119"></script>
-<script src="mode/slicer.js?v=1794927119"></script>
-<script src="mode/video.js?v=1794927119"></script>
-<script src="mode/aratanagara.js?v=1794927119"></script>
-<script src="vendor/p5.min.js?v=1794927119"></script>
-<script src="mode/cyberui.js?v=1794927119"></script>
-<script src="mode/novel.js?v=1794927119"></script>
-<script src="shaders/inkelly.js?v=1794927119"></script>
-<script src="sketchfx.js?v=1794927119"></script>
-<script src="pixelsortfx.js?v=1794927119"></script>
-<script src="shaders/boltzmann.js?v=1794927119"></script>
-<script src="mode/pen.js?v=1794927119"></script>
-<script src="shaders/caverns.js?v=1794927119"></script>
-<script src="mode/shelf.js?v=1794927119"></script>
-<script src="shaders/ribbon.js?v=1794927119"></script>
-<script src="mode/photoplane.js?v=1794927119"></script>
-<script src="mode/shredder.js?v=1794927119"></script>
-<script src="mode/transflock.js?v=1794927119"></script>
-<script src="mode/liquidpeel.js?v=1794927119"></script>
-<script src="mode/windflock.js?v=1794927119"></script>
-<script src="mode/rhizome.js?v=1794927119"></script>
-<script src="mode/surrealfloat.js?v=1794927119"></script>
-<script src="mode/chrometype.js?v=1794927119"></script>
-<script src="mode/tower4149.js?v=1794927119"></script>
-<script src="mode/fude.js?v=1794927119"></script>
-<script src="mode/image.js?v=1794927119"></script>
-<script src="mode/spacetype.js?v=1794927119"></script>
-<script src="fx3d.js?v=1794927119"></script>
-<script src="fx3d-cubes.js?v=1794927119"></script>
-<script src="fx3d-blinds.js?v=1794927119"></script>
-<script src="fx3d-diorama.js?v=1794927119"></script>
-<script src="fx3d-points.js?v=1794927119"></script>
-<script src="fx3d-gravity.js?v=1794927119"></script>
-<script src="fx3d-globe.js?v=1794927119"></script>
-<script src="pollockfx.js?v=1794927119"></script>
-<script src="overlay.js?v=1794927119"></script>
-<script src="gif.js?v=1794927119"></script>
-  <script src="ui-icons.js?v=1794927119"></script>
-  <script src="app.js?v=1794927119"></script>
-  <script src="ui-scrollbar.js?v=1794927119"></script>
-  <script src="ui-settings.js?v=1794927119"></script>
-<script src="camroll.js?v=1794927119" defer></script>
-<script src="dbltap.js?v=1794927119" defer></script>
+<script src="presets.js?v=1794978513"></script>
+<script src="mode/layer.js?v=1794978513"></script>
+<script src="vendor/iro.min.js?v=1794978513"></script>
+<script src="vendor/mediabunny.min.js?v=1794978513"></script>
+<script src="mode/textdeform.js?v=1794978513"></script>
+<script src="mode/textdeform-comp.js?v=1794978513"></script>
+<script src="mode/ugomeki.js?v=1794978513"></script>
+<script src="mode/slicer.js?v=1794978513"></script>
+<script src="mode/video.js?v=1794978513"></script>
+<script src="mode/aratanagara.js?v=1794978513"></script>
+<script src="vendor/p5.min.js?v=1794978513"></script>
+<script src="mode/cyberui.js?v=1794978513"></script>
+<script src="mode/novel.js?v=1794978513"></script>
+<script src="shaders/inkelly.js?v=1794978513"></script>
+<script src="sketchfx.js?v=1794978513"></script>
+<script src="pixelsortfx.js?v=1794978513"></script>
+<script src="shaders/boltzmann.js?v=1794978513"></script>
+<script src="mode/pen.js?v=1794978513"></script>
+<script src="shaders/caverns.js?v=1794978513"></script>
+<script src="mode/shelf.js?v=1794978513"></script>
+<script src="shaders/ribbon.js?v=1794978513"></script>
+<script src="mode/photoplane.js?v=1794978513"></script>
+<script src="mode/shredder.js?v=1794978513"></script>
+<script src="mode/transflock.js?v=1794978513"></script>
+<script src="mode/liquidpeel.js?v=1794978513"></script>
+<script src="mode/windflock.js?v=1794978513"></script>
+<script src="mode/rhizome.js?v=1794978513"></script>
+<script src="mode/surrealfloat.js?v=1794978513"></script>
+<script src="mode/chrometype.js?v=1794978513"></script>
+<script src="mode/tower4149.js?v=1794978513"></script>
+<script src="mode/fude.js?v=1794978513"></script>
+<script src="mode/image.js?v=1794978513"></script>
+<script src="mode/spacetype.js?v=1794978513"></script>
+<script src="fx3d.js?v=1794978513"></script>
+<script src="fx3d-cubes.js?v=1794978513"></script>
+<script src="fx3d-blinds.js?v=1794978513"></script>
+<script src="fx3d-diorama.js?v=1794978513"></script>
+<script src="fx3d-points.js?v=1794978513"></script>
+<script src="fx3d-gravity.js?v=1794978513"></script>
+<script src="fx3d-globe.js?v=1794978513"></script>
+<script src="pollockfx.js?v=1794978513"></script>
+<script src="overlay.js?v=1794978513"></script>
+<script src="gif.js?v=1794978513"></script>
+  <script src="ui-icons.js?v=1794978513"></script>
+  <script src="app.js?v=1794978513"></script>
+  <script src="ui-scrollbar.js?v=1794978513"></script>
+  <script src="ui-settings.js?v=1794978513"></script>
+<script src="camroll.js?v=1794978513" defer></script>
+<script src="dbltap.js?v=1794978513" defer></script>
 </body>
 </html>
