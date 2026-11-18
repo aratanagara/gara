@@ -14,6 +14,7 @@
 //         uMbRedraw = N 拍ごとに構図を丸ごと描き直す。uMbDrawIn で線 → 面の順に描かれていく。
 //   格子構造 (mg_*) は bg_composition.frag と同じ実装 (片方を直したらもう片方も直す)。
 //   参照: https://www.electricboogiewoogie.com/ (Rafaël Rozendaal, 2010)
+//   3D: uMb3D を上げると盤面が傾いて回り、線 (道 + その上の車) が厚みを持って立ち上がる (Composition と同じ方式。深度 vjDepth も出す)。
 //   bgZoom・bgCamPx でズーム/パン。
 // =====================================================
 
@@ -43,6 +44,11 @@
 // @param uMbSeed    0..100   = 0.0
 // @param uMbGrain   0..100   = 25.0
 // @param uMbClear   0..100   = 0.0
+// @param uMb3D      0..100   = 0.0
+// @param uMbHeight  10..400  = 100.0
+// @param uMbPitch   0..80    = 45.0
+// @param uMbSpin    -100..100 = 20.0
+// @param uMbWallShade 0..100 = 55.0
 // @param uMbPaper   color = #f2f0e9
 // @param uMbRed     color = #cf1f18
 // @param uMbBlue    color = #1b2f96
@@ -74,6 +80,11 @@ uniform float uMbTilt;    // 構図の回転 (度)。45 でヴィクトリー・
 uniform float uMbSeed;    // 乱数の種。値を変えると別の構図になる
 uniform float uMbGrain;   // 絵具のムラ (%)
 uniform float uMbClear;   // 白地を透過する量 (%)。Slot B で下の絵に線と色面だけを重ねる
+uniform float uMb3D;      // 3D の量 (%)。0 = 平面 (従来どおり)。上げると盤面が傾いて回り、線 (道) が厚みを持って立ち上がる
+uniform float uMbHeight;  // 線の高さ (%)。100 = 線の太さと同じ = 断面が正方形
+uniform float uMbPitch;   // 盤面の傾き (度)
+uniform float uMbSpin;    // 盤面の回転の速さ (%)。負で逆回転
+uniform float uMbWallShade; // 線の側面の陰の濃さ (%)
 uniform vec3 uMbPaper;    // 白地の色
 uniform vec3 uMbRed;      // 赤
 uniform vec3 uMbBlue;     // 青
@@ -266,25 +277,16 @@ float mb_car(float lid, float c, float n, float rho, int D){
   return -1e9;
 }
 
-vec3 bg_boogie_woogie(vec2 fc){
-  float kick = clamp(uMbKick * 0.01, 0.0, 1.0);
-  mg_setTime(getBeat(), uMbSpeed * 0.01, kick, uMbChange, uMbRedraw, uMbDrawIn, uMbSeed);
-  mg_lines = uMbLines * 0.01; mg_full = uMbFull * 0.01; mg_fullH = uMbFullH * 0.01;
-  mg_irreg = uMbIrreg * 0.01; mg_motion = uMbMotion * 0.01; mg_dyn = uMbDyn * 0.01;
-  float mode = floor(uMbMode + 0.5);
-  if(mode > 0.5){ mg_roadFix = 1.0; mg_rseed = uMbSeed * 1.37; }   // 道を固定 (描き直しでも変えない)
-  bool bldFix = mode > 1.5;                                          // 建物 (色ブロック) も固定
-  float audio = clamp(iAudio, 0.0, 1.0) * uMbKick * 0.01;
-
-  float zm = max(bgZoom, 0.001);
-  vec2 q = ((fc - 0.5 * resolution) / zm + bgCamPx) / resolution.y;
-  float ta = radians(uMbTilt);
-  q = mat2(cos(ta), -sin(ta), sin(ta), cos(ta)) * q;
-  float sc = 100.0 / uMbScale;
-  q *= sc;
-  float aa = sc / (resolution.y * zm);
-
+// 盤面上の 1 点 q (傾き・大きさを掛けたあと) の道の覆い (0..1) だけを返す (3D の視線しらべ用。面・車の色は求めない)。
+//   格子の状態 (mg_*) と、伸び縮み後の座標 mb_q・各線までの距離は mb_eval が色に使う
+vec2 mb_q;
+vec4 mb_dV;   // 左 / 右の垂直線・下 / 上の水平線までの距離 (出ていない線は BIG)
+vec2 mb_sVH;  // 垂直 / 水平の線までの距離 (伸び縮み前に戻したもの)
+float mb_w;   // 線の半幅
+float mb_d;   // 道の縁までの距離 (盤面の座標。道の中は負)。3D の視線しらべが空いた所を読み飛ばす歩幅に使う
+float mb_cov(vec2 q, float aa, float audio){
   float w = 0.011 * uMbLine * 0.01 * 0.85 * (1.0 + audio * 0.5);   // 線の半幅
+  mb_w = w;
   mg_unit = 2.0 * w; mg_snap = 1.0;                                    // 単位格子 (= 線の太さ) に揃える
   mg_pitch = 1.0 / (uMbDensity * 2.2);
   q = mg_orient(q);
@@ -296,13 +298,32 @@ vec3 bg_boogie_woogie(vec2 fc){
   vec2 dq = 1.0 + jp * (0.62 * cos(q * wf1 + wp1) + 0.38 * cos(q * wf2 + wp2));
   q += jp * (0.62 * sin(q * wf1 + wp1) / wf1 + 0.38 * sin(q * wf2 + wp2) / wf2);
   mg_build(q);
+  mb_q = q;
+  // ── 線 (区間は端から端まで。端は直交する線に重なる) ──
+  float BIG = 1e9;
+  float dVL = (mg_kL > -9e3 && mg_shownV(mg_kL, mg_aL)) ? q.x - mg_xL : BIG;
+  float dVR = (mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)) ? mg_xR - q.x : BIG;
+  float dHB = (mg_jB > -9e3 && mg_shownH(mg_jB)) ? q.y - mg_yB : BIG;
+  float dHT = (mg_jT <  9e3 && mg_shownH(mg_jT)) ? mg_yT - q.y : BIG;
+  mb_dV = vec4(dVL, dVR, dHB, dHT);
+  float sV = min(dVL, dVR) / dq.x, sH = min(dHB, dHT) / dq.y;   // 伸び縮み前の距離に戻す
+  mb_sVH = vec2(sV, sH);
+  mb_d = min(sV, sH) - w;
+  return smoothstep(w + aa, w - aa, min(sV, sH));
+}
+// 盤面上の 1 点 q の色を返す。戻り値 = 道の覆い (0..1)。isPaper = 白地か
+float mb_eval(vec2 q, float aa, float audio, out vec3 col, out float isPaper){
+  float cov = mb_cov(q, aa, audio);
+  q = mb_q;
+  float w = mb_w;
+  bool bldFix = floor(uMbMode + 0.5) > 1.5;                          // 建物 (色ブロック) も固定
 
   // ── 面: 入れ子の色ブロック ──
   float rid = mg_kL * 7.13 + mg_jB * 131.7;
   float fr; float er = bldFix ? -1.0 : mg_epoch(rid + 0.25, fr);
   bool cellOn = bldFix || mg_shownCell(rid);
-  vec3 col = uMbPaper;
-  float isPaper = 1.0;
+  col = uMbPaper;
+  isPaper = 1.0;
   vec4 inner = vec4(mg_xL + w, mg_yB + w, mg_xR - w, mg_yT - w);
   if(cellOn && inner.z - inner.x < 1e3 && inner.w - inner.y < 1e3
      && mg_h(vec3(rid, er, (bldFix ? mg_rseed : mg_seed) + 31.0)) < uMbInner * 0.01){
@@ -326,14 +347,9 @@ vec3 bg_boogie_woogie(vec2 fc){
     }
   }
 
-  // ── 線 (区間は端から端まで。端は直交する線に重なる) ──
-  float BIG = 1e9;
-  float dVL = (mg_kL > -9e3 && mg_shownV(mg_kL, mg_aL)) ? q.x - mg_xL : BIG;
-  float dVR = (mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)) ? mg_xR - q.x : BIG;
-  float dHB = (mg_jB > -9e3 && mg_shownH(mg_jB)) ? q.y - mg_yB : BIG;
-  float dHT = (mg_jT <  9e3 && mg_shownH(mg_jT)) ? mg_yT - q.y : BIG;
-  float sV = min(dVL, dVR) / dq.x, sH = min(dHB, dHT) / dq.y;   // 伸び縮み前の距離に戻す
-  float cov = smoothstep(w + aa, w - aa, min(sV, sH));
+  // ── 線 (区間は端から端まで。端は直交する線に重なる。車は線の上に乗る) ──
+  float dVL = mb_dV.x, dVR = mb_dV.y, dHB = mb_dV.z, dHT = mb_dV.w;
+  float sV = mb_sVH.x, sH = mb_sVH.y;
   if(cov > 0.0){
     float an = dVL < dVR ? mg_aL : mg_aR;
     bool vert = sV < sH;
@@ -365,7 +381,83 @@ vec3 bg_boogie_woogie(vec2 fc){
     float nz = mg_vn(gp) * 0.6 + mg_vn(q * 900.0) * 0.4;
     col *= 1.0 + (nz - 0.5) * 0.12 * uMbGrain * 0.01;
   }
+  return cov;
+}
 
+vec3 bg_boogie_woogie(vec2 fc){
+  float kick = clamp(uMbKick * 0.01, 0.0, 1.0);
+  mg_setTime(getBeat(), uMbSpeed * 0.01, kick, uMbChange, uMbRedraw, uMbDrawIn, uMbSeed);
+  mg_lines = uMbLines * 0.01; mg_full = uMbFull * 0.01; mg_fullH = uMbFullH * 0.01;
+  mg_irreg = uMbIrreg * 0.01; mg_motion = uMbMotion * 0.01; mg_dyn = uMbDyn * 0.01;
+  float mode = floor(uMbMode + 0.5);
+  if(mode > 0.5){ mg_roadFix = 1.0; mg_rseed = uMbSeed * 1.37; }   // 道を固定 (描き直しでも変えない)
+  float audio = clamp(iAudio, 0.0, 1.0) * uMbKick * 0.01;
+
+  float zm = max(bgZoom, 0.001);
+  float ta = radians(uMbTilt);
+  mat2 tilt = mat2(cos(ta), -sin(ta), sin(ta), cos(ta));
+  float sc = 100.0 / uMbScale;
+  vec3 col; float isPaper;
+
+  if(uMb3D <= 0.0){
+    // 平面 (従来どおり)
+    vec2 q = ((fc - 0.5 * resolution) / zm + bgCamPx) / resolution.y;
+    q = tilt * q;
+    q *= sc;
+    float aa = sc / (resolution.y * zm);
+    mb_eval(q, aa, audio, col, isPaper);
+    float a = 1.0 - isPaper * uMbClear * 0.01;
+    bgAlpha = a;
+    return col * a;
+  }
+
+  // ── 3D: 盤面 (z = 0) を傾けて回し、線 (道) を高さ H の壁として押し出す。Composition と同じ視線しらべ。
+  //    天面 = 道の色 (車も天面に乗る) / 側面 = 陰。色ブロックは盤面 (z = 0) のまま。深度 vjDepth も出す
+  float k3 = uMb3D * 0.01;
+  float lw = 2.0 * 0.011 * uMbLine * 0.01 * 0.85 * (1.0 + audio * 0.5);   // 線の太さ (盤面の座標)
+  float H = lw * zm / sc * uMbHeight * 0.01 * k3;            // 線の高さ = 線の太さ × Height (盤面の座標を世界の長さに直す。100 で断面が正方形)
+  float pitch = radians(uMbPitch) * k3;
+  float yaw = time * 0.25 * uMbSpin * 0.01 * k3;
+  vec2 uv = (fc - 0.5 * resolution) / resolution.y;
+  vec3 ro = vec3(0.0, 0.0, 1.0);
+  vec3 rd = normalize(vec3(uv, -1.0));
+  // カメラを原点まわりに回す (傾き = x 軸、回転 = z 軸)
+  float cp = cos(pitch), sp = sin(pitch);
+  ro.yz = mat2(cp, -sp, sp, cp) * ro.yz; rd.yz = mat2(cp, -sp, sp, cp) * rd.yz;
+  float cy = cos(yaw), sy = sin(yaw);
+  ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
+  if(rd.z >= -1e-4){ bgAlpha = 1.0 - uMbClear * 0.01; return uMbPaper * bgAlpha; }
+  float tTop = (H - ro.z) / rd.z, tBot = -ro.z / rd.z;
+  // 道の縁までの距離ぶん視線を進める (空いた面の上は 1〜2 歩で抜ける)。道の柱の中 (縁より内側 かつ 高さ H 以下) に入ったら当たり。
+  //   上限は uniform 依存 = 定数ループの展開を避ける
+  int N = int(clamp(12.0 + 0.0 * time, 2.0, 12.0));
+  float tHit = tBot; float side = 0.0; float hitI = -1.0;
+  float kxy = length(rd.xy) * sc / zm;                        // 視線 1 進むあいだの盤面の座標の進み
+  float t = tTop;
+  for(int i = 0; i < 12; i++){
+    if(i >= N || t > tBot) break;
+    vec3 p = ro + rd * t;
+    vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
+    mb_cov(q, 0.0, audio);
+    if(mb_d <= 0.0){
+      hitI = float(i);
+      tHit = t;
+      side = p.z < H * 0.96 ? 1.0 : 0.0;   // 道の天面より下で当たった = 側面
+      mb_eval(q, sc * t / (resolution.y * zm), audio, col, isPaper);
+      break;
+    }
+    t += max(mb_d / max(kxy, 1e-4), 0.002);
+  }
+  if(hitI < 0.0){   // 道に当たらなければ盤面 (z = 0)
+    vec3 p = ro + rd * tBot;
+    vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
+    mb_eval(q, sc * tBot / (resolution.y * zm), audio, col, isPaper);
+  } else if(side > 0.5){
+    // 側面: 道の色を陰で暗く (盤面の回転に合わせて面の向きで濃淡を変える)
+    float lit = 0.5 + 0.5 * sin(yaw + 0.7);
+    col = mix(col, col * (0.35 + 0.4 * lit), uMbWallShade * 0.01);
+  }
+  vjDepth = clamp(1.0 - (tHit - (length(ro) - 0.9)) / 1.8, 0.0, 1.0);   // 深度 (盤面の手前ほど 1)。折り系・3D FX が紙をこれで持ち上げる
   float a = 1.0 - isPaper * uMbClear * 0.01;
   bgAlpha = a;
   return col * a;
