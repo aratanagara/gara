@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795037042">
+<link rel="stylesheet" href="style.css?v=1795037580">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -177,7 +177,8 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
       </div>
     </div>
     <!-- Grad Preset 1〜0 のクイックバー (キー 1〜9/0 と同じ順。クリックで適用) -->
-    <div id="gradQuickBar" title="Grad Preset (キー 1〜9 = パレット / 0 = 通常色。クリックで適用)"></div>
+    <!-- 両端 = 現在の描画から Grad Map を生成 -->
+    <div id="gradQuickRow"><button class="ico-only gq-gen" title="現在の描画から Grad Map を生成" data-icon="dropper"></button><div id="gradQuickBar" title="Grad Preset (キー 1〜9 = パレット / 0 = 通常色。クリックで適用)"></div><button class="ico-only gq-gen" title="現在の描画から Grad Map を生成" data-icon="dropper"></button></div>
     <!-- 同じ 1〜0 を Invert ON で見たプレビュー (クリック = パレット適用 + Invert ON) -->
     <div id="gradQuickBarInv" title="Grad Preset + Invert (クリックでパレット適用 + Invert ON)"></div>
     <div id="blendPrevBar" title="Blend Mode プレビュー (クリックで適用)"></div>
@@ -1190,7 +1191,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <label class="sub-label">Preset</label>
             <div id="pxGradList" style="flex:1" title="クリック or 数字キー 1〜9,0 で適用"></div>
           </div>
-          <div class="row" style="align-items:stretch"><label>Grad Edit</label><div id="pxGradEditor" style="flex:1"><div id="pxGradBar" title="バー=ストップ追加 / つまみ: ドラッグ=移動・クリック=色変更・バー外(下)へドラッグ=削除" style="position:relative;cursor:copy"></div><div id="pxGradHandles" style="position:relative;height:13px;margin-top:2px"></div></div><button id="pxGradAdd" class="ico-only" title="現在のグラデを名前付きで新規保存" data-icon="plus"></button></div>
+          <div class="row" style="align-items:stretch"><label>Grad Edit</label><div id="pxGradEditor" style="flex:1"><div id="pxGradBar" title="バー=ストップ追加 / つまみ: ドラッグ=移動・クリック=色変更・バー外(下)へドラッグ=削除" style="position:relative;cursor:copy"></div><div id="pxGradHandles" style="position:relative;height:13px;margin-top:2px"></div></div><button id="pxGradFromVisual" class="ico-only" title="Visual から生成 (印象的な色 + グレーで、元の絵の色味を保つグラデを作る)" data-icon="dropper"></button><button id="pxGradAdd" class="ico-only" title="現在のグラデを名前付きで新規保存" data-icon="plus"></button></div>
           <div class="row">
             <label>Grad Auto</label>
             <select id="pxGradAuto" style="flex:1" title="Grad Map が Grad Preset の間を色を変えながら移り続ける">
@@ -1929,55 +1930,55 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795037042"></script>
-<script src="mode/layer.js?v=1795037042"></script>
-<script src="vendor/iro.min.js?v=1795037042"></script>
-<script src="vendor/mediabunny.min.js?v=1795037042"></script>
-<script src="mode/textdeform.js?v=1795037042"></script>
-<script src="mode/textdeform-comp.js?v=1795037042"></script>
-<script src="mode/ugomeki.js?v=1795037042"></script>
-<script src="mode/slicer.js?v=1795037042"></script>
-<script src="mode/video.js?v=1795037042"></script>
-<script src="mode/aratanagara.js?v=1795037042"></script>
-<script src="vendor/p5.min.js?v=1795037042"></script>
-<script src="mode/cyberui.js?v=1795037042"></script>
-<script src="mode/novel.js?v=1795037042"></script>
-<script src="shaders/inkelly.js?v=1795037042"></script>
-<script src="sketchfx.js?v=1795037042"></script>
-<script src="pixelsortfx.js?v=1795037042"></script>
-<script src="shaders/boltzmann.js?v=1795037042"></script>
-<script src="mode/pen.js?v=1795037042"></script>
-<script src="shaders/caverns.js?v=1795037042"></script>
-<script src="mode/shelf.js?v=1795037042"></script>
-<script src="shaders/ribbon.js?v=1795037042"></script>
-<script src="mode/photoplane.js?v=1795037042"></script>
-<script src="mode/shredder.js?v=1795037042"></script>
-<script src="mode/transflock.js?v=1795037042"></script>
-<script src="mode/liquidpeel.js?v=1795037042"></script>
-<script src="mode/windflock.js?v=1795037042"></script>
-<script src="mode/rhizome.js?v=1795037042"></script>
-<script src="mode/surrealfloat.js?v=1795037042"></script>
-<script src="mode/chrometype.js?v=1795037042"></script>
-<script src="mode/tower4149.js?v=1795037042"></script>
-<script src="mode/fude.js?v=1795037042"></script>
-<script src="mode/image.js?v=1795037042"></script>
-<script src="mode/spacetype.js?v=1795037042"></script>
-<script src="fx3d.js?v=1795037042"></script>
-<script src="fx3d-layers.js?v=1795037042"></script>
-<script src="fx3d-cubes.js?v=1795037042"></script>
-<script src="fx3d-blinds.js?v=1795037042"></script>
-<script src="fx3d-diorama.js?v=1795037042"></script>
-<script src="fx3d-points.js?v=1795037042"></script>
-<script src="fx3d-gravity.js?v=1795037042"></script>
-<script src="fx3d-globe.js?v=1795037042"></script>
-<script src="pollockfx.js?v=1795037042"></script>
-<script src="overlay.js?v=1795037042"></script>
-<script src="gif.js?v=1795037042"></script>
-  <script src="ui-icons.js?v=1795037042"></script>
-  <script src="app.js?v=1795037042"></script>
-  <script src="ui-scrollbar.js?v=1795037042"></script>
-  <script src="ui-settings.js?v=1795037042"></script>
-<script src="camroll.js?v=1795037042" defer></script>
-<script src="dbltap.js?v=1795037042" defer></script>
+<script src="presets.js?v=1795037580"></script>
+<script src="mode/layer.js?v=1795037580"></script>
+<script src="vendor/iro.min.js?v=1795037580"></script>
+<script src="vendor/mediabunny.min.js?v=1795037580"></script>
+<script src="mode/textdeform.js?v=1795037580"></script>
+<script src="mode/textdeform-comp.js?v=1795037580"></script>
+<script src="mode/ugomeki.js?v=1795037580"></script>
+<script src="mode/slicer.js?v=1795037580"></script>
+<script src="mode/video.js?v=1795037580"></script>
+<script src="mode/aratanagara.js?v=1795037580"></script>
+<script src="vendor/p5.min.js?v=1795037580"></script>
+<script src="mode/cyberui.js?v=1795037580"></script>
+<script src="mode/novel.js?v=1795037580"></script>
+<script src="shaders/inkelly.js?v=1795037580"></script>
+<script src="sketchfx.js?v=1795037580"></script>
+<script src="pixelsortfx.js?v=1795037580"></script>
+<script src="shaders/boltzmann.js?v=1795037580"></script>
+<script src="mode/pen.js?v=1795037580"></script>
+<script src="shaders/caverns.js?v=1795037580"></script>
+<script src="mode/shelf.js?v=1795037580"></script>
+<script src="shaders/ribbon.js?v=1795037580"></script>
+<script src="mode/photoplane.js?v=1795037580"></script>
+<script src="mode/shredder.js?v=1795037580"></script>
+<script src="mode/transflock.js?v=1795037580"></script>
+<script src="mode/liquidpeel.js?v=1795037580"></script>
+<script src="mode/windflock.js?v=1795037580"></script>
+<script src="mode/rhizome.js?v=1795037580"></script>
+<script src="mode/surrealfloat.js?v=1795037580"></script>
+<script src="mode/chrometype.js?v=1795037580"></script>
+<script src="mode/tower4149.js?v=1795037580"></script>
+<script src="mode/fude.js?v=1795037580"></script>
+<script src="mode/image.js?v=1795037580"></script>
+<script src="mode/spacetype.js?v=1795037580"></script>
+<script src="fx3d.js?v=1795037580"></script>
+<script src="fx3d-layers.js?v=1795037580"></script>
+<script src="fx3d-cubes.js?v=1795037580"></script>
+<script src="fx3d-blinds.js?v=1795037580"></script>
+<script src="fx3d-diorama.js?v=1795037580"></script>
+<script src="fx3d-points.js?v=1795037580"></script>
+<script src="fx3d-gravity.js?v=1795037580"></script>
+<script src="fx3d-globe.js?v=1795037580"></script>
+<script src="pollockfx.js?v=1795037580"></script>
+<script src="overlay.js?v=1795037580"></script>
+<script src="gif.js?v=1795037580"></script>
+  <script src="ui-icons.js?v=1795037580"></script>
+  <script src="app.js?v=1795037580"></script>
+  <script src="ui-scrollbar.js?v=1795037580"></script>
+  <script src="ui-settings.js?v=1795037580"></script>
+<script src="camroll.js?v=1795037580" defer></script>
+<script src="dbltap.js?v=1795037580" defer></script>
 </body>
 </html>

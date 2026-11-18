@@ -11,6 +11,7 @@ window.VJIcon = (function(){
     edit:    'M1 9L1.5 6.5L6.8 1.2L8.8 3.2L3.5 8.5Z',
     refresh: 'M8.5 5A3.5 3.5 0 1 1 7.3 2.4M8 0.5V2.8H5.7',
     reset:   'M1.5 5A3.5 3.5 0 1 0 2.7 2.4M2 0.5V2.8H4.3',
+    dropper: 'M6 1L9 4M7.5 2.5L2.5 7.5L1 9',
   };
   const svg = (name) => `<svg class="ico" viewBox="0 0 10 10" aria-hidden="true"><path d="${PATHS[name]}"/></svg>`;
   const set = (el, name) => { el.innerHTML = svg(name); return el; };

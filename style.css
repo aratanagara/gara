@@ -101,7 +101,7 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
    grid で「上=メイン(左2/3)+スロット(右1/3) / 下=バー3本(全幅)」に敷き直す */
 #stage.portrait{display:grid;grid-template-columns:2fr 1fr;grid-template-rows:minmax(0,1fr) auto auto auto}
 #stage.portrait #stageMain{grid-column:1;grid-row:1}
-#stage.portrait #gradQuickBar{grid-column:1 / -1;grid-row:2}
+#stage.portrait #gradQuickRow{grid-column:1 / -1;grid-row:2}
 #stage.portrait #gradQuickBarInv{grid-column:1 / -1;grid-row:3}
 #stage.portrait #blendPrevBar{grid-column:1 / -1;grid-row:4}
 #stage.portrait #slotPrevRow{grid-column:2;grid-row:1}
@@ -376,6 +376,9 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 .help-table td:last-child{color:var(--fg)}
 
 /* Grad Preset クイックバー (プレビュー欄の上。1〜9/0 の順に並べる) */
+#gradQuickRow{display:flex;gap:2px;align-items:stretch}
+#gradQuickRow > #gradQuickBar{flex:1 1 0;min-width:0}
+#gradQuickRow > .gq-gen{flex:0 0 auto;width:22px;height:auto;min-height:0;margin:2px 0;padding:0;display:inline-flex;align-items:center;justify-content:center}
 #gradQuickBar,#gradQuickBarInv{display:flex;gap:2px;padding:2px 0}
 #gradQuickBarInv{padding-top:0}
 #gradQuickBar .gq,#gradQuickBarInv .gq{position:relative;flex:1 1 0;min-width:0;border:1px solid var(--line);border-radius:3px;cursor:pointer;overflow:hidden;line-height:0}
@@ -386,7 +389,7 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 /* Blend Mode プレビュー行 (グラデーションバーの下)。8 分割 = 全ブレンドモード */
 #blendPrevBar{display:flex;gap:2px;padding:0 0 2px}
 /* Full (全画面) はステージだけを出す。Grad / Blend バーと A/B タイルは隠す */
-#stage:fullscreen :is(#gradQuickBar,#gradQuickBarInv,#blendPrevBar,#slotPrevRow){display:none}
+#stage:fullscreen :is(#gradQuickRow,#gradQuickBarInv,#blendPrevBar,#slotPrevRow){display:none}
 #stage:-webkit-full-screen :is(#gradQuickBar,#gradQuickBarInv,#blendPrevBar,#slotPrevRow){display:none}
 #blendPrevBar .bp{position:relative;flex:1 1 0;min-width:0;border:1px solid var(--line);border-radius:3px;cursor:pointer;overflow:hidden;line-height:0}
 #blendPrevBar .bp canvas{width:100%;height:auto;display:block}
