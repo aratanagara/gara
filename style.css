@@ -568,6 +568,9 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 @media (min-resolution:2dppx){ .fold-tog::before{border-width:0 .5px .5px 0} }
 .fold-head{display:flex;align-items:center;margin:4px 0 2px;color:var(--dim);font-size:calc(var(--fs) - 1px);cursor:pointer;user-select:none}
 .fold-head:hover{color:var(--fg)}
-/* FX の親の行: › は左の余白に置き、ラベルの文字位置を他の行とそろえる */
-.row:has(> label > .fold-tog){position:relative}
-.row > label > .fold-tog{position:absolute;left:-11px;top:50%;margin:0;transform:translateY(-50%)}
+/* 折りたたみのあるパネル (FX など): どの欄もラベルの左に印の欄 (14px) を取り、子のある行は › / 子のない行は ・ を置いて文字の頭をそろえる。
+   詳細行 (sub-label) は印の欄のさらに内側に字下げする */
+.pane:has(.fold-tog) .section .row > label{position:relative;padding-left:14px;box-sizing:border-box}
+.pane:has(.fold-tog) .section .row > label.sub-label{padding-left:20px}
+.pane:has(.fold-tog) .section .row > label:not(.sub-label):not(:has(> .fold-tog))::after{content:"";position:absolute;left:5px;top:50%;width:3px;height:3px;margin-top:-1.5px;border-radius:50%;background:currentColor;opacity:.55}
+.row > label > .fold-tog{position:absolute;left:1px;top:50%;margin:0;transform:translateY(-50%)}
