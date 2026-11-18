@@ -17364,6 +17364,7 @@ const UI = {
     $$('.tab').forEach(t=>t.addEventListener('click', ()=>this.openTab(t.dataset.tab)));
     this.openTab('preset');
     this.initColorBars();
+    this._initParamFold();
 
     // Visual タブ: 検索 + カテゴリ(タグ)フィルタ
     { const si = $('#visualSearch');
@@ -19801,6 +19802,7 @@ void mainImage(out vec4 o, in vec2 f){
         });
       });
       UI._syncSubRows();
+      UI._initSubFold();
     }
     slid('pxClarity', 'clarity', f2);
     slid('pxDenoise', 'denoise', f2);
@@ -19871,6 +19873,119 @@ void mainImage(out vec4 o, in vec2 f){
     }));
   },
 
+  // ── 折りたたみ (› で開閉。開閉の状態は localStorage 'vj.fold.<id>' に端末ごとに覚える) ──
+  //   行は .fold-hidden で隠す (各パネルが自前で切り替える style.display / _syncSubRows の opacity と干渉しない)
+  foldOpen(id){ try{ return localStorage.getItem('vj.fold.' + id) === '1'; }catch(e){ return false; } },
+  _foldSet(id, open){ try{ localStorage.setItem('vj.fold.' + id, open ? '1' : '0'); }catch(e){} },
+  // 開閉ボタン (›) を host の先頭に置き、rows を開閉する
+  foldToggle(host, rows, id){
+    if(!host || !rows.length) return null;
+    const tog = document.createElement('span');
+    tog.className = 'fold-tog'; tog.title = '詳細を開く / 閉じる';
+    const apply = (open)=>{
+      tog.classList.toggle('open', open);
+      rows.forEach(r => r.classList.toggle('fold-hidden', !open));
+    };
+    tog.addEventListener('click', e=>{
+      e.preventDefault(); e.stopPropagation();
+      const open = !tog.classList.contains('open');
+      this._foldSet(id, open); apply(open);
+    });
+    host.prepend(tog);
+    apply(this.foldOpen(id));
+    return tog;
+  },
+  // Params (各 Code の欄) と Shader Params: 似たパラメータをカテゴリ (› Camera など) にまとめて畳む。
+  //   ラベルとキーの語で分類し、2 行以上あるカテゴリだけ見出しを作る (残りと 3D Mode は先頭にそのまま)。
+  //   カテゴリ内は元の順。開閉はカテゴリ名ごとに全 Visual 共通で覚える。パネルの作り直しは MutationObserver で追従。
+  FOLD_CATS: [
+    ['Light', /\b(light|lights|spec|specular|glow|shine|reflect|reflection|sun|sky|fres|fresnel|ambient|shadow|rim|highlight|bloom|exposure|horizon|key|sheen|diffract|gloss|chrome|metal)\b/],
+    ['Camera', /\b(cam|camera|dist|distance|focal|fov|field of view|zoom|orbit|eye|tilt|roll|yaw|look|lens|persp|perspective|elev|angle|azimuth)\b/],
+    ['Color', /\b(tint|color|colour|colors|hue|sat|saturation|rainbow|palette|ink|paper|bg|gradient|tone|contrast|brightness|gamma|band|bands|stripe)\b/],
+    ['Motion', /\b(speed|rate|motion|ease|spin|swing|drift|flutter|wobble|beat|pulse|time|wave|roam|rot|rotation|orbit speed|tempo|jitter|shake|follow|bpm|hover|hold|phase|loop|cycle|cycles)\b/],
+    ['Shape', /\b(size|scale|count|radius|thick|thickness|hole|width|height|length|steps|spacing|pitch|gap|gaps|taper|oval|profile|bend|warp|twist|density|segments|detail|amp|freq|frequency|stretch|crop|spread|var|step|layers|rings|grid|cells)\b/],
+    ['Atmosphere', /\b(fog|vignette|grain|haze|noise|blur|mist|dust)\b/],
+  ],
+  _foldWords(str){ return ' ' + String(str || '').replace(/^u(?=[A-Z])/, '').replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/[_\-.()%/]+/g, ' ').toLowerCase() + ' '; },
+  _foldCat(label, key){
+    const w = this._foldWords(label) + this._foldWords(key);
+    if(/3d mode/.test(w)) return null;
+    for(const [name, re] of this.FOLD_CATS) if(re.test(w)) return name;
+    return null;
+  },
+  // container の直下の行 (rowSel) をカテゴリで畳む
+  foldParamRows(container, rowSel){
+    if(!container) return;
+    container.querySelectorAll(':scope > .fold-head').forEach(h => h.remove());
+    const rows = [...container.querySelectorAll(':scope > ' + rowSel)].filter(r => r.querySelector('label') && r.querySelector('input'));
+    const byCat = new Map();
+    for(const r of rows){
+      const lab = r.querySelector('label');
+      const inp = r.querySelector('input');
+      const cat = this._foldCat(lab.textContent, (inp && (inp.dataset.key || inp.id)) || '');
+      r.classList.remove('fold-hidden');
+      if(!cat) continue;
+      if(!byCat.has(cat)) byCat.set(cat, []);
+      byCat.get(cat).push(r);
+    }
+    const grouped = new Set();
+    byCat.forEach(list=>{ if(list.length >= 2) list.forEach(r => grouped.add(r)); });
+    // どのカテゴリにも入らない行 (と 1 行だけのカテゴリ) は先頭へ寄せる (見出しの下の行と紛れないように)
+    const firstGrouped = rows.find(r => grouped.has(r));
+    if(firstGrouped) rows.forEach(r=>{ if(!grouped.has(r) && (firstGrouped.compareDocumentPosition(r) & Node.DOCUMENT_POSITION_FOLLOWING)) firstGrouped.before(r); });
+    byCat.forEach((list, cat)=>{
+      if(list.length < 2) return;
+      const head = document.createElement('div');
+      head.className = 'fold-head';
+      head.textContent = cat;
+      list[0].before(head);
+      let prev = head;
+      for(const r of list){ prev.after(r); prev = r; }   // 同じカテゴリの行を見出しの下へ集める (元の順のまま)
+      const tog = this.foldToggle(head, list, 'cat.' + cat);
+      head.addEventListener('click', ()=> tog && tog.click());
+    });
+    container.dataset.foldSig = rows.length + ':' + rows.map(r => r.querySelector('label').textContent).join('|');
+  },
+  _initParamFold(){
+    const pane = document.querySelector('.pane[data-pane="mix"]'); if(!pane) return;
+    const run = ()=>{
+      this._foldTimer = null;
+      const targets = new Set();
+      pane.querySelectorAll('.section[class*="-mode"] .row, #params > .par').forEach(r=>{
+        if(r.closest('.fold-skip')) return;
+        if(r.parentElement) targets.add(r.parentElement);
+      });
+      targets.forEach(c=>{
+        const sel = c.id === 'params' ? '.par' : '.row';
+        const rows = [...c.querySelectorAll(':scope > ' + sel)].filter(r => r.querySelector('label') && r.querySelector('input'));
+        if(rows.length < 4) return;
+        const sig = rows.length + ':' + rows.map(r => r.querySelector('label').textContent).join('|');
+        if(c.dataset.foldSig === sig && c.querySelector(':scope > .fold-head')) return;
+        this.foldParamRows(c, sel);
+      });
+    };
+    new MutationObserver(muts=>{
+      if(muts.every(m => [...m.addedNodes, ...m.removedNodes].every(n => n.nodeType !== 1 || (n.classList && (n.classList.contains('fold-head') || n.classList.contains('fold-tog') || n.classList.contains('colorbar'))))) ) return;
+      if(!this._foldTimer) this._foldTimer = setTimeout(run, 60);
+    }).observe(pane, { childList:true, subtree:true });
+    run();
+  },
+  // FX: 詳細行 ([data-sub-of]) を親の行の › で畳む (既定は閉じる)
+  _initSubFold(){
+    const pane = document.querySelector('.pane[data-pane="post"]'); if(!pane) return;
+    const groups = new Map();
+    pane.querySelectorAll('[data-sub-of]').forEach(el=>{
+      const pid = el.dataset.subOf.split(/\s+/).find(id => document.getElementById(id));
+      const row = el.closest('.row'); if(!pid || !row) return;
+      if(!groups.has(pid)) groups.set(pid, []);
+      if(!groups.get(pid).includes(row)) groups.get(pid).push(row);
+    });
+    groups.forEach((rows, pid)=>{
+      const prow = document.getElementById(pid).closest('.row');
+      const lab = prow && prow.querySelector('label');
+      if(lab && !lab.querySelector('.fold-tog')) this.foldToggle(lab, rows, 'fx.' + pid);
+    });
+  },
   _syncSubRows(){
     const pane = document.querySelector('.pane[data-pane="post"]'); if(!pane) return;
     const on = id => { const r = (UI._postSlid || []).find(s => s.id === id); return !!r && App.deadParam(App.post[r.key] || 0) > 0.001; };
