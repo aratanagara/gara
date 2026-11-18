@@ -11,6 +11,9 @@
 //         uMcRedraw = N 拍ごとに構図を丸ごと描き直す。uMcDrawIn で線 → 面の順に描かれていく。
 //   格子構造 (mg_*) は bg_boogie_woogie.frag と同じ実装 (片方を直したらもう片方も直す)。
 //   bgZoom・bgCamPx でズーム/パン。
+//   3D FX: 3D FX / 折りが効いているあいだは app が uFx3dMatte = 1 にし、紙を透過 (Clear 100% と同じ) で出す。
+//     物体 (線・面) だけが 3D FX に乗り、紙の色 (@matte の uMcPaper) は 3D 段の最後に平らに敷かれる。
+// @matte uMcPaper
 // =====================================================
 
 // @param uMcDensity 2..24    = 4.0
@@ -75,6 +78,7 @@ uniform float uMcWallShade; // 線の側面の陰の濃さ (%)
 uniform float uMcBuild;   // 色面 (赤/青/黄/黒) を建物として立ち上げる高さ (%)。0 = 平ら。面ごとに高さがばらつく
 uniform float uMcDist;    // カメラの距離 (%)。上げると引いて盤面を俯瞰する
 uniform vec3 uMcPaper;    // 白地の色
+uniform float uFx3dMatte; // app が設定: 1 = 3D FX 中 (紙を透過で出す)
 uniform vec3 uMcInk;      // 線と黒い面の色
 uniform vec3 uMcRed;      // 赤
 uniform vec3 uMcBlue;     // 青
@@ -310,7 +314,7 @@ vec3 bg_composition(vec2 fc){
     q = tilt * q * sc;
     float aa = sc / (resolution.y * zm);
     mc_eval(q, aa, audio, col, isPaper);
-    float a = 1.0 - isPaper * uMcClear * 0.01;
+    float a = 1.0 - isPaper * (uFx3dMatte > 0.5 ? 100.0 : uMcClear) * 0.01;
     bgAlpha = a;
     return col * a;
   }
@@ -332,7 +336,7 @@ vec3 bg_composition(vec2 fc){
   ro.yz = mat2(cp, -sp, sp, cp) * ro.yz; rd.yz = mat2(cp, -sp, sp, cp) * rd.yz;
   float cy = cos(yaw), sy = sin(yaw);
   ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
-  if(rd.z >= -1e-4){ bgAlpha = 1.0 - uMcClear * 0.01; return uMcPaper * bgAlpha; }
+  if(rd.z >= -1e-4){ bgAlpha = 1.0 - (uFx3dMatte > 0.5 ? 100.0 : uMcClear) * 0.01; return uMcPaper * bgAlpha; }
   float tTop = (max(H, HB) - ro.z) / rd.z, tBot = -ro.z / rd.z;
   // 線 (高さ H) と建物 (色面ごとに 0.35〜1 × HB) の柱の高さ場を視線で進む。線の縁までの距離ぶん横に進み (空いた面は 1〜2 歩)、
   //   いる柱の天面より下へは一度に潜らない (天面で止める)。柱の中 (天面以下) に入ったら当たり。上限は uniform 依存
@@ -369,7 +373,7 @@ vec3 bg_composition(vec2 fc){
     col = mix(col, col * (0.35 + 0.4 * lit), uMcWallShade * 0.01);
   }
   vjDepth = clamp(1.0 - (tHit - (length(ro) - 0.9)) / 1.8, 0.0, 1.0);   // 深度 (盤面の手前ほど 1)。折り系・3D FX が紙をこれで持ち上げる
-  float a = 1.0 - isPaper * uMcClear * 0.01;
+  float a = 1.0 - isPaper * (uFx3dMatte > 0.5 ? 100.0 : uMcClear) * 0.01;
   bgAlpha = a;
   return col * a;
 }

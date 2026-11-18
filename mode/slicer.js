@@ -1036,10 +1036,10 @@ void main(){
     if(this._needsRebuild && this.imageReady) this.buildScene();
   },
 
-  render({fbo, w, h, slot}){
+  render({fbo, w, h, slot, opaque}){
     if(!this.initialized) return;
     const gl = this.gl;
-    const transparentBg = (slot === 'B');   // Slot B は背景色を塗らず最初から透過で描画
+    const transparentBg = (slot === 'B') || opaque === false;   // Slot B / 3D FX の紙抜きは背景色を塗らず最初から透過で描画
     // postScale 適用: シーン/ポストは低解像度で計算 → blit で目的 FBO へアップスケール
     const ps = Math.max(0.25, Math.min(1.0, this.P.postScale || 1.0));
     const sw = Math.max(2, Math.round(w * ps));

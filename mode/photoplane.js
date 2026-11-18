@@ -183,6 +183,7 @@ uniform vec3 uCam;
 uniform float uAmbient, uAspect, uRound, uFrameW, uEdgeFade, uZoom, uBlur, uFringe, uMosaic, uHue, uBright, uSpec, uShine, uRim, uFog, uFogStart;
 uniform vec3 uLight, uTint, uFrameCol, uRimCol, uFogCol;
 uniform vec4 uCrop;
+uniform float uCut;   // 3D FX の Photo: 前の段 / 紙抜きで抜けた背景 (alpha < 0.5) は描かない
 out vec4 frag;
 void main(){
   vec2 uv = vUv;
@@ -191,6 +192,7 @@ void main(){
   vec3 tex;
   if(uFringe > 0.0){ vec2 o = vec2(uFringe*0.012, 0.0); tex = vec3(texture(uTex, uv+o, uBlur).r, texture(uTex, uv, uBlur).g, texture(uTex, uv-o, uBlur).b); }
   else tex = texture(uTex, uv, uBlur).rgb;
+  if(uCut > 0.5 && texture(uTex, uv, uBlur).a < 0.5) discard;
   if(uHue != 0.0){ float c = cos(uHue), s = sin(uHue); vec3 k = vec3(0.57735027); tex = tex*c + cross(k, tex)*s + k*dot(k, tex)*(1.0-c); }
   tex *= uBright;
   if(uRound > 0.0 || uFrameW > 0.0 || uEdgeFade > 0.0){
@@ -233,7 +235,7 @@ void main(){
   _link(vs,fs){ const gl=this.gl; const v=this._compile(gl.VERTEX_SHADER,vs), f=this._compile(gl.FRAGMENT_SHADER,fs); if(!v||!f) return null;
     const p=gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.bindAttribLocation(p,0,'aPos'); gl.bindAttribLocation(p,1,'aUV'); gl.linkProgram(p);
     if(!__glReady(gl, p, true)){ console.error('[PhotoPlane link]', gl.getProgramInfoLog(p)); return null; }
-    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uNvOn','uNvSub','uNvGrid','uNvSalt','uNvCell','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
+    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uCut','uNvOn','uNvSub','uNvGrid','uNvSalt','uNvCell','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
 
   // 細分プレーン (N×N グリッド) — bend/warp をなめらかに
   _buildGeo(N){
@@ -396,7 +398,8 @@ void main(){
     if(!keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,this.depthRBO);
     gl.viewport(0,0,w,h);
     const isB = (opts.slot === 'B');
-    gl.clearColor(P.bg[0],P.bg[1],P.bg[2], isB ? 0.0 : 1.0);   // Slot B は背景透過(下の Slot A が透ける)
+    if(opts.opaque === false) gl.clearColor(0,0,0,0);   // 3D FX の紙抜き: 背景を塗らず透過 (背景色は 3D 段の最後に敷かれる)
+    else gl.clearColor(P.bg[0],P.bg[1],P.bg[2], isB ? 0.0 : 1.0);   // Slot B は背景透過(下の Slot A が透ける)
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.disable(gl.BLEND);
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
@@ -444,6 +447,7 @@ void main(){
     gl.uniform1f(this.loc.uWarpFreq,P.warpFreq);
     gl.uniform1f(this.loc.uBendMul,P.bend);
     gl.uniform1f(this.loc.uPaper,this._fx ? 1 : 0);
+    gl.uniform1f(this.loc.uCut,this._fx ? 1 : 0);
     // Needle (3D FX の最後の段): 板ごとに針の面で描く。Code の PhotoPlane とプログラムを共有するので毎回明示的に切り替える
     const nvOn = !!(this._fx && typeof Fx3d!=='undefined' && Fx3d.spikeFrame);
     gl.uniform1f(this.loc.uNvOn, nvOn ? 1 : 0);

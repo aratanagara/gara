@@ -17,6 +17,9 @@
 //   3D: uMb3D を上げると盤面が傾いて回り、線 (道 + その上の車) が厚みを持って立ち上がる (Composition と同じ方式。深度 vjDepth も出す)。
 //       uMbBuild で色ブロック (入れ子の四角) を建物として立ち上げ (面ごとに高さがばらつく)、uMbDist でカメラを引いて俯瞰する。
 //   bgZoom・bgCamPx でズーム/パン。
+//   3D FX: 3D FX / 折りが効いているあいだは app が uFx3dMatte = 1 にし、紙を透過 (Clear 100% と同じ) で出す。
+//     物体 (線・車・色ブロック) だけが 3D FX に乗り、紙の色 (@matte の uMbPaper) は 3D 段の最後に平らに敷かれる。
+// @matte uMbPaper
 // =====================================================
 
 // @param uMbDensity 2..24    = 4.0
@@ -95,6 +98,7 @@ uniform vec3 uMbRed;      // 赤
 uniform vec3 uMbBlue;     // 青
 uniform vec3 uMbYellow;   // 黄 (線)
 uniform vec3 uMbGray;     // 灰 (車)
+uniform float uFx3dMatte; // app が設定: 1 = 3D FX 中 (紙を透過で出す)
 
 // ───────── 格子構造 (bg_composition.frag と共通の実装) ─────────
 float mg_h(vec3 p){
@@ -427,7 +431,7 @@ vec3 bg_boogie_woogie(vec2 fc){
     q *= sc;
     float aa = sc / (resolution.y * zm);
     mb_eval(q, aa, audio, col, isPaper);
-    float a = 1.0 - isPaper * uMbClear * 0.01;
+    float a = 1.0 - isPaper * (uFx3dMatte > 0.5 ? 100.0 : uMbClear) * 0.01;
     bgAlpha = a;
     return col * a;
   }
@@ -449,7 +453,7 @@ vec3 bg_boogie_woogie(vec2 fc){
   ro.yz = mat2(cp, -sp, sp, cp) * ro.yz; rd.yz = mat2(cp, -sp, sp, cp) * rd.yz;
   float cy = cos(yaw), sy = sin(yaw);
   ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
-  if(rd.z >= -1e-4){ bgAlpha = 1.0 - uMbClear * 0.01; return uMbPaper * bgAlpha; }
+  if(rd.z >= -1e-4){ bgAlpha = 1.0 - (uFx3dMatte > 0.5 ? 100.0 : uMbClear) * 0.01; return uMbPaper * bgAlpha; }
   float tTop = (max(H, HB) - ro.z) / rd.z, tBot = -ro.z / rd.z;
   // 道 (高さ H) と建物 (ブロックごとに 0.35〜1 × HB) の柱の高さ場を視線で進む。空いた所は道の縁 / ブロックの縁までの距離ぶん横に進み、
   //   いる柱の天面より下へは一度に潜らない (天面で止める)。柱の中 (天面以下) に入ったら当たり。上限は uniform 依存 = 定数ループの展開を避ける
@@ -506,7 +510,7 @@ vec3 bg_boogie_woogie(vec2 fc){
     col = mix(col, col * (0.35 + 0.4 * lit), uMbWallShade * 0.01);
   }
   vjDepth = clamp(1.0 - (tHit - (length(ro) - 0.9)) / 1.8, 0.0, 1.0);   // 深度 (盤面の手前ほど 1)。折り系・3D FX が紙をこれで持ち上げる
-  float a = 1.0 - isPaper * uMbClear * 0.01;
+  float a = 1.0 - isPaper * (uFx3dMatte > 0.5 ? 100.0 : uMbClear) * 0.01;
   bgAlpha = a;
   return col * a;
 }

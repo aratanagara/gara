@@ -673,7 +673,7 @@ void main(){
   render(opts){
     if(!this.initialized) return;
     const gl=this.gl;
-    const {fbo, w, h, beatMode, beat, beatPhase, slot} = opts;
+    const {fbo, w, h, beatMode, beat, beatPhase, slot, opaque} = opts;
 
     // 時間／拍数からアニメ駆動
     const sp = (typeof App !== 'undefined' && App.speed) ? App.speed : 1.0;
@@ -795,7 +795,8 @@ void main(){
     // === Main pass — 指定 FBO に描く ===
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0, 0, w, h);
-    gl.clearColor(bg[0], bg[1], bg[2], slot === 'B' ? 0 : 1);   // Slot B は背景を透過(下の A が透ける)
+    if(opaque === false) gl.clearColor(0, 0, 0, 0);   // 3D FX の紙抜き: 背景を塗らず透過 (背景色は 3D 段の最後に敷かれる)
+    else gl.clearColor(bg[0], bg[1], bg[2], slot === 'B' ? 0 : 1);   // Slot B は背景を透過(下の A が透ける)
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL);
     gl.disable(gl.BLEND);
