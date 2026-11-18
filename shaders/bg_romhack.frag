@@ -3,7 +3,9 @@
 //   半径違いの CD(円柱)を「外周が小さいものほど高い段」に積んだ ziggurat を
 //   実際に SDF レイマーチ → 段差・厚み・遮蔽が本物の立体として出る(山状)。
 //   中心は1つの穴。各段の縁内側に白リング(枚数分)+ シルバー地金 + 異方性回折の虹。
-//   枚数は 3〜32 枚。8 枚までは従来どおり、9 枚以上は外周の間隔と段の厚みを詰めて山の大きさを保つ。
+//   枚数は 1〜32 枚。8 枚までは従来どおり、9 枚以上は外周の間隔と段の厚みを詰めて山の大きさを保つ。
+//   裏面にも 0〜32 枚を同じ決まりで重ねられる (0 = 従来どおり平らな鏡面)。
+//   Size Order OFF = 大きさに関係なく番号順に積む (上の CD が下より大きくなることもある)。
 //   カメラは横スピン+縦タンブルで回転。iTime,iResolution → time,resolution。
 //   cosGrad 対応 / Slot B はミス(背景)透過。helpers は rh_ で名前空間化。
 // =====================================================
@@ -45,6 +47,8 @@ const float RH_HOLE  = 0.087;      // スピンドル穴
 const float RH_RDISC = 0.95;       // 円盤半径(ワールド)
 float rh_R[RH_RINGS];              // 各 CD の外周(ワールド半径, フレーム毎に算出)
 float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * RH_T)
+float rh_Rb[RH_RINGS];             // 裏面の CD の外周
+float rh_Hb[RH_RINGS];             // 裏面の CD の下面の深さ (z = -rh_Hb)
 
 // @param uStep    30..300 = 100.0
 // @param uMotion  0..300 = 100.0
@@ -53,7 +57,9 @@ float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * R
 // @param uAngle -180..180 = 0.0
 // @param uTilt -90..90 = 0.0
 // @param uSteps 30..64 = 64.0
-// @param uCdCount 3..32 = 8
+// @param uCdCount 1..32 = 8
+// @param uBackCount 0..32 = 0
+// @param uSizeOrder bool = true
 // @param uProfile 30..300 = 100
 // @param uSeed 0..99 = 0
 // @param uHoleSize 40..500 = 100
@@ -87,6 +93,8 @@ uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uTilt; // 縦の傾き・仰角 (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 uniform float uCdCount; // 積む CD の枚数 (8 枚までは外周の大きいものから消える。9 枚以上は間隔と厚みを詰めて山の大きさを保つ)
+uniform float uBackCount; // 裏面に重ねる CD の枚数 (0 = 平らな鏡面。表と同じく 9 枚以上は間隔と厚みを詰める)
+uniform float uSizeOrder; // ON = 小さい CD ほど上 (上が下より大きくならない) / OFF = 番号順に積む (上が下より大きくなることもある)
 uniform float uProfile; // 山の断面の曲がり (%)。100 で直線、小さいと下が急で上が平ら、大きいと下が平らで上が急
 uniform float uSeed; // 各段の伸び縮みの乱数の種。値を変えると動きの組み合わせが変わる
 uniform float uHoleSize; // 中心のスピンドル穴の大きさ (%)
@@ -114,19 +122,23 @@ uniform vec3 uHighlightTint; // 鏡面ハイライトにかけるティント。
 uniform vec3 uGlassTint; // 中央のガラスの色にかけるティント。既定は白で変化なし
 
 int rh_count(){ return int(clamp(uCdCount + 0.5, 1.0, float(RH_RINGS))); }
+int rh_countB(){ return int(clamp(uBackCount + 0.5, 0.0, float(RH_RINGS))); }
 
-// CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。
-float rh_outer(int k){
+// CD k の外周(正規化 0..1)。時間で伸縮 → 段の大きさが動く。n = その面の枚数 / so = 乱数のずらし (裏面は別の動き)
+float rh_outer(int k, int n, float so){
   float fk = float(k);
-  vec4 h = rh_hash4(fk + 5.0 + floor(uSeed + 0.5)*37.0);
+  vec4 h = rh_hash4(fk + 5.0 + floor(uSeed + 0.5)*37.0 + so);
   float span    = 1.0 - 0.34*RH_HUB;
-  float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/max(float(rh_count()), RH_BASE_N));
+  float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/max(float(n), RH_BASE_N));
   float amp     = (0.10 + 0.24*h.x) * span * (uMotion / 100.0);
   float rate    = 0.15 + 0.75*h.y;
   float phase   = h.z * 6.2831;
   float rOut = baseOut + amp*sin(time*rate + phase) + 0.5*amp*sin(time*rate*0.43 + phase*1.7);
   return clamp(rOut, 0.30, 1.0);
 }
+
+// Size Order OFF のときの積む順の鍵 (CD ごとの乱数。番号が同じでも裏面は別の並び)
+float rh_ord(int k, float so){ return rh_hash1(float(k) * 7.31 + floor(uSeed + 0.5) * 13.7 + so) + float(k) * 1e-4; }
 
 // capped cylinder SDF (軸=z, z∈[0,Hc], 半径 R)
 float rh_cyl(vec3 p, float R, float Hc){
@@ -142,6 +154,9 @@ float rh_zig(vec3 p){
   float d = 1e9;
   int ncd = rh_count();            // ループ上限を uniform 依存にして ANGLE の強制展開 (TDR) を避ける
   for(int i = 0; i < ncd; i++) d = min(d, rh_cyl(p, rh_R[i], rh_H[i]));
+  int nb = rh_countB();            // 裏面の段: 表を z = 0 で裏返した向きに積む
+  vec3 pb = vec3(p.xy, -p.z);
+  for(int i = 0; i < nb; i++) d = min(d, rh_cyl(pb, rh_Rb[i], rh_Hb[i]));
   float hole = length(p.xy) - RH_HOLE*RH_HUB*RH_RDISC*(uHoleSize / 100.0);   // 無限縦シリンダ
   if(ky > 1.0){ return max(d, -hole) * sc / ky; }
   return max(d, -hole) * sc;                                   // 穴をくり抜く
@@ -196,11 +211,20 @@ vec3 bg_romhack(vec2 fc){
   int ncd = rh_count();
   float ncf = float(ncd);
   float tz = RH_T * RH_BASE_N / max(ncf, RH_BASE_N);   // 9 枚以上は 1 枚の厚みを詰めて山の高さを保つ
-  for(int i = 0; i < ncd; i++) rh_R[i] = rh_outer(i) * RH_RDISC;
+  for(int i = 0; i < ncd; i++) rh_R[i] = rh_outer(i, ncd, 0.0) * RH_RDISC;
   for(int i = 0; i < ncd; i++){
-    float rank = 1.0;
-    for(int j = 0; j < ncd; j++){ if(rh_R[j] > rh_R[i]) rank += 1.0; }
+    float rank = 1.0;                // ON = 大きいものほど下 / OFF = 乱数の順 (大きさと無関係に積む。uSeed で並びが変わる)
+    for(int j = 0; j < ncd; j++){ if(uSizeOrder > 0.5 ? rh_R[j] > rh_R[i] : rh_ord(j, 0.0) > rh_ord(i, 0.0)) rank += 1.0; }
     rh_H[i] = (uProfile != 100.0) ? ncf * tz * pow(rank / ncf, uProfile / 100.0) : rank * tz;
+  }
+  int nb = rh_countB();
+  float nbf = float(nb);
+  float tzb = RH_T * RH_BASE_N / max(nbf, RH_BASE_N);
+  for(int i = 0; i < nb; i++) rh_Rb[i] = rh_outer(i, nb, 101.0) * RH_RDISC;
+  for(int i = 0; i < nb; i++){
+    float rank = 1.0;
+    for(int j = 0; j < nb; j++){ if(uSizeOrder > 0.5 ? rh_Rb[j] > rh_Rb[i] : rh_ord(j, 101.0) > rh_ord(i, 101.0)) rank += 1.0; }
+    rh_Hb[i] = (uProfile != 100.0) ? nbf * tzb * pow(rank / nbf, uProfile / 100.0) : rank * tzb;
   }
 
   // レイマーチ
@@ -223,7 +247,7 @@ vec3 bg_romhack(vec2 fc){
   float rn  = r / RH_RDISC;
   float ang = atan(po.y, po.x);
   vec2  rdir = (r > 1e-4) ? po/r : vec2(1.0, 0.0);
-  float rData = 0.34 * RH_HUB * (uClearSize / 100.0);
+  float rData = RH_HOLE * RH_HUB * (uHoleSize / 100.0) + (0.34 - RH_HOLE) * RH_HUB * (uClearSize / 100.0);   // 透明部は穴の外側の帯 (穴を大きくしても残る。既定の穴では従来と同じ)
 
   float topFace  = smoothstep(0.25, 0.75, nor.z);          // 上面(段の天面)
   float sideFace = smoothstep(0.5, 0.15, nor.z);           // 側面(段の厚み=縦壁)
@@ -312,10 +336,36 @@ vec3 bg_romhack(vec2 fc){
     color = mix(color, clamp(graded, 0.0, 1.0), abs(uCosGrad));
   }
 
-  // ── 中央のクリア(半透明)領域: 放射グラデで塗り潰さず、下が透けるようにする ──
-  float clearMask = clamp(smoothstep(rData+0.04, rData-0.04, rn), 0.0, 1.0);
-  color = mix(color, vec3(0.05, 0.07, 0.11) * uGlassTint, clearMask*0.7);                          // 中央は暗いガラス質(塗り潰さない)
-  bgAlpha = 1.0 - clearMask * 0.78;                                                    // 中央をしっかり透過(下が透ける)
+  // ── 中央のクリア領域 = 透明なポリカーボネート: 下が透け、プラスチックの反射だけが乗る ──
+  //   フレネル (正面は 4%、斜めほど強く映る) + 鋭い白いハイライト + 成形の同心円
+  //   (スタッキングリング・データ面の縁の銀・細かな波紋)。不透明度は反射の強さに合わせる。
+  float clearMask = clamp(smoothstep(rData+0.02, rData-0.02, rn), 0.0, 1.0);
+  {
+    float NdV = max(dot(nor, V), 0.0);
+    float Fp = 0.06 + 0.94 * pow(1.0 - NdV, 5.0);                        // ポリカーボネートのフレネル (正面でも少し映る)
+    float NdH = max(dot(nor, Hh), 0.0);
+    float sp = pow(NdH, 220.0) * 3.0 + pow(NdH, 30.0) * 0.45 + pow(NdH, 6.0) * 0.12;   // 鋭いハイライト + 柔らかい艶 + 広い照り
+    float hole = RH_HOLE * RH_HUB * (uHoleSize / 100.0);
+    float lit  = 0.35 + 0.65 * max(dot(rdir, normalize(Lw.xy + 1e-4)), 0.0);   // 光源側ほど縁が光る
+    float aa   = 0.004 + 0.5 * fwidth(rn);
+    float stackR = mix(hole, rData, 0.62);                               // スタッキングリング (盛り上がった細い輪)
+    float ridge  = smoothstep(aa * 2.0, 0.0, abs(rn - stackR)) + 0.5 * smoothstep(aa * 2.0, 0.0, abs(rn - stackR - 0.012));
+    float rim    = smoothstep(aa * 1.5, 0.0, abs(rn - rData));            // データ面 (銀) の縁
+    float holeEdge = smoothstep(aa * 2.0, 0.0, abs(rn - hole - 0.006));   // 穴の縁の面取り
+    float ripple = (0.5 + 0.5 * sin(rn * 900.0)) * 0.06;                 // 成形の細かな同心円
+    vec3 tint = uGlassTint * vec3(0.92, 0.96, 1.0);
+    vec3 refl = envSilver * Fp * tint;
+    vec3 plastic = vec3(0.02, 0.025, 0.035) * tint                      // 透過の地 (ほぼ黒 = 背景が透ける)
+                 + refl
+                 + vec3(1.0) * uHighlightTint * sp
+                 + vec3(0.85, 0.9, 1.0) * (ridge * 0.55 + holeEdge * 0.4) * lit * (0.35 + Fp)
+                 + vec3(0.9) * rim * (0.5 + 0.5 * lit)
+                 + envSilver * ripple * Fp;
+    plastic = clamp(plastic, 0.0, 1.0);
+    color = mix(color, plastic, clearMask);
+    float op = clamp(0.12 + dot(plastic, vec3(0.299, 0.587, 0.114)) * 1.1, 0.0, 1.0);   // 反射の明るい所だけ不透明に
+    bgAlpha = mix(1.0, op, clearMask);
+  }
   if(uVignette != 0.0){ vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y; color *= 1.0 - clamp(uVignette / 100.0, 0.0, 1.5) * smoothstep(0.25, 0.95, length(vq)); }
   return color;
 }
