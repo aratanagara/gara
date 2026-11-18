@@ -558,3 +558,16 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 /* 行の select は縮めてよい (既定の min-width:auto だと狭い画面で行から溢れる) */
 #side .row > select{min-width:0}
 #side #cfAutoMode{flex:1 1 72px;min-width:72px}
+
+/* パラメータの折りたたみ (› で詳細行 / カテゴリを開閉)。行は .fold-hidden で隠す */
+.fold-hidden{display:none !important}
+.fold-tog{display:inline-flex;align-items:center;justify-content:center;flex:none;width:12px;height:12px;margin-right:2px;cursor:pointer;color:var(--dim);vertical-align:middle}
+.fold-tog::before{content:'';width:5px;height:5px;border:solid currentColor;border-width:0 1px 1px 0;transform:translateX(-1px) rotate(-45deg);transition:transform .15s}
+.fold-tog.open::before{transform:translateY(-1px) rotate(45deg)}
+.fold-tog:hover{color:var(--fg)}
+@media (min-resolution:2dppx){ .fold-tog::before{border-width:0 .5px .5px 0} }
+.fold-head{display:flex;align-items:center;margin:4px 0 2px;color:var(--dim);font-size:calc(var(--fs) - 1px);cursor:pointer;user-select:none}
+.fold-head:hover{color:var(--fg)}
+/* FX の親の行: › は左の余白に置き、ラベルの文字位置を他の行とそろえる */
+.row:has(> label > .fold-tog){position:relative}
+.row > label > .fold-tog{position:absolute;left:-11px;top:50%;margin:0;transform:translateY(-50%)}
