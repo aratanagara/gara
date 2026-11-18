@@ -20260,6 +20260,7 @@ void mainImage(out vec4 o, in vec2 f){
       const cv = document.createElement('canvas'); cv.width = Preview.W; cv.height = Preview.H; tile.appendChild(cv);
       const ph = document.createElement('div'); ph.className = 'placeholder'; ph.textContent = '▶'; ph.style.fontSize = '18px'; ph.style.color = 'var(--acc)'; tile.appendChild(ph);
       const vsid = 'M' + String(vnum).padStart(3, '0');
+      (UI._movieSid || (UI._movieSid = {}))[item.name] = vsid;   // スロットのプレビューのタグ欄に番号を出すため
       const _mbase = item.name.replace(/\.[^.]+$/, '');
       const _mpre = vsid + ' ';
       const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = _mpre + (UI._visualNames()[_mbase] || _mbase); tile.appendChild(lbl);
@@ -20478,6 +20479,20 @@ void mainImage(out vec4 o, in vec2 f){
       { const bm = App.blendMode === 'mix' ? 'normal' : App.blendMode; main.push({ t:String(bm).toUpperCase().slice(0,6), title:'Blend: ' + bm }); }
     if(App.autoCF && App.autoCF.on) main.push({ t:'AUTO FADE', title:'Auto Fade (自動クロスフェード)' });
 
+    // スロット固有: 表示中の Visual の番号 (シェーダ = S / コード = C / 動画 = M)。タグの先頭に出す
+    const sidOf = (k)=>{
+      const s = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[k] : null;
+      if(!s || s.kind === 'none') return '';
+      if(s.kind === 'video'){
+        const vs = (typeof Movie !== 'undefined' && Movie._slots) ? Movie._slots[k] : null;
+        return (vs && vs.fileName && UI._movieSid && UI._movieSid[vs.fileName]) || '';
+      }
+      const i = UI.activePresetIdx ? UI.activePresetIdx[k] : -1;
+      return (i >= 0 && PRESETS[i] && PRESETS[i].sid) || '';
+    };
+    { const sa = sidOf('A'), sb = sidOf('B');
+      if(sa) a.unshift({ t:sa, c:'id', title:'Slot A: ' + sa });
+      if(sb) b.unshift({ t:sb, c:'id', title:'Slot B: ' + sb }); }
     // スロット固有: 非表示
     const vis = App.slotVisible || {};
     if(vis.A === false) a.push({ t:'HIDDEN', c:'warn', title:'Slot A 非表示 ([ で切替)' });
