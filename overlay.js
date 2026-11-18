@@ -28,6 +28,7 @@ const Overlay = {
     strokeLen:2.5,
     strokeLenVar:0.25,
     curveAmt:1.0,
+    curveVar:0,
     freq:1,
 
     sides:15,           // 元 P.N (Points) — min (maxSides=0 なら固定値)
@@ -65,71 +66,71 @@ const Overlay = {
   BRUSH_DEFAULTS:{
     // imagon mode 0 (GLASS) を vj の warp に
     warp: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, curveVar:0, stamps:18,
       sides:16, maxSides:0, size:0.20, sizeVar:0.4, warp:0.60, explode:0.30, focal:80,
     },
     // imagon mode 1 (RISE)
     rise: {
-      subdiv:8, strokeLen:1.0, strokeLenVar:0.5, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:1.0, strokeLenVar:0.5, curveAmt:0.0, curveVar:0, stamps:18,
       sides:18, maxSides:0, size:0.11, sizeVar:0.4, warp:0.35, explode:0.32, focal:80,
     },
     // imagon mode 2 (WARP-tool / buildSmear)
     smear: {
-      subdiv:8, strokeLen:1.5, strokeLenVar:0.3, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:1.5, strokeLenVar:0.3, curveAmt:0.0, curveVar:0, stamps:18,
       sides:10, maxSides:0, size:0.10, sizeVar:0.3, warp:0.15, explode:0.15, focal:80,
     },
     // 指先ツール (SMUDGE): warp = 引きずり強度 (1 で始点の色を最後まで運ぶ)
     smudge: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, stamps:40, smudgeSpeed:0.5, tipShape:'round', drawBeats:0,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, curveVar:0, stamps:40, smudgeSpeed:0.5, tipShape:'round', drawBeats:0,
       sides:12, maxSides:0, size:0.13, sizeVar:0.4, warp:0.70, explode:0.20, focal:80,
     },
     // Wet: 開始位置のテクスチャをコピーして経路方向に伸ばす SMUDGE 派生
     smudgeWet: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, stamps:40, smudgeSpeed:0.5, tipShape:'round', drawBeats:0,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, curveVar:0, stamps:40, smudgeSpeed:0.5, tipShape:'round', drawBeats:0,
       sides:12, maxSides:0, size:0.13, sizeVar:0.4, warp:0.82, explode:0.20, focal:80,
     },
     // 旧 CURVE (保存済みプリセット用)
     curve: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:1.0, stamps:25,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:1.0, curveVar:0, stamps:25,
       sides:10, maxSides:0, size:0.22, sizeVar:1.0, warp:0.65, explode:0.45, focal:80,
     },
     // imagon mode 4 (FLAT): 固定角のニブで色を引きずる平筆
     flat: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0.5, freq:1, stamps:25,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0.5, curveVar:0, freq:1, stamps:25,
       sides:10, maxSides:0, size:0.125, sizeVar:0.4, warp:0.65, explode:0.45, focal:80,
     },
     // imagon mode 5 (RANDOM)
     random: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.3, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.3, curveAmt:0.0, curveVar:0, stamps:18,
       sides:11, maxSides:0, size:0.17, sizeVar:1.0, warp:1.00, explode:1.00, focal:80,
     },
     // imagon mode 6 (SPIKE)
     spike: {
-      subdiv:8, strokeLen:1.0, strokeLenVar:0.5, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:1.0, strokeLenVar:0.5, curveAmt:0.0, curveVar:0, stamps:18,
       sides:6, maxSides:0, size:0.06, sizeVar:0.4, warp:0.50, explode:0.20, focal:80,
     },
     // imagon mode 7 (SWOOSH)
     swoosh: {
-      subdiv:8, strokeLen:2.8, strokeLenVar:0.35, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:2.8, strokeLenVar:0.35, curveAmt:0.0, curveVar:0, stamps:18,
       sides:3, maxSides:0, size:0.07, sizeVar:0.3, warp:0.60, explode:0.35, focal:80,
     },
     // vj 固有
     polygon: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, stamps:18,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.4, curveAmt:0.0, curveVar:0, stamps:18,
       sides:3, maxSides:9, size:0.10, sizeVar:0.4, warp:0.30, explode:0.00, focal:80,
     },
     pollock: {
-      subdiv:16, strokeLen:2.5, strokeLenVar:0.4, curveAmt:1.75, stamps:25,
+      subdiv:16, strokeLen:2.5, strokeLenVar:0.4, curveAmt:1.75, curveVar:0, stamps:25,
       sides:5, maxSides:0, size:0.015, sizeVar:0.82, warp:1.0, explode:0.0, focal:5,
     },
     // imagon mode 7 (G-PEN): 入り抜きのある線
     gpen: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0.6, freq:1, stamps:25,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0.6, curveVar:0, freq:1, stamps:25,
       sides:3, maxSides:0, size:0.05, sizeVar:0.4, warp:0.6, explode:0.35, focal:80,
     },
     // imagon mode 8 (ERASE): ストロークの下の合成画面へ戻す
     erase: {
-      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0, freq:1, stamps:25,
+      subdiv:8, strokeLen:2.5, strokeLenVar:0.25, curveAmt:0, curveVar:0, freq:1, stamps:25,
       sides:16, maxSides:0, size:0.125, sizeVar:0.4, warp:0.5, explode:0.3, focal:80,
     },
   },
@@ -137,7 +138,7 @@ const Overlay = {
   //   スライダーを変更するとここに書き戻され、ブラシ切替で各自の値がロードされる。
   brushParams:null,
   // 「ブラシ毎に保持する」キーセット
-  BRUSH_KEYS:['strokeLen','strokeLenVar','curveAmt','freq','stamps','smudgeSpeed','tipShape','drawBeats','sides','maxSides','size','sizeVar','warp','explode','focal'],
+  BRUSH_KEYS:['strokeLen','strokeLenVar','curveAmt','curveVar','freq','stamps','smudgeSpeed','tipShape','drawBeats','sides','maxSides','size','sizeVar','warp','explode','focal'],
   GLOBAL_KEYS:['subdiv'],
   TRIGGER_STEPS:[0.03125, 0.0625, 0.125, 0.25, 0.5, 1, 2, 4, 8, 16, 32],
   _brushName(name){
@@ -457,7 +458,9 @@ void main(){
     // 方向指示(左右/上下/斜め)のときは Curve/蛇行を無効化して、その向きの直線ストロークにする。
     const d = P.direction;
     const straight = (d === 'horizontal' || d === 'vertical' || d === 'rising' || d === 'falling');
-    const curve = straight ? 0 : P.curveAmt * len * 0.5 * (Math.random() < 0.5 ? 1 : -1);
+    // Curve Var: ストロークごとに Curve を -1..1 のランダム値へ寄せる量 (0 = 一定 / 1 = 完全ランダム)
+    const curveAmt = P.curveAmt + ((Math.random()*2 - 1) - P.curveAmt) * P.curveVar;
+    const curve = straight ? 0 : curveAmt * len * 0.5 * (Math.random() < 0.5 ? 1 : -1);
     const cpX = (sx + targetEx) * 0.5 + perpX * curve;
     const cpY = (sy + targetEy) * 0.5 + perpY * curve;
     const color = P.hueRand ? this._hsv2rgb(Math.random(), 0.85, 1.0) : P.color.slice();
@@ -495,7 +498,7 @@ void main(){
 	      tipShape: P.tipShape || 'round',
 	      rotPerStamp: P.rotPerStamp,
       spinRate: P.spin,
-      curveAmt: P.curveAmt,
+      curveAmt,
       freq: Math.max(1, Math.min(5, Math.round(P.freq || 1))),
       straight,
       color,
