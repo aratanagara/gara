@@ -8467,6 +8467,23 @@ vec3 fx3dFoldShade(vec3 c){
     if(mi !== 0){ r = ar + (r-ar)*mix; g = ag + (g-ag)*mix; b = av + (b-av)*mix; }   // uMix = ブレンド強度
     out[0] = r; out[1] = g; out[2] = b; out[3] = aa > ba ? aa : ba;
   },
+  // 現在の A/B 合成 (Post の Color を掛ける前の素の絵) を A/B プレビューのバッファから CPU で作る。
+  // 戻り値は rgb (0..1) を 1 画素おきに詰めた Float32Array。プレビューがまだ無ければ null。
+  compositeSample(){
+    const A = this._sprev && this._sprev.A, B = this._sprev && this._sprev.B;
+    if(!A || !B || !A.buf || !B.buf || A.w !== B.w || A.h !== B.h) return null;
+    const ab = A.buf, bb = B.buf, n = A.w * A.h, mi = App.blendModeIdx();
+    const mix = Math.min(1, Math.max(0, App.crossfade != null ? App.crossfade : 1));
+    const out = new Float32Array(Math.ceil(n / 2) * 3), px = [0,0,0,1];
+    let o = 0;
+    for(let i = 0; i < n; i += 2){
+      const si = i * 4;
+      this._blendPix(ab[si]/255, ab[si+1]/255, ab[si+2]/255, ab[si+3]/255,
+                     bb[si]/255, bb[si+1]/255, bb[si+2]/255, bb[si+3]/255, mi, mix, px);
+      out[o++] = px[0]; out[o++] = px[1]; out[o++] = px[2];
+    }
+    return out;
+  },
   // Grad Map (composite の _gradMap と同一式) を 1 ピクセルへ適用
   _gradMapPix(c, stops, gm){
     const L = c[0]*0.299 + c[1]*0.587 + c[2]*0.114;
@@ -16122,6 +16139,16 @@ ${outBlock}
             1.9779984951*l - 2.4285922050*m + 0.4505937099*s,
             0.0259040371*l + 0.7827717662*m - 0.8086757660*s];
   },
+  // Oklab → sRGB(γ2.2 近似)。_oklab の逆 (0..1 にクランプ)
+  _fromOklab(L, a, b){
+    const l = Math.pow(L + 0.3963377774*a + 0.2158037573*b, 3);
+    const m = Math.pow(L - 0.1055613458*a - 0.0638541728*b, 3);
+    const s = Math.pow(L - 0.0894841775*a - 1.2914855480*b, 3);
+    const c = (v)=> Math.pow(Math.min(1, Math.max(0, v)), 1/2.2);
+    return [c( 4.0767416621*l - 3.3077115913*m + 0.2309699292*s),
+            c(-1.2684380046*l + 2.6097574011*m - 0.3413193965*s),
+            c(-0.0041960863*l - 0.7034186147*m + 1.7076147010*s)];
+  },
   // 縮小ピクセルの色の多様さ (平均彩度 × 彩度重み付き色相の円周分散) と Oklab 色相ヒストグラム(chroma 重み)。黒(背景)は除外
   _colorStats(px){
     const NB = 72, hist = new Float64Array(NB);
@@ -16309,7 +16336,7 @@ ${outBlock}
   // Grad / Blend プレビュー (プレビュー欄の上下のバー) の表示トグル。負荷対策で消せる。
   mixPrevVisible: true,
   applyMixPrevVisible(){
-    const g = document.getElementById('gradQuickBar'), b = document.getElementById('blendPrevBar');
+    const g = document.getElementById('gradQuickRow'), b = document.getElementById('blendPrevBar');
     const gi = document.getElementById('gradQuickBarInv');
     const v = this.mixPrevVisible ? '' : 'none';
     if(g) g.style.display = v;
@@ -16337,6 +16364,181 @@ ${outBlock}
     const ge = (typeof UI !== 'undefined') ? UI._gradEditor : null;
     if(!ge || !ge._hueShifted) return stops.map(s=>({t:s.t, rgb:s.rgb.slice()}));
     return stops.map(s=>({t:s.t, rgb:ge._hueShifted(s.rgb)}));
+  },
+  // Visual からグラデーションマップを生成して適用する。
+  //   輝度ごとの平均色 (= 元の絵に掛けても色がほぼ変わらない写像) を土台に、色相・彩度・明度で
+  //   最も印象的な色 (2 色以上) をその色の平均輝度の位置へ置き、間をグレー寄りの平均色で埋める。
+  gradFromVisual(){
+    const px = GL.compositeSample();
+    if(!px || px.length < 300){ toast('Visual の絵がまだ来ていません'); return; }
+    const stops = this._gradStopsFromPixels(px);
+    const curMix = this._gradFade ? this._gradFade.targetMix : (this.post.gradMix || 0);
+    // 反転 (負値) だと元の絵の色を保てないので正の向きで掛ける
+    this.fadeGradTo(stops, Math.abs(curMix) > 0.0001 ? Math.abs(curMix) : 1.0);
+    this._activeGradPreset = -1;
+    if(UI.refreshPost) UI.refreshPost();
+    if(UI._refreshGradList) UI._refreshGradList();
+    toast('Visual から Grad を生成 ('+stops.length+' stops)');
+  },
+  // 色は「数」より「印象」で拾う: 知覚的な色空間 (Oklab / OKLCH) で色相ごとにまとめ、
+  //   代表色はその色相で彩度の高い上位 15% の画素 (平均はくすむので使わない = 記憶に残る色)。
+  //   面積 3% 以上の色相と、面積は小さくても冴えて際立つアクセント色を拾う。
+  //   ストップは輝度の位置 (= 元の絵の輝度) に置き、隣との間隔を色の差に比例させて継ぎ目のないグラデにする。
+  _gradStopsFromPixels(px){
+    const lum = (c)=> c[0]*0.299 + c[1]*0.587 + c[2]*0.114;   // composite の _gradMap と同じ輝度
+    const ok = (c)=> this._oklab(c[0], c[1], c[2]);
+    const dE = (a, b)=>{ const p = ok(a), q = ok(b); return Math.hypot(p[0]-q[0], p[1]-q[1], p[2]-q[2]); };
+    const chroma = (c)=>{ const o = ok(c); return Math.hypot(o[1], o[2]); };
+    const NB = 32, HB = 36, CQ = 16, CS = 0.02;   // 輝度 32 段 / 色相 10° 刻み / 彩度 0.02 刻み
+    const bin = new Float64Array(NB * 6);         // 輝度ビン: L, a, b (Oklab), C, 画素数, 未使用
+    const hue = new Float64Array(HB * CQ * 4);    // 色相 × 彩度: 画素数, ΣL, Σcos, Σsin
+    const N = px.length / 3;
+    let mL = 0, ma = 0, mb = 0;
+    for(let i = 0; i < px.length; i += 3){
+      const r = Math.min(1, Math.max(0, px[i])), g = Math.min(1, Math.max(0, px[i+1])), b = Math.min(1, Math.max(0, px[i+2]));
+      const L = r*0.299 + g*0.587 + b*0.114;
+      const o = this._oklab(r, g, b), C = Math.hypot(o[1], o[2]);
+      const bi = Math.min(NB - 1, Math.floor(L * NB)) * 6;
+      bin[bi] += o[0]; bin[bi+1] += o[1]; bin[bi+2] += o[2]; bin[bi+3] += C; bin[bi+4]++;
+      mL += o[0]; ma += o[1]; mb += o[2];
+      if(C < 0.025) continue;                     // ほぼ無彩色は色相に数えない (グレーは輝度ごとの色が受け持つ)
+      const h = Math.atan2(o[2], o[1]);
+      const hi = Math.floor((h / (Math.PI * 2) + 1) * HB) % HB, q = Math.min(CQ - 1, Math.floor(C / CS));
+      const k = (hi * CQ + q) * 4;
+      hue[k]++; hue[k+1] += o[0]; hue[k+2] += Math.cos(h); hue[k+3] += Math.sin(h);
+    }
+    const mean = [mL / N, ma / N, mb / N];        // 画面全体の平均色 (Oklab)
+    // 輝度ごとの色 M: 色相は平均、彩度は画素ごとの彩度の平均と平均色の彩度の相乗平均
+    //   (同じ色相がそろう輝度は彩度を保ち、反対の色相が混ざる輝度はグレーへ寄る)
+    const M = [], cnt = [];
+    for(let k = 0; k < NB; k++){
+      const c = bin[k*6+4]; cnt.push(c);
+      if(!c){ M.push(null); continue; }
+      const a = bin[k*6+1], b = bin[k*6+2], h = Math.atan2(b, a), C = Math.sqrt(bin[k*6+3] / c * Math.hypot(a, b) / c);
+      M.push(this._fromOklab(bin[k*6] / c, Math.cos(h) * C, Math.sin(h) * C));
+    }
+    for(let k = 0; k < NB; k++){
+      if(M[k]) continue;
+      let a = k - 1; while(a >= 0 && !cnt[a]) a--;
+      let b = k + 1; while(b < NB && !cnt[b]) b++;
+      const g = (k + 0.5) / NB;
+      if(a < 0 && b >= NB) M[k] = [g, g, g];
+      else if(a < 0) M[k] = M[b].slice();
+      else if(b >= NB) M[k] = M[a].slice();
+      else { const f = (k - a) / (b - a); M[k] = M[a].map((v, j)=> v + (M[b][j] - v) * f); }
+    }
+    let acc = 0, lo = 0, hiB = NB - 1;
+    for(let k = 0; k < NB; k++){ acc += cnt[k]; if(acc >= N * 0.005){ lo = k; break; } }
+    acc = 0;
+    for(let k = NB - 1; k >= 0; k--){ acc += cnt[k]; if(acc >= N * 0.005){ hiB = k; break; } }
+    // ── 色相のまとまり: まだ取られていない色相のうち一番多いところを中心に ±20° を 1 色とし、繰り返す
+    //    (山の裾に埋もれた別の色相も 1 色として拾う)。小さな面積でも冴えた色は残す。
+    const hc = new Float64Array(HB);
+    for(let h = 0; h < HB; h++) for(let q = 0; q < CQ; q++) hc[h] += hue[(h * CQ + q) * 4];
+    const claimed = new Array(HB).fill(false), clusters = [];
+    const free = (k)=> claimed[(k + HB) % HB] ? 0 : hc[(k + HB) % HB];
+    for(let n = 0; n < 14; n++){
+      let pk = -1, pv = 0;
+      for(let k = 0; k < HB; k++){ if(claimed[k]) continue; const v = free(k - 1) + free(k) * 2 + free(k + 1); if(v > pv){ pv = v; pk = k; } }
+      if(pk < 0 || pv < N * 0.002) break;
+      const c = new Float64Array(CQ * 4);
+      for(let d = -2; d <= 2; d++){
+        const h = (pk + d + HB) % HB; if(claimed[h]) continue; claimed[h] = true;
+        for(let j = 0; j < CQ * 4; j++) c[j] += hue[h * CQ * 4 + j];
+      }
+      let total = 0; for(let q = 0; q < CQ; q++) total += c[q*4];
+      if(total < N * 0.002) continue;             // 点ほどの色はノイズ
+      // 代表色 = 彩度の高い側から 15% (最低でも全体の 0.15%) までの画素
+      const want = Math.max(total * 0.15, Math.min(total, N * 0.0015));
+      let n2 = 0, sL = 0, sc = 0, ss = 0, sC = 0;
+      for(let q = CQ - 1; q >= 0 && n2 < want; q--){
+        const k = q * 4, m = c[k]; if(!m) continue;
+        n2 += m; sL += c[k+1]; sc += c[k+2]; ss += c[k+3]; sC += m * (q + 0.5) * CS;
+      }
+      const vivid = sC / n2, h = Math.atan2(ss, sc);
+      const lab = [sL / n2, Math.cos(h) * vivid, Math.sin(h) * vivid];
+      const pop = Math.hypot(lab[0] - mean[0], lab[1] - mean[1], lab[2] - mean[2]);   // 平均色からの際立ち
+      const area = total / N;
+      clusters.push({ area, lab, vivid, score: Math.pow(area, 0.3) * vivid * (0.3 + pop) });
+    }
+    clusters.sort((a, b)=> b.score - a.score);
+    // 面積 3% 以上 = 画面の色 / 冴えて際立つ色 = アクセント。少なくとも 2 色
+    const picked = clusters.filter((c, i)=> i < 2 || c.area >= 0.03 || c.vivid >= 0.12);
+    // ── ストップ
+    const stops = [];
+    const put = (rgb, t)=> stops.push({t: Math.min(1, Math.max(0, t)), rgb: rgb.map(v => Math.min(1, Math.max(0, v)))});
+    const gap = (a, b)=> 0.03 + 0.25 * dE(a, b);    // 継ぎ目なし: 色の差が大きい隣どうしほど離す
+    const fits = (rgb, t, slack)=> stops.every(s => Math.abs(s.t - t) >= gap(s.rgb, rgb) * (slack || 1));
+    // Oklab の明度を動かして輝度 t に合わせる (色相・彩度は保つ)
+    const atLuma = (lab, t)=>{
+      let a = 0, b = 1, rgb = null;
+      for(let i = 0; i < 18; i++){ const m = (a + b) / 2; rgb = this._fromOklab(m, lab[1], lab[2]); if(lum(rgb) < t) a = m; else b = m; }
+      return rgb;
+    };
+    picked.forEach(c => {
+      if(stops.length >= 6) return;
+      const rgb0 = this._fromOklab(c.lab[0], c.lab[1], c.lab[2]);
+      const t0 = Math.min(0.95, Math.max(0.05, lum(rgb0)));
+      // 本来の輝度に置けないときは近い輝度へずらす
+      for(let k = 0; k <= 10; k++){
+        const t = t0 + (k % 2 ? 1 : -1) * Math.ceil(k / 2) * 0.04;
+        if(t < 0.04 || t > 0.96) continue;
+        const rgb = k ? atLuma(c.lab, t) : rgb0;
+        if(fits(rgb, t)){ put(rgb, t); return; }
+      }
+    });
+    // 色相が 1 つしかない絵: 同じ色味で明度の違う、いちばん色の乗った輝度の色を 2 色目にする
+    if(stops.length < 2){
+      let bk = -1, bs = 0;
+      for(let k = lo; k <= hiB; k++){
+        const t = (k + 0.5) / NB;
+        if(!cnt[k] || t < 0.04 || t > 0.96 || !fits(M[k], t, 2)) continue;
+        const sc = chroma(M[k]) * Math.sqrt(cnt[k] / N);
+        if(sc > bs){ bs = sc; bk = k; }
+      }
+      if(bk >= 0) put(M[bk], (bk + 0.5) / NB);
+    }
+    const accents = stops.length;
+    // 両端は必ず 0 / 1 に置く (端で色が止まらない)。絵の一番暗い / 明るい色の色味のまま延ばす
+    const tLo = (lo + 0.5) / NB, tHi = (hiB + 0.5) / NB;
+    const oLo = ok(M[lo]), oHi = ok(M[hiB]);
+    put(tLo < 0.06 ? M[lo] : this._fromOklab(oLo[0] * 0.45, oLo[1] * 0.8, oLo[2] * 0.8), 0);
+    put(tHi > 0.94 ? M[hiB] : this._fromOklab(oHi[0] + (1 - oHi[0]) * 0.6, oHi[1] * 0.7, oHi[2] * 0.7), 1);
+    const sorted = ()=> stops.slice().sort((a, b)=> a.t - b.t);
+    const at = (t)=>{
+      const ss = sorted();
+      for(let i = 0; i < ss.length - 1; i++){
+        const a = ss[i], b = ss[i+1];
+        if(t <= b.t){ const f = (t - a.t) / Math.max(b.t - a.t, 1e-4); return a.rgb.map((v, j)=> v + (b.rgb[j] - v) * f); }
+      }
+      return ss[ss.length - 1].rgb;
+    };
+    // グレー: 色相が大きく飛ぶ印象色どうしの間に、その輝度の色をグレー寄りにして挟む
+    if(accents >= 2 && stops.length < 8){
+      const ac = sorted().filter(s => chroma(s.rgb) >= 0.04);
+      let gi = -1, gd = 0;
+      for(let i = 0; i < ac.length - 1; i++){ const d = dE(ac[i].rgb, ac[i+1].rgb) * (ac[i+1].t - ac[i].t); if(d > gd){ gd = d; gi = i; } }
+      if(gi >= 0 && ac[gi+1].t - ac[gi].t >= 0.12){
+        const t = (ac[gi].t + ac[gi+1].t) / 2;
+        const m = ok(M[Math.min(NB - 1, Math.floor(t * NB))]);
+        const g = atLuma([m[0], m[1] * 0.3, m[2] * 0.3], t);
+        if(fits(g, t, 0.6)) put(g, t);
+      }
+    }
+    // 残りは元の絵との差が大きい輝度にその輝度の色を足して、元の絵に掛けたときの色ずれを減らす
+    while(stops.length < 8){
+      let bk = -1, be = 0.03;
+      for(let k = lo; k <= hiB; k++){
+        if(!cnt[k]) continue;
+        const t = (k + 0.5) / NB;
+        if(!fits(M[k], t, 0.6)) continue;
+        const e = dE(at(t), M[k]) * Math.sqrt(cnt[k] / N * NB);
+        if(e > be){ be = e; bk = k; }
+      }
+      if(bk < 0) break;
+      put(M[bk], (bk + 0.5) / NB);
+    }
+    return sorted();
   },
   // 登録済みの Grad Preset からランダムに選び、dur 秒かけて移る (直前と同じものは避ける)
   randomGradPreset(dur){
@@ -19215,6 +19417,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Grad Edit の右の ＋ = 現在のグラデを名前付きで新規保存
     const addCurrentGrad = ()=>{ const stops = GradEditor.get(); App._prompt('保存するグラデの名前:', 'grad '+(GradStore.list.length+1), (name)=>{ if(!name || !name.trim()) return; GradStore.add(name.trim(), stops); toast('グラデを保存: '+name.trim()); }); };
     { const b = $('#pxGradAdd'); if(b) b.addEventListener('click', addCurrentGrad); }
+    document.querySelectorAll('#pxGradFromVisual, #gradQuickRow > .gq-gen').forEach(b => b.addEventListener('click', ()=> App.gradFromVisual()));
     // グラデリスト UI (色見本 + 番号 + 名前。番号 1〜9,0 がキーに対応。最上部=現在編集中で sticky)
     UI._refreshGradList = ()=>{
       const box = $('#pxGradList'); if(!box) return;
