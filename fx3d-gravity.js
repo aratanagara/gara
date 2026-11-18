@@ -13,6 +13,7 @@ const COLS = 288, ROWS = 180, MARGIN = 3.0, NW = 6;
 //   uniform は他のシェーダとぶつからないよう uG で始める (fieldUniforms が送る)
 const FIELD = `
 uniform float uGAsp, uGK, uGSpin, uGHit, uGT, uGDepth, uGWave;   // uGDepth / uGWave: Depth / Wave (1 = 標準)
+uniform float uGDir;        // 渦の向き (+1 / -1。ランダムな周期で反転し、その間はなめらかに 0 を通る)
 uniform vec2 uGC[${NW}];
 uniform float uGW[${NW}];   // 井戸ごとの深さ (負 = 井戸 / 正 = 丘)
 uniform float uGM[${NW}];   // 井戸ごとの喉度 (1 = 主の喉 / 0 = 副の井戸。拍の移り変わりで滑らかに入れ替わる)
@@ -32,7 +33,7 @@ vec3 gField(vec3 P0, out float deep){
     float th = uGM[i];
     float sw = mix(0.45, 1.0, th);
     float alt = mix(1.0, (i - 2 * (i / 2)) == 0 ? 1.0 : -1.0, th);   // 喉は渦の向きを交互に
-    float ang = kq * mix(0.45, 1.0, uGSpin) * sw * alt * (5.5 + 2.0 * sin(uGT * 0.35 + float(i) * 2.1)) * pow(f, 0.8) * sign(-w) * min(1.0, abs(w));
+    float ang = kq * mix(0.45, 1.0, uGSpin) * sw * alt * uGDir * (5.5 + 2.0 * sin(uGT * 0.35 + float(i) * 2.1)) * pow(f, 0.8) * sign(-w) * min(1.0, abs(w));
     float cs = cos(ang), sn = sin(ang);
     vec2 d2 = vec2(d.x * cs - d.y * sn, d.x * sn + d.y * cs) * (1.0 - 0.5 * kq * f * step(w, 0.0));   // 井戸へ引き込む
     off += d2 - d;
@@ -186,7 +187,15 @@ function fieldParams(o){
   const ph = b - n, env = easeOut(ph / 0.26) * (1 - (x=>x * x * (3 - 2 * x))(Math.max(0, Math.min(1, (ph - 0.74) / 0.26))));
   const fa = h1(n, 6.1) * 6.2832, fsd = (0.35 + 0.55 * h1(n, 7.3)) * (asp >= 1 ? 1 : asp);   // 線は中心から外寄り = 画面の端の側がめくれ返る
   const ft = Math.PI * Math.min(1, kq * 1.6) * env;
-  return { C, W, R, M, fa, fsd, ft, kq };
+  // 渦の向き: 拍 (drone は 4 秒) ごとにくじを引き、前の反転から 2 拍以上たっていれば 3 割で反転 = ランダムな周期。反転した拍の前半でなめらかに切り替える
+  if(gst.dn === undefined || n < gst.dn || n - gst.dn > 64){ gst.dn = n; gst.dSign = 1; gst.dPrev = 1; gst.dLast = n; }
+  while(gst.dn < n){
+    gst.dn++;
+    gst.dPrev = gst.dSign;
+    if(gst.dn - gst.dLast >= 2 && h1(gst.dn, 9.3) < 0.3){ gst.dSign = -gst.dSign; gst.dLast = gst.dn; }
+  }
+  const dir = gst.dPrev + (gst.dSign - gst.dPrev) * easeOut(ph / 0.5);
+  return { C, W, R, M, fa, fsd, ft, kq, dir };
 }
 
 Fx3d.EXTRA.gravity = {
@@ -205,6 +214,7 @@ Fx3d.EXTRA.gravity = {
     gl.uniform1fv(U('uGW'), F.W);
     gl.uniform1fv(U('uGR'), F.R);
     gl.uniform1fv(U('uGM'), F.M);
+    gl.uniform1f(U('uGDir'), F.dir);
     gl.uniform2f(U('uGFD'), Math.cos(F.fa), Math.sin(F.fa));
     gl.uniform1f(U('uGFS'), F.fsd);
     const post = o.post || {}, dz = (v, d)=>Math.max(0, Math.min(1, App.deadParam(v != null ? +v : d)));
