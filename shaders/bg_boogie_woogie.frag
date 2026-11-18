@@ -15,6 +15,7 @@
 //   格子構造 (mg_*) は bg_composition.frag と同じ実装 (片方を直したらもう片方も直す)。
 //   参照: https://www.electricboogiewoogie.com/ (Rafaël Rozendaal, 2010)
 //   3D: uMb3D を上げると盤面が傾いて回り、線 (道 + その上の車) が厚みを持って立ち上がる (Composition と同じ方式。深度 vjDepth も出す)。
+//       uMbBuild で色ブロック (入れ子の四角) を建物として立ち上げ (面ごとに高さがばらつく)、uMbDist でカメラを引いて俯瞰する。
 //   bgZoom・bgCamPx でズーム/パン。
 // =====================================================
 
@@ -49,6 +50,8 @@
 // @param uMbPitch   0..80    = 45.0
 // @param uMbSpin    -100..100 = 20.0
 // @param uMbWallShade 0..100 = 55.0
+// @param uMbBuild   0..400   = 0.0
+// @param uMbDist    60..400  = 100.0
 // @param uMbPaper   color = #f2f0e9
 // @param uMbRed     color = #cf1f18
 // @param uMbBlue    color = #1b2f96
@@ -84,7 +87,9 @@ uniform float uMb3D;      // 3D の量 (%)。0 = 平面 (従来どおり)。上�
 uniform float uMbHeight;  // 線の高さ (%)。100 = 線の太さと同じ = 断面が正方形
 uniform float uMbPitch;   // 盤面の傾き (度)
 uniform float uMbSpin;    // 盤面の回転の速さ (%)。負で逆回転
-uniform float uMbWallShade; // 線の側面の陰の濃さ (%)
+uniform float uMbWallShade; // 線・建物の側面の陰の濃さ (%)
+uniform float uMbBuild;   // 色ブロック (赤/青/黄) を建物として立ち上げる高さ (%)。0 = 平ら。面ごとに高さがばらつく
+uniform float uMbDist;    // カメラの距離 (%)。上げると引いて盤面を俯瞰する
 uniform vec3 uMbPaper;    // 白地の色
 uniform vec3 uMbRed;      // 赤
 uniform vec3 uMbBlue;     // 青
@@ -283,6 +288,7 @@ vec2 mb_q;
 vec4 mb_dV;   // 左 / 右の垂直線・下 / 上の水平線までの距離 (出ていない線は BIG)
 vec2 mb_sVH;  // 垂直 / 水平の線までの距離 (伸び縮み前に戻したもの)
 float mb_w;   // 線の半幅
+vec2 mb_dq;   // ジャンプ率による各軸の伸び縮みの倍率 (盤面の座標 → 伸び縮み前)
 float mb_d;   // 道の縁までの距離 (盤面の座標。道の中は負)。3D の視線しらべが空いた所を読み飛ばす歩幅に使う
 float mb_cov(vec2 q, float aa, float audio){
   float w = 0.011 * uMbLine * 0.01 * 0.85 * (1.0 + audio * 0.5);   // 線の半幅
@@ -296,6 +302,7 @@ float mb_cov(vec2 q, float aa, float audio){
   vec2 wp1 = vec2(mg_h(vec3(mg_rseed, 71.0, 1.0)), mg_h(vec3(mg_rseed, 72.0, 1.0))) * 6.2832 + (mg_roadFix > 0.5 ? 0.0 : mg_B * 0.021 * mg_motion);
   vec2 wp2 = vec2(mg_h(vec3(mg_rseed, 73.0, 1.0)), mg_h(vec3(mg_rseed, 74.0, 1.0))) * 6.2832 - (mg_roadFix > 0.5 ? 0.0 : mg_B * 0.017 * mg_motion);
   vec2 dq = 1.0 + jp * (0.62 * cos(q * wf1 + wp1) + 0.38 * cos(q * wf2 + wp2));
+  mb_dq = dq;
   q += jp * (0.62 * sin(q * wf1 + wp1) / wf1 + 0.38 * sin(q * wf2 + wp2) / wf2);
   mg_build(q);
   mb_q = q;
@@ -311,29 +318,43 @@ float mb_cov(vec2 q, float aa, float audio){
   mb_d = min(sV, sH) - w;
   return smoothstep(w + aa, w - aa, min(sV, sH));
 }
+// いまの格子の面 (mg_build の直後) の建物判定の前準備: 面の番号 rid・塗り替えの世代 er・描かれているか cellOn・乱数の種 sd
+void mb_prep(out float rid, out float er, out bool cellOn, out float sd){
+  bool bldFix = floor(uMbMode + 0.5) > 1.5;                          // 建物 (色ブロック) も固定
+  rid = mg_kL * 7.13 + mg_jB * 131.7;
+  float fr; er = bldFix ? -1.0 : mg_epoch(rid + 0.25, fr);
+  cellOn = bldFix || mg_shownCell(rid);
+  sd = bldFix ? mg_rseed : mg_seed;
+}
+// 面の入れ子の色ブロックの外形 blk (盤面の座標 xy..zw) と大きさ bU (単位格子) を返す。無ければ false。mb_eval と 3D の視線しらべで共通
+bool mb_blk(float rid, float er, bool cellOn, float sd, out vec4 blk, out vec2 bU){
+  float w = mb_w;
+  blk = vec4(0.0); bU = vec2(1.0);
+  vec4 inner = vec4(mg_xL + w, mg_yB + w, mg_xR - w, mg_yT - w);
+  if(!(cellOn && inner.z - inner.x < 1e3 && inner.w - inner.y < 1e3
+       && mg_h(vec3(rid, er, sd + 31.0)) < uMbInner * 0.01)) return false;
+  vec2 sz = inner.zw - inner.xy;
+  vec2 nU = max(floor(sz / mg_unit), vec2(1.0));
+  bU = max(floor(nU * mix(vec2(0.3), vec2(1.0), vec2(mg_h(vec3(rid, er, 32.0)), mg_h(vec3(rid, er, 33.0))))), vec2(1.0));
+  vec2 oU = floor((nU - bU + 1.0) * vec2(mg_h(vec3(rid, er, 34.0)), mg_h(vec3(rid, er, 35.0))));
+  oU = min(oU, nU - bU);
+  blk = vec4(inner.xy + oU * mg_unit, inner.xy + (oU + bU) * mg_unit);
+  blk.zw = min(blk.zw, inner.zw);
+  return true;
+}
 // 盤面上の 1 点 q の色を返す。戻り値 = 道の覆い (0..1)。isPaper = 白地か
 float mb_eval(vec2 q, float aa, float audio, out vec3 col, out float isPaper){
   float cov = mb_cov(q, aa, audio);
   q = mb_q;
   float w = mb_w;
-  bool bldFix = floor(uMbMode + 0.5) > 1.5;                          // 建物 (色ブロック) も固定
 
   // ── 面: 入れ子の色ブロック ──
-  float rid = mg_kL * 7.13 + mg_jB * 131.7;
-  float fr; float er = bldFix ? -1.0 : mg_epoch(rid + 0.25, fr);
-  bool cellOn = bldFix || mg_shownCell(rid);
+  float rid, er, sd; bool cellOn;
+  mb_prep(rid, er, cellOn, sd);
   col = uMbPaper;
   isPaper = 1.0;
-  vec4 inner = vec4(mg_xL + w, mg_yB + w, mg_xR - w, mg_yT - w);
-  if(cellOn && inner.z - inner.x < 1e3 && inner.w - inner.y < 1e3
-     && mg_h(vec3(rid, er, (bldFix ? mg_rseed : mg_seed) + 31.0)) < uMbInner * 0.01){
-    vec2 sz = inner.zw - inner.xy;
-    vec2 nU = max(floor(sz / mg_unit), vec2(1.0));
-    vec2 bU = max(floor(nU * mix(vec2(0.3), vec2(1.0), vec2(mg_h(vec3(rid, er, 32.0)), mg_h(vec3(rid, er, 33.0))))), vec2(1.0));
-    vec2 oU = floor((nU - bU + 1.0) * vec2(mg_h(vec3(rid, er, 34.0)), mg_h(vec3(rid, er, 35.0))));
-    oU = min(oU, nU - bU);
-    vec4 blk = vec4(inner.xy + oU * mg_unit, inner.xy + (oU + bU) * mg_unit);
-    blk.zw = min(blk.zw, inner.zw);
+  vec4 blk; vec2 bU;
+  if(mb_blk(rid, er, cellOn, sd, blk, bU)){
     float hA = mg_h(vec3(rid, er, 36.0));
     float mA = mb_box(q, blk, aa);
     col = mix(col, mb_ryb(hA), mA);
@@ -412,14 +433,16 @@ vec3 bg_boogie_woogie(vec2 fc){
   }
 
   // ── 3D: 盤面 (z = 0) を傾けて回し、線 (道) を高さ H の壁として押し出す。Composition と同じ視線しらべ。
-  //    天面 = 道の色 (車も天面に乗る) / 側面 = 陰。色ブロックは盤面 (z = 0) のまま。深度 vjDepth も出す
+  //    色ブロックは Build > 0 のとき、面ごとに 0.35〜1 × HB の建物として立ち上がる。
+  //    天面 = 道 / ブロックの色 (車も天面に乗る) / 側面 = 陰。深度 vjDepth も出す
   float k3 = uMb3D * 0.01;
   float lw = 2.0 * 0.011 * uMbLine * 0.01 * 0.85 * (1.0 + audio * 0.5);   // 線の太さ (盤面の座標)
   float H = lw * zm / sc * uMbHeight * 0.01 * k3;            // 線の高さ = 線の太さ × Height (盤面の座標を世界の長さに直す。100 で断面が正方形)
+  float HB = 0.12 * zm / sc * uMbBuild * 0.01 * k3;          // 建物 (色ブロック) の高さの最大
   float pitch = radians(uMbPitch) * k3;
   float yaw = time * 0.25 * uMbSpin * 0.01 * k3;
   vec2 uv = (fc - 0.5 * resolution) / resolution.y;
-  vec3 ro = vec3(0.0, 0.0, 1.0);
+  vec3 ro = vec3(0.0, 0.0, mix(1.0, uMbDist * 0.01, k3));   // Dist で引いて俯瞰
   vec3 rd = normalize(vec3(uv, -1.0));
   // カメラを原点まわりに回す (傾き = x 軸、回転 = z 軸)
   float cp = cos(pitch), sp = sin(pitch);
@@ -427,33 +450,58 @@ vec3 bg_boogie_woogie(vec2 fc){
   float cy = cos(yaw), sy = sin(yaw);
   ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
   if(rd.z >= -1e-4){ bgAlpha = 1.0 - uMbClear * 0.01; return uMbPaper * bgAlpha; }
-  float tTop = (H - ro.z) / rd.z, tBot = -ro.z / rd.z;
-  // 道の縁までの距離ぶん視線を進める (空いた面の上は 1〜2 歩で抜ける)。道の柱の中 (縁より内側 かつ 高さ H 以下) に入ったら当たり。
-  //   上限は uniform 依存 = 定数ループの展開を避ける
-  int N = int(clamp(12.0 + 0.0 * time, 2.0, 12.0));
+  float tTop = (max(H, HB) - ro.z) / rd.z, tBot = -ro.z / rd.z;
+  // 道 (高さ H) と建物 (ブロックごとに 0.35〜1 × HB) の柱の高さ場を視線で進む。空いた所は道の縁 / ブロックの縁までの距離ぶん横に進み、
+  //   いる柱の天面より下へは一度に潜らない (天面で止める)。柱の中 (天面以下) に入ったら当たり。上限は uniform 依存 = 定数ループの展開を避ける
+  //   (Build = 0 のときは従来と同じ 12 歩・同じ歩幅)
+  int N = int(clamp(12.0 + 0.0 * time, 2.0, 20.0));
   float tHit = tBot; float side = 0.0; float hitI = -1.0;
   float kxy = length(rd.xy) * sc / zm;                        // 視線 1 進むあいだの盤面の座標の進み
+  float minStep = 0.002;
   float t = tTop;
-  for(int i = 0; i < 12; i++){
+  for(int i = 0; i < 20; i++){
     if(i >= N || t > tBot) break;
     vec3 p = ro + rd * t;
     vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
     mb_cov(q, 0.0, audio);
-    if(mb_d <= 0.0){
+    float hc = 0.0;
+    float dxy;                                                 // いる柱の縁 (道・ブロック) までの横の距離 (盤面の座標)
+    if(mb_d <= 0.0){ hc = H; dxy = -mb_d + 1e-4; }
+    else {
+      dxy = mb_d;
+      if(HB > 0.0){
+        float rid, er, sd; bool cellOn; vec4 blk; vec2 bU;
+        mb_prep(rid, er, cellOn, sd);
+        if(mb_blk(rid, er, cellOn, sd, blk, bU)){
+          vec2 e = min(mb_q - blk.xy, blk.zw - mb_q);              // 各辺までの符号つき距離 (内側が正)
+          float sdIn = min(e.x, e.y);
+          float inv = 1.0 / max(mb_dq.x, mb_dq.y);                 // ジャンプ率の伸び縮みぶん安全側に縮める
+          if(sdIn > 0.0){
+            hc = HB * (0.35 + 0.65 * mg_h(vec3(rid, 81.0 + er, mg_seed)));
+            dxy = min(dxy, (sdIn + 1e-4) * inv);
+          } else {
+            dxy = min(dxy, (length(max(-e, 0.0)) + 1e-4) * inv);
+          }
+        }
+      }
+    }
+    if(hc > 0.0 && p.z <= hc + 1e-5){
       hitI = float(i);
       tHit = t;
-      side = p.z < H * 0.96 ? 1.0 : 0.0;   // 道の天面より下で当たった = 側面
+      side = p.z < hc * 0.96 ? 1.0 : 0.0;   // 天面より下で当たった = 側面
       mb_eval(q, sc * t / (resolution.y * zm), audio, col, isPaper);
       break;
     }
-    t += max(mb_d / max(kxy, 1e-4), 0.002);
+    float stp = dxy / max(kxy, 1e-4);
+    if(hc > 0.0) stp = min(stp, (p.z - hc) / max(-rd.z, 1e-4));   // いる柱の天面まで
+    t += max(stp, max(minStep, HB > 0.0 ? (t - tTop) * 0.02 : 0.0));   // 建物があるときは遠いほど歩幅の下限を大きく (遠景は粗くてよい)
   }
   if(hitI < 0.0){   // 道に当たらなければ盤面 (z = 0)
     vec3 p = ro + rd * tBot;
     vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
     mb_eval(q, sc * tBot / (resolution.y * zm), audio, col, isPaper);
   } else if(side > 0.5){
-    // 側面: 道の色を陰で暗く (盤面の回転に合わせて面の向きで濃淡を変える)
+    // 側面: 道・建物の色を陰で暗く (盤面の回転に合わせて面の向きで濃淡を変える)
     float lit = 0.5 + 0.5 * sin(yaw + 0.7);
     col = mix(col, col * (0.35 + 0.4 * lit), uMbWallShade * 0.01);
   }
