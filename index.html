@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795040133">
+<link rel="stylesheet" href="style.css?v=1795041361">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1268,6 +1268,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxFx3dGlobe">Globe</label><input type="range" id="pxFx3dGlobe" min="0" max="1" step="0.01" value="0" title="Globe: 画面が筒から球に巻き上がって回る。値=巻き具合 (前半=筒、後半=球)。Detail を下げるとミラーボール"><div class="val" id="pxFx3dGlobeVal">0.00</div></div>
           <div class="row"><label for="pxFx3dGlobeDetail" class="sub-label">Globe Detail</label><input type="range" id="pxFx3dGlobeDetail" data-sub-of="pxFx3dGlobe" min="6" max="96" step="1" value="64" title="縦の分割数 (小さいほど面が角張る)"><div class="val" id="pxFx3dGlobeDetailVal">64</div></div>
           <div class="row"><label for="pxFx3dDepth">3D Depth</label><input type="range" id="pxFx3dDepth" min="0" max="1" step="0.01" value="0.5" title="立体を描くシェーダ (深度を出すもの) のとき、Origami / Kaiser / Roll / Uzumaki / Gravity / Needle が紙をその深度で持ち上げてから折る = 立体のまま 3D FX が重なる。0 = 平らな紙 (従来どおり)"><div class="val" id="pxFx3dDepthVal">0.50</div></div>
+          <div class="row"><label for="pxCode3D">Code 3D</label><input type="checkbox" id="pxCode3D" checked title="Code (3D で描くエンジン) の深度を 3D FX に渡す。OFF = 平面として扱う (シェーダの 3D Mode と同じ)"></div>
           <div class="row"><label for="pxFx3dScale">3D Res</label>
             <select id="pxFx3dScale" data-sub-of="pxFx3dPhoto pxFx3dSlicer pxFx3dLayer pxFx3dDiorama pxFx3dPoints pxFx3dCubes pxFx3dBlinds pxFx3dGravity pxFx3dGlobe" data-norand="1" style="flex:1" title="3D FX の描画解像度 (小さいほど軽い)">
               <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
@@ -1931,55 +1932,55 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795040133"></script>
-<script src="mode/layer.js?v=1795040133"></script>
-<script src="vendor/iro.min.js?v=1795040133"></script>
-<script src="vendor/mediabunny.min.js?v=1795040133"></script>
-<script src="mode/textdeform.js?v=1795040133"></script>
-<script src="mode/textdeform-comp.js?v=1795040133"></script>
-<script src="mode/ugomeki.js?v=1795040133"></script>
-<script src="mode/slicer.js?v=1795040133"></script>
-<script src="mode/video.js?v=1795040133"></script>
-<script src="mode/aratanagara.js?v=1795040133"></script>
-<script src="vendor/p5.min.js?v=1795040133"></script>
-<script src="mode/cyberui.js?v=1795040133"></script>
-<script src="mode/novel.js?v=1795040133"></script>
-<script src="shaders/inkelly.js?v=1795040133"></script>
-<script src="sketchfx.js?v=1795040133"></script>
-<script src="pixelsortfx.js?v=1795040133"></script>
-<script src="shaders/boltzmann.js?v=1795040133"></script>
-<script src="mode/pen.js?v=1795040133"></script>
-<script src="shaders/caverns.js?v=1795040133"></script>
-<script src="mode/shelf.js?v=1795040133"></script>
-<script src="shaders/ribbon.js?v=1795040133"></script>
-<script src="mode/photoplane.js?v=1795040133"></script>
-<script src="mode/shredder.js?v=1795040133"></script>
-<script src="mode/transflock.js?v=1795040133"></script>
-<script src="mode/liquidpeel.js?v=1795040133"></script>
-<script src="mode/windflock.js?v=1795040133"></script>
-<script src="mode/rhizome.js?v=1795040133"></script>
-<script src="mode/surrealfloat.js?v=1795040133"></script>
-<script src="mode/chrometype.js?v=1795040133"></script>
-<script src="mode/tower4149.js?v=1795040133"></script>
-<script src="mode/fude.js?v=1795040133"></script>
-<script src="mode/image.js?v=1795040133"></script>
-<script src="mode/spacetype.js?v=1795040133"></script>
-<script src="fx3d.js?v=1795040133"></script>
-<script src="fx3d-layers.js?v=1795040133"></script>
-<script src="fx3d-cubes.js?v=1795040133"></script>
-<script src="fx3d-blinds.js?v=1795040133"></script>
-<script src="fx3d-diorama.js?v=1795040133"></script>
-<script src="fx3d-points.js?v=1795040133"></script>
-<script src="fx3d-gravity.js?v=1795040133"></script>
-<script src="fx3d-globe.js?v=1795040133"></script>
-<script src="pollockfx.js?v=1795040133"></script>
-<script src="overlay.js?v=1795040133"></script>
-<script src="gif.js?v=1795040133"></script>
-  <script src="ui-icons.js?v=1795040133"></script>
-  <script src="app.js?v=1795040133"></script>
-  <script src="ui-scrollbar.js?v=1795040133"></script>
-  <script src="ui-settings.js?v=1795040133"></script>
-<script src="camroll.js?v=1795040133" defer></script>
-<script src="dbltap.js?v=1795040133" defer></script>
+<script src="presets.js?v=1795041361"></script>
+<script src="mode/layer.js?v=1795041361"></script>
+<script src="vendor/iro.min.js?v=1795041361"></script>
+<script src="vendor/mediabunny.min.js?v=1795041361"></script>
+<script src="mode/textdeform.js?v=1795041361"></script>
+<script src="mode/textdeform-comp.js?v=1795041361"></script>
+<script src="mode/ugomeki.js?v=1795041361"></script>
+<script src="mode/slicer.js?v=1795041361"></script>
+<script src="mode/video.js?v=1795041361"></script>
+<script src="mode/aratanagara.js?v=1795041361"></script>
+<script src="vendor/p5.min.js?v=1795041361"></script>
+<script src="mode/cyberui.js?v=1795041361"></script>
+<script src="mode/novel.js?v=1795041361"></script>
+<script src="shaders/inkelly.js?v=1795041361"></script>
+<script src="sketchfx.js?v=1795041361"></script>
+<script src="pixelsortfx.js?v=1795041361"></script>
+<script src="shaders/boltzmann.js?v=1795041361"></script>
+<script src="mode/pen.js?v=1795041361"></script>
+<script src="shaders/caverns.js?v=1795041361"></script>
+<script src="mode/shelf.js?v=1795041361"></script>
+<script src="shaders/ribbon.js?v=1795041361"></script>
+<script src="mode/photoplane.js?v=1795041361"></script>
+<script src="mode/shredder.js?v=1795041361"></script>
+<script src="mode/transflock.js?v=1795041361"></script>
+<script src="mode/liquidpeel.js?v=1795041361"></script>
+<script src="mode/windflock.js?v=1795041361"></script>
+<script src="mode/rhizome.js?v=1795041361"></script>
+<script src="mode/surrealfloat.js?v=1795041361"></script>
+<script src="mode/chrometype.js?v=1795041361"></script>
+<script src="mode/tower4149.js?v=1795041361"></script>
+<script src="mode/fude.js?v=1795041361"></script>
+<script src="mode/image.js?v=1795041361"></script>
+<script src="mode/spacetype.js?v=1795041361"></script>
+<script src="fx3d.js?v=1795041361"></script>
+<script src="fx3d-layers.js?v=1795041361"></script>
+<script src="fx3d-cubes.js?v=1795041361"></script>
+<script src="fx3d-blinds.js?v=1795041361"></script>
+<script src="fx3d-diorama.js?v=1795041361"></script>
+<script src="fx3d-points.js?v=1795041361"></script>
+<script src="fx3d-gravity.js?v=1795041361"></script>
+<script src="fx3d-globe.js?v=1795041361"></script>
+<script src="pollockfx.js?v=1795041361"></script>
+<script src="overlay.js?v=1795041361"></script>
+<script src="gif.js?v=1795041361"></script>
+  <script src="ui-icons.js?v=1795041361"></script>
+  <script src="app.js?v=1795041361"></script>
+  <script src="ui-scrollbar.js?v=1795041361"></script>
+  <script src="ui-settings.js?v=1795041361"></script>
+<script src="camroll.js?v=1795041361" defer></script>
+<script src="dbltap.js?v=1795041361" defer></script>
 </body>
 </html>

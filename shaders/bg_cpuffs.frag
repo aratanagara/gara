@@ -122,6 +122,7 @@ vec3 bg_cpuffs(vec2 fc){
   }
   float dFog = d;
   if(uHazeStart != 0.0) dFog = max(d - uHazeStart * 0.15, 0.0);
+  vjDepth = exp(-dFog/(4. * (uFog / 100.)));   // 深度 (フォグと同じ減衰。手前 1 → 奥 0)
   o = pow(max((1. - o) * exp(-dFog/(4. * (uFog / 100.)) * (vec3(2.) - uFogTint)), 0.0), vec3(.45 * (uContrast / 100.)));
   if(uVignette != 0.0){
     vec2 vq = fc / resolution.xy - 0.5;

@@ -1335,9 +1335,11 @@ void main(){
 
     const quads = this._writeVerts(t, pulse, camRight, camUp);
 
-    this._ensureDepth(w, h);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
+    { const D = Math.hypot(eye[0]-center[0], eye[1]-center[1], eye[2]-center[2]) || 16; this.depthInfo = { near:0.05, far:300.0, cam:D*0.875, R:D*0.725 }; }
+    if(!kd) this._ensureDepth(w, h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
+    if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, this.depthRBO);
     gl.viewport(0, 0, w, h);
     const bg = this._hex2rgb(P.paper);
     const transBg = (opts.slot === 'B') || P.transparentBg;
@@ -1370,7 +1372,7 @@ void main(){
     }
 
     gl.disable(gl.BLEND);
-    gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
+    if(!kd) gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 };

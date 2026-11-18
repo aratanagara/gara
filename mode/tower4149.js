@@ -456,6 +456,8 @@ void main(){
     const persK = Math.max(0.3, dz(P.persp)*0.01);
     const aspect = w/h, F = 2.4*persK, near = 0.05, far = 60;
     const camZ = 2.7/Math.max(0.3, dz(P.zoom)*0.01)*persK;   // 遠近感を変えても見かけの大きさは同じ (F/camZ 一定)
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // Code の 3D 深度: MSAA の解決時に深度も共通の深度テクスチャへ写す
+    this.depthInfo = { near, far, cam:camZ, R:Math.max(1.0, camZ*0.5) };
     const proj = [F/aspect,0,0,0, 0,F,0,0, 0,0,(far+near)/(near-far),-1, 0,0,2*far*near/(near-far),0];
     const VP = new Float32Array(proj);
     VP[14] += proj[10]*(-camZ); VP[15] += proj[11]*(-camZ);   // view = translate(0,0,-camZ)
@@ -533,7 +535,7 @@ void main(){
     // MSAA を解決してスロット FBO へ
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, M.fbo);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, opts.fbo);
-    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT | (kd ? gl.DEPTH_BUFFER_BIT : 0), gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
 };

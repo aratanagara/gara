@@ -311,6 +311,7 @@ vec3 bg_origami(vec2 fc){
     col = vec3(0.0);                          // 背景は黒 (entrypoint が uBgColor で塗る)
   }
   bgAlpha = (t > 0.0) ? 1.0 : 0.0;            // 折り紙=不透明 / 空=透明
+  { float ogR = 2.5 * (uScale / 100.0); vjDepth = (t > 0.0) ? clamp(1.0 - (t - (length(pos) - ogR)) / (2.0 * ogR), 0.0, 1.0) : 0.0; }   // 深度 (手前 1 → 奥・空 0)
 
   // レンズフレア
   float sun = og_TraceMin(pos, lightDir);

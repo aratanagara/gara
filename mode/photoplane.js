@@ -389,9 +389,11 @@ void main(){
     const view=this.m4.lookAt(eye,look,up);
     const vp=this.m4.mul(proj,view);
 
-    if(!opts.keepDepth) this._ensureDepth(w,h);
+    const keepDepth = opts.keepDepth || (typeof GL !== 'undefined' && GL.kindKeepsDepth && GL.kindKeepsDepth(fbo));   // GL が共通の深度を付けている (Code の 3D 深度)
+    this.depthInfo = { near:0.05, far:200.0, cam:dist*0.875, R:dist*0.725 };   // 手前 = カメラから dist*0.15 〜 奥 = dist*1.6
+    if(!keepDepth) this._ensureDepth(w,h);
     gl.bindFramebuffer(gl.FRAMEBUFFER,fbo);
-    if(!opts.keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,this.depthRBO);
+    if(!keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,this.depthRBO);
     gl.viewport(0,0,w,h);
     const isB = (opts.slot === 'B');
     gl.clearColor(P.bg[0],P.bg[1],P.bg[2], isB ? 0.0 : 1.0);   // Slot B は背景透過(下の Slot A が透ける)
@@ -498,7 +500,7 @@ void main(){
     }
 
     gl.bindVertexArray(null);
-    if(!opts.keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,null);
+    if(!keepDepth) gl.framebufferRenderbuffer(gl.FRAMEBUFFER,gl.DEPTH_ATTACHMENT,gl.RENDERBUFFER,null);
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   },
 };

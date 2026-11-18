@@ -151,6 +151,7 @@ vec3 bg_fragile(vec2 fc){
 
   float jit = fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453);  // バンディング対策のディザ
   float totdist = jit*0.12, glassfade = 1.0, ref = 0.0, vol = 0.0, maxdist = 11.0 * (uFarClip / 100.0);
+  float glassT = -1.0;
   vec3 spec = vec3(0.0);
   float shp = 40.0 * (uShinePow / 100.0);
   for(int r = 0; r < 56; r++){ if(r >= int(uSteps + 0.5)) break;                                    // 軽量化: 60→46 ステップ
@@ -168,6 +169,7 @@ vec3 bg_fragile(vec2 fc){
     }
     if(d < 0.0 && ref < 0.05){
       ref = 1.0;
+      if(glassT < 0.0) glassT = totdist;
       if(dot(raydir, n) < -0.05) raydir = normalize(refract(raydir, n, 0.88 * (uRefract / 100.0)));
       vec3 refl = reflect(raydir, n);
       glassfade *= 0.6 * (uGlassFade / 100.0);
@@ -188,6 +190,7 @@ vec3 bg_fragile(vec2 fc){
   }
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   bgAlpha = clamp(lum*2.5, 0.0, 1.0);                             // 背景は透過(両スロット)
+  { float frR = (1.7 * (uLoopRadius / 100.0) + 1.0) * (uScale / 100.0); vjDepth = (glassT >= 0.0) ? clamp(1.0 - (glassT - (camDist - frR)) / (2.0 * frR), 0.0, 1.0) : 0.0; }   // 深度 (最初のガラス面。手前 1 → 奥・ミス 0)
   if(uVignette != 0.0){ vec2 vq = (fc * 2.0 - resolution) / resolution.y; col *= 1.0 - clamp(dot(vq, vq) * 0.35, 0.0, 1.0) * uVignette / 100.0; }
   if(uGrain != 0.0) col += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain / 100.0 * 0.6 * bgAlpha;
   return col;

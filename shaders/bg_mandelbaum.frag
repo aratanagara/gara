@@ -204,6 +204,7 @@ vec3 bg_mandelbaum(vec2 fc){
   vec2 sceneData = mb_mapScene(p, target, zoom, T);
   float height = sceneData.x;
   float matID = sceneData.y;
+  vjDepth = clamp(height, 0.0, 1.0);   // 深度 (高さ場。高い所ほど手前)
 
   vec3 normal = mb_calcNormal(p, target, zoom, T, height);
   vec4 mtl = mb_getMaterial(matID, T);

@@ -81,6 +81,7 @@ vec3 bg_ribbon(vec2 fc){
   uv = uv*2.8 + vec2(-0.7, -0.45);  // 引き(×2.8, 全体が見える) + 右上へ
 
   vec4 o = vec4(0.0);
+  float dwSum = 0.0, wSum = 0.0;
   vec2 haloOfs = vec2(uHaloX / 100.0, -0.7*(uHaloHeight/100.0));
   float haloLen = length(uv + haloOfs);
   if(uHaloFalloff != 100.0) haloLen = pow(max(haloLen, 1e-4), uHaloFalloff / 100.0);
@@ -89,6 +90,7 @@ vec3 bg_ribbon(vec2 fc){
     if(i > uSteps) break;
     s = 5e-3 + abs(s)*(0.07*(uRibbonWidth/100.0));
     d += s;
+    { float iw = 1.0 / s; dwSum += d * iw; wSum += iw; }
     o += (1.0 + sin(i*(0.5*(uColorBands/100.0)) + 1.5*vec4(3, 1.5, 1, 0)))/s
        + haloC*(uHaloGlow/100.0) / haloLen;
     if(uRibbonTwist != 100.0) p.xy *= mat2(cos(d*(0.1*(uRibbonTwist/100.0)) - 4.0 - vec4(0, 11, 33, 0)));
@@ -110,6 +112,7 @@ vec3 bg_ribbon(vec2 fc){
   col *= vec3(0.98, 0.99, 1.03) * uRibbonColor;            // 銀のわずかな寒色
   col *= smoothstep(0.0, 0.22 * (uSoft / 100.0), lum);        // 地を黒に落とす
   bgAlpha = smoothstep(0.0, 0.22 * (uSoft / 100.0), lum);     // 地は透過(リボンのみ残す)
+  vjDepth = bgAlpha * exp(-(dwSum / max(wSum, 1e-6)) * 0.05);   // 深度 (グローの 1/s 加重平均距離。手前 1 → 奥 0)
   if(uGrain != 0.0){
     float gn = fract(sin(dot(fc, vec2(12.9898, 78.233)) + time) * 43758.5453);
     col *= 1.0 + (gn - 0.5) * (uGrain / 100.0) * 1.2;

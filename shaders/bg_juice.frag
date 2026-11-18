@@ -172,5 +172,6 @@ vec3 bg_juice(vec2 fc){
     col = mix(col, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
   bgAlpha = clamp(lum*2.5, 0.0, 1.0);   // Slot B は暗部透過
+  vjDepth = clamp(0.5 + 0.5 * d, 0.0, 1.0);   // 深度 (シールド模様の高さ -1..1 → 0..1)
   return col;
 }
