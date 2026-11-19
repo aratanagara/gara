@@ -1191,7 +1191,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       // 各文字が独立ランダムに動き出す(散らばったランダム変形)
       this._randomFlipStep(pulse);
     }
-    // Composition Engine v6 のループ位相を進める (mode/textdeform-comp.js)
+    // Composition のループ位相を進める (mode/textdeform-comp.js)
     if(typeof TDComp !== 'undefined') TDComp.advance(d, pulse);
     if(typeof TDSurf !== 'undefined') TDSurf.advance(d, pulse);
   },
@@ -1520,9 +1520,9 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       else ctx.fillRect(0,0,w,h);
     }
     else { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); }
-    // Composition Engine v6 有効時は生成シーン描画に切替 (文字の直接描画は行わない)
-    if(comp){
-      TDComp.render(ctx, w, h);
+    // Composition 有効時は生成シーン描画に切替 (文字の直接描画は行わない)。
+    // エンジン読み込み中・生成失敗のとき (render が false) は素の文字を描く
+    if(comp && TDComp.render(ctx, w, h) !== false){
       this._overlayFx(ctx, w, h, fx);
       ctx.setTransform(1,0,0,1,0,0);
       return;
