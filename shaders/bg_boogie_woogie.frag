@@ -455,50 +455,73 @@ vec3 bg_boogie_woogie(vec2 fc){
   ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
   if(rd.z >= -1e-4){ bgAlpha = 1.0 - (uFx3dMatte > 0.5 ? 100.0 : uMbClear) * 0.01; return uMbPaper * bgAlpha; }
   float tTop = (max(H, HB) - ro.z) / rd.z, tBot = -ro.z / rd.z;
-  // 道 (高さ H) と建物 (ブロックごとに 0.35〜1 × HB) の柱の高さ場を視線で進む。空いた所は道の縁 / ブロックの縁までの距離ぶん横に進み、
-  //   いる柱の天面より下へは一度に潜らない (天面で止める)。柱の中 (天面以下) に入ったら当たり。上限は uniform 依存 = 定数ループの展開を避ける
-  //   (Build = 0 のときは従来と同じ 12 歩・同じ歩幅)
-  int N = int(clamp(12.0 + 0.0 * time, 2.0, 20.0));
+  // 格子の面 (セル) を 1 つずつ渡り歩く。各セルでは道の帯 (高さ H) と色ブロック (高さ hc) を箱として視線と交差させ、
+  //   当たらなければセルの出口まで一気に進む。セルの中の視線はジャンプ率の伸び縮み (mb_dq) で直線に近似する。
+  //   上限は uniform 依存 = 定数ループの展開を避ける。上限を越えた遠景は盤面 (z = 0) で描く
+  int N = int(clamp(28.0 + 0.0 * time, 2.0, 28.0));
   float tHit = tBot; float side = 0.0; float hitI = -1.0;
-  float kxy = length(rd.xy) * sc / zm;                        // 視線 1 進むあいだの盤面の座標の進み
-  float minStep = 0.002;
+  vec2 dir0 = tilt * rd.xy * (sc / zm);                      // 視線 1 進むあいだの盤面の座標の進み (伸び縮み前)
   float t = tTop;
-  for(int i = 0; i < 20; i++){
-    if(i >= N || t > tBot) break;
+  for(int i = 0; i < 28; i++){
+    if(i >= N || t >= tBot) break;
     vec3 p = ro + rd * t;
     vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
     mb_cov(q, 0.0, audio);
-    float hc = 0.0;
-    float dxy;                                                 // いる柱の縁 (道・ブロック) までの横の距離 (盤面の座標)
-    if(mb_d <= 0.0){ hc = H; dxy = -mb_d + 1e-4; }
-    else {
-      dxy = mb_d;
-      if(HB > 0.0){
-        float rid, er, sd; bool cellOn; vec4 blk; vec2 bU;
+    vec2 D = mg_orient(dir0) * mb_dq;                          // 伸び縮み後の座標での視線の向き
+    vec2 Q = mb_q;
+    vec2 iD = 1.0 / max(abs(D), vec2(1e-7)) * sign(D + 1e-12);
+    // セルの出口
+    vec2 sx = (vec2(mg_xL, mg_xR) - Q.x) * iD.x, sy = (vec2(mg_yB, mg_yT) - Q.y) * iD.y;
+    float sExit = min(max(sx.x, sx.y), max(sy.x, sy.y));
+    float sBot = tBot - t;
+    // 箱 (xy = bmin..bmax、z = 0..h) との交差。入りの面が天面なら top
+    float sBest = 1e9; float sideBest = 0.0; vec4 bxBest = vec4(0.0);
+    float w = mb_w;
+    vec2 wq = w * mb_dq;                                        // 道の半幅 (伸び縮み後)
+    for(int b = 0; b < 5; b++){
+      vec4 bx; float h;
+      if(b == 0){ if(mb_dV.x > 1e8) continue; bx = vec4(mg_xL, mg_yB, mg_xL + wq.x, mg_yT); h = H; }
+      else if(b == 1){ if(mb_dV.y > 1e8) continue; bx = vec4(mg_xR - wq.x, mg_yB, mg_xR, mg_yT); h = H; }
+      else if(b == 2){ if(mb_dV.z > 1e8) continue; bx = vec4(mg_xL, mg_yB, mg_xR, mg_yB + wq.y); h = H; }
+      else if(b == 3){ if(mb_dV.w > 1e8) continue; bx = vec4(mg_xL, mg_yT - wq.y, mg_xR, mg_yT); h = H; }
+      else {
+        if(HB <= 0.0) continue;
+        float rid, er, sd; bool cellOn; vec2 bU;
         mb_prep(rid, er, cellOn, sd);
-        if(mb_blk(rid, er, cellOn, sd, blk, bU)){
-          vec2 e = min(mb_q - blk.xy, blk.zw - mb_q);              // 各辺までの符号つき距離 (内側が正)
-          float sdIn = min(e.x, e.y);
-          float inv = 1.0 / max(mb_dq.x, mb_dq.y);                 // ジャンプ率の伸び縮みぶん安全側に縮める
-          if(sdIn > 0.0){
-            hc = HB * (0.35 + 0.65 * mg_h(vec3(rid, 81.0 + er, mg_seed)));
-            dxy = min(dxy, (sdIn + 1e-4) * inv);
-          } else {
-            dxy = min(dxy, (length(max(-e, 0.0)) + 1e-4) * inv);
-          }
-        }
+        if(!mb_blk(rid, er, cellOn, sd, bx, bU)) continue;
+        h = HB * (0.35 + 0.65 * mg_h(vec3(rid, 81.0 + er, mg_seed)));
+      }
+      if(h <= 0.0) continue;
+      vec2 a = (bx.xy - Q) * iD, c = (bx.zw - Q) * iD;
+      vec2 sn = min(a, c), sf = max(a, c);
+      float szIn = (h - p.z) / rd.z;                            // 天面を下へ抜ける
+      float sIn = max(max(sn.x, sn.y), szIn);
+      float sOut = min(min(sf.x, sf.y), sBot);
+      if(sIn <= sOut && sOut >= 0.0){
+        float s = max(sIn, 0.0);
+        if(s < sBest){ sBest = s; sideBest = (szIn >= max(sn.x, sn.y)) ? 0.0 : 1.0; bxBest = bx; }
       }
     }
-    if(hc > 0.0 && p.z <= hc + 1e-5){
+    if(sBest < 1e8 && sBest * length(D) > 0.3 * w && i < N - 1){   // 遠い予測は直線近似がずれる → 手前まで進んで測り直す
+      t += sBest * 0.97;
+      continue;
+    }
+    if(sBest < 1e8){
       hitI = float(i);
-      tHit = t;
-      side = p.z < hc * 0.96 ? 1.0 : 0.0;   // 天面より下で当たった = 側面
-      mb_eval(q, sc * t / (resolution.y * zm), audio, col, isPaper);
+      tHit = t + sBest;
+      side = sideBest;
+      // 色は箱の少し内側 (箱の中心へ寄せた点) で読む。側面の縁で外の白地や隣の色を拾わない
+      vec3 ph = ro + rd * tHit;
+      vec2 qh = tilt * ((ph.xy / zm + bgCamPx / resolution.y)) * sc;
+      vec2 Qh = Q + D * sBest;
+      vec2 toC = 0.5 * (bxBest.xy + bxBest.zw) - Qh;
+      float dC = length(toC);
+      if(dC > 1e-7) qh += mg_orient(toC / dC * min(0.3 * w, 0.5 * dC) / mb_dq);
+      mb_eval(qh, sc * tHit / (resolution.y * zm), audio, col, isPaper);
       break;
     }
-    float stp = dxy / max(kxy, 1e-4);
-    if(hc > 0.0) stp = min(stp, (p.z - hc) / max(-rd.z, 1e-4));   // いる柱の天面まで
-    t += max(stp, max(minStep, HB > 0.0 ? (t - tTop) * 0.02 : 0.0));   // 建物があるときは遠いほど歩幅の下限を大きく (遠景は粗くてよい)
+    if(sExit >= sBot) break;
+    t += max(sExit, 0.0) + 2e-4 * w / max(length(D), 1e-6) + 1e-6;
   }
   if(hitI < 0.0){   // 道に当たらなければ盤面 (z = 0)
     vec3 p = ro + rd * tBot;
