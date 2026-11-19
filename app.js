@@ -6674,9 +6674,14 @@ void main(){
       gl.uniform1f(u('uSepSub'), sub ? 1 : 0);
       if(sepIdx.length){
         const sp = new Float32Array(32), sc = new Float32Array(32);
+        // 版の色: Color で グレー (0) ↔ 版の色 (1)。版の色では各版を自分の色で濃さどおりに置く (明度・K は地に合わせて白 / 黒の反転のまま)
+        const PLATE = [[1,0,0],[0,1,0],[0,0,1],null,[0,1,1],[1,0,1],[1,1,0],null];
+        const cAmt = v('novelColor', 0.6);
         sepIdx.forEach((k, i)=>{
           sp.set([cell, ep & 1, i * 1.618 + 0.37, k], i * 4);
-          sc.set((sub ? SUB : ADD)[k], i * 4);
+          const g = (sub ? SUB : ADD)[k], pc = PLATE[k];
+          if(!pc){ sc.set(g, i * 4); return; }
+          sc.set([g[0] + (pc[0] - g[0]) * cAmt, g[1] + (pc[1] - g[1]) * cAmt, g[2] + (pc[2] - g[2]) * cAmt, cAmt >= 0.5 ? 0 : g[3]], i * 4);
         });
         gl.uniform4fv(u('uSepPar[0]'), sp);
         gl.uniform4fv(u('uSepCol[0]'), sc);
