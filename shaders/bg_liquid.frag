@@ -104,6 +104,7 @@ vec3 bg_liquid(vec2 fc){
   vec2 r2 = vec2(lq_fbm(p + 0.15 * t + 10.0 * (uWarp / 100.0) * (uWarpX / 100.0) * r1),
                  lq_fbm(p + 0.12 * t + 12.0 * (uWarp / 100.0) * (uWarpY / 100.0) * r1));
   float v = 1.8 * (uGlow / 100.0) * pow(lq_fbm(p + r2 * (uInner / 100.0)), 2.0 * (uContrast / 100.0)) + 0.03;
+  vjDepth = clamp(v / (1.8 * (uGlow / 100.0) + 0.03), 0.0, 1.0);   // 深度 (fbm の高さ=手前 1 / 谷 0)
   if(uContour != 0.0){ float cf = abs(fract(v * 5.0) - 0.5) * 2.0; v *= 1.0 - uContour / 100.0 * (1.0 - smoothstep(0.0, 0.5, cf)) * 0.8; }
   vec3 col = vec3(v);
   if(uShadeTint != vec3(1.0) || uLightTint != vec3(1.0)){ col *= mix(uShadeTint, uLightTint, clamp(v, 0.0, 1.0)); }

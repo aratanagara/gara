@@ -888,6 +888,26 @@ void main(){
     }
     gl.disable(gl.BLEND);
     if(kOpac<1) gl.depthMask(true);
+    if(typeof GL !== 'undefined' && GL.kindKeepsDepth && GL.kindKeepsDepth(fbo)){
+      // Code の 3D 深度: 半透明 (Opacity<1) の板は深度を書かずに描いているので、深度だけもう一度描く
+      if(kOpac<1){
+        gl.colorMask(false, false, false, false);
+        for(let i=0;i<this.planes.length;i++){
+          const sp=this.planes[i];
+          gl.uniformMatrix4fv(L.mvp, false, this.m4.mul(vp, models[i]));
+          gl.uniformMatrix4fv(L.model, false, models[i]);
+          gl.uniform1f(L.ar, this._ar[i]);
+          gl.uniform3fv(L.bend, this._planeBendUniform(sp));
+          const tex=(this.textures.length>0 && sp.texIdx>=0) ? this.textures[sp.texIdx] : this.defaultTex;
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, tex);
+          gl.drawElements(gl.TRIANGLES, geo.count, gl.UNSIGNED_SHORT, 0);
+        }
+        gl.colorMask(true, true, true, true);
+      }
+      const camD=Math.hypot(eye[0], eye[1], eye[2]);   // 板群は原点まわり半径 spread に散らばる
+      this.depthInfo = { near:.05, far:1000, cam:camD, R:Math.max(1e-3, this.P.spread*1.2 + this.P.size*2) };
+    }
 
     // 後始末: 一部の attribute は VAO に縛られていないため、外側で必要なら再 bind される
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

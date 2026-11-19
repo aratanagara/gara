@@ -695,6 +695,7 @@ vec3 bg_kandinsky(vec2 fc){
   }
 
   float painted = max(pl, pt);
+  vjDepth = clamp(max(pl * 0.45, pt * 0.95), 0.0, 1.0);   // 深度 (紙 0 / 面=中間 / 線・点・光輪=手前)
   float al = 1.0 - (1.0 - painted) * uKdClear * 0.01;
   bgAlpha = al;
   return col * al;

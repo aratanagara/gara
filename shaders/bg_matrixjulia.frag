@@ -188,6 +188,7 @@ vec3 bg_matrixjulia(vec2 fc){
   // 高さ場 web をエンボスして丸い糸の断面法線を作り、糸の稜線に沿って細い異方性ハイライト
   // (シルクの照り)を1本ずつ乗せる。dFdx/dFdy 1 回だけなので軽い。
   float h = clamp(web, 0.0, 1.0);
+  vjDepth = h;                                             // 深度 (糸の累積=手前 1 / 背景 0)
   vec2 grad = vec2(dFdx(h), dFdy(h));
   vec3 N = normalize(vec3(-grad * 6.0, 1.0));            // 糸の丸み(断面法線)
   vec3 Ldir = normalize(vec3(-0.6, 0.5, 0.8));           // 光源(やや手前)

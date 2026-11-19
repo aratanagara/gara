@@ -757,6 +757,7 @@ vec3 bg_shard_collage(vec2 fc){
     }
     float cover = smoothstep(-px, px, topSd);
     float fill = smoothstep(gap - px, gap + px, topSd);
+    vjDepth = cover * fill * clamp(0.25 + 0.35 * topPrio, 0.0, 1.0);   // 深度 (破片=優先度順 / 地・隙間 0)
     vec3 face = rim;
     if(fill > 0.004){
       sc_palMain = fract(topPal);

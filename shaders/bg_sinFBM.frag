@@ -153,6 +153,7 @@ vec3 bg_sinFBM(vec2 fc){
   //   ブロブの上を転がるように見せる = 水銀の映り込み。
   float h = clamp(dot(O.rgb, vec3(0.4, 0.4, 0.2)), 0.0, 1.0);
   if(uBlobCurve != 100.0) h = pow(h, uBlobCurve / 100.0);
+  vjDepth = h;                                 // 深度 (水銀の表面高さ=手前 1 / 奥 0)
   vec2 grad = vec2(dFdx(h), dFdy(h));          // 流体表面の傾き
   // 反射座標: 縦方向 + 傾きで強く曲げる
   float refl = clamp(fc.y / resolution.y + grad.y * 12.0 * (uSheen / 100.0) - grad.x * 6.0 * (uSheen / 100.0) * (uSheenCross / 100.0) + (h - 0.5) * 0.4 * (uBulge / 100.0), 0.0, 1.0);

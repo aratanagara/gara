@@ -393,6 +393,7 @@ vec3 bg_glass_frost(vec2 fc){
     g *= 1.0 - sh;                                        // 面の影はセルの上にも落ちる
     col = clamp(g * uGlassColor, 0.0, 1.0) * inside;
     cov = inside + sh * (1.0 - inside);
+    vjDepth = inside * clamp(0.35 + 0.2 * min(gfLay, 3.0) + 0.5 * gfH, 0.0, 1.0);   // 深度 (ガラス=重なり枚数と高さ / 外 0)
   }
   bgAlpha = cov;
   // Slot A のときは、ガラスの外に地 (影で少し暗く) を敷く
