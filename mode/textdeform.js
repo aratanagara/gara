@@ -1215,10 +1215,12 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       }
     }
     this._lastBeatInt = bi;
-    // Text: Random は textSrc.every 拍ごとに次の文字列へ
+    // Text: Random は textSrc.every 拍ごと (1/4〜16 拍。拍の端数で数える) に次の文字列へ
     if(this.textSrc.mode === 'random'){
-      if(this._textBeat == null || bi < this._textBeat) this._textBeat = bi;
-      else if(bi - this._textBeat >= Math.max(1, this.textSrc.every | 0)){ this._textBeat = bi; this.nextRandomText(); }
+      const every = Math.max(0.25, +this.textSrc.every || 4), b = (beat || 0) / every;
+      const slot = Math.floor(b + 1e-6);
+      if(this._textSlot == null || slot < this._textSlot) this._textSlot = slot;
+      else if(slot !== this._textSlot){ this._textSlot = slot; this.nextRandomText(); }
     }
     const sw = this._stage.offsetWidth || P.stageW, sh = this._stage.offsetHeight || P.stageW;
     const inBloom = this._t < (this._bloomUntil || 0);
@@ -1650,7 +1652,11 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     if(!this.initialized) return;
     const gl = this.gl, { fbo, w, h } = opts;
     // ステージが空(未計測)なら紙だけ塗る
+    const t0 = performance.now();
     this._renderToCanvas(w, h);
+    // 描画時間の移動平均 (ms)。Random の負荷ガード (app.js の guardedTextDeformRandom) が見る
+    const dt = performance.now() - t0;
+    this._renderMs = this._renderMs == null ? dt : this._renderMs*0.7 + dt*0.3;
 
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);

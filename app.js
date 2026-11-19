@@ -17831,8 +17831,16 @@ void mainImage(out vec4 o, in vec2 f){
       this.refreshTextDeform();
       App._undoSchedule();
     };
+    // Surface 欄は md が Random でも操作できる。触ったら、変更の前に表示中の md を固定にする
+    // (Surface の設定は md 単位で保存するため。後で固定にすると md の読み直しで変更が消える)
+    const tdSurfFixMd = ()=>{
+      if(typeof TextDeform === 'undefined' || TextDeform.P.mdMode === 'fixed') return;
+      const mi = TextDeform.currentMdIndex ? TextDeform.currentMdIndex() : -1;
+      if(mi >= 0){ TextDeform.setMdSelection(String(mi)); this.refreshTextDeform(); }
+    };
     const tdSurfSet = (over)=>{
       if(typeof TDSurf === 'undefined') return;
+      tdSurfFixMd();
       TDSurf.set(over);
       tdSurfStore();
     };
@@ -17840,6 +17848,11 @@ void mainImage(out vec4 o, in vec2 f){
     const tdSurfOn = $('#tdSurfOn');
     if(tdSurfOn) tdSurfOn.addEventListener('change', ()=>tdSurfSet({ enabled: tdSurfOn.value === 'on' }));
     const tdSurfOp = $('#tdSurfOp');
+    if(tdSurfOp){
+      const warmOp = ()=>{ if(typeof TDSurf !== 'undefined') TDSurf.ensure().catch(()=>{}); };
+      tdSurfOp.addEventListener('pointerdown', warmOp);
+      tdSurfOp.addEventListener('focus', warmOp);
+    }
     if(tdSurfOp) tdSurfOp.addEventListener('change', ()=>{
       tdSurfSet({ op: tdSurfOp.value, ops: [tdSurfOp.value], preset: '' });
       toast('Surface: ' + tdSurfOp.options[tdSurfOp.selectedIndex].text);
@@ -17854,6 +17867,7 @@ void mainImage(out vec4 o, in vec2 f){
         if(typeof TDSurf === 'undefined') return;
         if(!tdSurfPreset.value){ tdSurfSet({ preset: '' }); return; }
         const id = tdSurfPreset.value, label = tdSurfPreset.options[tdSurfPreset.selectedIndex].text;
+        tdSurfFixMd();
         if(!TDSurf.cfg.enabled) TDSurf.set({ enabled: true });   // プリセットを選んだら Surface を On に
         try{ await TDSurf.ensure(); await TDSurf.loadPresets(); }catch(e){ return; }
         TDSurf.applyPreset(id); tdSurfStore();
@@ -17867,7 +17881,7 @@ void mainImage(out vec4 o, in vec2 f){
     const tdTextPool = $('#tdTextPool');
     if(tdTextPool) tdTextPool.addEventListener('change', ()=>tdText({ pool: tdTextPool.value }));
     const tdTextEvery = $('#tdTextEvery');
-    if(tdTextEvery) tdTextEvery.addEventListener('input', ()=>tdText({ every: parseInt(tdTextEvery.value, 10) || 1 }));
+    if(tdTextEvery) tdTextEvery.addEventListener('change', ()=>tdText({ every: parseFloat(tdTextEvery.value) || 4 }));
     const tdTextNext = $('#tdTextNext');
     if(tdTextNext) tdTextNext.addEventListener('click', ()=>{
       if(typeof TextDeform === 'undefined') return;
@@ -17904,19 +17918,24 @@ void mainImage(out vec4 o, in vec2 f){
       tdSurfParams.addEventListener('change', e=>{ if(e.target.tagName === 'SELECT') onParam(e); });
     }
     const tdSurfSave = $('#tdSurfSave');
-    if(tdSurfSave) tdSurfSave.addEventListener('click', ()=>this.saveTextDeformMdDefault());
+    if(tdSurfSave) tdSurfSave.addEventListener('click', ()=>{ tdSurfFixMd(); this.saveTextDeformMdDefault(); });
     const tdSurfReset = $('#tdSurfReset');
     if(tdSurfReset) tdSurfReset.addEventListener('click', ()=>{
       if(typeof TDSurf === 'undefined') return;
-      TDSurf.resetParams(TDSurf.cfg.op); tdSurfStore();
+      tdSurfFixMd(); TDSurf.resetParams(TDSurf.cfg.op); tdSurfStore();
     });
     const tdSurfRand = $('#tdSurfRand');
     if(tdSurfRand) tdSurfRand.addEventListener('click', ()=>{
       if(typeof TDSurf === 'undefined') return;
-      TDSurf.randomize(TDSurf.cfg.op); tdSurfStore();
+      tdSurfFixMd(); this.guardedTextDeformRandom(()=>{ TDSurf.randomize(TDSurf.cfg.op); tdSurfStore(); });
     });
     const tdRandOne = $('#tdMdRandOne');
-    if(tdRandOne) tdRandOne.addEventListener('click', ()=> UI.randomizeTextDeformMd());
+    if(tdRandOne) tdRandOne.addEventListener('click', ()=> UI.guardedTextDeformRandom(()=>UI.randomizeTextDeformMd()));
+    const tdRandGuard = $('#tdRandGuard');
+    if(tdRandGuard){
+      tdRandGuard.value = String(UI.tdRandGuardFps());
+      tdRandGuard.addEventListener('change', ()=>{ try{ localStorage.setItem('vj.textdeform.randGuardFps', tdRandGuard.value); }catch(e){} });
+    }
     const bindComp = (id, fn)=>{
       const el = $('#'+id);
       if(el) el.addEventListener('input', ()=>fn(parseFloat(el.value)));
@@ -18454,6 +18473,7 @@ void mainImage(out vec4 o, in vec2 f){
         const kind = b.dataset.kind;
         const defaultScope = b.closest('.section');
         if(b.classList.contains('randDefBtn') && kind === 'overlay' && UI._overlayRandomize){ UI._overlayRandomize(); return; }
+        if(b.classList.contains('randDefBtn') && kind === 'textdeformMd'){ UI.guardedTextDeformRandom(()=>UI.randomizeSection(defaultScope, kind)); return; }
         if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
           if(kind === 'overlay'){
@@ -23597,6 +23617,65 @@ void mainImage(out vec4 o, in vec2 f){
   },
 
   // ─── C003: 表示中の md にランダムスタイルを適用 (保存はセクション右上の Save で) ───────
+  // Type Deformer の Random (見出しの Random 🎲 / Random All / Surface の Random) の負荷ガード。
+  //   ① 適用前の試走: ランダムで決まった状態で Type Deformer の 1 フレームを画面外で描いて時間を測り、
+  //      規定 fps (Rand Guard、既定 30) の 1 フレーム分を超えたら元に戻して引き直す (最大 5 回。全部重ければ元のまま)
+  //   ② 適用後の見張り: 3 秒間、毎フレームの描画時間 (TextDeform._renderMs) が予算の 1.5 倍を超えたら元に戻す
+  //   Surface は Worker で描くので fps は止めない (ここで測るのはメインスレッドの組版・Compose・描画)。
+  //   元に戻すのは全 md の保存状態 (pr.p) と md の選択・Compose・Surface。
+  tdRandGuardFps(){
+    try{ const v = localStorage.getItem('vj.textdeform.randGuardFps'); if(v != null) return parseFloat(v) || 0; }catch(e){}
+    return 30;
+  },
+  async guardedTextDeformRandom(fn){
+    if(typeof TextDeform === 'undefined'){ fn(); return; }
+    const T = TextDeform, fps = this.tdRandGuardFps();
+    if(!(fps > 0) || !T.initialized){ fn(); return; }
+    if(this._tdRandBusy) return;
+    this._tdRandBusy = true;
+    const token = this._tdRandToken = (this._tdRandToken || 0) + 1;   // 新しい Random が始まったら前の見張りは止める
+    const budget = 1000 / fps;
+    const snap = {
+      presets: (T.presets || []).map(pr => JSON.parse(JSON.stringify(pr.p || {}))),
+      mdMode: T.P.mdMode, mdIndex: T.P.mdIndex, cur: T.currentMdIndex ? T.currentMdIndex() : -1
+    };
+    const restore = ()=>{
+      (T.presets || []).forEach((pr, i)=>{ pr.p = JSON.parse(JSON.stringify(snap.presets[i] || {})); });
+      if(snap.mdMode === 'fixed') T.setMdSelection(String(snap.mdIndex));
+      else if(snap.cur >= 0){ T.P.mdMode = 'random'; T.loadPreset(snap.cur); T.P.mdMode = 'random'; T.P.mdIndex = -1; }
+      this.refreshTextDeform();
+    };
+    // 画面外で 1 フレームを描いて時間を測る (Compose のエンジンが読み込み中なら待つ)
+    const trial = async ()=>{
+      if(typeof TDComp !== 'undefined' && TDComp.enabled()){
+        for(let k = 0; k < 40 && TDComp.status() === 'loading'; k++) await new Promise(r=>setTimeout(r, 100));
+      }
+      const w = (T.canvas && T.canvas.width) || 1920, h = (T.canvas && T.canvas.height) || 1080;
+      let t0 = performance.now(); T._renderToCanvas(w, h); const first = performance.now() - t0;
+      if(first > budget*4) return first;   // 1 回目で大きく超えたら見切る (2 回目で固まらないように)
+      t0 = performance.now(); T._renderToCanvas(w, h);
+      return Math.min(first, performance.now() - t0);
+    };
+    try{
+      let ok = false, ms = 0;
+      for(let tries = 0; tries < 5 && !ok; tries++){
+        if(tries) restore();
+        fn();
+        ms = await trial();
+        ok = ms <= budget;
+      }
+      if(!ok){ restore(); toast('Random: 重い組み合わせしか引けなかったので元に戻しました (' + Math.round(ms) + 'ms / 1 フレーム > ' + Math.round(budget) + 'ms)'); return; }
+      // 適用後の見張り
+      const until = performance.now() + 3000;
+      T._renderMs = null;
+      const watch = ()=>{
+        if(token !== this._tdRandToken || performance.now() > until) return;
+        if(T._renderMs != null && T._renderMs > budget*1.5){ restore(); toast('Random: 描画が重くなったので元に戻しました (' + Math.round(T._renderMs) + 'ms / 1 フレーム)'); return; }
+        setTimeout(watch, 250);
+      };
+      setTimeout(watch, 400);
+    } finally { this._tdRandBusy = false; }
+  },
   randomizeTextDeformMd(){
     if(typeof TextDeform === 'undefined' || !TextDeform.updateMdStyle) return;
     const T = TextDeform;
@@ -23984,9 +24063,13 @@ void mainImage(out vec4 o, in vec2 f){
       }
       pool.value = s.pool;
     }
-    const ev = $('#tdTextEvery'), evv = $('#tdTextEveryVal');
-    if(ev) ev.value = String(s.every);
-    if(evv) evv.textContent = s.every + ' beat';
+    const ev = $('#tdTextEvery');
+    if(ev){
+      // 選択肢 (1/4〜16 拍) に無い古い保存値は近いものへ
+      const opts = [...ev.options].map(o=>parseFloat(o.value));
+      const near = opts.reduce((a, v)=>Math.abs(v - s.every) < Math.abs(a - s.every) ? v : a, opts[0]);
+      ev.value = String(near);
+    }
     const ta = $('#tdTextCustom');
     if(ta && document.activeElement !== ta) ta.value = s.custom || '';
   },
@@ -23995,12 +24078,12 @@ void mainImage(out vec4 o, in vec2 f){
   refreshTextDeformSurface(){
     if(typeof TDSurf === 'undefined') return;
     const S = TDSurf, c = S.cfg;
-    const fixed = (this._fixedTextDeformMdIndex ? this._fixedTextDeformMdIndex() : -1) >= 0;
+    // md が Random でも操作できる (触ると表示中の md を固定にする = tdSurfFixMd)
     const dz = v=> Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2);   // デッドゾーン表示 (規約)
-    const setSel = (id, v)=>{ const el = $('#'+id); if(el){ el.value = String(v); el.disabled = !fixed; } };
+    const setSel = (id, v)=>{ const el = $('#'+id); if(el){ el.value = String(v); el.disabled = false; } };
     const setRange = (id, v, fmt)=>{
       const el = $('#'+id), out = $('#'+id+'Val');
-      if(el){ el.value = String(v); el.disabled = !fixed; }
+      if(el){ el.value = String(v); el.disabled = false; }
       if(out) out.textContent = fmt(v);
     };
     setSel('tdSurfOn', c.enabled ? 'on' : 'off');
@@ -24009,7 +24092,7 @@ void mainImage(out vec4 o, in vec2 f){
     setRange('tdSurfSpeed', c.speed, dz);
     setRange('tdSurfOpacity', c.opacity, v=>v.toFixed(2));
     setSel('tdSurfSource', c.source); setSel('tdSurfBlend', c.blend); setSel('tdSurfColor', c.color);
-    ['tdSurfSave','tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !fixed || !S.meta; });
+    ['tdSurfSave','tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !S.meta; });
     const preSel = $('#tdSurfPreset');
     if(preSel){
       if(S.presets && preSel.dataset.filled !== '1'){
@@ -24027,7 +24110,8 @@ void mainImage(out vec4 o, in vec2 f){
         preSel.dataset.filled = '1';
       }
       if(c.preset && !preSel.querySelector('option[value="' + c.preset + '"]')){ const o = document.createElement('option'); o.value = c.preset; o.textContent = c.preset; preSel.appendChild(o); }
-      preSel.value = c.preset || ''; preSel.disabled = !fixed;   // エンジン未読み込みでも触れれば読み込みが始まる
+      // md が Random でも選べる (選ぶと表示中の md を固定にして適用)。エンジン未読み込みでも触れれば読み込みが始まる
+      preSel.value = c.preset || ''; preSel.disabled = false;
     }
     const thumbRow = $('#tdSurfThumbRow'), thumb = $('#tdSurfThumb');
     if(thumbRow && thumb){
@@ -24044,7 +24128,7 @@ void mainImage(out vec4 o, in vec2 f){
         for(const id of ops){ const o = document.createElement('option'); o.value = id; o.textContent = (S.meta.ops[id] || {}).label || id; editSel.appendChild(o); }
         editSel.dataset.sig = sig;
       }
-      editSel.value = c.op; editSel.disabled = !fixed;
+      editSel.value = c.op; editSel.disabled = false;
     }
     const opSel = $('#tdSurfOp');
     if(opSel){
@@ -24062,7 +24146,7 @@ void mainImage(out vec4 o, in vec2 f){
         opSel.dataset.filled = '1';
       }
       if(!S.meta && !opSel.options.length){ const opt = document.createElement('option'); opt.value = c.op; opt.textContent = c.op; opSel.appendChild(opt); }
-      opSel.value = c.op; opSel.disabled = !fixed || !S.meta;
+      opSel.value = c.op; opSel.disabled = false;   // エンジン未読み込みでも触れれば一覧の読み込みが始まる
     }
     const box = $('#tdSurfParams');
     if(box){
@@ -24093,7 +24177,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(meta) box.querySelectorAll('[data-surf-key]').forEach(el=>{
         const v = S.opValue(c.op, el.dataset.surfKey);
         if(v != null) el.value = String(v);
-        el.disabled = !fixed;
+        el.disabled = false;
         const out = el.type === 'range' ? el.nextElementSibling : null;
         if(out) out.textContent = String(+(+el.value).toFixed(3));
       });
