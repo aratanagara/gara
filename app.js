@@ -12516,6 +12516,7 @@ const App = {
   },
   // Visual タイルをスロットプレビューへドロップ: 指定スロットへ (トランジション付きで) ロードし操作対象に
   loadPresetInto(idx, slotKey){
+    if(PRESETS[idx] && PRESETS[idx].replacedBy) idx = this._presetIndexByName(PRESETS[idx].replacedBy);   // 旧版 → 新版
     const p = PRESETS[idx]; if(!p) return;
     if(this._deferPreset(()=>this.loadPresetInto(idx, slotKey), `Slot ${slotKey} ← ${p.name}`)) return;
     if(p.kind === 'none'){
@@ -14919,6 +14920,7 @@ ${outBlock}
 
   loadPreset(idx, slotKey, opts){
     opts = opts || {};
+    if(PRESETS[idx] && PRESETS[idx].replacedBy) idx = this._presetIndexByName(PRESETS[idx].replacedBy);   // 旧版 → 新版
     const p = PRESETS[idx]; if(!p) return;
     // Draw フリーズ (Space) / Pause 中でも切替結果を 1 フレーム描画する。
     // フリーズ中は Post FX が動き続けて「止まっている」ように見えないため、
@@ -17171,14 +17173,51 @@ ${outBlock}
   _extShadersLoaded:false,
   // 外部シェーダの読み込み後に、待たせたスロットを復元する。プリセット名が見つかればいまのコード、
   // 見つからなければ (削除・改名) 保存時のコードで復元する
+  // 新版がある旧版シェーダに p.replacedBy (新版の名前) を付ける。旧版は Visual タブで隠し、名前・番号で読むときは新版に読み替える。
+  //   ① 同じ名前のシェーダが複数あれば、後から読み込まれたもの (フォルダの shaders/*.frag) が新版
+  //   ② 新しい frag に「// @replaces 旧版の名前」を書くと、その名前のシェーダの新版になる (1 行に 1 つ、複数行可)
+  _markReplacedShaders(){
+    const isShader = p => p && (!p.kind || p.kind === 'shader') && p.src;
+    PRESETS.forEach(p => { if(p) delete p.replacedBy; });
+    const last = {};
+    PRESETS.forEach((p, i) => { if(isShader(p)) last[p.name] = i; });
+    PRESETS.forEach((p, i) => { if(isShader(p) && last[p.name] !== i) p.replacedBy = p.name; });
+    PRESETS.forEach(p => {
+      if(!isShader(p) || p.replacedBy) return;
+      for(const m of p.src.matchAll(/^\s*\/\/\s*@replaces\s+(.+?)\s*$/gm)){
+        PRESETS.forEach(q => { if(q && q !== p && q.name === m[1] && !q.replacedBy) q.replacedBy = p.name; });
+      }
+    });
+  },
+  // 名前 → いま使うプリセットの index (旧版なら新版へ。同じ名前が複数なら新版)
+  _presetIndexByName(name){
+    for(let n = name, hop = 0; n && hop < 8; hop++){
+      for(let i = PRESETS.length - 1; i >= 0; i--){ const p = PRESETS[i]; if(p && p.name === n && !p.replacedBy) return i; }
+      const old = PRESETS.find(p => p && p.name === n && p.replacedBy && p.replacedBy !== n);
+      if(!old) break;
+      n = old.replacedBy;
+    }
+    return PRESETS.findIndex(p => p && p.name === name);
+  },
+  // 旧版を指す保存スロット: 新版の名前とコードで復元する (編集したシェーダは保存時のコードのまま)
+  _replacedSlotState(sk){
+    if(!sk || sk.edited || !sk.presetName || !PRESETS.some(p => p && p.name === sk.presetName && p.replacedBy)) return null;
+    const p = PRESETS[this._presetIndexByName(sk.presetName)];
+    if(!p || !p.src) return null;
+    return { sk: p.name === sk.presetName ? sk : Object.assign({}, sk, { presetName: p.name }), src: p.src };
+  },
   _flushPendingSlotRestores(){
     this._extShadersLoaded = true;
+    this._markReplacedShaders();
     const pend = this._pendingSlotRestores;
     this._pendingSlotRestores = {};
     const keys = Object.keys(pend);
     for(const k of keys){
       const sk = pend[k];
-      const fresh = PRESETS.find(p => p && p.name === sk.presetName && p.src);
+      const rep = this._replacedSlotState(sk);
+      if(rep){ this._restoreShaderSlot(k, rep.sk, rep.src); continue; }
+      const fi = sk.presetName ? this._presetIndexByName(sk.presetName) : -1;
+      const fresh = fi >= 0 && PRESETS[fi].src ? PRESETS[fi] : null;
       this._restoreShaderSlot(k, sk, fresh ? fresh.src : sk.src);
     }
     if(keys.length && typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
@@ -17188,8 +17227,9 @@ ${outBlock}
     // エンジン → シェーダ切替時に kind を 'shader' へ戻す(残っていると描画系がエンジンを描き続ける)
     GL.slots[k].kind = sk.kind || 'shader';
     GL.slots[k].edited = !!sk.edited;
+    GL.slots[k]._presetName = sk.presetName || null;   // shader params デフォルト保存/適用のキー (旧版 → 新版の差し替えで名前が変わる)
     // 旧保存データには renderScale が無いため、プリセット名から現在の推奨値を補完する。
-    const renderPreset = sk.presetName ? PRESETS.find(p => p && p.name === sk.presetName) : null;
+    const renderPreset = sk.presetName ? PRESETS[this._presetIndexByName(sk.presetName)] : null;
     const restoredScale = sk.renderScale != null ? Number(sk.renderScale)
       : Number(renderPreset && renderPreset.renderScale);
     GL.slots[k].renderScale = Math.max(0.25,Math.min(1,restoredScale||1));
@@ -17208,7 +17248,7 @@ ${outBlock}
     });
     // UI 同期: プリセット名からインデックスを引いてサムネ/スロット表示を更新
     if(sk.presetName && typeof UI !== 'undefined'){
-      const pi = PRESETS.findIndex(p => p && p.name === sk.presetName);
+      const pi = this._presetIndexByName(sk.presetName);
       if(pi >= 0) UI.activePresetIdx[k] = pi;
     }
   },
@@ -17393,7 +17433,7 @@ ${outBlock}
           }
           // kind エンジン(layer/manga/none 等)はプリセット名から正式にロード (エンジン初期化込み)
           let idx = -1;
-          if(sk.presetName) idx = PRESETS.findIndex(p => p && p.name === sk.presetName);
+          if(sk.presetName) idx = this._presetIndexByName(sk.presetName);
           if(idx < 0) idx = PRESETS.findIndex(p => p && p.kind === sk.kind);
           if(idx >= 0){
             const hasSavedModeState = this._hasSavedModeState(s, sk.kind);
@@ -17403,7 +17443,7 @@ ${outBlock}
         }
         // シェーダで src を持たず presetName だけの指定 (手書き startup.json 等) → 名前でロード
         if(sk && !sk.src && sk.presetName){
-          const pi = PRESETS.findIndex(p => p && p.name === sk.presetName);
+          const pi = this._presetIndexByName(sk.presetName);
           if(pi >= 0){
             this.loadPreset(pi, k);
             if(sk.params){
@@ -17420,12 +17460,16 @@ ${outBlock}
           // 落ちた後の再起動 (loadLocal) では、エディタで編集していないシェーダは保存時のコードではなく
           // いまのプリセットのコードを読み直す。フォルダシェーダ (shaders/*.frag) がまだ PRESETS に無いときは、
           // 古いコードを先に描かないよう、外部シェーダの読み込み後 (_flushPendingSlotRestores) まで復元を待つ
-          const fresh = opts.freshShaders && !sk.edited && sk.presetName
-            ? PRESETS.find(p => p && p.name === sk.presetName && p.src) : null;
-          if(opts.freshShaders && !sk.edited && sk.presetName && !fresh && !this._extShadersLoaded){
+          // 旧版シェーダ (新版がある) の判定はフォルダシェーダの読み込み後にしかできないので、それまで復元を待つ
+          if(opts.freshShaders && !sk.edited && sk.presetName && !this._extShadersLoaded){
             this._pendingSlotRestores[k] = sk;
             continue;
           }
+          // 旧版を指していれば、保存プリセット・Undo でも新版に差し替える
+          const rep = this._replacedSlotState(sk);
+          if(rep){ this._restoreShaderSlot(k, rep.sk, rep.src); continue; }
+          const fi = opts.freshShaders && !sk.edited && sk.presetName ? this._presetIndexByName(sk.presetName) : -1;
+          const fresh = fi >= 0 && PRESETS[fi].src ? PRESETS[fi] : null;
           this._restoreShaderSlot(k, sk, fresh ? fresh.src : sk.src);
         }
       }
@@ -20482,6 +20526,7 @@ void mainImage(out vec4 o, in vec2 f){
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
 
     App._applyPresetOrder();   // 保存済みの Code / Shader の並び順を適用 (ドラッグ並べ替え)
+    App._markReplacedShaders();   // 新版がある旧版シェーダを判定 (タイルを作らない)
 
     // 連番 (sid): シェーダ=S001〜 は shaders/sids.json の登録番号で固定 (並び替えても変わらない)。
     //   未登録のシェーダは登録済みの最大番号の後ろに名前順で仮の番号を振る (sids.json への登録漏れ)。
@@ -20513,6 +20558,7 @@ void mainImage(out vec4 o, in vec2 f){
     const makeTile = (i, catOverride)=>{
       const p = PRESETS[i];
       if(p.kind === 'video') return;   // VIDEO (Loop Player) は非表示
+      if(p.replacedBy) return;         // 新版がある旧版シェーダは非表示 (App._markReplacedShaders)
       const tile = document.createElement('div');
       tile.className = 'thumb-tile';
       tile.dataset.idx = String(i);
@@ -24333,7 +24379,7 @@ void mainImage(out vec4 o, in vec2 f){
         ph.textContent = nm || (p.state ? '∅' : '空');
         entry.canvas = cv;
         entry.shaderName = nm || null;
-        entry.srcIdx = nm ? PRESETS.findIndex(pp => pp.name === nm) : -1;
+        entry.srcIdx = nm ? App._presetIndexByName(nm) : -1;
         if(p.thumb){
           const im = new Image();
           im.onload = ()=>{ try{ cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); }catch(e){} entry.drawn = true; if(ph.parentNode) ph.remove(); };
@@ -24417,7 +24463,7 @@ void mainImage(out vec4 o, in vec2 f){
     for(const t of arr){
       if(!t.canvas) continue;                               // 動画タイルは img なのでスキップ
       if(t.drawn) continue;                                 // 静的サムネは一度だけコピー (ホバーは別途インターバル)
-      if(t.srcIdx < 0 && t.shaderName) t.srcIdx = PRESETS.findIndex(pp => pp.name === t.shaderName);  // 遅延解決
+      if(t.srcIdx < 0 && t.shaderName) t.srcIdx = App._presetIndexByName(t.shaderName);  // 遅延解決
       if(t.srcIdx < 0) continue;
       const s = src[t.srcIdx];
       if(!s || !s.__hasThumb) continue;
