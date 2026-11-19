@@ -75,9 +75,9 @@ void main(){
     float d = min(vUv.x, 1.0 - vUv.x);
     float w = 0.5 * (1.0 - smoothstep(0.0, uSeam, d));
     vec4 t1 = texture(uTex, vec2(1.0 - vUv.x, vUv.y));
-    // 抜いた背景 (alpha 0) が片側だけにある所は、物体を継ぎ目へ向けて粒状に溶かす (直線で切れない)。両側とも物体ならそのまま繋がる
-    float a = mix(t0.a, t0.a * t1.a, 2.0 * w);
-    t0 = vec4(mix(t0.rgb * t0.a, t1.rgb * t1.a, w) / max(mix(t0.a, t1.a, w), 1e-4), a);
+    // 抜いた背景 (alpha 0) が片側だけにある所は、継ぎ目の両側で粒状に溶かす (物体側は継ぎ目へ向けて薄れ、反対側へも粒がこぼれる = 直線で切れない)。両側とも物体ならそのまま繋がる
+    float a = mix(t0.a, t1.a, w);
+    t0 = vec4(mix(t0.rgb * t0.a, t1.rgb * t1.a, w) / max(a, 1e-4), a);
     vec2 g = floor(vUv * vec2(textureSize(uTex, 0)));   // 絵の画素ごとの閾値 (面に貼り付く = 回しても粒がちらつかない)
     cut = mix(0.5, 0.01 + 0.98 * fract(sin(dot(g, vec2(12.9898, 78.233))) * 43758.5453), 2.0 * w);
   }
