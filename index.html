@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795061854">
+<link rel="stylesheet" href="style.css?v=1795061941">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1305,6 +1305,14 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxGlossShine" class="sub-label">Gloss Shine</label><input type="range" id="pxGlossShine" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.6" title="ハイライトと映り込みの強さ"><div class="val" id="pxGlossShineVal">0.60</div></div>
           <div class="row"><label for="pxGlossWet" class="sub-label">Gloss Wet</label><input type="range" id="pxGlossWet" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.4" title="濡れ色の深さ (色を少し深く・鮮やかに)"><div class="val" id="pxGlossWetVal">0.40</div></div>
           <div class="row"><label for="pxGlossLight" class="sub-label">Gloss Light</label><input type="range" id="pxGlossLight" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.3" title="光源が回る速さ (0 = 止める)"><div class="val" id="pxGlossLightVal">0.30</div></div>
+          <div class="row"><label for="pxNovel">Novel</label><input type="range" id="pxNovel" min="0" max="1" step="0.01" value="0" title="小説化: 画面を字のマス目に割り、明るさに応じて C007 の本文の字で描き直す。3D FX の前に掛かるので紙の柄として一緒に折れる"><div class="val" id="pxNovelVal">0</div></div>
+          <div class="row"><label for="pxNovelSize" class="sub-label">Novel Size</label><input type="range" id="pxNovelSize" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.35" title="字の大きさ (マスの大きさ)"><div class="val" id="pxNovelSizeVal">0.35</div></div>
+          <div class="row"><label for="pxNovelThresh" class="sub-label">Novel Thresh</label><input type="range" id="pxNovelThresh" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.25" title="字を置く明るさのしきい値 (高い = 明るい所だけ)"><div class="val" id="pxNovelThreshVal">0.25</div></div>
+          <div class="row"><label for="pxNovelColor" class="sub-label">Novel Color</label><input type="range" id="pxNovelColor" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.6" title="字の色: 0 = 生成りの単色 / 1 = 元の画面の色"><div class="val" id="pxNovelColorVal">0.6</div></div>
+          <div class="row"><label for="pxNovelFlow" class="sub-label">Novel Flow</label><input type="range" id="pxNovelFlow" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.3" title="本文が流れる速さ (0 = 止める)"><div class="val" id="pxNovelFlowVal">0.3</div></div>
+          <div class="row"><label for="pxNovelBg" class="sub-label">Novel Bg</label><input type="range" id="pxNovelBg" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0" title="字の間に元の画面を残す量 (0 = 黒地)"><div class="val" id="pxNovelBgVal">0</div></div>
+          <div class="row"><label for="pxNovelTate" class="sub-label">Novel Tate</label><input type="range" id="pxNovelTate" data-sub-of="pxNovel" min="0" max="1" step="1" value="1" title="1 = 縦組み (右から左へ) / 0 = 横組み"><div class="val" id="pxNovelTateVal">1</div></div>
+          <div class="row"><label for="pxNovelDepth" class="sub-label">Novel Depth</label><input type="range" id="pxNovelDepth" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.5" title="3D Mode の深度で字のマス目を面に沿わせる量 (深度を出すシェーダ + FX の 3D Depth が 0 より大きいとき)"><div class="val" id="pxNovelDepthVal">0.5</div></div>
           <div class="row"><label>Pollock Gloss</label><input type="range" id="pxPollockGloss" min="0" max="1" step="0.01" value="0" title="光沢(gloss)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockGlossVal">0.0</div></div>
           <div class="row"><label>Pollock Matt</label><input type="range" id="pxPollockMatt" min="0" max="1" step="0.01" value="0" title="マット(matt)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockMattVal">0.0</div></div>
           <div class="row"><label>Pollock Flat</label><input type="range" id="pxPollockFlat" min="0" max="1" step="0.01" value="0" title="フラット(単色+エンボスのみ)ポロック。0=off"><div class="val" id="pxPollockFlatVal">0.0</div></div>
@@ -2007,59 +2015,59 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795061854"></script>
-<script src="mode/layer.js?v=1795061854"></script>
-<script src="vendor/iro.min.js?v=1795061854"></script>
-<script src="vendor/mediabunny.min.js?v=1795061854"></script>
-<script src="mode/textdeform.js?v=1795061854"></script>
-<script src="mode/textdeform-texts.js?v=1795061854"></script>
-<script src="mode/textdeform-upstream.js?v=1795061854"></script>
-<script src="mode/textdeform-comp.js?v=1795061854"></script>
-<script src="mode/textdeform-surface.js?v=1795061854"></script>
-<script src="mode/textdeform-combos.js?v=1795061854"></script>
-<script src="mode/ugomeki.js?v=1795061854"></script>
-<script src="mode/slicer.js?v=1795061854"></script>
-<script src="mode/video.js?v=1795061854"></script>
-<script src="mode/aratanagara.js?v=1795061854"></script>
-<script src="vendor/p5.min.js?v=1795061854"></script>
-<script src="mode/cyberui.js?v=1795061854"></script>
-<script src="mode/novel.js?v=1795061854"></script>
-<script src="shaders/inkelly.js?v=1795061854"></script>
-<script src="sketchfx.js?v=1795061854"></script>
-<script src="pixelsortfx.js?v=1795061854"></script>
-<script src="shaders/boltzmann.js?v=1795061854"></script>
-<script src="mode/pen.js?v=1795061854"></script>
-<script src="shaders/caverns.js?v=1795061854"></script>
-<script src="mode/shelf.js?v=1795061854"></script>
-<script src="shaders/ribbon.js?v=1795061854"></script>
-<script src="mode/photoplane.js?v=1795061854"></script>
-<script src="mode/shredder.js?v=1795061854"></script>
-<script src="mode/transflock.js?v=1795061854"></script>
-<script src="mode/liquidpeel.js?v=1795061854"></script>
-<script src="mode/windflock.js?v=1795061854"></script>
-<script src="mode/rhizome.js?v=1795061854"></script>
-<script src="mode/surrealfloat.js?v=1795061854"></script>
-<script src="mode/chrometype.js?v=1795061854"></script>
-<script src="mode/tower4149.js?v=1795061854"></script>
-<script src="mode/fude.js?v=1795061854"></script>
-<script src="mode/image.js?v=1795061854"></script>
-<script src="mode/spacetype.js?v=1795061854"></script>
-<script src="fx3d.js?v=1795061854"></script>
-<script src="fx3d-layers.js?v=1795061854"></script>
-<script src="fx3d-cubes.js?v=1795061854"></script>
-<script src="fx3d-blinds.js?v=1795061854"></script>
-<script src="fx3d-diorama.js?v=1795061854"></script>
-<script src="fx3d-points.js?v=1795061854"></script>
-<script src="fx3d-gravity.js?v=1795061854"></script>
-<script src="fx3d-globe.js?v=1795061854"></script>
-<script src="pollockfx.js?v=1795061854"></script>
-<script src="overlay.js?v=1795061854"></script>
-<script src="gif.js?v=1795061854"></script>
-  <script src="ui-icons.js?v=1795061854"></script>
-  <script src="app.js?v=1795061854"></script>
-  <script src="ui-scrollbar.js?v=1795061854"></script>
-  <script src="ui-settings.js?v=1795061854"></script>
-<script src="camroll.js?v=1795061854" defer></script>
-<script src="dbltap.js?v=1795061854" defer></script>
+<script src="presets.js?v=1795061941"></script>
+<script src="mode/layer.js?v=1795061941"></script>
+<script src="vendor/iro.min.js?v=1795061941"></script>
+<script src="vendor/mediabunny.min.js?v=1795061941"></script>
+<script src="mode/textdeform.js?v=1795061941"></script>
+<script src="mode/textdeform-texts.js?v=1795061941"></script>
+<script src="mode/textdeform-upstream.js?v=1795061941"></script>
+<script src="mode/textdeform-comp.js?v=1795061941"></script>
+<script src="mode/textdeform-surface.js?v=1795061941"></script>
+<script src="mode/textdeform-combos.js?v=1795061941"></script>
+<script src="mode/ugomeki.js?v=1795061941"></script>
+<script src="mode/slicer.js?v=1795061941"></script>
+<script src="mode/video.js?v=1795061941"></script>
+<script src="mode/aratanagara.js?v=1795061941"></script>
+<script src="vendor/p5.min.js?v=1795061941"></script>
+<script src="mode/cyberui.js?v=1795061941"></script>
+<script src="mode/novel.js?v=1795061941"></script>
+<script src="shaders/inkelly.js?v=1795061941"></script>
+<script src="sketchfx.js?v=1795061941"></script>
+<script src="pixelsortfx.js?v=1795061941"></script>
+<script src="shaders/boltzmann.js?v=1795061941"></script>
+<script src="mode/pen.js?v=1795061941"></script>
+<script src="shaders/caverns.js?v=1795061941"></script>
+<script src="mode/shelf.js?v=1795061941"></script>
+<script src="shaders/ribbon.js?v=1795061941"></script>
+<script src="mode/photoplane.js?v=1795061941"></script>
+<script src="mode/shredder.js?v=1795061941"></script>
+<script src="mode/transflock.js?v=1795061941"></script>
+<script src="mode/liquidpeel.js?v=1795061941"></script>
+<script src="mode/windflock.js?v=1795061941"></script>
+<script src="mode/rhizome.js?v=1795061941"></script>
+<script src="mode/surrealfloat.js?v=1795061941"></script>
+<script src="mode/chrometype.js?v=1795061941"></script>
+<script src="mode/tower4149.js?v=1795061941"></script>
+<script src="mode/fude.js?v=1795061941"></script>
+<script src="mode/image.js?v=1795061941"></script>
+<script src="mode/spacetype.js?v=1795061941"></script>
+<script src="fx3d.js?v=1795061941"></script>
+<script src="fx3d-layers.js?v=1795061941"></script>
+<script src="fx3d-cubes.js?v=1795061941"></script>
+<script src="fx3d-blinds.js?v=1795061941"></script>
+<script src="fx3d-diorama.js?v=1795061941"></script>
+<script src="fx3d-points.js?v=1795061941"></script>
+<script src="fx3d-gravity.js?v=1795061941"></script>
+<script src="fx3d-globe.js?v=1795061941"></script>
+<script src="pollockfx.js?v=1795061941"></script>
+<script src="overlay.js?v=1795061941"></script>
+<script src="gif.js?v=1795061941"></script>
+  <script src="ui-icons.js?v=1795061941"></script>
+  <script src="app.js?v=1795061941"></script>
+  <script src="ui-scrollbar.js?v=1795061941"></script>
+  <script src="ui-settings.js?v=1795061941"></script>
+<script src="camroll.js?v=1795061941" defer></script>
+<script src="dbltap.js?v=1795061941" defer></script>
 </body>
 </html>

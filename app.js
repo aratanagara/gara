@@ -2102,6 +2102,69 @@ void main(){
   frag = vec4(col, 1.0);
 }`);
 
+    // Novel (小説化): 画面を字のマス目に割り、マスの明るさで C007 の本文の字を置き直す。字は本文の流れの順に並び (縦組み / 横組み)、
+    //   アトラス (NovelTerminal.buildGlyphAtlas) から引く。Material 段 = 3D FX の前に掛かるので、紙の柄として一緒に折れる。
+    //   3D Mode の深度 (vjRelief) があれば、マス目を手前へ膨らませ、深度の勾配の方へ流して面に沿わせる (Depth)。
+    this._linkDeferred('novelProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform sampler2D uAtlas;
+uniform sampler2D uStream;
+uniform float uAmount;
+uniform float uCell;
+uniform float uThresh;
+uniform float uColor;
+uniform float uBg;
+uniform float uTate;
+uniform float uDepthAmt;
+uniform float uOffset;
+uniform float uLen;
+uniform float uAtlasCols;
+uniform float uAtlasRows;
+uniform float uAtlasCell;
+uniform vec3 uInk;
+${this.reliefGLSL()}
+float nvLuma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+void main(){
+  vec4 src = texture(uTex, vUv);
+  vec2 q = vec2(vUv.x, 1.0 - vUv.y) * uRes;   // 画面の左上が原点 (字は上から並ぶ)
+  vec2 cuv0 = vUv;
+  if(uDepthAmt > 0.0 && uRelief.x + uRelief.y > 0.0){
+    vec2 e = vec2(2.0) / uRes;
+    float d = vjRelief(vUv);
+    vec2 gd = vec2(vjRelief(vUv + vec2(e.x, 0.0)) - vjRelief(vUv - vec2(e.x, 0.0)), vjRelief(vUv - vec2(0.0, e.y)) - vjRelief(vUv + vec2(0.0, e.y)));
+    vec2 c = uRes * 0.5;
+    q = c + (q - c) / (1.0 + d * 1.6 * uDepthAmt) - gd * uRes.y * 1.2 * uDepthAmt;
+  }
+  // 行送り = 1.3 字 (縦組みは列の間、横組みは行の間を空ける)
+  vec2 cs = uTate > 0.5 ? vec2(uCell * 1.3, uCell) : vec2(uCell, uCell * 1.3);
+  vec2 g = q / cs, id = floor(g), fc = fract(g);
+  vec2 f = (fc * cs - (cs - uCell) * 0.5) / uCell;   // マスの中の字の正方形 (0..1 の外は行間)
+  float inG = step(0.0, f.x) * step(f.x, 1.0) * step(0.0, f.y) * step(f.y, 1.0);
+  f = clamp(f, 0.0, 1.0);
+  float nCols = ceil(uRes.x / cs.x), nRows = ceil(uRes.y / cs.y);
+  // マスの中心の色 (歪めた格子でも、いまの画素からマスの中心までのずれで近似)
+  vec2 cuv = cuv0 + vec2(0.5 - fc.x, fc.y - 0.5) * cs / uRes;
+  vec3 cc = texture(uTex, clamp(cuv, vec2(0.0), vec2(1.0))).rgb;
+  float L = nvLuma(cc);
+  float pos = uTate > 0.5 ? (nCols - 1.0 - id.x) * nRows + id.y : id.y * nCols + id.x;
+  pos = mod(pos + uOffset, uLen);
+  vec4 sv = texelFetch(uStream, ivec2(int(mod(pos, 2048.0)), int(pos / 2048.0)), 0);
+  float gi = uTate > 0.5 ? floor(sv.b * 255.0 + 0.5) + floor(sv.a * 255.0 + 0.5) * 256.0
+                         : floor(sv.r * 255.0 + 0.5) + floor(sv.g * 255.0 + 0.5) * 256.0;
+  vec2 ac = vec2(mod(gi, uAtlasCols), floor(gi / uAtlasCols));
+  float lod = log2(max(1.0, uAtlasCell / uCell));
+  float a = textureLod(uAtlas, (ac + f) / vec2(uAtlasCols, uAtlasRows), lod).a * inG;
+  float k = smoothstep(uThresh, uThresh + 0.22, L);
+  float mx = max(cc.r, max(cc.g, cc.b));
+  vec3 hue = mx > 0.001 ? cc / mx : vec3(1.0);
+  vec3 ink = mix(uInk, hue * mix(0.75, 1.0, L), uColor);
+  vec3 outc = mix(src.rgb * uBg, ink, a * k);
+  frag = vec4(mix(src.rgb, outc, uAmount), src.a);
+}`);
+
     // Gloss: Relief と同じ輝度勾配の起伏に、濡れたクリアコート (ラッカー) を一枚かける。
     //   元の色は残し、濡れ色 (少し深く・鮮やか) + 鋭いハイライト + 映り込みの帯 + 縁のフレネルを足す。
     //   Bump = 起伏の高さとなだらかさ / Sharp = ハイライトの鋭さ / Shine = 反射の強さ /
@@ -5252,6 +5315,7 @@ void main(){
     this._applyImpastoPost(p, _safe);
     this._applyChromePost(p, _safe);
     this._applyGlossPost(p, _safe);
+    this._applyNovelPost(p, _safe);   // 小説化 (3D FX の前 = 紙の柄として一緒に折れる)
 
     this._applyPresetTrans();   // プリセット切替の全画面トランジション
     this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (以降の Post FX・最後の Color 段が筆跡にも掛かる)
@@ -6452,6 +6516,59 @@ void main(){
     this._runFinalPost(this.barcodeProg, '_barcodeTmp', (P)=>{
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
+    });
+  },
+  // Novel (小説化): 字のアトラスと本文の字番号の列は初回に一度だけ作る
+  _applyNovelPost(p, safe){
+    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.novel) || 0));
+    if(amount <= 0.001 || !this.novelProg || typeof NovelTerminal === 'undefined' || !NovelTerminal.buildGlyphAtlas) return;
+    const gl = this.gl;
+    if(!this._novelAtlas){
+      const A = NovelTerminal.buildGlyphAtlas(48);
+      const at = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, at);
+      gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
+      gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, A.canvas);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      const n = A.streamH.length, W = 2048, H = Math.ceil(n / W), data = new Uint8Array(W * H * 4);
+      for(let i = 0; i < n; i++){ const h = A.streamH[i], v = A.streamV[i]; data[i*4] = h & 255; data[i*4+1] = h >> 8; data[i*4+2] = v & 255; data[i*4+3] = v >> 8; }
+      const st = gl.createTexture();
+      gl.bindTexture(gl.TEXTURE_2D, st);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, W, H, 0, gl.RGBA, gl.UNSIGNED_BYTE, data);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.bindTexture(gl.TEXTURE_2D, null);
+      this._novelAtlas = { at, st, cols: A.cols, rows: A.rows, cell: A.cell, len: n };
+    }
+    const NA = this._novelAtlas;
+    const v = (k, d) => { const x = +(p && p[k]); return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };
+    this._runFinalPost(this.novelProg, '_novelTmp', (P, w, h)=>{
+      const u = (n) => gl.getUniformLocation(P, n);
+      gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, NA.at); gl.uniform1i(u('uAtlas'), 1);
+      gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, NA.st); gl.uniform1i(u('uStream'), 2);
+      gl.activeTexture(gl.TEXTURE0);
+      const t = this.postClock != null ? this.postClock : this.clock;
+      gl.uniform1f(u('uAmount'), amount);
+      gl.uniform1f(u('uCell'), Math.max(4, (6 + 42 * v('novelSize', 0.35)) * h / 1080));
+      gl.uniform1f(u('uThresh'), v('novelThresh', 0.25) * 0.8);
+      gl.uniform1f(u('uColor'), v('novelColor', 0.6));
+      gl.uniform1f(u('uBg'), v('novelBg', 0));
+      gl.uniform1f(u('uTate'), v('novelTate', 1) >= 0.5 ? 1 : 0);
+      gl.uniform1f(u('uDepthAmt'), v('novelDepth', 0.5));
+      gl.uniform1f(u('uOffset'), Math.floor((t || 0) * v('novelFlow', 0.3) * 20) % NA.len);
+      gl.uniform1f(u('uLen'), NA.len);
+      gl.uniform1f(u('uAtlasCols'), NA.cols);
+      gl.uniform1f(u('uAtlasRows'), NA.rows);
+      gl.uniform1f(u('uAtlasCell'), NA.cell);
+      gl.uniform3f(u('uInk'), 0.93, 0.91, 0.86);
+      this._reliefBind(P);
     });
   },
   _applyGlossPost(p, safe){
@@ -10368,7 +10485,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], fx3dDepth:[0,1], glitchTrail:[0,1], gloss:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], fx3dDepth:[0,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -10575,7 +10692,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', glitchTrail:'Datamosh', gloss:'Gloss', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -13042,6 +13159,7 @@ const App = {
     // Material (質感): 音で暴れると絵肌が壊れるので対象外
     sdfChrome:1, bleed:1, impasto:1, chrome:1, rain:1, sketch:1,
     gloss:1, glossBump:1, glossSharp:1, glossShine:1, glossWet:1, glossLight:1,
+    novel:1, novelSize:1, novelThresh:1, novelColor:1, novelFlow:1, novelBg:1, novelTate:1, novelDepth:1,
     // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
     fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dLayerEdge:1, fx3dScale:1,
     fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleScatter:1, fx3dDepth:1,
@@ -13473,7 +13591,7 @@ const App = {
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
     fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back',
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
-    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
+    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
@@ -13590,7 +13708,7 @@ const App = {
   POST_GROUPS: {
     color:      ['inv','gamma','bri','con','sat','vibrance','gradMix','hue','hueRotSpeed','vig','pos'],
     quality:    ['clarity','denoise','deband','unsharp','unsharpRadius','fxaa'],
-    material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat'],
+    material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','novel','novelSize','novelThresh','novelColor','novelFlow','novelBg','novelTate','novelDepth','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat'],
     texture:    ['scn','grn','texNoise','texNoiseScale'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','waveform','mosaic','shake','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
@@ -13672,7 +13790,7 @@ const App = {
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
     fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back',
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
-    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, barcode:0.0,
+    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
@@ -20139,6 +20257,14 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxGlossShine', 'glossShine', f2);
     slid('pxGlossWet', 'glossWet', f2);
     slid('pxGlossLight', 'glossLight', f2);
+    slid('pxNovel', 'novel', f2);
+    slid('pxNovelSize', 'novelSize', f2);
+    slid('pxNovelThresh', 'novelThresh', f2);
+    slid('pxNovelColor', 'novelColor', f2);
+    slid('pxNovelFlow', 'novelFlow', f2);
+    slid('pxNovelBg', 'novelBg', f2);
+    slid('pxNovelTate', 'novelTate', f2);
+    slid('pxNovelDepth', 'novelDepth', f2);
     slid('pxBarcode', 'barcode', f2);
     slid('pxAudioFx',    'audioFx',       f2);
     slid('pxAudioFxAtk', 'audioFxAttack', f2);
