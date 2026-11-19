@@ -1222,6 +1222,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       if(this._textSlot == null || slot < this._textSlot) this._textSlot = slot;
       else if(slot !== this._textSlot){ this._textSlot = slot; this.nextRandomText(); }
     }
+    if(typeof TDSurf !== 'undefined') TDSurf.beatTick(beat);   // S Auto (拍ごとに Surface のプリセットを切り替え)
     const sw = this._stage.offsetWidth || P.stageW, sh = this._stage.offsetHeight || P.stageW;
     const inBloom = this._t < (this._bloomUntil || 0);
     const beatPhase = (beat || 0) - bi;
