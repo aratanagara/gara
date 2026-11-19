@@ -22,6 +22,7 @@ const DEFAULTS = {
   op: 'plotterTrace',      // パラメータを編集している Operator
   ops: [],                 // 重ねる Operator (空なら [op])。プリセットを選ぶと最大 3 つ
   preset: '',              // 選んだプリセットの id ('' = Custom)
+  presetEvery: 0,          // S Auto: この拍数ごとにプリセットをランダムに切り替える (0 = Off)
   strength: 1, chance: 1, speed: 0.25,
   source: 'op',            // op = Operator の既定 / keep / ghost / hide (元の文字の見せ方)
   opacity: 1, blend: 'op', // blend: op = Operator の既定
@@ -128,6 +129,22 @@ const TDSurf = {
       this.presets = d; this._notify(); return d;
     }).catch(e=>{ this._presetsLoading = null; console.warn('[TDSurf]', e); });
     return this._presetsLoading;
+  },
+  // ランダムに選ぶプリセット (重い Operator を含むものと、いまのものは除く)
+  randomPresetId(){
+    const L = this.presets ? this.presets.presets.filter(p => p.id !== this.cfg.preset && !p.operators.some(o => this.HEAVY.includes(o))) : [];
+    return L.length ? L[Math.floor(Math.random()*L.length)].id : '';
+  },
+  // S Auto: TextDeform.update から毎フレーム。presetEvery 拍ごとにプリセットを切り替える (md へは書かない = ライブだけ)
+  beatTick(beat){
+    const every = +this.cfg.presetEvery || 0;
+    if(!(every > 0) || !this.active() || !this.presets){ this._autoSlot = null; return; }
+    const slot = Math.floor((beat || 0) / every + 1e-6);
+    if(this._autoSlot == null || slot < this._autoSlot){ this._autoSlot = slot; return; }
+    if(slot === this._autoSlot) return;
+    this._autoSlot = slot;
+    const id = this.randomPresetId();
+    if(id){ const ev = this.cfg.presetEvery; this.applyPreset(id); this.cfg.presetEvery = ev; this._notify(); }
   },
   presetThumb(id){ return UP.BASE + 'presets/' + id + '.jpg' + UP.q; },
   // プリセットを適用: Operator を差し替え、値を Operator ごと (属さないものは '*') に振り分ける。

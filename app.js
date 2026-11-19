@@ -17874,6 +17874,22 @@ void mainImage(out vec4 o, in vec2 f){
         toast('Surface Preset: ' + label);
       });
     }
+    const tdSurfPresetRand = $('#tdSurfPresetRand');
+    if(tdSurfPresetRand) tdSurfPresetRand.addEventListener('click', async ()=>{
+      if(typeof TDSurf === 'undefined') return;
+      tdSurfFixMd();
+      if(!TDSurf.cfg.enabled) TDSurf.set({ enabled: true });
+      try{ await TDSurf.ensure(); await TDSurf.loadPresets(); }catch(e){ return; }
+      await this.guardedTextDeformRandom(()=>{ const id = TDSurf.randomPresetId(); if(id){ TDSurf.applyPreset(id); tdSurfStore(); } });
+      const p = TDSurf.presets && TDSurf.presets.presets.find(x=>x.id === TDSurf.cfg.preset);
+      if(p) toast('Surface Preset: ' + p.n + '. ' + p.name);
+    });
+    const tdSurfPresetEvery = $('#tdSurfPresetEvery');
+    if(tdSurfPresetEvery) tdSurfPresetEvery.addEventListener('change', async ()=>{
+      const v = parseInt(tdSurfPresetEvery.value, 10) || 0;
+      if(v > 0 && typeof TDSurf !== 'undefined'){ if(!TDSurf.cfg.enabled){ tdSurfFixMd(); TDSurf.set({ enabled: true }); } TDSurf.ensure().then(()=>TDSurf.loadPresets()).catch(()=>{}); }
+      tdSurfSet({ presetEvery: v });
+    });
     // 文字の出どころ (TextDeform.textSrc。全 md 共通)
     const tdText = (over)=>{ if(typeof TextDeform === 'undefined') return; TextDeform.setTextSource(over); this.refreshTextDeformText(); };
     const tdTextMode = $('#tdTextMode');
@@ -17927,10 +17943,51 @@ void mainImage(out vec4 o, in vec2 f){
     const tdSurfRand = $('#tdSurfRand');
     if(tdSurfRand) tdSurfRand.addEventListener('click', ()=>{
       if(typeof TDSurf === 'undefined') return;
-      tdSurfFixMd(); this.guardedTextDeformRandom(()=>{ TDSurf.randomize(TDSurf.cfg.op); tdSurfStore(); });
+      tdSurfFixMd(); this.tdComboRandom('surf');
     });
     const tdRandOne = $('#tdMdRandOne');
-    if(tdRandOne) tdRandOne.addEventListener('click', ()=> UI.guardedTextDeformRandom(()=>UI.randomizeTextDeformMd()));
+    if(tdRandOne) tdRandOne.addEventListener('click', ()=> UI.tdComboRandom('all'));
+    // 組み合わせリスト (mode/textdeform-combos.js)
+    if(typeof TDCombos !== 'undefined') TDCombos.onChange(()=>this.refreshTextDeformCombos());
+    const tdCombo = $('#tdCombo');
+    if(tdCombo){
+      const warmC = ()=>{ if(typeof TDCombos !== 'undefined') TDCombos.load(); };
+      tdCombo.addEventListener('pointerdown', warmC);
+      tdCombo.addEventListener('focus', warmC);
+      tdCombo.addEventListener('change', ()=>{
+        if(typeof TDCombos === 'undefined' || tdCombo.value === '') return;
+        const idx = parseInt(tdCombo.value, 10);
+        UI.guardedTextDeformRandom(()=>TDCombos.apply(idx, 'all'));
+        toast('Combo: ' + ((TDCombos.list[idx] || {}).name || ''));
+      });
+    }
+    const tdComboAdd = $('#tdComboAdd');
+    if(tdComboAdd) tdComboAdd.addEventListener('click', async ()=>{
+      if(typeof TDCombos === 'undefined') return;
+      await TDCombos.load();
+      App._prompt('組み合わせの名前', 'Combo ' + (TDCombos.list.length + 1), (nn)=>{
+        TDCombos.add(String(nn || '').trim() || undefined).then(()=>toast('Combo を保存: ' + TDCombos.list[TDCombos.current].name + ' (' + TDCombos.list.length + ' 件)'))
+          .catch(e=>toast('Combo の保存に失敗: ' + e.message));
+      });
+    });
+    const tdComboOver = $('#tdComboOver');
+    if(tdComboOver) tdComboOver.addEventListener('click', ()=>{
+      if(typeof TDCombos === 'undefined' || !TDCombos.list) return;
+      const idx = tdCombo ? parseInt(tdCombo.value, 10) : -1;
+      const c = TDCombos.list[idx]; if(!c){ toast('上書きする Combo を選んでください'); return; }
+      App._confirm('いまの見た目で上書きしますか: ' + c.name, ()=>{
+        TDCombos.overwrite(idx).then(()=>toast('Combo を上書き: ' + c.name)).catch(e=>toast('Combo の上書きに失敗: ' + e.message));
+      });
+    });
+    const tdComboDel = $('#tdComboDel');
+    if(tdComboDel) tdComboDel.addEventListener('click', ()=>{
+      if(typeof TDCombos === 'undefined' || !TDCombos.list) return;
+      const idx = tdCombo ? parseInt(tdCombo.value, 10) : -1;
+      const c = TDCombos.list[idx]; if(!c){ toast('削除する Combo を選んでください'); return; }
+      App._confirm('組み合わせを削除しますか: ' + c.name, ()=>{
+        TDCombos.remove(idx).then(()=>toast('Combo を削除: ' + c.name)).catch(e=>toast('Combo の削除に失敗: ' + e.message));
+      });
+    });
     const tdRandGuard = $('#tdRandGuard');
     if(tdRandGuard){
       tdRandGuard.value = String(UI.tdRandGuardFps());
@@ -18473,7 +18530,7 @@ void mainImage(out vec4 o, in vec2 f){
         const kind = b.dataset.kind;
         const defaultScope = b.closest('.section');
         if(b.classList.contains('randDefBtn') && kind === 'overlay' && UI._overlayRandomize){ UI._overlayRandomize(); return; }
-        if(b.classList.contains('randDefBtn') && kind === 'textdeformMd'){ UI.guardedTextDeformRandom(()=>UI.randomizeSection(defaultScope, kind)); return; }
+        if(b.classList.contains('randDefBtn') && kind === 'textdeformMd'){ UI.tdComboRandom('all'); return; }   // Type Deformer は組み合わせリストから
         if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
           if(kind === 'overlay'){
@@ -23699,6 +23756,33 @@ void mainImage(out vec4 o, in vec2 f){
       setTimeout(watch, 400);
     } finally { this._tdRandBusy = false; }
   },
+  // Type Deformer の Random: 組み合わせリストから 1 件 (part = 'all' 見た目一式 / 'surf' Surface だけ)。
+  //   リストが空のときだけ従来の乱数 (Random All = randomizeTextDeformMd / Surface = Operator のパラメータ)。負荷ガードは共通
+  async tdComboRandom(part){
+    if(typeof TDCombos !== 'undefined'){
+      await TDCombos.load();
+      if(TDCombos.pickRandom(part) >= 0){
+        await this.guardedTextDeformRandom(()=>TDCombos.applyRandom(part));
+        const c = TDCombos.list[TDCombos.current];
+        if(c) toast('Combo: ' + c.name);
+        return;
+      }
+    }
+    if(part === 'surf'){ if(typeof TDSurf !== 'undefined') this.guardedTextDeformRandom(()=>{ TDSurf.randomize(TDSurf.cfg.op); }); return; }
+    this.guardedTextDeformRandom(()=>this.randomizeTextDeformMd());
+  },
+  // Combo 行 (組み合わせリスト)
+  refreshTextDeformCombos(){
+    if(typeof TDCombos === 'undefined') return;
+    const sel = $('#tdCombo'); if(!sel) return;
+    const L = TDCombos.list || [];
+    const sig = L.length + ':' + L.map(c=>c.name).join('|');
+    if(sel.dataset.sig !== sig){
+      sel.innerHTML = '<option value="">—</option>' + L.map((c, i)=>'<option value="' + i + '">' + String(i + 1).padStart(3, '0') + ' ' + String(c.name).replace(/</g, '&lt;') + '</option>').join('');
+      sel.dataset.sig = sig;
+    }
+    sel.value = TDCombos.current >= 0 && TDCombos.current < L.length ? String(TDCombos.current) : '';
+  },
   randomizeTextDeformMd(){
     if(typeof TextDeform === 'undefined' || !TextDeform.updateMdStyle) return;
     const T = TextDeform;
@@ -24115,6 +24199,7 @@ void mainImage(out vec4 o, in vec2 f){
     setRange('tdSurfSpeed', c.speed, dz);
     setRange('tdSurfOpacity', c.opacity, v=>v.toFixed(2));
     setSel('tdSurfSource', c.source); setSel('tdSurfBlend', c.blend); setSel('tdSurfColor', c.color);
+    setSel('tdSurfPresetEvery', +c.presetEvery || 0);
     ['tdSurfSave','tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !S.meta; });
     const preSel = $('#tdSurfPreset');
     if(preSel){
