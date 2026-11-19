@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795052756">
+<link rel="stylesheet" href="style.css?v=1795054317">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -367,56 +367,55 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
                fold-skip = カテゴリ折りたたみ (_initParamFold) で md 側の分類に混ざらないよう、ひとまとまりで置く -->
           <div class="fold-skip">
           <div class="row"><label>S Preset</label>
-            <select id="tdSurfPreset" data-norand style="flex:1" title="Type Deformer の厳選プリセット (作者の許諾を得て同梱)。Operator (最大 3 つ) とその値をまとめて切り替える。書体・組版・紙とインクの色は md のまま"><option value="">Custom</option></select>
+            <select id="tdSurfPreset" data-norand="1" style="flex:1" title="Type Deformer の厳選プリセット (作者の許諾を得て同梱)。Operator (最大 3 つ) とその値をまとめて切り替える。書体・組版・紙とインクの色は md のまま"><option value="">Custom</option></select>
           </div>
           <div class="row" id="tdSurfThumbRow" style="display:none"><img id="tdSurfThumb" alt="" style="width:100%;max-width:260px;height:auto;margin-left:auto;border:1px solid var(--line, #333)"></div>
           <!-- 文字の出どころ: MD (md の文字列) / Random (mode/textdeform-texts.js から拍ごと) / Custom (下のテキストエリア)。全 md 共通 -->
           <div class="row"><label>Text</label>
-            <select id="tdTextMode" data-norand style="flex:1" title="表示する文字列: MD = md の文字列 / Random = テキストプリセットから拍ごとにランダム / Custom = 下のテキストエリア (全 md 共通)"><option value="md">MD</option><option value="random">Random</option><option value="custom">Custom</option></select>
+            <select id="tdTextMode" data-norand="1" style="flex:1" title="表示する文字列: MD = md の文字列 / Random = テキストプリセットから拍ごとにランダム / Custom = 下のテキストエリア (全 md 共通)"><option value="md">MD</option><option value="random">Random</option><option value="custom">Custom</option></select>
             <button id="tdTextNext" title="テキストプリセットから次の文字列へ (Random に切り替わる)">Next</button>
           </div>
           <div class="row"><label>T Pool</label>
-            <select id="tdTextPool" data-norand style="flex:1" title="Random で使う文字列の種類"><option value="all">All</option></select>
+            <select id="tdTextPool" data-norand="1" style="flex:1" title="Random で使う文字列の種類"><option value="all">All</option></select>
           </div>
           <div class="row"><label>T Every</label>
-            <input type="range" id="tdTextEvery" data-norand min="1" max="32" step="1" value="4" title="Random で文字列を替える間隔 (拍)">
-            <div class="val" id="tdTextEveryVal">4</div>
+            <select id="tdTextEvery" data-norand="1" style="flex:1" title="Random で文字列を替える間隔 (拍)"><option value="0.25">1/4 beat</option><option value="0.5">1/2 beat</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select>
           </div>
           <div class="row"><textarea id="tdTextCustom" rows="3" placeholder="表示する文字列 (改行可)。入力すると Custom に切り替わる" style="flex:1;width:100%;resize:vertical;font:inherit;background:var(--panel2);color:var(--fg);border:1px solid var(--line2);padding:4px 6px;box-sizing:border-box"></textarea></div>
           <div class="row" style="margin-top:8px"><label>Surface</label>
-            <select id="tdSurfOn" data-norand style="flex:1;min-width:64px" title="Type Deformer 0.3 の Surface 効果 (100 種) を文字に重ねる。On にした時点でエンジン (約 2.7MB) を読み込む。md 単位 (Save で永続化、保存の無い md では Off)"><option value="off">Off</option><option value="on">On</option></select>
+            <select id="tdSurfOn" data-norand="1" style="flex:1;min-width:64px" title="Type Deformer 0.3 の Surface 効果 (100 種) を文字に重ねる。On にした時点でエンジン (約 2.7MB) を読み込む。md 単位 (Save で永続化、保存の無い md では Off)"><option value="off">Off</option><option value="on">On</option></select>
           </div>
           <div class="row" style="justify-content:flex-end"><span class="default-actions"><button id="tdSurfSave" title="選択中の md に Surface の設定を保存 (md の Save と同じ)">Save</button><button id="tdSurfReset" title="この Operator のパラメータを上流の既定値へ戻す">Reset</button><button id="tdSurfRand" title="この Operator のパラメータをランダムに変える (Strength / Chance / Speed / 色は変えない)">Random 🎲</button></span></div>
           <div class="row"><label>S Op</label>
-            <select id="tdSurfOp" data-norand style="flex:1" title="Surface Operator (上流のカタログの分類順)。ここで選ぶと Operator 1 つの Custom になる"></select>
+            <select id="tdSurfOp" data-norand="1" style="flex:1" title="Surface Operator (上流のカタログの分類順)。ここで選ぶと Operator 1 つの Custom になる"></select>
           </div>
           <div class="row" id="tdSurfEditRow" style="display:none"><label>S Edit</label>
-            <select id="tdSurfEdit" data-norand style="flex:1" title="重ねている Operator のうち、下にパラメータを出すもの"></select>
+            <select id="tdSurfEdit" data-norand="1" style="flex:1" title="重ねている Operator のうち、下にパラメータを出すもの"></select>
           </div>
           <div class="row"><label>S Str</label>
-            <input type="range" id="tdSurfStrength" data-norand min="0" max="1" step="0.01" value="1" title="効果の強さ">
+            <input type="range" id="tdSurfStrength" data-norand="1" min="0" max="1" step="0.01" value="1" title="効果の強さ">
             <div class="val" id="tdSurfStrengthVal">1.00</div>
           </div>
           <div class="row"><label>S Chance</label>
-            <input type="range" id="tdSurfChance" data-norand min="0" max="1" step="0.01" value="1" title="効果を掛ける文字の割合">
+            <input type="range" id="tdSurfChance" data-norand="1" min="0" max="1" step="0.01" value="1" title="効果を掛ける文字の割合">
             <div class="val" id="tdSurfChanceVal">1.00</div>
           </div>
           <div class="row"><label>S Speed</label>
-            <input type="range" id="tdSurfSpeed" data-norand min="0" max="1" step="0.01" value="0.25" title="効果の位相の進み (1周/秒。beat モードは拍で脈打つ)。重い Operator は描き終えるまで位相が止まる">
+            <input type="range" id="tdSurfSpeed" data-norand="1" min="0" max="1" step="0.01" value="0.25" title="効果の位相の進み (1周/秒。beat モードは拍で脈打つ)。重い Operator は描き終えるまで位相が止まる">
             <div class="val" id="tdSurfSpeedVal">0.25</div>
           </div>
           <div class="row"><label>S Source</label>
-            <select id="tdSurfSource" data-norand style="flex:1" title="効果が掛かった文字の元の字の見せ方"><option value="op">Operator default</option><option value="keep">Keep</option><option value="ghost">Ghost</option><option value="hide">Hide</option></select>
+            <select id="tdSurfSource" data-norand="1" style="flex:1" title="効果が掛かった文字の元の字の見せ方"><option value="op">Operator default</option><option value="keep">Keep</option><option value="ghost">Ghost</option><option value="hide">Hide</option></select>
           </div>
           <div class="row"><label>S Opacity</label>
-            <input type="range" id="tdSurfOpacity" data-norand min="0" max="1" step="0.01" value="1" title="効果レイヤーの不透明度">
+            <input type="range" id="tdSurfOpacity" data-norand="1" min="0" max="1" step="0.01" value="1" title="効果レイヤーの不透明度">
             <div class="val" id="tdSurfOpacityVal">1.00</div>
           </div>
           <div class="row"><label>S Blend</label>
-            <select id="tdSurfBlend" data-norand style="flex:1" title="効果レイヤーの重ね方"><option value="op">Operator default</option><option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option><option value="difference">Difference</option><option value="lighter">Add</option></select>
+            <select id="tdSurfBlend" data-norand="1" style="flex:1" title="効果レイヤーの重ね方"><option value="op">Operator default</option><option value="source-over">Normal</option><option value="multiply">Multiply</option><option value="screen">Screen</option><option value="overlay">Overlay</option><option value="difference">Difference</option><option value="lighter">Add</option></select>
           </div>
           <div class="row"><label>S Color</label>
-            <select id="tdSurfColor" data-norand style="flex:1" title="効果の色: Operator の既定色 / md の Ink / md の Accent"><option value="op">Operator default</option><option value="ink">Ink</option><option value="accent">Accent</option></select>
+            <select id="tdSurfColor" data-norand="1" style="flex:1" title="効果の色: Operator の既定色 / md の Ink / md の Accent"><option value="op">Operator default</option><option value="ink">Ink</option><option value="accent">Accent</option></select>
           </div>
           <div id="tdSurfParams"></div>
           <div class="row"><div id="tdSurfStatus" style="font:600 10px var(--mono);color:var(--dim);flex:1"></div></div>
@@ -426,6 +425,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div class="row"><label>Randomize</label>
             <button id="tdMdRandOne" title="配色・書体・組版・変形をランダム生成 (保存は右上の Save)" style="flex:1">Random All</button>
+          </div>
+          <div class="row"><label>Rand Guard</label>
+            <select id="tdRandGuard" data-norand="1" style="flex:1" title="Random (見出しの Random 🎲 / Random All / Surface の Random) の負荷ガード: 適用前に 1 フレームを試しに描き、この fps を保てない組み合わせは引き直す。適用後 3 秒も見張り、重くなったら元に戻す"><option value="0">Off</option><option value="20">20 fps</option><option value="30">30 fps</option><option value="45">45 fps</option><option value="60">60 fps</option></select>
           </div>
           <div class="row"><label>Paper</label>
             <input type="color" id="tdMdPaper" value="#050507">
@@ -1997,58 +1999,58 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795052756"></script>
-<script src="mode/layer.js?v=1795052756"></script>
-<script src="vendor/iro.min.js?v=1795052756"></script>
-<script src="vendor/mediabunny.min.js?v=1795052756"></script>
-<script src="mode/textdeform.js?v=1795052756"></script>
-<script src="mode/textdeform-texts.js?v=1795052756"></script>
-<script src="mode/textdeform-upstream.js?v=1795052756"></script>
-<script src="mode/textdeform-comp.js?v=1795052756"></script>
-<script src="mode/textdeform-surface.js?v=1795052756"></script>
-<script src="mode/ugomeki.js?v=1795052756"></script>
-<script src="mode/slicer.js?v=1795052756"></script>
-<script src="mode/video.js?v=1795052756"></script>
-<script src="mode/aratanagara.js?v=1795052756"></script>
-<script src="vendor/p5.min.js?v=1795052756"></script>
-<script src="mode/cyberui.js?v=1795052756"></script>
-<script src="mode/novel.js?v=1795052756"></script>
-<script src="shaders/inkelly.js?v=1795052756"></script>
-<script src="sketchfx.js?v=1795052756"></script>
-<script src="pixelsortfx.js?v=1795052756"></script>
-<script src="shaders/boltzmann.js?v=1795052756"></script>
-<script src="mode/pen.js?v=1795052756"></script>
-<script src="shaders/caverns.js?v=1795052756"></script>
-<script src="mode/shelf.js?v=1795052756"></script>
-<script src="shaders/ribbon.js?v=1795052756"></script>
-<script src="mode/photoplane.js?v=1795052756"></script>
-<script src="mode/shredder.js?v=1795052756"></script>
-<script src="mode/transflock.js?v=1795052756"></script>
-<script src="mode/liquidpeel.js?v=1795052756"></script>
-<script src="mode/windflock.js?v=1795052756"></script>
-<script src="mode/rhizome.js?v=1795052756"></script>
-<script src="mode/surrealfloat.js?v=1795052756"></script>
-<script src="mode/chrometype.js?v=1795052756"></script>
-<script src="mode/tower4149.js?v=1795052756"></script>
-<script src="mode/fude.js?v=1795052756"></script>
-<script src="mode/image.js?v=1795052756"></script>
-<script src="mode/spacetype.js?v=1795052756"></script>
-<script src="fx3d.js?v=1795052756"></script>
-<script src="fx3d-layers.js?v=1795052756"></script>
-<script src="fx3d-cubes.js?v=1795052756"></script>
-<script src="fx3d-blinds.js?v=1795052756"></script>
-<script src="fx3d-diorama.js?v=1795052756"></script>
-<script src="fx3d-points.js?v=1795052756"></script>
-<script src="fx3d-gravity.js?v=1795052756"></script>
-<script src="fx3d-globe.js?v=1795052756"></script>
-<script src="pollockfx.js?v=1795052756"></script>
-<script src="overlay.js?v=1795052756"></script>
-<script src="gif.js?v=1795052756"></script>
-  <script src="ui-icons.js?v=1795052756"></script>
-  <script src="app.js?v=1795052756"></script>
-  <script src="ui-scrollbar.js?v=1795052756"></script>
-  <script src="ui-settings.js?v=1795052756"></script>
-<script src="camroll.js?v=1795052756" defer></script>
-<script src="dbltap.js?v=1795052756" defer></script>
+<script src="presets.js?v=1795054317"></script>
+<script src="mode/layer.js?v=1795054317"></script>
+<script src="vendor/iro.min.js?v=1795054317"></script>
+<script src="vendor/mediabunny.min.js?v=1795054317"></script>
+<script src="mode/textdeform.js?v=1795054317"></script>
+<script src="mode/textdeform-texts.js?v=1795054317"></script>
+<script src="mode/textdeform-upstream.js?v=1795054317"></script>
+<script src="mode/textdeform-comp.js?v=1795054317"></script>
+<script src="mode/textdeform-surface.js?v=1795054317"></script>
+<script src="mode/ugomeki.js?v=1795054317"></script>
+<script src="mode/slicer.js?v=1795054317"></script>
+<script src="mode/video.js?v=1795054317"></script>
+<script src="mode/aratanagara.js?v=1795054317"></script>
+<script src="vendor/p5.min.js?v=1795054317"></script>
+<script src="mode/cyberui.js?v=1795054317"></script>
+<script src="mode/novel.js?v=1795054317"></script>
+<script src="shaders/inkelly.js?v=1795054317"></script>
+<script src="sketchfx.js?v=1795054317"></script>
+<script src="pixelsortfx.js?v=1795054317"></script>
+<script src="shaders/boltzmann.js?v=1795054317"></script>
+<script src="mode/pen.js?v=1795054317"></script>
+<script src="shaders/caverns.js?v=1795054317"></script>
+<script src="mode/shelf.js?v=1795054317"></script>
+<script src="shaders/ribbon.js?v=1795054317"></script>
+<script src="mode/photoplane.js?v=1795054317"></script>
+<script src="mode/shredder.js?v=1795054317"></script>
+<script src="mode/transflock.js?v=1795054317"></script>
+<script src="mode/liquidpeel.js?v=1795054317"></script>
+<script src="mode/windflock.js?v=1795054317"></script>
+<script src="mode/rhizome.js?v=1795054317"></script>
+<script src="mode/surrealfloat.js?v=1795054317"></script>
+<script src="mode/chrometype.js?v=1795054317"></script>
+<script src="mode/tower4149.js?v=1795054317"></script>
+<script src="mode/fude.js?v=1795054317"></script>
+<script src="mode/image.js?v=1795054317"></script>
+<script src="mode/spacetype.js?v=1795054317"></script>
+<script src="fx3d.js?v=1795054317"></script>
+<script src="fx3d-layers.js?v=1795054317"></script>
+<script src="fx3d-cubes.js?v=1795054317"></script>
+<script src="fx3d-blinds.js?v=1795054317"></script>
+<script src="fx3d-diorama.js?v=1795054317"></script>
+<script src="fx3d-points.js?v=1795054317"></script>
+<script src="fx3d-gravity.js?v=1795054317"></script>
+<script src="fx3d-globe.js?v=1795054317"></script>
+<script src="pollockfx.js?v=1795054317"></script>
+<script src="overlay.js?v=1795054317"></script>
+<script src="gif.js?v=1795054317"></script>
+  <script src="ui-icons.js?v=1795054317"></script>
+  <script src="app.js?v=1795054317"></script>
+  <script src="ui-scrollbar.js?v=1795054317"></script>
+  <script src="ui-settings.js?v=1795054317"></script>
+<script src="camroll.js?v=1795054317" defer></script>
+<script src="dbltap.js?v=1795054317" defer></script>
 </body>
 </html>
