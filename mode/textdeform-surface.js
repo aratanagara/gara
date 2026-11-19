@@ -13,9 +13,7 @@
 'use strict';
 if(typeof TextDeform === 'undefined') return;
 const TD = TextDeform;
-const BASE = 'mode/typedeformer/';
-const VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ''; })();
-const q = VER ? '?v=' + VER : '';
+const UP = globalThis.TDUpstream;   // 共通部 (mode/textdeform-upstream.js)
 const SCRIPTS = ['operator-registry.js', 'editor-model.js', 'surface-state.js', 'render-jobs.js'];
 const BLENDS = ['source-over', 'multiply', 'screen', 'overlay', 'difference', 'lighter'];
 const DEFAULTS = {
@@ -36,14 +34,6 @@ function merge(base, over){
     else out[k] = clone(over[k]);
   }
   return out;
-}
-function loadScript(src){
-  return new Promise((resolve, reject)=>{
-    const s = document.createElement('script');
-    s.src = src; s.async = false;
-    s.onload = ()=>resolve(); s.onerror = ()=>{ s.remove(); reject(new Error(src + ' を読み込めませんでした')); };
-    document.head.appendChild(s);
-  });
 }
 
 const TDSurf = {
@@ -87,16 +77,16 @@ const TDSurf = {
     if(this._loading) return this._loading;
     this.status = 'loading'; this.error = ''; this._notify();
     this._loading = (async ()=>{
-      for(const f of SCRIPTS) await loadScript(BASE + f + q);
-      const res = await fetch(BASE + 'vj-operator-params.json' + q);
+      await UP.load(SCRIPTS);
+      const res = await fetch(UP.BASE + 'vj-operator-params.json' + UP.q);
       if(!res.ok) throw new Error('vj-operator-params.json ' + res.status);
       this.meta = await res.json();
       this.registry = globalThis.TypeDeformerOperatorRegistry;
-      this.model = globalThis.TypeDeformerEditorModel.create({ registry: this.registry, surfaceIds: this.registry.surfaceIds, dictionary: ()=>null });
+      this.model = UP.model();
       if(!globalThis.TypeDeformerRenderJobs.supportsSurfaceWorker()) throw new Error('この環境は OffscreenCanvas Worker に未対応です');
       this.jobs = globalThis.TypeDeformerRenderJobs.create({
         editTimeout: 30000, interruptAfter: 180,
-        workerFactory: ()=>new Worker(new URL(BASE + 'vj-surface-worker.js' + q, document.baseURI)),
+        workerFactory: ()=>new Worker(new URL(UP.BASE + 'vj-surface-worker.js' + UP.q, document.baseURI)),
         encode: job=>({ id: job.id, payload: job.payload }),
         onState: s=>this._onJobState(s)
       });
@@ -210,14 +200,10 @@ const TDSurf = {
   // cfg と md の書体・色が変わったときだけ作り直す (描画のたびに上流の全既定値を複製しない)
   _params(){
     const P = TD.P, op = this.cfg.op;
-    const key = JSON.stringify([this.cfg, P.fontFamily, P.fontWeight, P.fontSize, P.vertical, P.ink, P.paper, P.accent]);
+    const key = JSON.stringify(this.cfg) + UP.paramsKey();
     if(this._paramsCache && this._paramsKey === key) return this._paramsCache;
-    const out = Object.assign({}, this.model.PARAM_DEFAULTS, this.cfg.params[op] || {});
+    const out = Object.assign(UP.params(), this.cfg.params[op] || {});
     out.activeOperator = op;
-    out.fontFamily = TD._fontStack(P.fontFamily);
-    out.fontWeight = P.fontWeight; out.fontSize = P.fontSize;
-    out.vertical = !!P.vertical;
-    out.ink = P.ink; out.paper = P.paper;
     const reg = this.registry.tables;
     const ck = reg.SURFACE_COLOR_KEYS[op];
     const sk = this.meta.ops[op].surfaceKeys || {};
