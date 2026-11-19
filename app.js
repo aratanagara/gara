@@ -14181,6 +14181,11 @@ ${outBlock}
         const ae = document.activeElement;
         if(ae && (ae.id === 'presetSearch' || ae.id === 'visualSearch')){
           e.preventDefault(); e.stopPropagation();
+          // フォーカスしてから何も打たずに Enter (= Enter 2 回) なら検索欄を空にする
+          if(e.key === 'Enter' && ae.value !== '' && ae.value === ae._focusVal){
+            ae.value = '';
+            ae.dispatchEvent(new Event('input', {bubbles:true}));
+          }
           try{ ae.blur(); }catch(_){}
           return;
         }
@@ -17447,7 +17452,7 @@ const UI = {
 
     // Visual タブ: 検索 + カテゴリ(タグ)フィルタ
     { const si = $('#visualSearch');
-      if(si) si.addEventListener('input', ()=>this.applyVisualFilter());
+      if(si){ si.addEventListener('input', ()=>this.applyVisualFilter()); si.addEventListener('focus', ()=>{ si._focusVal = si.value; }); }
       $$('.visFilter').forEach(b=>b.addEventListener('click', ()=>{
         $$('.visFilter').forEach(x=>x.classList.remove('on'));
         b.classList.add('on');
@@ -17457,7 +17462,7 @@ const UI = {
 
     // Preset タブ: 検索 + カテゴリ(タグ)フィルタ (Visual と同仕様)
     { const ps = $('#presetSearch');
-      if(ps) ps.addEventListener('input', ()=>this.applyPresetFilter());
+      if(ps){ ps.addEventListener('input', ()=>this.applyPresetFilter()); ps.addEventListener('focus', ()=>{ ps._focusVal = ps.value; }); }
       $$('.preFilter').forEach(b=>b.addEventListener('click', ()=>{
         $$('.preFilter').forEach(x=>x.classList.remove('on'));
         b.classList.add('on');
