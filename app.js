@@ -17794,9 +17794,18 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdSurfOn) tdSurfOn.addEventListener('change', ()=>tdSurfSet({ enabled: tdSurfOn.value === 'on' }));
     const tdSurfOp = $('#tdSurfOp');
     if(tdSurfOp) tdSurfOp.addEventListener('change', ()=>{
-      tdSurfSet({ op: tdSurfOp.value });
+      tdSurfSet({ op: tdSurfOp.value, ops: [tdSurfOp.value], preset: '' });
       toast('Surface: ' + tdSurfOp.options[tdSurfOp.selectedIndex].text);
     });
+    const tdSurfPreset = $('#tdSurfPreset');
+    if(tdSurfPreset) tdSurfPreset.addEventListener('change', ()=>{
+      if(typeof TDSurf === 'undefined') return;
+      if(!tdSurfPreset.value){ tdSurfSet({ preset: '' }); return; }
+      TDSurf.applyPreset(tdSurfPreset.value); tdSurfStore();
+      toast('Surface Preset: ' + tdSurfPreset.options[tdSurfPreset.selectedIndex].text);
+    });
+    const tdSurfEdit = $('#tdSurfEdit');
+    if(tdSurfEdit) tdSurfEdit.addEventListener('change', ()=>tdSurfSet({ op: tdSurfEdit.value }));
     [['tdSurfStrength','strength'],['tdSurfChance','chance'],['tdSurfSpeed','speed'],['tdSurfOpacity','opacity']].forEach(([id, key])=>{
       const el = $('#'+id);
       if(el) el.addEventListener('input', ()=>tdSurfSet({ [key]: parseFloat(el.value) }));
@@ -23899,6 +23908,42 @@ void mainImage(out vec4 o, in vec2 f){
     setRange('tdSurfOpacity', c.opacity, v=>v.toFixed(2));
     setSel('tdSurfSource', c.source); setSel('tdSurfBlend', c.blend); setSel('tdSurfColor', c.color);
     ['tdSurfSave','tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !fixed || !S.meta; });
+    const preSel = $('#tdSurfPreset');
+    if(preSel){
+      if(S.presets && preSel.dataset.filled !== '1'){
+        preSel.innerHTML = '<option value="">Custom</option>';
+        for(const f of S.presets.families){
+          const og = document.createElement('optgroup'); og.label = f.jp;
+          for(const p of S.presets.presets) if(p.family === f.id){
+            const opt = document.createElement('option');
+            opt.value = p.id; opt.title = p.description;
+            opt.textContent = p.n + '. ' + p.name + (p.operators.some(o=>S.HEAVY.includes(o)) ? ' (重い)' : '');
+            og.appendChild(opt);
+          }
+          if(og.children.length) preSel.appendChild(og);
+        }
+        preSel.dataset.filled = '1';
+      }
+      if(c.preset && !preSel.querySelector('option[value="' + c.preset + '"]')){ const o = document.createElement('option'); o.value = c.preset; o.textContent = c.preset; preSel.appendChild(o); }
+      preSel.value = c.preset || ''; preSel.disabled = !fixed || !S.meta;
+    }
+    const thumbRow = $('#tdSurfThumbRow'), thumb = $('#tdSurfThumb');
+    if(thumbRow && thumb){
+      thumbRow.style.display = c.preset ? '' : 'none';
+      if(c.preset && thumb.dataset.id !== c.preset){ thumb.dataset.id = c.preset; thumb.src = S.presetThumb(c.preset); }
+    }
+    const ops = S.meta ? S.activeOps() : [];
+    const editRow = $('#tdSurfEditRow'), editSel = $('#tdSurfEdit');
+    if(editRow && editSel){
+      editRow.style.display = ops.length > 1 ? '' : 'none';
+      const sig = ops.join();
+      if(editSel.dataset.sig !== sig){
+        editSel.innerHTML = '';
+        for(const id of ops){ const o = document.createElement('option'); o.value = id; o.textContent = (S.meta.ops[id] || {}).label || id; editSel.appendChild(o); }
+        editSel.dataset.sig = sig;
+      }
+      editSel.value = c.op; editSel.disabled = !fixed;
+    }
     const opSel = $('#tdSurfOp');
     if(opSel){
       if(S.meta && opSel.dataset.filled !== '1'){
