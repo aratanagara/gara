@@ -293,7 +293,6 @@ vec4 mb_dV;   // 左 / 右の垂直線・下 / 上の水平線までの距離 (�
 vec2 mb_sVH;  // 垂直 / 水平の線までの距離 (伸び縮み前に戻したもの)
 float mb_w;   // 線の半幅
 vec2 mb_dq;   // ジャンプ率による各軸の伸び縮みの倍率 (盤面の座標 → 伸び縮み前)
-float mb_d;   // 道の縁までの距離 (盤面の座標。道の中は負)。3D の視線しらべが空いた所を読み飛ばす歩幅に使う
 float mb_cov(vec2 q, float aa, float audio){
   float w = 0.011 * uMbLine * 0.01 * 0.85 * (1.0 + audio * 0.5);   // 線の半幅
   mb_w = w;
@@ -319,7 +318,6 @@ float mb_cov(vec2 q, float aa, float audio){
   mb_dV = vec4(dVL, dVR, dHB, dHT);
   float sV = min(dVL, dVR) / dq.x, sH = min(dHB, dHT) / dq.y;   // 伸び縮み前の距離に戻す
   mb_sVH = vec2(sV, sH);
-  mb_d = min(sV, sH) - w;
   return smoothstep(w + aa, w - aa, min(sV, sH));
 }
 // いまの格子の面 (mg_build の直後) の建物判定の前準備: 面の番号 rid・塗り替えの世代 er・描かれているか cellOn・乱数の種 sd

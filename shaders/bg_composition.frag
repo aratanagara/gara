@@ -239,9 +239,12 @@ float mc_cellSolid(){
 // 盤面上の 1 点 q (傾き・大きさを掛けたあと) の線の覆い (0..1) だけを返す (3D の視線しらべ用。面の色は求めない)。
 //   格子の状態 (mg_*) と、伸び縮み後の座標 mc_q は mc_eval が面の色に使う
 vec2 mc_q;
-float mc_d;   // 線の縁までの距離 (盤面の座標。線の中は負)。3D の視線しらべが空いた所を読み飛ばす歩幅に使う
+vec2 mc_dq;   // ジャンプ率による各軸の伸び縮みの倍率 (3D の視線しらべ用)
+float mc_w;   // 線の半幅
+vec4 mc_on;   // 左 / 右の垂直線・下 / 上の水平線が出ているか (1 / 0)
 float mc_cov(vec2 q, float aa, float audio){
   float w = 0.011 * uMcLine * 0.01 * (1.0 + audio * 0.5);   // 線の半幅
+  mc_w = w;
   mg_unit = 2.0 * w; mg_snap = 0.0;
   mg_pitch = 1.0 / uMcDensity;
   q = mg_orient(q);
@@ -252,18 +255,19 @@ float mc_cov(vec2 q, float aa, float audio){
   vec2 wp1 = vec2(mg_h(vec3(mg_rseed, 71.0, 1.0)), mg_h(vec3(mg_rseed, 72.0, 1.0))) * 6.2832 + mg_B * 0.021 * mg_motion;
   vec2 wp2 = vec2(mg_h(vec3(mg_rseed, 73.0, 1.0)), mg_h(vec3(mg_rseed, 74.0, 1.0))) * 6.2832 - mg_B * 0.017 * mg_motion;
   vec2 dq = 1.0 + jp * (0.62 * cos(q * wf1 + wp1) + 0.38 * cos(q * wf2 + wp2));
+  mc_dq = dq;
   q += jp * (0.62 * sin(q * wf1 + wp1) / wf1 + 0.38 * sin(q * wf2 + wp2) / wf2);
   mg_build(q);
   mc_q = q;
   // ── 線 (区間は端から端まで。端は直交する線に重なる) ──
   float BIG = 1e9;
   float sV = BIG, sH = BIG;
-  if(mg_kL > -9e3 && mg_shownV(mg_kL, mg_aL)) sV = min(sV, q.x - mg_xL);
-  if(mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)) sV = min(sV, mg_xR - q.x);
-  if(mg_jB > -9e3 && mg_shownH(mg_jB)) sH = min(sH, q.y - mg_yB);
-  if(mg_jT <  9e3 && mg_shownH(mg_jT)) sH = min(sH, mg_yT - q.y);
+  mc_on = vec4(0.0);
+  if(mg_kL > -9e3 && mg_shownV(mg_kL, mg_aL)){ sV = min(sV, q.x - mg_xL); mc_on.x = 1.0; }
+  if(mg_kR <  9e3 && mg_shownV(mg_kR, mg_aR)){ sV = min(sV, mg_xR - q.x); mc_on.y = 1.0; }
+  if(mg_jB > -9e3 && mg_shownH(mg_jB)){ sH = min(sH, q.y - mg_yB); mc_on.z = 1.0; }
+  if(mg_jT <  9e3 && mg_shownH(mg_jT)){ sH = min(sH, mg_yT - q.y); mc_on.w = 1.0; }
   float d = min(sV / dq.x, sH / dq.y);
-  mc_d = d - w;
   return smoothstep(w + aa, w - aa, d);
 }
 // 盤面上の 1 点 q の色を返す。戻り値 = 線の覆い (0..1)。isPaper = 白地か
@@ -338,30 +342,68 @@ vec3 bg_composition(vec2 fc){
   ro.xy = mat2(cy, -sy, sy, cy) * ro.xy; rd.xy = mat2(cy, -sy, sy, cy) * rd.xy;
   if(rd.z >= -1e-4){ bgAlpha = 1.0 - (uFx3dMatte > 0.5 ? 100.0 : uMcClear) * 0.01; return uMcPaper * bgAlpha; }
   float tTop = (max(H, HB) - ro.z) / rd.z, tBot = -ro.z / rd.z;
-  // 線 (高さ H) と建物 (色面ごとに 0.35〜1 × HB) の柱の高さ場を視線で進む。線の縁までの距離ぶん横に進み (空いた面は 1〜2 歩)、
-  //   いる柱の天面より下へは一度に潜らない (天面で止める)。柱の中 (天面以下) に入ったら当たり。上限は uniform 依存
-  int N = int(clamp(20.0 + 0.0 * time, 2.0, 20.0));
+  // 格子の面 (セル) を 1 つずつ渡り歩く。各セルでは線の帯 (高さ H) と色面の建物 (高さ 0.35〜1 × HB) を箱として視線と交差させ、
+  //   当たらなければセルの出口まで一気に進む。セルの中の視線はジャンプ率の伸び縮み (mc_dq) で直線に近似し、遠い当たりは手前で測り直す。
+  //   上限は uniform 依存 = 定数ループの展開を避ける。上限を越えた遠景は盤面 (z = 0) で描く
+  int N = int(clamp(28.0 + 0.0 * time, 2.0, 28.0));
   float tHit = tBot; float side = 0.0; float hitI = -1.0;
-  float kxy = length(rd.xy) * sc / zm;                        // 視線 1 進むあいだの盤面の座標の進み
+  vec2 dir0 = tilt * rd.xy * (sc / zm);                      // 視線 1 進むあいだの盤面の座標の進み (伸び縮み前)
   float t = tTop;
-  for(int i = 0; i < 20; i++){
-    if(i >= N || t > tBot) break;
+  for(int i = 0; i < 28; i++){
+    if(i >= N || t >= tBot) break;
     vec3 p = ro + rd * t;
     vec2 q = tilt * ((p.xy / zm + bgCamPx / resolution.y)) * sc;
     mc_cov(q, 0.0, audio);
-    float hc = 0.0;
-    if(mc_d <= 0.0) hc = H;
-    else if(HB > 0.0 && mc_cellSolid() > 0.5) hc = HB * (0.35 + 0.65 * mg_h(vec3(mg_kL * 7.13 + mg_jB * 131.7, 81.0, mg_seed)));
-    if(p.z <= hc + 1e-5){
+    vec2 D = mg_orient(dir0) * mc_dq;                          // 伸び縮み後の座標での視線の向き
+    vec2 Q = mc_q;
+    vec2 iD = 1.0 / max(abs(D), vec2(1e-7)) * sign(D + 1e-12);
+    vec2 sx = (vec2(mg_xL, mg_xR) - Q.x) * iD.x, sy = (vec2(mg_yB, mg_yT) - Q.y) * iD.y;
+    float sExit = min(max(sx.x, sx.y), max(sy.x, sy.y));      // セルの出口
+    float sBot = tBot - t;
+    float w = mc_w;
+    vec2 wq = w * mc_dq;                                        // 線の半幅 (伸び縮み後)
+    float sBest = 1e9; float sideBest = 0.0; vec4 bxBest = vec4(0.0);
+    for(int b = 0; b < 5; b++){
+      vec4 bx; float h;
+      if(b == 0){ if(mc_on.x < 0.5) continue; bx = vec4(mg_xL, mg_yB, mg_xL + wq.x, mg_yT); h = H; }
+      else if(b == 1){ if(mc_on.y < 0.5) continue; bx = vec4(mg_xR - wq.x, mg_yB, mg_xR, mg_yT); h = H; }
+      else if(b == 2){ if(mc_on.z < 0.5) continue; bx = vec4(mg_xL, mg_yB, mg_xR, mg_yB + wq.y); h = H; }
+      else if(b == 3){ if(mc_on.w < 0.5) continue; bx = vec4(mg_xL, mg_yT - wq.y, mg_xR, mg_yT); h = H; }
+      else {
+        if(HB <= 0.0 || mc_cellSolid() < 0.5) continue;
+        bx = vec4(mg_xL, mg_yB, mg_xR, mg_yT) + vec4(wq * mc_on.xz, -wq * mc_on.yw);   // 色面 = 出ている線の内側
+        h = HB * (0.35 + 0.65 * mg_h(vec3(mg_kL * 7.13 + mg_jB * 131.7, 81.0, mg_seed)));
+      }
+      if(h <= 0.0) continue;
+      vec2 a = (bx.xy - Q) * iD, c = (bx.zw - Q) * iD;
+      vec2 sn = min(a, c), sf = max(a, c);
+      float szIn = (h - p.z) / rd.z;                            // 天面を下へ抜ける
+      float sIn = max(max(sn.x, sn.y), szIn);
+      float sOut = min(min(sf.x, sf.y), sBot);
+      if(sIn <= sOut && sOut >= 0.0){
+        float s = max(sIn, 0.0);
+        if(s < sBest){ sBest = s; sideBest = (szIn >= max(sn.x, sn.y)) ? 0.0 : 1.0; bxBest = bx; }
+      }
+    }
+    if(sBest < 1e8 && sBest * length(D) > 0.3 * w && i < N - 1){   // 遠い予測は直線近似がずれる → 手前まで進んで測り直す
+      t += sBest * 0.97;
+      continue;
+    }
+    if(sBest < 1e8){
       hitI = float(i);
-      tHit = t;
-      side = p.z < hc - 1e-3 * zm / sc ? 1.0 : 0.0;   // 天面より下で当たった = 側面
-      mc_eval(q, sc * t / (resolution.y * zm), audio, col, isPaper);
+      tHit = t + sBest;
+      side = sideBest;
+      // 色は箱の少し内側 (箱の中心へ寄せた点) で読む。側面の縁で外の白地や隣の色を拾わない
+      vec3 ph = ro + rd * tHit;
+      vec2 qh = tilt * ((ph.xy / zm + bgCamPx / resolution.y)) * sc;
+      vec2 toC = 0.5 * (bxBest.xy + bxBest.zw) - (Q + D * sBest);
+      float dC = length(toC);
+      if(dC > 1e-7) qh += mg_orient(toC / dC * min(0.3 * w, 0.5 * dC) / mc_dq);
+      mc_eval(qh, sc * tHit / (resolution.y * zm), audio, col, isPaper);
       break;
     }
-    float dxy = (mc_d > 0.0 ? mc_d : -mc_d + 1e-4) / max(kxy, 1e-4);   // 柱の縁まで
-    float dz = (p.z - hc) / max(-rd.z, 1e-4);                         // いる柱の天面まで
-    t += max(min(dxy, dz), 0.0015);
+    if(sExit >= sBot) break;
+    t += max(sExit, 0.0) + 2e-4 * w / max(length(D), 1e-6) + 1e-6;
   }
   if(hitI < 0.0){   // 線に当たらなければ盤面 (z = 0)
     vec3 p = ro + rd * tBot;
