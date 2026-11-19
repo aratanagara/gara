@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795047284">
+<link rel="stylesheet" href="style.css?v=1795047593">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -692,6 +692,10 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>FX Raster</label>
             <input type="range" id="tdCompRaster" min="0" max="1" step="0.01" value="0" title="FXラック: ラスタ質感 (スキャンライン/ノイズ。0で無効)">
             <div class="val" id="tdCompRasterVal">Off</div>
+          </div>
+          <div class="row"><label>C Audio</label>
+            <input type="range" id="tdMdCompAudio" min="0" max="1" step="0.01" value="0" title="Composition を音で動かす量 (Audio の入力が要る)。音で強さ・位相の進み、打点で不安定さ、低音で奥行きを持ち上げ、鳴っている間は帯域の偏りの位置にポインタを置く (Field / Flux / Cascade / Contour / Feedback が反応)。密度は変えない">
+            <div class="val" id="tdMdCompAudioVal">0.00</div>
           </div>
           <!-- Surface: 上流 type-deformer 0.3 の Surface Operator 100 種 (mode/textdeform-surface.js)。md 単位。
                fold-skip = カテゴリ折りたたみ (_initParamFold) で md 側の分類に混ざらないよう、ひとまとまりで置く -->
@@ -1973,57 +1977,57 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795047284"></script>
-<script src="mode/layer.js?v=1795047284"></script>
-<script src="vendor/iro.min.js?v=1795047284"></script>
-<script src="vendor/mediabunny.min.js?v=1795047284"></script>
-<script src="mode/textdeform.js?v=1795047284"></script>
-<script src="mode/textdeform-upstream.js?v=1795047284"></script>
-<script src="mode/textdeform-comp.js?v=1795047284"></script>
-<script src="mode/textdeform-surface.js?v=1795047284"></script>
-<script src="mode/ugomeki.js?v=1795047284"></script>
-<script src="mode/slicer.js?v=1795047284"></script>
-<script src="mode/video.js?v=1795047284"></script>
-<script src="mode/aratanagara.js?v=1795047284"></script>
-<script src="vendor/p5.min.js?v=1795047284"></script>
-<script src="mode/cyberui.js?v=1795047284"></script>
-<script src="mode/novel.js?v=1795047284"></script>
-<script src="shaders/inkelly.js?v=1795047284"></script>
-<script src="sketchfx.js?v=1795047284"></script>
-<script src="pixelsortfx.js?v=1795047284"></script>
-<script src="shaders/boltzmann.js?v=1795047284"></script>
-<script src="mode/pen.js?v=1795047284"></script>
-<script src="shaders/caverns.js?v=1795047284"></script>
-<script src="mode/shelf.js?v=1795047284"></script>
-<script src="shaders/ribbon.js?v=1795047284"></script>
-<script src="mode/photoplane.js?v=1795047284"></script>
-<script src="mode/shredder.js?v=1795047284"></script>
-<script src="mode/transflock.js?v=1795047284"></script>
-<script src="mode/liquidpeel.js?v=1795047284"></script>
-<script src="mode/windflock.js?v=1795047284"></script>
-<script src="mode/rhizome.js?v=1795047284"></script>
-<script src="mode/surrealfloat.js?v=1795047284"></script>
-<script src="mode/chrometype.js?v=1795047284"></script>
-<script src="mode/tower4149.js?v=1795047284"></script>
-<script src="mode/fude.js?v=1795047284"></script>
-<script src="mode/image.js?v=1795047284"></script>
-<script src="mode/spacetype.js?v=1795047284"></script>
-<script src="fx3d.js?v=1795047284"></script>
-<script src="fx3d-layers.js?v=1795047284"></script>
-<script src="fx3d-cubes.js?v=1795047284"></script>
-<script src="fx3d-blinds.js?v=1795047284"></script>
-<script src="fx3d-diorama.js?v=1795047284"></script>
-<script src="fx3d-points.js?v=1795047284"></script>
-<script src="fx3d-gravity.js?v=1795047284"></script>
-<script src="fx3d-globe.js?v=1795047284"></script>
-<script src="pollockfx.js?v=1795047284"></script>
-<script src="overlay.js?v=1795047284"></script>
-<script src="gif.js?v=1795047284"></script>
-  <script src="ui-icons.js?v=1795047284"></script>
-  <script src="app.js?v=1795047284"></script>
-  <script src="ui-scrollbar.js?v=1795047284"></script>
-  <script src="ui-settings.js?v=1795047284"></script>
-<script src="camroll.js?v=1795047284" defer></script>
-<script src="dbltap.js?v=1795047284" defer></script>
+<script src="presets.js?v=1795047593"></script>
+<script src="mode/layer.js?v=1795047593"></script>
+<script src="vendor/iro.min.js?v=1795047593"></script>
+<script src="vendor/mediabunny.min.js?v=1795047593"></script>
+<script src="mode/textdeform.js?v=1795047593"></script>
+<script src="mode/textdeform-upstream.js?v=1795047593"></script>
+<script src="mode/textdeform-comp.js?v=1795047593"></script>
+<script src="mode/textdeform-surface.js?v=1795047593"></script>
+<script src="mode/ugomeki.js?v=1795047593"></script>
+<script src="mode/slicer.js?v=1795047593"></script>
+<script src="mode/video.js?v=1795047593"></script>
+<script src="mode/aratanagara.js?v=1795047593"></script>
+<script src="vendor/p5.min.js?v=1795047593"></script>
+<script src="mode/cyberui.js?v=1795047593"></script>
+<script src="mode/novel.js?v=1795047593"></script>
+<script src="shaders/inkelly.js?v=1795047593"></script>
+<script src="sketchfx.js?v=1795047593"></script>
+<script src="pixelsortfx.js?v=1795047593"></script>
+<script src="shaders/boltzmann.js?v=1795047593"></script>
+<script src="mode/pen.js?v=1795047593"></script>
+<script src="shaders/caverns.js?v=1795047593"></script>
+<script src="mode/shelf.js?v=1795047593"></script>
+<script src="shaders/ribbon.js?v=1795047593"></script>
+<script src="mode/photoplane.js?v=1795047593"></script>
+<script src="mode/shredder.js?v=1795047593"></script>
+<script src="mode/transflock.js?v=1795047593"></script>
+<script src="mode/liquidpeel.js?v=1795047593"></script>
+<script src="mode/windflock.js?v=1795047593"></script>
+<script src="mode/rhizome.js?v=1795047593"></script>
+<script src="mode/surrealfloat.js?v=1795047593"></script>
+<script src="mode/chrometype.js?v=1795047593"></script>
+<script src="mode/tower4149.js?v=1795047593"></script>
+<script src="mode/fude.js?v=1795047593"></script>
+<script src="mode/image.js?v=1795047593"></script>
+<script src="mode/spacetype.js?v=1795047593"></script>
+<script src="fx3d.js?v=1795047593"></script>
+<script src="fx3d-layers.js?v=1795047593"></script>
+<script src="fx3d-cubes.js?v=1795047593"></script>
+<script src="fx3d-blinds.js?v=1795047593"></script>
+<script src="fx3d-diorama.js?v=1795047593"></script>
+<script src="fx3d-points.js?v=1795047593"></script>
+<script src="fx3d-gravity.js?v=1795047593"></script>
+<script src="fx3d-globe.js?v=1795047593"></script>
+<script src="pollockfx.js?v=1795047593"></script>
+<script src="overlay.js?v=1795047593"></script>
+<script src="gif.js?v=1795047593"></script>
+  <script src="ui-icons.js?v=1795047593"></script>
+  <script src="app.js?v=1795047593"></script>
+  <script src="ui-scrollbar.js?v=1795047593"></script>
+  <script src="ui-settings.js?v=1795047593"></script>
+<script src="camroll.js?v=1795047593" defer></script>
+<script src="dbltap.js?v=1795047593" defer></script>
 </body>
 </html>

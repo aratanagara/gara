@@ -16,7 +16,7 @@ const TD_FONT_GOTHIC = '"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Z
 const TD_FONT_MONO = '"dnp-shuei-gothic-gin-std","Space Mono",' + TD_UNICODE_FALLBACK + ',"Noto Sans JP",monospace';
 const TD_MD_STYLE_KEYS = ['paper','ink','accent','accentRatio','fontFamily','fontSize','lineHeight','letterSpacing','vertical','stageW','marginPct','fitMode','zoom','panX','panY','randomLaw','rotation','randomness','geoRatio','stretchX','stretchY','flipRate',
   'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap','comp','surf',
-  'showPct','sizeVar','scatter','tremor','waveAmp','waveLen','lineStagger','slant','swirl','bulge','viewAngle','pivotX','pivotY','stepSize','misregAlpha','misregRatio','trailPct','accentOnMove','rainbow','rainbowSpan','vignette','vignetteColor','grain','grainSize'];
+  'showPct','sizeVar','scatter','tremor','waveAmp','waveLen','lineStagger','slant','swirl','bulge','viewAngle','pivotX','pivotY','stepSize','misregAlpha','misregRatio','trailPct','accentOnMove','rainbow','rainbowSpan','vignette','vignetteColor','grain','grainSize','compAudio'];
 
 /* ---- Confuse operator: 類字置換の Core 辞書 (元アプリの graded lookalike dictionary 移植) ----
  * Tier 1: 同一文字の形態バリエーション (全角・濁点・小書き・旧字体)
@@ -150,6 +150,7 @@ const TextDeform = {
     rainbow: 0, rainbowSpan: 360,   // 文字ごとの虹色 %: 混ぜる量 / 版面全体で回す色相 deg
     vignette: 0, vignetteColor: '#000000',   // 周辺減光 % / 色
     grain: 0, grainSize: 100,        // フィルムグレイン % / 粒の大きさ %
+    compAudio: 0,                    // Composition を音で動かす量 (0..1。mode/textdeform-comp.js の audioDrive)
     // レイアウト(スロットに合わせる)
     marginPct: 8, transparentBg: false, fitMode: 'fit', zoom: 1, panX: 0, panY: 0,
     // VJ 駆動
