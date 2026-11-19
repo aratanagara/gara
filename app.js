@@ -17845,12 +17845,43 @@ void mainImage(out vec4 o, in vec2 f){
       toast('Surface: ' + tdSurfOp.options[tdSurfOp.selectedIndex].text);
     });
     const tdSurfPreset = $('#tdSurfPreset');
-    if(tdSurfPreset) tdSurfPreset.addEventListener('change', ()=>{
-      if(typeof TDSurf === 'undefined') return;
-      if(!tdSurfPreset.value){ tdSurfSet({ preset: '' }); return; }
-      TDSurf.applyPreset(tdSurfPreset.value); tdSurfStore();
-      toast('Surface Preset: ' + tdSurfPreset.options[tdSurfPreset.selectedIndex].text);
+    if(tdSurfPreset){
+      // 一覧はエンジンと一緒に読み込む。Surface が Off でも、選択欄に触れた時点で読み込みを始める
+      const warm = ()=>{ if(typeof TDSurf !== 'undefined') TDSurf.ensure().catch(()=>{}); };
+      tdSurfPreset.addEventListener('pointerdown', warm);
+      tdSurfPreset.addEventListener('focus', warm);
+      tdSurfPreset.addEventListener('change', async ()=>{
+        if(typeof TDSurf === 'undefined') return;
+        if(!tdSurfPreset.value){ tdSurfSet({ preset: '' }); return; }
+        const id = tdSurfPreset.value, label = tdSurfPreset.options[tdSurfPreset.selectedIndex].text;
+        if(!TDSurf.cfg.enabled) TDSurf.set({ enabled: true });   // プリセットを選んだら Surface を On に
+        try{ await TDSurf.ensure(); await TDSurf.loadPresets(); }catch(e){ return; }
+        TDSurf.applyPreset(id); tdSurfStore();
+        toast('Surface Preset: ' + label);
+      });
+    }
+    // 文字の出どころ (TextDeform.textSrc。全 md 共通)
+    const tdText = (over)=>{ if(typeof TextDeform === 'undefined') return; TextDeform.setTextSource(over); this.refreshTextDeformText(); };
+    const tdTextMode = $('#tdTextMode');
+    if(tdTextMode) tdTextMode.addEventListener('change', ()=>tdText({ mode: tdTextMode.value }));
+    const tdTextPool = $('#tdTextPool');
+    if(tdTextPool) tdTextPool.addEventListener('change', ()=>tdText({ pool: tdTextPool.value }));
+    const tdTextEvery = $('#tdTextEvery');
+    if(tdTextEvery) tdTextEvery.addEventListener('input', ()=>tdText({ every: parseInt(tdTextEvery.value, 10) || 1 }));
+    const tdTextNext = $('#tdTextNext');
+    if(tdTextNext) tdTextNext.addEventListener('click', ()=>{
+      if(typeof TextDeform === 'undefined') return;
+      if(TextDeform.textSrc.mode !== 'random') TextDeform.setTextSource({ mode: 'random' });
+      TextDeform.nextRandomText(); this.refreshTextDeformText();
     });
+    const tdTextCustom = $('#tdTextCustom');
+    if(tdTextCustom){
+      let tm = null;
+      tdTextCustom.addEventListener('input', ()=>{
+        clearTimeout(tm);
+        tm = setTimeout(()=>tdText({ custom: tdTextCustom.value, mode: 'custom' }), 250);   // 入力すると Custom に切り替わる
+      });
+    }
     const tdSurfEdit = $('#tdSurfEdit');
     if(tdSurfEdit) tdSurfEdit.addEventListener('change', ()=>tdSurfSet({ op: tdSurfEdit.value }));
     [['tdSurfStrength','strength'],['tdSurfChance','chance'],['tdSurfSpeed','speed'],['tdSurfOpacity','opacity']].forEach(([id, key])=>{
@@ -23936,6 +23967,28 @@ void mainImage(out vec4 o, in vec2 f){
       setComp('tdCompRaster', 'tdCompRasterVal', c.fxRack.rasterMaterial.enabled ? c.fxRack.rasterMaterial.amount : 0, offPct);
     }
     this.refreshTextDeformSurface();
+    this.refreshTextDeformText();
+  },
+
+  // Text 欄 (文字の出どころ。全 md 共通なので固定 md でなくても編集できる)
+  refreshTextDeformText(){
+    if(typeof TextDeform === 'undefined') return;
+    const T = TextDeform; T._ensureTextSrc();
+    const s = T.textSrc;
+    const mode = $('#tdTextMode'); if(mode) mode.value = s.mode;
+    const pool = $('#tdTextPool');
+    if(pool){
+      if(pool.dataset.filled !== '1' && typeof TD_TEXT_PRESETS !== 'undefined'){
+        pool.innerHTML = '<option value="all">All</option>' + TD_TEXT_PRESETS.map(g=>'<option value="' + g.group + '">' + g.label + ' (' + g.items.length + ')</option>').join('');
+        pool.dataset.filled = '1';
+      }
+      pool.value = s.pool;
+    }
+    const ev = $('#tdTextEvery'), evv = $('#tdTextEveryVal');
+    if(ev) ev.value = String(s.every);
+    if(evv) evv.textContent = s.every + ' beat';
+    const ta = $('#tdTextCustom');
+    if(ta && document.activeElement !== ta) ta.value = s.custom || '';
   },
 
   // Surface 欄 (md 単位 — 固定 md 選択時のみ編集可)。Operator のパラメータ行は選んだ Operator の表から作り直す
@@ -23974,7 +24027,7 @@ void mainImage(out vec4 o, in vec2 f){
         preSel.dataset.filled = '1';
       }
       if(c.preset && !preSel.querySelector('option[value="' + c.preset + '"]')){ const o = document.createElement('option'); o.value = c.preset; o.textContent = c.preset; preSel.appendChild(o); }
-      preSel.value = c.preset || ''; preSel.disabled = !fixed || !S.meta;
+      preSel.value = c.preset || ''; preSel.disabled = !fixed;   // エンジン未読み込みでも触れれば読み込みが始まる
     }
     const thumbRow = $('#tdSurfThumbRow'), thumb = $('#tdSurfThumb');
     if(thumbRow && thumb){
