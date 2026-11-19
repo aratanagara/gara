@@ -103,7 +103,12 @@ const TDSurf = {
       if(!globalThis.TypeDeformerRenderJobs.supportsSurfaceWorker()) throw new Error('この環境は OffscreenCanvas Worker に未対応です');
       this.jobs = globalThis.TypeDeformerRenderJobs.create({
         editTimeout: 30000, interruptAfter: 180,
-        workerFactory: ()=>new Worker(new URL(UP.BASE + 'vj-surface-worker.js' + UP.q, document.baseURI)),
+        workerFactory: ()=>{
+          // importScripts の一時的な読み込み失敗などで Worker が落ちても画面のエラー表示へは上げない (_onJobState が作り直す)
+          const w = new Worker(new URL(UP.BASE + 'vj-surface-worker.js' + UP.q, document.baseURI));
+          w.addEventListener('error', e=>{ e.preventDefault(); console.warn('[TDSurf] worker', e.message || e); });
+          return w;
+        },
         encode: job=>({ id: job.id, payload: job.payload }),
         onState: s=>this._onJobState(s)
       });
@@ -185,6 +190,12 @@ const TDSurf = {
   _onJobState(s){
     if(s.error && this._pending && s.key === this._pending.key){
       this._pending = null;
+      // Worker ごと落ちた (読み込み失敗・クラッシュ) ときは間を空けて作り直す。描画範囲の問題ではないので envelope は触らない
+      if(s.errorCode === 'RENDER_WORKER_FAILED' && (this._workerRetry || 0) < 4){
+        const n = this._workerRetry = (this._workerRetry || 0) + 1;
+        this._retryAt = performance.now() + 500 * n * n;
+        return;
+      }
       // 描画範囲を広げすぎて作業上限を超えたときは、拡張をやめて元の範囲で描き直す (はみ出しは切れる)
       if(this.envelopeScale > 1 || !this._noEnvelope){ this.envelopeScale = 1; this._noEnvelope = true; this._dirty = true; return; }
       if(!this._errShown){ this._errShown = true; this.error = s.error; console.warn('[TDSurf]', s.error); this._notify(); }
@@ -212,7 +223,7 @@ const TDSurf = {
     if(!next.length) return;
     this.layers = next;
     this.lastMs = r.duration || 0;
-    this.error = ''; this._errShown = false;
+    this.error = ''; this._errShown = false; this._workerRetry = 0;
     this._notify();
   },
 
@@ -341,6 +352,7 @@ const TDSurf = {
   // TextDeform._renderToCanvas から毎フレーム呼ぶ。Worker が空いていれば次のフレームを頼む。
   request(glyphs, w, h){
     if(!this.active() || !this.jobs) return;
+    if(this._retryAt){ if(performance.now() < this._retryAt) return; this._retryAt = 0; }
     // 描画中は待つ。ただし設定が変わったときは頼み直す (古い描画は interruptAfter で打ち切られる)
     if(this.jobs.status().busy && !this._dirty) return;
     this._dirty = false;
