@@ -19277,12 +19277,55 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow('Scene');
       const sel = document.createElement('select'); sel.style.flex = '1';
       sel.title = 'Random=Scene Beats 拍ごとに抽選 (beatモードのみ。droneでは現在のシーンを維持) / それ以外=固定';
-      const items = [['random','Random'],['fluid','Fluid (構図)'],['melt','Meltdown'],['columns','Columns (段組)'],['vert','Vertical (縦書き)'],['typer','Typer'],['render','ASCII Render']];
+      const items = [['random','Random'],['editorial','Editorial (組版)'],['fluid','Fluid (構図)'],['melt','Meltdown'],['columns','Columns (段組)'],['vert','Vertical (縦書き)'],['typer','Typer'],['render','ASCII Render']];
       for(const [v, name] of items){ const o = document.createElement('option'); o.value = v; o.textContent = name; sel.appendChild(o); }
       sel.value = items.some(i=>i[0]===P.scene) ? P.scene : 'fluid';
       sel.addEventListener('change', ()=>{ P.scene = sel.value; NovelTerminal._scEp = undefined; App._undoSchedule(); });
       row.appendChild(sel);
     }
+    const mkSlider = ([label, key, mi, ma, st2, fmt, title])=>{
+      const row = mkRow(label);
+      const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st2; inp.value=P[key];
+      if(title) inp.title = title;
+      inp.dataset.default = String(App.resetValueFor('novel', key, NovelTerminal._PDef[key] !== undefined ? NovelTerminal._PDef[key] : P[key]));
+      const val = document.createElement('div'); val.className='val'; val.textContent = fmt(P[key]);
+      inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
+      row.appendChild(inp); row.appendChild(val);
+    };
+    const mkColor = ([label, key, title])=>{
+      const row = mkRow(label);
+      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      const col = document.createElement('input'); col.type='color'; col.value = toHex(P[key]);
+      if(title) col.title = title;
+      col.dataset.default = toHex(App.resetValueFor('novel', key, NovelTerminal._PDef[key] || P[key]));
+      col.addEventListener('input', ()=>{ const v=col.value; P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      row.appendChild(col);
+    };
+    const mkToggles = (label, list)=>{
+      const row = mkRow(label);
+      const grp = document.createElement('div'); grp.className = 'toggles'; row.appendChild(grp);   // 並ぶチェックはトグルボタン (共通部品 .toggles)
+      for(const [key, name, title] of list){
+        const lab = document.createElement('label');
+        if(title) lab.title = title;
+        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = P[key] !== false;
+        cb.addEventListener('change', ()=>{ P[key] = cb.checked; App._undoSchedule(); });
+        lab.appendChild(cb); lab.appendChild(document.createTextNode(name));
+        grp.appendChild(lab);
+      }
+    };
+    // ── Editorial (組版シーン) ──
+    for(const [label, key, opts, title] of (NovelTerminal.ED_SELECTS || [])){
+      const row = mkRow(label);
+      const sel = document.createElement('select'); sel.style.flex = '1';
+      if(title) sel.title = title;
+      for(const [v, n] of opts){ const o = document.createElement('option'); o.value = String(v); o.textContent = n; sel.appendChild(o); }
+      sel.value = String(P[key]|0);
+      sel.addEventListener('change', ()=>{ P[key] = parseInt(sel.value,10)||0; App._undoSchedule(); });
+      row.appendChild(sel);
+    }
+    (NovelTerminal.ED_SPECS || []).forEach(mkSlider);
+    if(NovelTerminal.ED_TOGGLES) mkToggles('Editorial', NovelTerminal.ED_TOGGLES);
+    (NovelTerminal.ED_COLORS || []).forEach(mkColor);
     // ── Random 🎲 (パラメータのみランダム化。scene 選択は変えない) ──
     {
       const row = mkRow('Randomize');
@@ -19300,11 +19343,28 @@ void mainImage(out vec4 o, in vec2 f){
         P.glitch     = +R(0, 2.5).toFixed(2);
         P.alpha      = +R(0.7, 1.4).toFixed(2);
         P.tint       = +R(0, 2).toFixed(2);
-        P.inkMode    = ch(0.55) ? 0 : (Math.random()*4)|0;
+        P.inkMode    = ch(0.5) ? 4 : (Math.random()*4)|0;
         P.palette    = ch(0.4) ? -1 : (Math.random()*6)|0;
         P.vertLayer  = ch(0.75);
         P.holeLayer  = ch(0.7);
         P.cursor     = ch(0.6);
+        P.clash      = ch(0.8);
+        P.fluidContrast = Math.round(R(40, 180)/5)*5;
+        P.fluidCrisp = Math.round(R(30, 150)/5)*5;
+        P.fluidHud   = ch(0.2) ? 0 : Math.round(R(50, 200)/5)*5;
+        P.fluidBig   = ch(0.3) ? 0 : Math.round(R(50, 200)/5)*5;
+        P.edLayout   = (Math.random()*3)|0;
+        P.edSize     = Math.round(R(80, 140)/5)*5;
+        P.edLeading  = Math.round(R(85, 140)/5)*5;
+        P.edTracking = ch(0.7) ? 100 : Math.round(R(100, 130)/5)*5;
+        P.edMargin   = Math.round(R(60, 150)/5)*5;
+        P.edJump     = ch(0.15) ? 0 : Math.round(R(60, 200)/5)*5;
+        P.edCols     = Math.round(R(60, 170)/5)*5;
+        P.edGrid     = Math.round(R(0, 200)/5)*5;
+        P.edReveal   = Math.round(R(60, 220)/5)*5;
+        P.edTurnBeats = [8,16,16,32][(Math.random()*4)|0];
+        P.edFolio    = ch(0.8);
+        P.edMarks    = ch(0.7);
         this.refreshNovelParams();
         App._undoSchedule();
         toast('NOVEL randomize');
@@ -19327,39 +19387,16 @@ void mainImage(out vec4 o, in vec2 f){
       ['Beat Flash',  'beatFlash',  0,   3.0, 0.05, v=>v.toFixed(2), '拍頭フラッシュ量'],
       ['Morph',       'morph',      0,   3.0, 0.05, v=>v.toFixed(2), '旧シーン間の変形トランジション秒数 (0=カット)'],
     ];
-    for(const [label, key, mi, ma, st2, fmt, title] of specs){
-      const row = mkRow(label);
-      const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st2; inp.value=P[key];
-      if(title) inp.title = title;
-      inp.dataset.default = String(App.resetValueFor('novel', key, NovelTerminal._PDef[key] !== undefined ? NovelTerminal._PDef[key] : P[key]));
-      const val = document.createElement('div'); val.className='val'; val.textContent = fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
-      row.appendChild(inp); row.appendChild(val);
-    }
-    for(const [label, key, mi, ma, st2, fmt, title] of (NovelTerminal.SPECS || [])){
-      const row = mkRow(label);
-      const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st2; inp.value=P[key];
-      if(title) inp.title = title;
-      inp.dataset.default = String(App.resetValueFor('novel', key, NovelTerminal._PDef[key] !== undefined ? NovelTerminal._PDef[key] : P[key]));
-      const val = document.createElement('div'); val.className='val'; val.textContent = fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
-      row.appendChild(inp); row.appendChild(val);
-    }
-    for(const [label, key, title] of (NovelTerminal.COLORS || [])){
-      const row = mkRow(label);
-      const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
-      const col = document.createElement('input'); col.type='color'; col.value = toHex(P[key]);
-      if(title) col.title = title;
-      col.dataset.default = toHex(App.resetValueFor('novel', key, NovelTerminal._PDef[key] || P[key]));
-      col.addEventListener('input', ()=>{ const v=col.value; P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
-      row.appendChild(col);
-    }
+    specs.forEach(mkSlider);
+    (NovelTerminal.FLUID_SPECS || []).forEach(mkSlider);
+    (NovelTerminal.SPECS || []).forEach(mkSlider);
+    (NovelTerminal.COLORS || []).forEach(mkColor);
     // ── Ink / Palette セレクト ──
     {
       const row = mkRow('Ink');
       const sel = document.createElement('select'); sel.style.flex = '1';
-      sel.title = '文字色: Variant=構図ごとの配色 / 品詞=文字種で色分け / Mono=白 / Terminal=緑';
-      [['0','Variant'],['1','品詞カラー'],['2','Mono'],['3','Terminal']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
+      sel.title = '文字色: Variant=構図ごとの配色 / 品詞=文字種で色分け / Mono=白 / Terminal=緑 / Duotone=横組み Mono Ink + 縦書き Fluid Accent';
+      [['0','Variant'],['1','品詞カラー'],['2','Mono'],['3','Terminal'],['4','Duotone']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
       sel.value = String(P.inkMode|0);
       sel.addEventListener('change', ()=>{ P.inkMode = parseInt(sel.value,10)||0; App._undoSchedule(); });
       row.appendChild(sel);
@@ -19374,21 +19411,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(sel);
     }
     // ── チェックボックス ──
-    {
-      const row = mkRow('Layers');
-      const grp = document.createElement('div'); grp.className = 'toggles'; row.appendChild(grp);   // 並ぶチェックはトグルボタン (共通部品 .toggles)
-      const mkCb = (key, name, title)=>{
-        const lab = document.createElement('label');
-        if(title) lab.title = title;
-        const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = P[key] !== false;
-        cb.addEventListener('change', ()=>{ P[key] = cb.checked; App._undoSchedule(); });
-        lab.appendChild(cb); lab.appendChild(document.createTextNode(name));
-        grp.appendChild(lab);
-      };
-      mkCb('vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー');
-      mkCb('holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー');
-      mkCb('cursor', 'カーソル', 'Fluid: 下部の走査カーソル');
-    }
+    mkToggles('Layers', [['vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー'], ['holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー'], ['cursor', 'カーソル', 'Fluid: 下部の走査カーソル'], ['clash', '重なり除去', 'Fluid: 横組みと重なる縦書きの字を抜く']]);
   },
 
   refreshCyberParams(){
