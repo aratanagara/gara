@@ -27,7 +27,7 @@ const Pen = {
       monoInk:[0,0,0], palTint:[1,1,1] },
 
   // 定数
-  BLEED:1.52, SPHERE_R:500, STRIDE:5, CAM_DIST:1250, FOV:920,   // 球状ハコ(半径 SPHERE_R)。カメラは奥へ引き FOV で見かけ倍率を維持
+  BLEED:1.52, SPHERE_R:500, STRIDE:6, CAM_DIST:1250, FOV:920,   // 球状ハコ(半径 SPHERE_R)。カメラは奥へ引き FOV で見かけ倍率を維持
   SUBBEAT:2,   // BPM 同期: 1 拍を何分割して spawn するか(2=8分)
   PALETTE_PERIOD:8.0,
   palA:null, palB:null, palPhase:0,
@@ -48,10 +48,12 @@ precision highp float;
 attribute vec2  a_pos;
 attribute vec2  a_uv;
 attribute float a_alpha;
+attribute float a_z;      // 視点からの距離 (Code 3D の深度用。色の描画では深度テストを使わない)
+uniform   float u_zs;     // 距離 → 0..1
 varying   vec2  v_uv;
 varying   float v_alpha;
 void main(){
-  gl_Position = vec4(a_pos,0.0,1.0);
+  gl_Position = vec4(a_pos, clamp(a_z*u_zs, 0.0, 0.9999)*2.0 - 1.0, 1.0);
   v_uv = a_uv; v_alpha = a_alpha;
 }`,
 
@@ -150,6 +152,8 @@ void main(){
       pos:       gl.getAttribLocation(prog,  'a_pos'),
       uv:        gl.getAttribLocation(prog,  'a_uv'),
       alpha:     gl.getAttribLocation(prog,  'a_alpha'),
+      z:         gl.getAttribLocation(prog,  'a_z'),
+      zs:        gl.getUniformLocation(prog, 'u_zs'),
       ink:       gl.getUniformLocation(prog, 'u_ink'),
       seed:      gl.getUniformLocation(prog, 'u_seed'),
       kasure:    gl.getUniformLocation(prog, 'u_kasure'),
@@ -233,7 +237,7 @@ void main(){
     let x=vp[0]*d, y=vp[1]*d;
     const r=this._rollAdd;
     if(r !== 0){ const c=Math.cos(r), s=Math.sin(r); const x2=x*c - y*s; y = x*s + y*c; x = x2; }
-    return [x/(this.W*0.5), y/(this.H*0.5)];
+    return [x/(this.W*0.5), y/(this.H*0.5), vz];
   },
 
   makeRandomStroke(born){
@@ -415,8 +419,8 @@ void main(){
       if(!l0||!r0||!l1||!r1) continue;
       const tA=i/SEGS, tB=(i+1)/SEGS, a0=av[i], a1=av[i+1];
       // 平たいリボン (2 三角形)。UV v: 左縁=-BLEED / 右縁=+BLEED (FS のブラシ/かすれ用)
-      data.push(l0[0],l0[1],tA,-BLEED,a0,  r0[0],r0[1],tA,BLEED,a0,  l1[0],l1[1],tB,-BLEED,a1);
-      data.push(r0[0],r0[1],tA,BLEED,a0,   r1[0],r1[1],tB,BLEED,a1,  l1[0],l1[1],tB,-BLEED,a1);
+      data.push(l0[0],l0[1],tA,-BLEED,a0,l0[2],  r0[0],r0[1],tA,BLEED,a0,r0[2],  l1[0],l1[1],tB,-BLEED,a1,l1[2]);
+      data.push(r0[0],r0[1],tA,BLEED,a0,r0[2],   r1[0],r1[1],tB,BLEED,a1,r1[2],  l1[0],l1[1],tB,-BLEED,a1,l1[2]);
     }
     return data.length ? new Float32Array(data) : null;
   },
@@ -458,10 +462,10 @@ void main(){
     }
   },
 
-  _drawStroke(s){
+  _drawStroke(s, data){
     const gl=this.gl, L=this.LOC;
-    const data=this._buildBuffer(s, this.clock);
-    if(!data) return;
+    if(!data) data=this._buildBuffer(s, this.clock);
+    if(!data) return null;
     gl.bufferData(gl.ARRAY_BUFFER, data, gl.DYNAMIC_DRAW);
     gl.uniform3fv(L.ink, s.ink);
     gl.uniform1f(L.seed, s.seed);
@@ -476,6 +480,7 @@ void main(){
     gl.uniform3fv(L.cosC, s.cosC);
     gl.uniform3fv(L.cosD, s.cosD);
     gl.drawArrays(gl.TRIANGLES, 0, data.length/this.STRIDE);
+    return data;
   },
 
   render(opts){
@@ -513,9 +518,13 @@ void main(){
     gl.enableVertexAttribArray(this.LOC.pos);
     gl.enableVertexAttribArray(this.LOC.uv);
     gl.enableVertexAttribArray(this.LOC.alpha);
-    gl.vertexAttribPointer(this.LOC.pos,  2, gl.FLOAT, false, 20, 0);
-    gl.vertexAttribPointer(this.LOC.uv,   2, gl.FLOAT, false, 20, 8);
-    gl.vertexAttribPointer(this.LOC.alpha,1, gl.FLOAT, false, 20, 16);
+    gl.enableVertexAttribArray(this.LOC.z);
+    gl.vertexAttribPointer(this.LOC.pos,  2, gl.FLOAT, false, 24, 0);
+    gl.vertexAttribPointer(this.LOC.uv,   2, gl.FLOAT, false, 24, 8);
+    gl.vertexAttribPointer(this.LOC.alpha,1, gl.FLOAT, false, 24, 16);
+    gl.vertexAttribPointer(this.LOC.z,    1, gl.FLOAT, false, 24, 20);
+    const zs = 1 / (this._camD / this.cam.zoom + this.SPHERE_R * 2);
+    gl.uniform1f(this.LOC.zs, zs);
 
     const L=this.LOC, mi=this.P.monoInk || [0,0,0], pt=this.P.palTint || [1,1,1];
     gl.uniform1f(L.grain, this._pct('grain'));
@@ -526,7 +535,21 @@ void main(){
     gl.uniform3f(L.monoInk, mi[0], mi[1], mi[2]);
     gl.uniform3f(L.palTint, pt[0], pt[1], pt[2]);
     const n=Math.min(this.strokes.length, this.P.count);
-    for(let i=0;i<n;i++){ const s=this.strokes[i]; if(s) this._drawStroke(s); }
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(fbo) : false;   // Code の 3D 深度
+    const drawn = kd ? [] : null;
+    for(let i=0;i<n;i++){ const s=this.strokes[i]; if(!s) continue; const d=this._drawStroke(s); if(drawn && d) drawn.push(s, d); }
+    if(kd){
+      // 色は従来どおり描き順の重ね塗り。深度だけ別パスで一番手前を残す (かすれ・欠けは FS の discard で抜ける)
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+      gl.disable(gl.BLEND);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS); gl.depthMask(true);
+      gl.colorMask(false, false, false, false);
+      for(let i=0;i<drawn.length;i+=2) this._drawStroke(drawn[i], drawn[i+1]);
+      gl.colorMask(true, true, true, true);
+      gl.disable(gl.DEPTH_TEST);
+      this.depthInfo = { linear:true, cam:(this._camD / this.cam.zoom) * zs, R:this.SPHERE_R * zs };
+    }
+    gl.disableVertexAttribArray(this.LOC.z);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }

@@ -4897,6 +4897,7 @@ vec3 f3Paper(vec2 q, float lift){
     windflock: ()=> (typeof WindFlock !== 'undefined') ? WindFlock : null,
     spacetype: ()=> (typeof SpaceType !== 'undefined') ? SpaceType : null,
     shelf: ()=> (typeof Shelf !== 'undefined') ? Shelf : null,
+    pen: ()=> (typeof Pen !== 'undefined') ? Pen : null,
     slicer: ()=> (typeof Slicer !== 'undefined') ? Slicer : null,
     aratanagara: ()=> (typeof Aratanagara !== 'undefined') ? Aratanagara : null,
     chrometype: ()=> (typeof ChromeType !== 'undefined') ? ChromeType : null,
