@@ -353,6 +353,53 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     this._createSpans(this.P.text);
   },
 
+  // ================= 文字の出どころ =================
+  // md = md の文字列 / random = テキストプリセット (mode/textdeform-texts.js の TD_TEXT_PRESETS) から拍ごとにランダム /
+  // custom = テキストエリアの文字列。md の色・書体・変形とは独立 (全 md 共通、この端末の localStorage に保存)
+  textSrc: { mode: 'md', every: 4, pool: 'all', custom: '' },
+  _textSrcKey: 'vj.textdeform.textSrc',
+  _ensureTextSrc(){
+    if(this._textSrcLoaded) return;
+    this._textSrcLoaded = true;
+    try{ const v = JSON.parse(localStorage.getItem(this._textSrcKey) || 'null'); if(v && typeof v === 'object') Object.assign(this.textSrc, v); }catch(e){}
+  },
+  setTextSource(over){
+    this._ensureTextSrc();
+    Object.assign(this.textSrc, over || {});
+    try{ localStorage.setItem(this._textSrcKey, JSON.stringify(this.textSrc)); }catch(e){}
+    if(over && ('pool' in over || 'mode' in over)) this._randText = null;
+    this._applyTextSource();
+  },
+  textPool(){
+    const g = this.textSrc.pool, T = (typeof TD_TEXT_PRESETS !== 'undefined') ? TD_TEXT_PRESETS : [];
+    const out = [];
+    for(const x of T) if(g === 'all' || x.group === g) out.push(...x.items);
+    return out;
+  },
+  _pickRandomText(){
+    const pool = this.textPool();
+    if(!pool.length) return null;
+    let t = pool[0];
+    for(let k = 0; k < 6; k++){ t = pool[Math.floor(Math.random()*pool.length)]; if(t !== this.P.text) break; }
+    return t;
+  },
+  _sourceText(mdText){
+    this._ensureTextSrc();
+    const s = this.textSrc;
+    if(s.mode === 'custom' && String(s.custom || '').trim()) return String(s.custom);
+    if(s.mode === 'random') return this._randText || (this._randText = this._pickRandomText()) || mdText;
+    return mdText;
+  },
+  _applyTextSource(){
+    if(!this.initialized || !this.P) return;
+    const t = this._sourceText(this._mdText != null ? this._mdText : this.P.text);
+    if(t !== this.P.text) this.setText(t);
+  },
+  nextRandomText(){
+    this._randText = this._pickRandomText();
+    this._applyTextSource();
+  },
+
   loadPreset(i){
     i = Math.max(0, Math.min((this.presets.length || 1) - 1, parseInt(i, 10) || 0));
     const pr = this.presets[i];
@@ -361,7 +408,8 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     // デフォルトに戻してからプリセット差分を適用
     const base = JSON.parse(JSON.stringify(this.PDefaults || this.P));
     Object.assign(base, pr.p || {});
-    base.text = pr.text;
+    this._mdText = pr.text;
+    base.text = this._sourceText(pr.text);
     base.mdMode = mdMode;
     base.mdIndex = i;
     this.P = base;
@@ -1167,6 +1215,11 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       }
     }
     this._lastBeatInt = bi;
+    // Text: Random は textSrc.every 拍ごとに次の文字列へ
+    if(this.textSrc.mode === 'random'){
+      if(this._textBeat == null || bi < this._textBeat) this._textBeat = bi;
+      else if(bi - this._textBeat >= Math.max(1, this.textSrc.every | 0)){ this._textBeat = bi; this.nextRandomText(); }
+    }
     const sw = this._stage.offsetWidth || P.stageW, sh = this._stage.offsetHeight || P.stageW;
     const inBloom = this._t < (this._bloomUntil || 0);
     const beatPhase = (beat || 0) - bi;
