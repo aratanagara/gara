@@ -1,5 +1,5 @@
 vj-presets.json と presets/*.jpg は synomare/type-deformer の「厳選」プリセット (featured、148 案) です。
 上流ではプリセットのレシピ・データと画像は All rights reserved (ASSETS_LICENSE.md) ですが、
-2026-11-19 に作者の許諾を得て vj (vj.aratanagara.com) に同梱しています。公開版 gara (GitHub) には入れない方針です (scripts/sync-public.sh の EXCLUDE)。
+2026-11-19 に作者の許諾を得て vj (vj.aratanagara.com) と公開版 gara (github.com/aratanagara/gara) に同梱しています。
 上流のコード (MIT、LICENSE) とは条件が異なるため、このフォルダから再配布するときは注意してください。
 生成: python3 scripts/gen_td_presets.py <上流チェックアウト> mode/typedeformer/vj-presets.json
