@@ -519,7 +519,7 @@ const NovelTerminal = {
   KANA: 0.90, INDENT: "　",
   // 調整可能オプション (Novel Options パネル / デフォルト保存対応)
   P: {
-    scene:'fluid',     // 'random' | 'fluid' | 'melt' | 'columns' | 'vert' | 'typer' | 'render'
+    scene:'editorial', // 'random' | 'editorial' | 'fluid' | 'melt' | 'columns' | 'vert' | 'typer' | 'render'
     sceneBeats:16,     // scene='random' 時の切替拍数 (beat モードのみ)
     speed:1.0,         // 全体の時間スケール
     charSize:1.0,      // 文字サイズ倍率
@@ -531,11 +531,12 @@ const NovelTerminal = {
     split:1.0,         // 矩形分割コンポジションの強さ (Fluid)
     glitch:1.0,        // 半角グリッチ置換の頻度
     alpha:1.0,         // 文字の濃度 (全体アルファ)
-    inkMode:0,         // 0=Variant(構図色) | 1=品詞カラー | 2=Mono | 3=Terminal
+    inkMode:4,         // 0=Variant(構図色) | 1=品詞カラー | 2=Mono | 3=Terminal | 4=Duotone (横=Mono Ink / 縦=Fluid Accent)
     palette:-1,        // Render シーンの配色 (-1=Random / 0..5=固定)
     vertLayer:true,    // Fluid: 縦書きレイヤー
     holeLayer:true,    // Fluid: 黒抜きレイヤー
     cursor:true,       // Fluid: 走査カーソル
+    clash:true,        // Fluid: 横組みと重なる縦書きの字を抜く
     morph:1.2,         // 旧シーン間の変形トランジション秒数 (0=カット)
     // ── 第 2 弾 (既定値 = 従来の見た目。% は 100 が従来値) ──
     leading:100, tracking:100, rowWave:100, colWave:100, waveFreq:100,
@@ -548,7 +549,45 @@ const NovelTerminal = {
     typerWidth:100, typerLeading:100,
     renderCell:100, renderCutoff:100, renderFreq:100,
     tintColor:[72/255,1,126/255], flashColor:[110/255,220/255,160/255], monoColor:[232/255,234/255,238/255],
+    // ── Editorial (組版シーン)。% は 100 が基準 ──
+    // ── Fluid 第 3 弾。% は 100 が基準 ──
+    fluidContrast:100, // 図形の芯を明るく・縁を暗くする濃淡の曲線
+    fluidCrisp:100,    // 縁のざらつきと散り字を抑えて形をくっきり
+    fluidHud:100,      // 図形の中心を通る照準線・座標・角のブラケット
+    fluidBig:100,      // 円の中心に置く大きな字 (輪郭線)
+    fluidAccent:[1,74/255,46/255],
+    edLayout:0,        // 0=Book (縦組・見開き) | 1=Magazine (横組・段組) | 2=Single (縦組・一頁)
+    edSize:100, edLeading:100, edTracking:100, edMargin:100,
+    edJump:100,        // 見出しのジャンプ率 (100 = 本文の 3 倍。0 = 見出しなし)
+    edCols:100,        // Magazine の段数 (100 = 3 段)
+    edGrid:100,        // 版面の罫・ガイドの濃さ
+    edReveal:100,      // 組み上がる速さ
+    edTurnBeats:16,    // 頁をめくる拍数 (drone は 120BPM 換算の時間)
+    edFolio:true,      // 柱・ノンブル
+    edMarks:true,      // トンボ (版面の角)
+    edInk:[236/255,232/255,222/255], edAccent:[232/255,70/255,44/255],
   },
+  // Editorial の UI 定義。refreshNovelParams が Scene の直後にまとめて並べる
+  ED_SELECTS:[['Layout','edLayout',[[0,'Book (縦組・見開き)'],[1,'Magazine (横組・段組)'],[2,'Single (縦組・一頁)']],'Editorial: 版の型']],
+  ED_SPECS:[
+    ['Body Size','edSize',60,180,5,v=>v.toFixed(0)+'%','Editorial: 本文の文字サイズ'],
+    ['Line Pitch','edLeading',70,180,5,v=>v.toFixed(0)+'%','Editorial: 行送り (100% = 1.75 字)'],
+    ['Char Pitch','edTracking',90,160,5,v=>v.toFixed(0)+'%','Editorial: 字送り (100% = ベタ組み)'],
+    ['Margin','edMargin',30,200,5,v=>v.toFixed(0)+'%','Editorial: 天・地・ノド・小口の余白'],
+    ['Jump Ratio','edJump',0,250,5,v=>v<10?'off':(3*v/100).toFixed(1)+'×','Editorial: 見出しのジャンプ率 (本文比。10% 未満で見出しなし)'],
+    ['Columns','edCols',30,200,5,v=>String(Math.max(1,Math.min(6,Math.round(3*v/100))))+'段','Editorial: Magazine の段数'],
+    ['Grid','edGrid',0,300,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Editorial: 版面の罫・行のガイドの濃さ'],
+    ['Reveal','edReveal',30,300,5,v=>v.toFixed(0)+'%','Editorial: 組み上がる速さ'],
+    ['Turn Beats','edTurnBeats',2,64,1,v=>String(v|0),'Editorial: 頁をめくる拍数'],
+  ],
+  FLUID_SPECS:[
+    ['Contrast','fluidContrast',0,200,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 図形の芯を明るく・縁を暗くする濃淡'],
+    ['Crisp','fluidCrisp',0,150,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 縁のざらつきと散り字を抑える'],
+    ['HUD','fluidHud',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 照準線・座標・ブラケットの濃さ'],
+    ['Big Glyph','fluidBig',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 円の中心の大きな字の濃さ'],
+  ],
+  ED_TOGGLES:[['edFolio','柱・ノンブル','Editorial: 柱 (ランニングヘッド) とノンブル (頁番号)'],['edMarks','トンボ','Editorial: 版面の角のトンボと罫']],
+  ED_COLORS:[['Text Ink','edInk','Editorial: 本文の色'],['Accent','edAccent','Editorial: 見出し番号・カーソルの差し色']],
   // 第 2 弾 param の UI 定義 [label,key,min,max,step,fmt,title]。refreshNovelParams が既存行の後ろに並べる
   SPECS:[
     ['Leading','leading',50,250,5,v=>v.toFixed(0)+'%','Fluid: 行間'],
@@ -584,7 +623,7 @@ const NovelTerminal = {
     ['Render Freq','renderFreq',30,300,5,v=>v.toFixed(0)+'%','ASCII Render: 波の細かさ'],
   ],
   // 色 param の UI 定義 [label,key,title]
-  COLORS:[['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono の文字色']],
+  COLORS:[['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色']],
   _k(key){ const v=this.P && this.P[key]; if(v==null) return 1; return ((typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v)/100; },
   _rgb(key,def){ const c=this.P && this.P[key]; return c ? [Math.round(c[0]*255),Math.round(c[1]*255),Math.round(c[2]*255)] : def; },
   novMode: 0, _novT0: 0,
@@ -1080,7 +1119,9 @@ const NovelTerminal = {
     const kEN=this._k('edgeNoise');
     const kVSize=this._k('vertSize'), kVGap=this._k('vertGap'), kVCut=this._k('vertCut');
     const kCur=this._k('cursorSize'), kFlick=this._k('flicker');
-    const tintRGB=this._rgb('tintColor',[72,255,126]), monoRGB=this._rgb('monoColor',[232,234,238]);
+    const tintRGB=this._rgb('tintColor',[72,255,126]), monoRGB=this._rgb('monoColor',[232,234,238]), accRGB=this._rgb('fluidAccent',[255,74,46]);
+    const dz = v=>v>=0.1 ? v : 0;   // % 値のデッドゾーン
+    const kCon=Math.min(1, dz(this._k('fluidContrast'))), kConX=dz(this._k('fluidContrast')), kCrisp=Math.min(1, dz(this._k('fluidCrisp'))), kHud=dz(this._k('fluidHud')), kBig=dz(this._k('fluidBig'));
     const adv = fs*kTrack, lh = fs*1.75*kLead;
     const base = Math.floor(t*17) % src.length;
     const aspect = W/H;
@@ -1088,7 +1129,7 @@ const NovelTerminal = {
     if(p.drawingContext) p.drawingContext.letterSpacing = "0px";
     p.noStroke();
 
-    const fieldAt = (nx, ny, va, phase) => {
+    const fieldAt = (nx, ny, va, phase, wantGeo) => {
       const sceneDur = 5.4 / (this.P ? this.P.sceneSpeed : 1);
       const scene = (Math.floor(t/sceneDur + va + phase*0.33) % 6 + 6) % 6;
       const local = (t/sceneDur + phase*0.11) % 1;
@@ -1197,7 +1238,8 @@ const NovelTerminal = {
         v: vertical + rhythm + jolt*0.18 - voidShape*0.62,
         line: lineShape,
         back: backShapes + rhythm - voidShape*0.62,
-        lineFront: lineFront ? 1 : 0
+        lineFront: lineFront ? 1 : 0,
+        geo: wantGeo ? { scene, local, jolt, circleX, circleY, circleRadius, triX, triY, triSize, triAngle, rectX, rectY, rectW, rectH, rectAngle, circleV, squareV } : null
       };
     };
     const splitWave = Math.max(0, Math.sin(t*0.19-0.55));
@@ -1241,6 +1283,7 @@ const NovelTerminal = {
       if(inkMode === 1){ const c = this._posCol(ch); col = [c[0], c[1], c[2], alpha]; }
       else if(inkMode === 2){ col = [monoRGB[0], monoRGB[1], monoRGB[2], alpha]; }
       else if(inkMode === 3){ col = [96, 245, 150, alpha]; }
+      else if(inkMode === 4){ const c = vertical ? accRGB : monoRGB; col = [c[0], c[1], c[2], alpha]; }
       else col = this._mixColor(
         this._textColorFor(ch, variant, alpha, prev, next),
         this._textColorFor(ch, nextVariant, alpha, prev, next),
@@ -1272,6 +1315,32 @@ const NovelTerminal = {
       return false;
     };
     const isSameCellOccupied = (x, y) => occupied.has(occKey(x, y));
+    // 濃淡の曲線: しきい値ぎりぎりの縁は沈め、芯 (しきい値 + 0.5) へ向かって明るく。kCon=0 で従来の線形
+    const shade = (alpha0, field, thr) => {
+      if(kCon <= 0) return alpha0;
+      const u = Math.max(0, Math.min(1, (field - thr) / 0.5)), e = u*u*(3-2*u);
+      const a1 = 26 + 229*Math.pow(e, 0.85 + 0.6*Math.max(0, kConX-1));
+      return alpha0 + (a1 - alpha0)*kCon;
+    };
+    const geoA = fieldAt(0, 0, mu < 0.5 ? variant : nextVariant, mu < 0.5 ? 0.0 : 1.7, true).geo;
+    const toPx = (gx, gy) => [((gx/aspect)+1)*0.5*W, (gy+1)*0.5*H];
+    // 大きな字: 円の中心に、半径いっぱいの輪郭線の漢字 (図形が切り替わるたびに字も替わる)
+    if(kBig > 0){
+      const kan = this._fluidKanji || (this._fluidKanji = src.filter(ch => { const c = ch.charCodeAt(0); return c >= 0x4E00 && c <= 0x9FFF; }));
+      if(kan.length){
+        const ch = kan[(geoA.scene*37 + variant*11 + Math.floor(t/(5.4/((this.P && this.P.sceneSpeed) || 1)))*7) % kan.length];
+        const [bx, by] = toPx(geoA.circleX, geoA.circleY);
+        const bs = Math.max(fs*4, geoA.circleRadius*H*1.15) * (1 + geoA.jolt*0.35);
+        const dc = p.drawingContext;
+        dc.save();
+        dc.font = `${Math.round(bs)}px "${this.fR}","Unifont VJ",serif`;
+        dc.textAlign = 'center'; dc.textBaseline = 'middle';
+        dc.lineWidth = Math.max(1, M/700);
+        dc.strokeStyle = `rgba(${accRGB[0]},${accRGB[1]},${accRGB[2]},${Math.min(1, 0.42*kBig)})`;
+        dc.strokeText(ch, bx, by);
+        dc.restore();
+      }
+    }
     const driftAmt = (this.P && typeof this.P.drift === 'number') ? this.P.drift : 1;
     const driftX = Math.sin(t*0.12)*adv*2.1*driftAmt;
     const driftY = Math.cos(t*0.10)*lh*1.7*driftAmt;
@@ -1290,13 +1359,14 @@ const NovelTerminal = {
         const contour = Math.abs(field - (0.43 + 0.08*Math.sin(t*0.32))) < 0.065;
         const splitCut = splitAmt > 0.38 && ((Math.floor((nx+1.1)*4.2) + Math.floor((ny+1.0)*5.1)) % 3) === 0;
         const dens = Math.max(0.3, (this.P && typeof this.P.density === 'number') ? this.P.density : 1);
-        const threshold = (hatch || contour ? 0.30 : 0.48 + splitAmt*0.04) / dens;
-        if(field + noise*0.19*kEN < threshold) continue;
+        const baseThr = 0.48 + splitAmt*0.04;
+        const threshold = (hatch || contour ? 0.30 + (baseThr - 0.30)*0.6*kCrisp : baseThr) / dens;   // Crisp で図形の外の散り字 (ハッチ・等高線) を抑える
+        if(field + noise*0.19*kEN*(1 - 0.8*kCrisp) < threshold + 0.05*kCrisp) continue;
         if(splitCut && noise < splitAmt*0.20) continue;
-        let alpha = 58 + Math.max(0, Math.min(1.05, field))*170;
+        let alpha = shade(58 + Math.max(0, Math.min(1.05, field))*170, field, threshold);
         if(contour) alpha += 34;
         if(splitAmt > 0.35 && rectFieldAt(nx, ny, 0.4) > 0.72) alpha += 38*splitAmt;
-        if(noise < 0.035) alpha *= 0.32;
+        if(noise < 0.035*(1 - kCrisp)) alpha *= 0.32;
         let ch = src[(base + r*cols + c + src.length*20) % src.length] || "　";
         const promptCol = ((c + Math.floor(t*2)) % 34) === 0;
         if(promptCol && r % 9 === 0) ch = ">";
@@ -1311,6 +1381,7 @@ const NovelTerminal = {
     const vfs = Math.max(kVSize===1 ? 10 : 6, Math.round(M/58*kVSize));
     const colW = vfs*1.75*kVGap, chH = vfs;
     const vCols = (this.P && this.P.vertLayer === false) ? 0 : Math.ceil(W/colW) + 8;
+    const clash = !this.P || this.P.clash !== false;
     const vRows = Math.ceil(H/chH) + 10;
     for(let c=-4; c<vCols; c++){
       const x = W - c*colW + Math.sin(t*0.11+c*0.34)*colW*0.42;
@@ -1321,10 +1392,12 @@ const NovelTerminal = {
         const f0 = composedField(nx, ny, variant, 0.65).v;
         const f1 = composedField(nx, ny, nextVariant, 2.05).v;
         const field = f0 + (f1-f0)*mu;
-        if(field < 0.20*kVCut + splitAmt*0.01) continue;
+        const vThr = 0.20*kVCut + splitAmt*0.01 + 0.22*kCrisp;
+        if(field < vThr) continue;
+        if(clash && isSameCellOccupied(x, y)) continue;
         const idx = (Math.floor(base*0.8) + c*vRows + r + vSrc.length*20) % vSrc.length;
         const ch = vSrc[idx] || "";
-        const alpha = 54 + Math.max(0, Math.min(1, field))*132;
+        const alpha = shade(54 + Math.max(0, Math.min(1, field))*132, field, vThr);
         drawGlyph(ch, vSrc[(idx-1+vSrc.length)%vSrc.length] || "", vSrc[(idx+1)%vSrc.length] || "", x, y, vfs, alpha, true);
         occupied.add(occKey(x, y));
       }
@@ -1350,19 +1423,367 @@ const NovelTerminal = {
       }
     }
 
+    if(kHud > 0) this._fluidHud(p, geoA, toPx, t, fs, accRGB, monoRGB, kHud, variant);
+
     const cursorX = W*(0.08 + 0.76*((t*0.047)%1));
     const cursorY = H*(0.88 + 0.025*Math.sin(t*0.8));
     if((!this.P || this.P.cursor !== false) && Math.floor(t*3.8)%2 === 0){
-      p.fill(96,255,142,78);
+      if(inkMode === 4) p.fill(accRGB[0], accRGB[1], accRGB[2], 200); else p.fill(96,255,142,78);
       p.rect(cursorX, cursorY, adv*1.2*kCur, lh*0.92*kCur);
     }
 
     this._lastFont = null;
   },
+  // Fluid の HUD: 円の中心を通る照準線と座標、矩形の角のブラケット、三角の頂点の目盛り、画面の四隅の情報
+  _fluidHud(p, g, toPx, t, fs, acc, ink, k, variant){
+    const W = p.width, H = p.height, dc = p.drawingContext, M = Math.min(W, H);
+    const hair = Math.max(1, Math.round(M/900)), sfs = Math.max(7, Math.round(fs*0.62));
+    const A = (c, a)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a*k))})`;
+    const snap = 1 - g.jolt/0.42;   // 0 (切替の瞬間) → 1
+    dc.save();
+    dc.lineWidth = hair;
+    // 照準線 (切替のたびに中心から外へ伸びる)
+    const [cx, cy] = toPx(g.circleX, g.circleY), ext = 0.25 + 0.75*snap;
+    dc.strokeStyle = A(acc, 0.38);
+    dc.beginPath(); dc.moveTo(cx - W*ext, cy); dc.lineTo(cx + W*ext, cy); dc.moveTo(cx, cy - H*ext); dc.lineTo(cx, cy + H*ext); dc.stroke();
+    // 円周の目盛り
+    const rpx = g.circleRadius*H*0.5;
+    dc.strokeStyle = A(ink, 0.30);
+    dc.beginPath(); dc.arc(cx, cy, rpx, -Math.PI*0.5, -Math.PI*0.5 + Math.PI*2*snap); dc.stroke();
+    dc.strokeStyle = A(acc, 0.8);
+    for(let i=0;i<12;i++){ const a = i/12*Math.PI*2 + t*0.15, r0 = rpx*(i%3===0 ? 0.92 : 0.96); dc.beginPath(); dc.moveTo(cx + Math.cos(a)*r0, cy + Math.sin(a)*r0); dc.lineTo(cx + Math.cos(a)*rpx, cy + Math.sin(a)*rpx); dc.stroke(); }
+    // 矩形の角のブラケット (回転に追従)
+    const [rx, ry] = toPx(g.rectX, g.rectY), hw = g.rectW*H*0.25, hh = g.rectH*H*0.25, ca = Math.cos(g.rectAngle), sa = Math.sin(g.rectAngle), L = Math.min(hw, hh)*0.28;
+    dc.strokeStyle = A(ink, 0.62);
+    for(const [sx, sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+      const P = (u, v)=>[rx + (u*ca - v*sa), ry + (u*sa + v*ca)];
+      const c0 = P(sx*hw, sy*hh), c1 = P(sx*hw - sx*L, sy*hh), c2 = P(sx*hw, sy*hh - sy*L);
+      dc.beginPath(); dc.moveTo(c1[0], c1[1]); dc.lineTo(c0[0], c0[1]); dc.lineTo(c2[0], c2[1]); dc.stroke();
+    }
+    // 三角の中心の十字
+    const [tx, ty] = toPx(g.triX, g.triY), cr = sfs*0.9;
+    dc.strokeStyle = A(acc, 0.7);
+    dc.beginPath(); dc.moveTo(tx - cr, ty); dc.lineTo(tx + cr, ty); dc.moveTo(tx, ty - cr); dc.lineTo(tx, ty + cr); dc.stroke();
+    // 座標ラベル
+    dc.font = `${sfs}px ${this.ED_GOTHIC}`; dc.textBaseline = 'alphabetic';
+    try{ dc.letterSpacing = (sfs*0.12).toFixed(1)+'px'; }catch(e){}
+    const f2 = v=>(v>=0?'+':'−') + Math.abs(v).toFixed(3);
+    dc.fillStyle = A(acc, 0.95); dc.textAlign = 'left';
+    dc.fillText(`X${f2(g.circleX)}  Y${f2(g.circleY)}`, cx + sfs*0.8, cy - sfs*0.7);
+    dc.fillStyle = A(ink, 0.75);
+    dc.fillText(`R ${(g.circleRadius).toFixed(3)}`, cx + sfs*0.8, cy + sfs*1.5);
+    dc.fillText(`θ ${((g.rectAngle*180/Math.PI)%360).toFixed(1)}°`, rx + hw*0.0 + sfs*0.6, ry - sfs*0.6);
+    // 四隅: シーン番号 / 時刻
+    const m = Math.round(M*0.045);
+    dc.fillStyle = A(ink, 0.78); dc.textAlign = 'left';
+    dc.fillText(`FLUID  ${String(g.scene+1).padStart(2,'0')} / 06   VAR ${variant+1}`, m, m + sfs);
+    dc.textAlign = 'right';
+    const tt = Math.max(0, t), mm = Math.floor(tt/60), ss = Math.floor(tt%60), ff = Math.floor((tt%1)*100);
+    dc.fillText(`${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(ff).padStart(2,'0')}`, W - m, H - m);
+    dc.fillStyle = A(acc, 0.95);
+    dc.fillRect(m, m + sfs*1.6, sfs*6*snap, hair*2);
+    try{ dc.letterSpacing = '0px'; }catch(e){}
+    dc.restore();
+  },
   _dFluidAscii(p, t, cell){
     this._dNovelFullText(p, t);
   },
-  SCENES: ['fluid','melt','columns','vert','typer','render'],
+  // ===== Editorial (組版シーン) =====
+  //   版面を字送り・行送りの格子で割り付け、禁則・ぶら下げ・均等割りで改行した本文を、見出し (ジャンプ率)・柱・ノンブル・トンボつきで組む。
+  //   頁ごとにオフスクリーンへ一度だけ組み、毎フレームは段 (行) 単位の切り抜きで「組み上がる」様子を見せる。
+  ED_MINCHO: '"Hiragino Mincho ProN","yu-mincho-pr6n","Yu Mincho","YuMincho","dnp-shuei-nmincho-std","Zen Old Mincho","Unifont VJ",serif',
+  ED_GOTHIC: '"Hiragino Sans","Hiragino Kaku Gothic ProN","dnp-shuei-gothic-gin-std","Yu Gothic","YuGothic","Unifont VJ",sans-serif',
+  _ED_NOSTART: new Set("、。，．・：；？！‼⁉ー―…‥）」』】〕〉》］｝〙〗’”ゝゞヽヾ々ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"),
+  _ED_NOEND: new Set("（「『【〔〈《［｛〘〖‘“"),
+  _ED_HANG: new Set("、。，．"),
+  _ED_ROT: new Set("ー―—‐－＝〜～：；（）「」『』〈〉《》【】〔〕［］｛｝…‥"),
+  _ED_SMALL: new Set("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"),
+  _edKanji(n){ const d='〇一二三四五六七八九'; return String(n).split('').map(c=>d[+c]).join(''); },
+  // 段落を 1 マス 1 トークンへ。縦組み = 半角英数は全角化し、2 桁の数字だけ縦中横 1 トークン /
+  //   横組み = 半角の連なりは 2 字ずつ 1 マスへ (欧文を全角の間延びさせずに格子へ載せる)
+  _edTokens(s, vert){
+    const out = [], n = s.length;
+    const isD = c=>c>=0x30 && c<=0x39, isA = c=>c>=0x20 && c<=0x7E;
+    for(let i=0;i<n;i++){
+      const c = s.charCodeAt(i);
+      if(vert && isD(c)){
+        let j=i; while(j<n && isD(s.charCodeAt(j))) j++;
+        if(j-i===2){ out.push(s.slice(i,j)); i=j-1; continue; }
+        for(let k=i;k<j;k++) out.push(String.fromCharCode(s.charCodeAt(k)+0xFEE0));
+        i=j-1; continue;
+      }
+      if(!vert && c>0x20 && c<=0x7E){
+        let j=i; while(j<n && isA(s.charCodeAt(j))) j++;
+        while(j>i && s.charCodeAt(j-1)===0x20) j--;
+        for(let k=i;k<j;k+=2) out.push(s.slice(k, Math.min(j, k+2)));
+        i=j-1; continue;
+      }
+      out.push((c>=0x21 && c<=0x7E) ? String.fromCharCode(c+0xFEE0) : (c===0x20 ? '　' : s[i]));
+    }
+    return out;
+  },
+  // 禁則つき改行: 行頭禁則は追い出し、句読点はぶら下げ、行末禁則・分離禁止 (――/……) も追い出し。追い出した行は均等割り
+  _edBreak(tok, cpl){
+    const L = [], n = tok.length; let i = 0;
+    while(i < n){
+      let end = Math.min(n, i+cpl), hang = false;
+      if(end < n){
+        let ko = 0; while(ko < 2 && end+ko < n && this._ED_NOSTART.has(tok[end+ko])) ko++;
+        if(this._ED_HANG.has(tok[end]) && !(end+1<n && this._ED_NOSTART.has(tok[end+1]))){ end++; hang = true; }
+        else if(ko > 0 && !(end+ko < n && this._ED_NOSTART.has(tok[end+ko])) && cpl >= 12){ end += ko; }   // 追い込み (行を詰めて行頭禁則を収める)
+        else {
+          while(end > i+1 && end < n && this._ED_NOSTART.has(tok[end])) end--;
+          while(end > i+1 && this._ED_NOEND.has(tok[end-1])) end--;
+          if(end > i+1 && end < n && tok[end-1]===tok[end] && (tok[end]==='―' || tok[end]==='…')) end--;
+        }
+      }
+      const t = tok.slice(i, end);
+      // just: 追い出しで短くなった行は均等割り (空きすぎる行は割らない) / 追い込みで長くなった行は詰める
+      L.push({ t, hang, just: !hang && end < n && t.length !== cpl && (t.length > cpl || (cpl-1)/Math.max(1,t.length-1) < 1.3), head: i===0 });
+      i = end;
+    }
+    return L;
+  },
+  _edLines(cpl, vert){
+    const key = cpl + (vert ? 'v' : 'h');
+    if(this._edLinesKey === key) return this._edLinesCache;
+    const L = [];
+    for(const para of this.PARAS) for(const ln of this._edBreak(this._edTokens(this._indent(para), vert), cpl)) L.push(ln);
+    this._edLinesCache = L; this._edLinesKey = key;
+    return L;
+  },
+  _edHeads(){   // 見出しに使う短い段落 (約物で始まらない 4〜16 字)
+    if(!this._edHeadList) this._edHeadList = this.PARAS.filter(s=>s.length>=4 && s.length<=16 && !this._OPEN.includes(s[0])).map(s=>s.replace(/[、。]+$/,''));   // 見出しは句点を取る
+    return this._edHeadList;
+  },
+  _edGlyph(ctx, tk, cx, cy, fs, vert){   // (cx,cy) = マスの中心
+    if(tk.length === 2){   // 縦中横
+      ctx.save(); ctx.translate(cx, cy);
+      const w = ctx.measureText(tk).width, s = Math.min(1, fs*0.92/Math.max(1,w));
+      ctx.scale(s, 1); ctx.fillText(tk, 0, 0); ctx.restore(); return;
+    }
+    if(!vert){ ctx.fillText(tk, cx, cy); return; }
+    if(this._ED_ROT.has(tk)){ ctx.save(); ctx.translate(cx, cy); ctx.rotate(Math.PI/2); ctx.fillText(tk, 0, 0); ctx.restore(); return; }
+    if(this._ED_HANG.has(tk)){ ctx.fillText(tk, cx+fs*0.60, cy-fs*0.58); return; }
+    if(this._ED_SMALL.has(tk)){ ctx.fillText(tk, cx+fs*0.11, cy-fs*0.11); return; }
+    ctx.fillText(tk, cx, cy);
+  },
+  // 1 行を組む。vert: (x0 = 行の中心 x, y0 = 版面の天) / 横: (x0 = 版面の左, y0 = 行の中心 y)
+  _edSetLine(ctx, ln, x0, y0, fs, adv, cpl, vert){
+    const n = ln.t.length; if(!n) return;
+    const pitch = (ln.just && n > 1) ? (cpl-1)*adv/(n-1) : adv;
+    for(let k=0;k<n;k++){
+      const tk = ln.t[k]; if(tk === '　') continue;
+      if(vert) this._edGlyph(ctx, tk, x0, y0 + adv*0.5 + k*pitch, fs, true);
+      else this._edGlyph(ctx, tk, x0 + adv*0.5 + k*pitch, y0, fs, false);
+    }
+  },
+  _edCanvas(i, W, H){
+    if(!this._edCv) this._edCv = [document.createElement('canvas'), document.createElement('canvas')];
+    const c = this._edCv[i]; if(c.width !== W || c.height !== H){ c.width = W; c.height = H; }
+    return c;
+  },
+  // 版の割り付け (頁番号に依らない部分)。サイズ・余白・段数が変わったときだけ作り直す
+  _edGeom(W, H){
+    const P = this.P, layout = P.edLayout|0;
+    const M = Math.min(W, H), cs = Math.max(0.4, Math.min(2.5, P.charSize || 1));
+    const fs = Math.max(8, Math.round(M/42*this._k('edSize')*cs));
+    const adv = fs*Math.max(0.9, this._k('edTracking')), lp = fs*1.75*this._k('edLeading'), km = this._k('edMargin');
+    const jump = this._k('edJump'), hs = jump >= 0.1 ? fs*3*jump : 0;   // % 値はデッドゾーン (10% 未満 = 見出しなし)
+    const key = [W,H,layout,fs,adv,lp,km,hs,P.edCols].join('_');
+    if(this._edGeomKey === key) return this._edGeomCache;
+    const g = { W, H, layout, fs, adv, lp, hs, pages: [] };
+    if(layout === 1){
+      // Magazine: 横組・段組。天にメタ行と見出し、地にノンブル
+      const mx = Math.round(W*0.06*km), top = Math.round(H*0.09*km), bot = Math.round(H*0.09*km);
+      const nCol = Math.max(1, Math.min(6, Math.round(3*this._k('edCols')))), gut = fs*2;
+      const cpl = Math.max(6, Math.floor(((W-mx*2) - gut*(nCol-1))/nCol/adv));
+      const colW = cpl*adv, bw = colW*nCol + gut*(nCol-1), x0 = Math.round((W-bw)/2);
+      const headH = hs > 0 ? hs*1.35 + fs*1.6 : 0, metaH = fs*2.2;
+      const bodyTop = top + metaH + headH, rows = Math.max(2, Math.floor((H - bot - bodyTop)/lp));
+      const cols = []; for(let k=0;k<nCol;k++) cols.push({ x: x0 + k*(colW+gut), y: bodyTop, w: colW, rows });
+      Object.assign(g, { vert:false, cpl, x0, bw, top, bot, bodyTop, metaH, cols, cap: nCol*rows });
+    } else {
+      // Book (見開き) / Single (一頁): 縦組み。右頁から読む
+      const spread = layout === 0, nPage = spread ? 2 : 1;
+      const pw = W/nPage, top = Math.round(H*0.13*km), bot = Math.round(H*0.12*km);
+      const cpl = Math.max(6, Math.floor((H - top - bot)/adv)), bh = cpl*adv, by = Math.round(top + ((H-top-bot) - bh)*0.5);
+      let cap = 0;
+      for(let pg=0; pg<nPage; pg++){
+        const right = (pg === 0);   // 読み順で 0 = 右頁
+        const px = spread ? (right ? pw : 0) : 0;
+        const outer = Math.round(pw*(spread ? 0.10 : 0.12)*km), inner = Math.round(pw*(spread ? 0.08 : 0.12)*km);
+        const l = px + (right ? inner : outer), r = px + pw - (right ? outer : inner);
+        const nLine = Math.max(1, Math.floor(((r-l) - fs)/lp) + 1), bw = (nLine-1)*lp + fs, bx = Math.round(l + ((r-l) - bw)*0.5);
+        // 見出しは右頁 (Single は唯一の頁) の頭に置く。見出しの幅ぶんの行を空ける
+        const headLines = (right && hs > 0) ? Math.min(nLine-1, Math.ceil((hs*1.25 + fs*1.2)/lp) + 1) : 0;
+        g.pages.push({ px, pw, bx, by, bw, bh, nLine, headLines, right });
+        cap += nLine - headLines;
+      }
+      Object.assign(g, { vert:true, cpl, top, bot, cap });
+    }
+    this._edGeomCache = g; this._edGeomKey = key;
+    return g;
+  },
+  // 頁 (見開き) idx を canvas へ組む。読み順の「組み上がり単位」(見出し・各行) の矩形を返す
+  _edCompose(c, g, idx){
+    const ctx = c.getContext('2d'), P = this.P;
+    ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0, 0, c.width, c.height);
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    const ink = this._rgb('edInk',[236,232,222]), acc = this._rgb('edAccent',[232,70,44]);
+    const lines = this._edLines(g.cpl, g.vert), N = lines.length;
+    let li = ((idx*g.cap) % N + N) % N;
+    const heads = this._edHeads(), head = g.hs > 0 && heads.length ? heads[(((idx*7 + 3) % heads.length)+heads.length) % heads.length] : '';   // 頁頭の本文と重なりにくい順で
+    const units = [], fs = g.fs;
+    ctx.font = `${fs}px ${this.ED_MINCHO}`;
+    ctx.fillStyle = `rgb(${ink[0]},${ink[1]},${ink[2]})`;
+    if(g.vert){
+      for(const pg of g.pages){
+        let k0 = 0;
+        if(pg.headLines > 0 && head){
+          // 見出し: 章番号 (差し色・小) + 見出し (ジャンプ率) を版面の天から縦に
+          const hx = pg.bx + pg.bw - fs*0.5 - fs*0.2;
+          const no = this._edTokens(this._edKanji(String((idx % 99) + 1).padStart(2,'0')), true);
+          const tok = this._edTokens(head, true), hs = Math.min(g.hs, (pg.bh - fs*1.6 - no.length*fs*0.9)/Math.max(1,tok.length));
+          ctx.font = `${Math.round(fs*0.78)}px ${this.ED_GOTHIC}`; ctx.fillStyle = `rgb(${acc[0]},${acc[1]},${acc[2]})`;
+          for(let k=0;k<no.length;k++) this._edGlyph(ctx, no[k], hx, pg.by + fs*0.5 + k*fs*0.9, fs*0.78, true);
+          ctx.font = `${Math.round(hs)}px ${this.ED_MINCHO}`; ctx.fillStyle = `rgb(${ink[0]},${ink[1]},${ink[2]})`;
+          const hcx = hx - fs*0.6 - hs*0.5, hy0 = pg.by + fs*1.6 + no.length*fs*0.9;
+          for(let k=0;k<tok.length;k++) this._edGlyph(ctx, tok[k], hcx, hy0 + hs*0.5 + k*hs, hs, true);
+          units.push({ x: hcx - hs*0.7, y: pg.by, w: (hx + fs*0.6) - (hcx - hs*0.7), h: pg.bh, v: true, head: true });
+          ctx.font = `${fs}px ${this.ED_MINCHO}`;
+          k0 = pg.headLines;
+        }
+        for(let k=k0; k<pg.nLine; k++){
+          const cx = pg.bx + pg.bw - fs*0.5 - k*g.lp, ln = lines[li % N]; li++;
+          this._edSetLine(ctx, ln, cx, pg.by, fs, g.adv, g.cpl, true);
+          units.push({ x: cx - g.lp*0.5, y: pg.by - fs*0.2, w: g.lp, h: pg.bh + fs*1.4, v: true });
+        }
+      }
+    } else {
+      if(head){
+        const tok = this._edTokens(head, false), hs = Math.min(g.hs, g.bw/Math.max(1,tok.length));
+        const hy = g.top + g.metaH + hs*0.62;
+        ctx.font = `${Math.round(hs)}px ${this.ED_MINCHO}`;
+        for(let k=0;k<tok.length;k++) this._edGlyph(ctx, tok[k], g.x0 + hs*0.5 + k*hs, hy, hs, false);
+        units.push({ x: g.x0, y: g.top + g.metaH, w: g.bw, h: hs*1.3, v: false, head: true });
+        ctx.font = `${fs}px ${this.ED_MINCHO}`;
+      }
+      for(const col of g.cols){
+        for(let r=0;r<col.rows;r++){
+          const cy = col.y + g.lp*0.5 + r*g.lp, ln = lines[li % N]; li++;
+          this._edSetLine(ctx, ln, col.x, cy, fs, g.adv, g.cpl, false);
+          units.push({ x: col.x - fs*0.2, y: cy - g.lp*0.5, w: col.w + fs*1.4, h: g.lp, v: false });
+        }
+      }
+    }
+    return { units, head };
+  },
+  // 罫・トンボ・柱・ノンブル (毎フレーム直接描く。軽い)
+  _edChrome(ctx, g, idx, head, a){
+    const P = this.P, kg0 = this._k('edGrid'), kg = kg0 >= 0.1 ? kg0 : 0, fs = g.fs;
+    const ink = this._rgb('edInk',[236,232,222]), acc = this._rgb('edAccent',[232,70,44]);
+    const rgba = (c, al)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0,Math.min(1,al*a))})`;
+    const hair = Math.max(1, Math.round(Math.min(g.W,g.H)/900));
+    ctx.save(); ctx.lineWidth = hair;
+    const mark = (x, y, sx, sy)=>{ const L = fs*0.9; ctx.beginPath(); ctx.moveTo(x - sx*fs*0.35, y); ctx.lineTo(x - sx*(fs*0.35+L), y); ctx.moveTo(x, y - sy*fs*0.35); ctx.lineTo(x, y - sy*(fs*0.35+L)); ctx.stroke(); };
+    const boxes = g.vert ? g.pages.map(pg=>({ x: pg.bx, y: pg.by, w: pg.bw, h: pg.bh })) : [{ x: g.x0, y: g.top, w: g.bw, h: g.H - g.top - g.bot }];
+    if(kg > 0){
+      ctx.strokeStyle = rgba(ink, 0.07*kg);
+      if(g.vert){ for(const pg of g.pages) for(let k=1;k<pg.nLine;k++){ const x = pg.bx + pg.bw - fs*0.5 - (k-0.5)*g.lp; ctx.beginPath(); ctx.moveTo(x, pg.by); ctx.lineTo(x, pg.by+pg.bh); ctx.stroke(); } }
+      else {
+        for(let k=1;k<g.cols.length;k++){ const x = g.cols[k].x - fs; ctx.beginPath(); ctx.moveTo(x, g.bodyTop); ctx.lineTo(x, g.bodyTop + g.cols[0].rows*g.lp); ctx.stroke(); }
+        ctx.strokeStyle = rgba(ink, 0.30*kg);
+        ctx.beginPath(); ctx.moveTo(g.x0, g.top + g.metaH - fs*0.7); ctx.lineTo(g.x0 + g.bw, g.top + g.metaH - fs*0.7); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(g.x0, g.bodyTop - fs*0.8); ctx.lineTo(g.x0 + g.bw, g.bodyTop - fs*0.8); ctx.stroke();
+      }
+      if(g.layout === 0){ ctx.strokeStyle = rgba(ink, 0.12*kg); ctx.beginPath(); ctx.moveTo(g.W/2, g.H*0.04); ctx.lineTo(g.W/2, g.H*0.96); ctx.stroke(); }   // ノド
+    }
+    if(P.edMarks !== false){
+      ctx.strokeStyle = rgba(ink, 0.55);
+      for(const b of boxes){ mark(b.x, b.y, 1, 1); mark(b.x+b.w, b.y, -1, 1); mark(b.x, b.y+b.h, 1, -1); mark(b.x+b.w, b.y+b.h, -1, -1); }
+    }
+    if(P.edFolio !== false){
+      const sfs = Math.max(7, Math.round(fs*0.62));
+      ctx.font = `${sfs}px ${this.ED_GOTHIC}`; ctx.textBaseline = 'middle';
+      try{ ctx.letterSpacing = (sfs*0.18).toFixed(1)+'px'; }catch(e){}
+      const folio = (n, x, y, align)=>{ ctx.textAlign = align; ctx.fillStyle = rgba(ink, 0.78); ctx.fillText(String(n).padStart(3,'0'), x, y); };
+      const runHead = (s, x, y, align)=>{ ctx.textAlign = align; ctx.fillStyle = rgba(ink, 0.62); ctx.fillText(s, x, y); };
+      const title = '安楽園';
+      if(g.vert){
+        for(const pg of g.pages){
+          const yH = pg.by - fs*1.6, yF = pg.by + pg.bh + fs*1.9, no = idx*g.pages.length + (pg.right ? 1 : 2);
+          if(pg.right){ runHead(head || title, pg.bx + pg.bw, yH, 'right'); folio(no, pg.bx + pg.bw, yF, 'right'); }
+          else { runHead(title, pg.bx, yH, 'left'); folio(no, pg.bx, yF, 'left'); }
+          ctx.fillStyle = rgba(acc, 0.9);
+          const fx = pg.right ? pg.bx + pg.bw : pg.bx;
+          ctx.fillRect(pg.right ? fx - sfs*3.4 : fx, yF + sfs*0.95, sfs*3.4, hair);
+        }
+      } else {
+        const yM = g.top + fs*0.5, yF = g.H - g.bot + fs*1.6;
+        runHead('NOVEL TERMINAL　' + title, g.x0, yM, 'left');
+        ctx.fillStyle = rgba(acc, 0.9); ctx.textAlign = 'right'; ctx.fillText('No. ' + String(idx+1).padStart(3,'0'), g.x0 + g.bw, yM);
+        folio(idx+1, g.x0, yF, 'left');
+        runHead(head, g.x0 + g.bw, yF, 'right');
+      }
+      try{ ctx.letterSpacing = '0px'; }catch(e){}
+    }
+    ctx.restore();
+  },
+  _dEditorial(p, t){
+    const W = p.width, H = p.height, P = this.P, ctx = p.drawingContext;
+    const g = this._edGeom(W, H);
+    // 頁送り: beat モードは拍、drone は 120BPM 換算の時間
+    const turn = Math.max(1, P.edTurnBeats|0 || 16);
+    const beatMode = (typeof App !== 'undefined') ? App.beatMode === 'beat' : false;
+    const b = beatMode ? this._beatRev() : t*2;
+    const pos = b/turn, idx = Math.floor(pos), q = pos - idx;
+    const ckey = this._edGeomKey + '|' + (this._edFontGen||0) + '|' + JSON.stringify([P.edInk, P.edAccent]);
+    if(!this._edFontHook && document.fonts && document.fonts.addEventListener){ this._edFontHook = true; document.fonts.addEventListener('loadingdone', ()=>{ this._edFontGen = (this._edFontGen||0) + 1; }); }
+    if(this._edIdx !== idx || this._edKey !== ckey){
+      if(this._edIdx === idx - 1 && this._edKey === ckey){ this._edPrev = this._edCur; this._edCur = 1 - (this._edCur||0); }
+      else { this._edPrev = null; this._edCur = this._edCur||0; }
+      const c = this._edCanvas(this._edCur, W, H);
+      const r = this._edCompose(c, g, idx);
+      this._edUnits = r.units; this._edHead = r.head; this._edIdx = idx; this._edKey = ckey;
+    }
+    ctx.save();
+    // 前の頁は頭の 6% で退く
+    const out = 0.06;
+    if(this._edPrev != null && q < out){
+      ctx.globalAlpha = 1 - q/out;
+      ctx.drawImage(this._edCv[this._edPrev], 0, 0);
+      ctx.globalAlpha = 1;
+    }
+    const kr = this._k('edReveal'), q0 = out*0.5, q1 = Math.min(0.94, q0 + 0.72/Math.max(0.3, kr));
+    const rv = Math.max(0, Math.min(1, (q - q0)/(q1 - q0)));
+    const U = this._edUnits || [], nU = U.length;
+    const head = rv*nU, full = Math.floor(head), part = head - full;
+    const fadeIn = Math.min(1, q/out);
+    if(nU){
+      ctx.beginPath();
+      for(let i=0;i<Math.min(full,nU);i++){ const u = U[i]; ctx.rect(u.x, u.y, u.w, u.h); }
+      let cur = null;
+      if(full < nU && part > 0){
+        const u = U[full]; cur = u;
+        if(u.head) ctx.rect(u.x, u.y, u.w, u.h);
+        else if(u.v) ctx.rect(u.x, u.y, u.w, u.h*part);
+        else ctx.rect(u.x, u.y, u.w*part, u.h);
+      }
+      ctx.save(); ctx.clip(); ctx.globalAlpha = fadeIn; ctx.drawImage(this._edCv[this._edCur], 0, 0); ctx.restore();
+      // 組版カーソル (差し色の細いバー)
+      if(cur && !cur.head && Math.floor(t*4) % 2 === 0){
+        const acc = this._rgb('edAccent',[232,70,44]); ctx.fillStyle = `rgb(${acc[0]},${acc[1]},${acc[2]})`;
+        const th = Math.max(2, g.fs*0.14);
+        if(cur.v) ctx.fillRect(cur.x + cur.w*0.5 - g.fs*0.5, cur.y + cur.h*part, g.fs, th);
+        else ctx.fillRect(cur.x + cur.w*part, cur.y + cur.h*0.5 - g.fs*0.5, th, g.fs);
+      }
+    }
+    ctx.restore();
+    this._edChrome(ctx, g, idx, this._edHead, fadeIn);
+    this._lastFont = null;
+  },
+  SCENES: ['fluid','melt','columns','vert','typer','render','editorial'],
   _LEGACY: {melt:0, columns:1, vert:2, typer:3, render:4},
   // scene='random': beat モードでは sceneBeats 拍ごとに抽選 / drone では固定 (beat同期はbeatモードのみの方針)
   _pickScene(){
@@ -1395,6 +1816,8 @@ const NovelTerminal = {
     const scene = this._pickScene();
     if(scene === 'fluid'){
       this._dNovelFullText(p, t);
+    } else if(scene === 'editorial'){
+      this._dEditorial(p, t);
     } else {
       const idx = this._LEGACY[scene];
       if(this._curScene !== idx){ this._prevScene = this._curScene; this._curScene = idx; this._sceneT0 = t; this._morphKey = -1; }
@@ -1467,3 +1890,5 @@ const NovelTerminal = {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 };
+// 工場出荷値は読込時に確定 (state 復元より前。色の配列も複製して共有しない)
+NovelTerminal._PDef = JSON.parse(JSON.stringify(NovelTerminal.P));
