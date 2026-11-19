@@ -211,6 +211,7 @@ vec3 bg_metalSlab(vec2 fc){
   if(uLightTurn != 0.0){ float lt = radians(uLightTurn); gDir = mat2(cos(lt), -sin(lt), sin(lt), cos(lt)) * gDir; }
   vec2  pc   = ms_center(P, N);
   float gT   = clamp(0.5 + 0.5*dot(u - pc, gDir), 0.0, 1.0);
+  vjDepth = (mix(0.25, 0.85, h) + (gT - 0.5) * 0.15) * smoothstep(0.0, 0.004, -d1);   // 深度 (板ごとの高さ + 板内ランプ / 外周 0)
   // 暗→明のランプ (金属は暗部が締まり明部が伸びる)
   plate *= mix(mix(1.0, 0.55, uContrast / 100.0), mix(1.0, 1.15, uContrast / 100.0), smoothstep(0.0, 1.0, gT));
   // 明部側に鋭い鏡面ハイライト (辺に平行な帯)

@@ -113,6 +113,7 @@ vec3 bg_rain(vec2 fc){
 
   float h = rn_blob_noises(time, v, uSharp / 100.0);     // 雨粒の高さ場 (0..1)
   vec3  n = rn_blob_normal(time, v, uSharp / 100.0);     // その法線
+  vjDepth = clamp(h, 0.0, 1.0);                          // 深度 (粒の高さ=手前 1 / ガラス地 0)
 
   // 白黒の雨粒: 暗いガラス背景 + 粒の陰影 + スペキュラのきらめき
   vec3  L    = normalize(vec3(0.5, 0.6, 0.6 * (uLightHeight / 100.0)));

@@ -118,6 +118,7 @@ vec3 bg_jflow(vec2 fc){
 
   vec3 col = vec3(0.015, 0.02, 0.04) * uVoidColor;         // 暗い背景
   float cov = 0.0;                                         // 結晶カバレッジ(透過用)
+  float vjd = 0.0;                                         // 深度 (結晶のドーム高さ + レイヤー順)
 
   for(int i = 0; i < JF_N; i++){
     if(i >= int(uCount + 0.5)) break;
@@ -200,6 +201,7 @@ vec3 bg_jflow(vec2 fc){
     cc += spec * vec3(0.90, 0.97, 1.0) * (0.35 * (uSpecAmt / 100.0));           // 鋭く小さいハイライト
     col = max(col, cc * amt);                              // 明るい方を採用
     cov = max(cov, amt);
+    vjd = max(vjd, amt * clamp(mix(0.2, 0.6, fract(float(i) * 0.618034)) + 0.35 * dome, 0.0, 1.0));   // 手前の結晶ほど高い
   }
 
   col = pow(col, vec3(0.85));                              // 軽いトーン
@@ -210,5 +212,6 @@ vec3 bg_jflow(vec2 fc){
   }
 
   bgAlpha = clamp(cov, 0.0, 1.0); // Slot B は結晶のみ
+  vjDepth = clamp(vjd, 0.0, 1.0); // 深度 (結晶=手前 / 外れ 0)
   return col;
 }

@@ -307,6 +307,7 @@ void mainImage(out vec4 o, vec2 p){
   vec3 ro, rd, cf; float d; vec3 n;
   ViewRay(p, R, ro, rd, cf);
   vec3 c = RenderScene(ro, rd, cf, d, n);
+  gl_FragDepth = (d <= 0. || d >= tmax - 0.5) ? 1.0 : clamp(d / tmax, 0., 0.9999);   // Code の 3D 深度 (ヒット距離 / tmax。外れ = 1)
   if(uSlotB > 0.5){
     // Slot B: 白線(エッジ)+ 透過。深度の急変(シルエット)+ 法線の急変(クリース)+ グレージング
     float hit = (d < tmax - 0.5) ? 1.0 : 0.0;
@@ -462,6 +463,22 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
     // ---- Pass 2: Image (キャッシュを triquadratic でレイマーチ。縮小解像度) ----
     const bufNow = this.bufFBO[this.bufIdx];
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._imgFBO.fbo); gl.viewport(0,0,iw,ih);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(fbo) : false;   // Code の 3D 深度: 縮小 FBO に自前の深度を付けて gl_FragDepth を受ける
+    if(kd){
+      if(!this._zTex || this._zW !== iw || this._zH !== ih){
+        if(!this._zTex) this._zTex = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, this._zTex);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+        gl.texImage2D(gl.TEXTURE_2D, 0, gl.DEPTH_COMPONENT24, iw, ih, 0, gl.DEPTH_COMPONENT, gl.UNSIGNED_INT, null);
+        this._zW = iw; this._zH = ih;
+      }
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, this._zTex, 0);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.ALWAYS); gl.depthMask(true);
+      gl.clear(gl.DEPTH_BUFFER_BIT);
+    }
     gl.useProgram(this.imgProg);
     gl.uniform3f(this.uImg.iResolution, iw, ih, 1);
     gl.uniform1f(this.uImg.iTime, time);
@@ -473,6 +490,11 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
     gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, bufNow.tex); gl.uniform1i(this.uImg.iChannel0, 0);
     gl.activeTexture(gl.TEXTURE3); gl.bindTexture(gl.TEXTURE_2D, this.noiseTex); gl.uniform1i(this.uImg.iChannel3, 3);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
+    if(kd){
+      gl.disable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.TEXTURE_2D, null, 0);
+      this.depthInfo = { linear:true, tex:this._zTex, cam:12/128, R:10/128 };   // 洞窟のヒット距離はおおむね 2〜22
+    }
 
     // ---- 縮小結果をスロット FBO へ線形アップスケール ----
     gl.bindVertexArray(null);

@@ -810,6 +810,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float gLine = graph(p.y, f0, f1, pixelSize);
     col = mix(col, c*c*0.7*(uFillAmount/100.0)*uFillTint, gFill);   // 塗り(粘り)
     col = mix(col, c*2.0*(uLineBright/100.0)*uLineTint,  gLine);    // 縁(したたる線)
+    vjDepth = mix(vjDepth, (i + 1.0)/slices, clamp(max(gFill, gLine), 0.0, 1.0)); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     col = max(col, 0.);
   }
   col = pow(col, vec3(0.4545));
@@ -1081,6 +1082,7 @@ void mainImage(out vec4 o, in vec2 fc){
   if(uVignetteTint != vec3(1.0)){ vgv *= uVignetteTint; }
   c = c - vgv;
   if(uBands >= 3.0){ float nb = floor(uBands + 0.5); c = floor(c * nb + 0.5) / nb; }
+  vjDepth = clamp(c.g, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
   if(uShadowTint != vec3(1.0) || uHighlightTint != vec3(1.0)){
     float lm = clamp(dot(c, vec3(0.299, 0.587, 0.114)), 0.0, 1.0);
     c *= mix(uShadowTint, vec3(1.0), smoothstep(0.0, 0.6, lm));
@@ -5473,6 +5475,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     min_dist = 1.0-min_dist;
     if(uFalloff != 100.0){ min_dist = pow(max(min_dist, 0.0), 2.0*(uFalloff/100.0)); } else { min_dist = min_dist * min_dist; }
     if(uTerrace != 0.0){ float tn = max(uTerrace, 2.0); min_dist = floor(min_dist*tn)/tn; }
+    vjDepth = clamp(min_dist, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     vec3 col = vec3(min_dist);
     if(uCoreColor != vec3(1.0)){ col *= uCoreColor; }
     if(uCellTint != 0.0){
@@ -6020,6 +6023,7 @@ float ringPat(vec2 uv){
 void mainImage( out vec4 fragColor, in vec2 fragCoord ){
     vec2 uv = fragCoord/iResolution.xy;
     vec3 col = vec3(ringPat(uv));
+    vjDepth = 1.0 - exp(-max(col.x, 0.0)); // 深度 (手前 1 → 奥 0。重なった輪は 1 を超えるので飽和させる)。3D FX がこれで持ち上げる
     if(uRingColor != vec3(1.0)){ col *= uRingColor; }
     float ne = 0.001*(uNormalEps/100.0);
     vec3 n = vec3(0.,0.,1.*(uRelief/100.0));
@@ -8620,6 +8624,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     if(uBlockBrightVar != 0.0){ v *= 1.0 - (uBlockBrightVar/100.0)*rand(currentBlockID + 5.1); }
     if(uBlinkAmount != 0.0){ v *= 1.0 - (uBlinkAmount/100.0)*(0.5 + 0.5*getRandomByTime(currentBlockID*3.0, 2.0)); }
     if(uScanDepth != 0.0){ v *= 1.0 - (uScanDepth/100.0)*step(0.5, fract(localUV.y*4.0)); }
+    vjDepth = clamp(v*0.7 + 0.3*randVal, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     if(uBlockGap != 0.0){ v *= step(uBlockGap*0.003, localUV.x) * step(uBlockGap*0.003, localUV.y); }
     if(uRowGap != 0.0){ v *= step(uRowGap*0.003, 1.0 - localUV.y); }
     vec3 col = vec3(v);
@@ -8937,6 +8942,7 @@ void mainImage( out vec4 o, in vec2 fragCoord )
     vec2 cellBR = cellUL + 1.;
     vec2 seed = cellUL;
     o = vec4(1);
+    float hzK = 0.0, lsK = 1.0;
     for(float i = 1.; i <= PARTITIONS; ++ i) {
         if(i > floor(uPartitions + 0.5)) break;
         vec4 h = hash42(seed+1e2*(vec2(cellBR.x, cellUL.y)+10.));
@@ -8951,6 +8957,7 @@ void mainImage( out vec4 o, in vec2 fragCoord )
         if(uLineSharp != 100.0){ ls = pow(ls, uLineSharp / 100.0); }
         if(uDeepFade != 0.0){ ls = mix(ls, 1.0, (uDeepFade/100.0)*((i-1.)/(PARTITIONS-1.))); }
         o.rgb *= ls;
+        hzK = h.z; lsK *= ls;
         if (h.w < .15*gp*(uGreyShare/100.0)) {
             // 灰色の面
             o.rgb *= vec3((0.45 + 0.4*h.z*(uGreyRange/100.0))*(uGreyTone/100.0)) * uGreyColor;
@@ -8997,6 +9004,7 @@ void mainImage( out vec4 o, in vec2 fragCoord )
 	    }
     }
 
+    vjDepth = clamp((0.25 + 0.5*hzK)*lsK, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     o = clamp(o,0.,1.);
     o.rgb *= uPaperColor;
     if(uVignette != 0.0){ vec2 vq = fragCoord / R - .5; o.rgb *= 1. - (uVignette / 100.0) * clamp(dot(vq, vq) * 2.4, 0., 1.); }
@@ -9654,6 +9662,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
         ink = max(ink, (1.0 - smoothstep(wl*0.5, wl, min(fe.x, fe.y)))*vk);
     }
     if(uTileDropout != 0.0){ ink *= step(uTileDropout/100.0, hash21(cell+11.0)); }
+    vjDepth = clamp(ink*(0.35*idv + 0.65), 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
 
     vec3 col;
     if(black > 0.5){
