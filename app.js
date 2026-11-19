@@ -4632,6 +4632,8 @@ vec3 f3Paper(vec2 q, float lift){
     slot.gradMask = /@gradmask/.test(src);
     slot.bKey = /@bkey/.test(src);
     slot.matte = (/@matte\s+(\w+)/.exec(src) || [])[1] || null;   // 3D FX 中に紙を透過で出せるシェーダの、紙の色の param 名
+    { const m = /@mattepal\s+(\w+)\s+(\S+)/.exec(src);   // 組み込みパレットを持つシェーダ: パレット番号の param 名と、番号 1〜 の紙の色 (0 は @matte の色 param)
+      slot.mattePal = m ? { name:m[1], papers:m[2].split(',').map(h=>[1, 3, 5].map(i=>parseInt(h.slice(i, i + 2), 16) / 255)) } : null; }
     slot.params = pp.params;
     if(typeof App !== 'undefined' && App.applyShaderParamDefaults) App.applyShaderParamDefaults(slot);   // 保存済みシェーダ既定値を反映
     // 状態の復元 (opts.params): 保存した値を同名のパラメータへ戻す。
@@ -6707,7 +6709,8 @@ void main(){
     }
     if(!s.matte || !s.params) return null;
     const q = s.params.find(x=>x.type === 'color' && x.name === s.matte);
-    return q ? { slot:key, paper:()=>q.value.slice(0, 3) } : null;
+    const mp = s.mattePal, pp = mp && s.params.find(x=>x.name === mp.name);
+    return q ? { slot:key, paper:()=>{ const i = pp ? Math.round(+pp.value || 0) : 0; return (i >= 1 && mp.papers[i - 1]) ? mp.papers[i - 1].slice() : q.value.slice(0, 3); } } : null;
   },
   // 紙抜きに対応した 3D エンジン (render が opaque:false で背景を透過にできるもの)。tower4149 は自前の 3D FX 経路を持つので入れない
   MATTE_KINDS: ['layer','photoplane','slicer','spacetype','shredder','transflock','windflock','liquidpeel','chrometype'],

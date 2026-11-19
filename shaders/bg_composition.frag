@@ -21,6 +21,7 @@
 // @param uMcDyn     0..100   = 60.0
 // @param uMcFull    0..100   = 40.0
 // @param uMcFullH   0..100   = 55.0
+// @param uMcCut     0..100   = 50.0
 // @param uMcIrreg   0..100   = 80.0
 // @param uMcJump    0..100   = 50.0
 // @param uMcLine    20..300  = 100.0
@@ -38,13 +39,14 @@
 // @param uMcGrain   0..100   = 25.0
 // @param uMcClear   0..100   = 0.0
 // @param uMc3D      0..100   = 0.0
-// @param uMcHeight  10..400  = 100.0
 // @param uMcPitch   0..80    = 45.0
 // @param uMcSpin    -100..100 = 20.0
-// @param uMcWallShade 0..100 = 55.0
+// @param uMcDist    60..400  = 100.0
+// @param uMcHeight  10..400  = 100.0
+// @param uMcHeightVar 0..100 = 0.0
 // @param uMcBuild   0..400   = 0.0
 // @param uMcBuildVar 0..100  = 65.0
-// @param uMcDist    60..400  = 100.0
+// @param uMcWallShade 0..100 = 55.0
 // @param uMcPaper   color = #f2f0e9
 // @param uMcInk     color = #141414
 // @param uMcRed     color = #cf1f18
@@ -55,6 +57,7 @@ uniform float uMcLines;   // 線が立つ割合 (%)。下げると線が抜け�
 uniform float uMcDyn;     // 線の本数の増減の深さ (%)。変化の周期 × 2 ごとに、数本〜全部のあいだで本数が変わる。0 で一定
 uniform float uMcFull;    // 垂直線が上下に貫く割合 (%)。貫く線が水平線の端の受け手になる
 uniform float uMcFullH;   // 水平線が左右に貫く割合 (%)。下げると垂直線と垂直線のあいだで止まる線が増える
+uniform float uMcCut;    // 線が途中で途切れる / 途中から始まる量 (%)。0 = 途切れない (全部通る) / 50 = 従来 / 上げると線が数区間だけ走って直交する線で止まる
 uniform float uMcJump;    // 面の大きさのジャンプ率 (%)。上げると大きな面と細い帯がはっきり分かれる (線の間隔を場所ごとに伸び縮みさせる)。0 でほぼ均等
 uniform float uMcIrreg;   // 線の間隔のばらつき (%)。0 で等間隔の格子
 uniform float uMcLine;    // 線の太さ (%)
@@ -73,6 +76,7 @@ uniform float uMcGrain;   // 絵具のムラ (%)
 uniform float uMcClear;   // 白地を透過する量 (%)。Slot B で下の絵に線と色面だけを重ねる
 uniform float uMc3D;      // 3D の量 (%)。0 = 平面 (従来どおり)。上げると盤面が傾いて回り、線 (道) が厚みを持って立ち上がる
 uniform float uMcHeight;  // 線の高さ (%)。100 = 線の太さと同じ = 断面が正方形
+uniform float uMcHeightVar; // 線の高さのばらつき (%)。0 = 全部 Height の高さ / 100 = 線ごとに 0.1〜1 × Height でばらつく
 uniform float uMcPitch;   // 盤面の傾き (度)
 uniform float uMcSpin;    // 盤面の回転の速さ (%)。負で逆回転
 uniform float uMcWallShade; // 線の側面の陰の濃さ (%)
@@ -104,6 +108,8 @@ float mg_lines, mg_full, mg_fullH, mg_irreg, mg_motion;
 float mg_dyn;       // 線の本数の増減の深さ (0..1)
 float mg_rseed;     // 道 (線の構造) の乱数の種。道を固定するときは描き直しでも変えない
 float mg_roadFix;   // 1 = 道を固定 (スライド・出没・本数の増減・描き込みなし)
+float mg_pV, mg_pH; // 区間の垂直線 / 錨区間の水平線が引かれる確率
+float mg_runL;      // 途切れの連なり: 線ごとに 1〜1+mg_runL 区間を同じ判定でまとめる (0 = 区間ごとに独立)
 // 出力 (mg_build)
 float mg_kL, mg_xL, mg_kR, mg_xR, mg_jB, mg_yB, mg_jT, mg_yT;
 float mg_aL, mg_aR;   // 左右の線が錨 (上下に貫く線) か
@@ -121,6 +127,25 @@ void mg_setTime(float bt, float spd, float kick, float change, float redraw, flo
     float per = nR > 0.5 ? nR : mg_P;
     mg_dp = clamp(fract(mg_B / per) / (drawIn * 0.01), 0.0, 1.0);
   }
+}
+// 途切れ (Cut 0..100): 0 = 全部通る / 50 = 従来 (0.72 / 0.5、区間ごとに独立) / 100 = 線が数区間だけ走って止まる。
+//   50 より上は、区間の判定を線ごとに数区間ずつまとめる (= 線が途中から始まり、数区間走り、直交する線で止まる)。
+//   全通しの水平線の割合も下げ、途切れられる線を増やす。従来値は 50 で厳密に一致させる
+void mg_setCut(float c100){
+  float c = c100 * 0.01;
+  float lo = clamp(c * 2.0, 0.0, 1.0), hi = clamp(c * 2.0 - 1.0, 0.0, 1.0);
+  mg_pV = c100 == 50.0 ? 0.72 : (c < 0.5 ? mix(1.0, 0.72, lo) : mix(0.72, 0.62, hi));
+  mg_pH = c100 >= 50.0 ? 0.5 : mix(1.0, 0.5, lo);
+  mg_runL = c > 0.5 ? 3.0 * hi : 0.0;
+  if(c > 0.5) mg_fullH *= 1.0 - 0.75 * hi;
+}
+// 線 k (軸 ax: 0 = 垂直 / 1 = 水平) の 3D の高さの倍率。var = 0 で 1 (全部同じ高さ)、1 で 0.1〜1。道の種ごとに固定
+float mg_lineH(float k, float ax, float var){ return 1.0 - var * 0.9 * (1.0 - mg_h(vec3(k * 2.37 + ax * 77.7, 83.0, mg_rseed))); }
+// 区間の判定キー: 線ごとに長さ Lk (1〜1+mg_runL) の塊にまとめる。mg_runL = 0 なら x そのもの
+float mg_runKey(float x, float salt){
+  if(mg_runL <= 0.0) return x;
+  float Lk = 1.0 + floor(mg_h(vec3(salt, 41.0, mg_rseed)) * (mg_runL + 0.999));
+  return floor((x + mg_h(vec3(salt, 43.0, mg_rseed)) * Lk) / Lk);
 }
 // 要素ごとにずれた周期の「世代」と、世代内の位相 f
 float mg_epoch(float salt, out float f){
@@ -168,10 +193,10 @@ bool mg_hfull(float j){ return mg_h(vec3(j * 5.17, 12.0, mg_rseed)) < mg_fullH; 
 bool mg_hvis(float j, float a){
   if(!mg_lexist(j, 1.0)) return false;
   if(mg_hfull(j)) return true;
-  return mg_h(vec3(j * 5.17, a, mg_rseed + 14.0)) < 0.5;
+  return mg_h(vec3(j * 5.17, mg_runKey(a, j * 5.17), mg_rseed + 14.0)) < mg_pH;
 }
 // 垂直線 k (錨でない) の、水平線 row から上の区間があるか
-bool mg_piece(float k, float row){ return mg_h(vec3(k * 3.31, row, mg_rseed + 13.0)) < 0.72; }
+bool mg_piece(float k, float row){ return mg_h(vec3(k * 3.31, mg_runKey(row, k * 3.31 + 0.5), mg_rseed + 13.0)) < mg_pV; }
 // 構造の向き: 水平線が通りやすく垂直線が区間で切れる仕組みなので、そのままだと横長の面に偏る。
 // 道の種ごとに縦横を入れ替え、縦長の構成も同じだけ出す
 vec2 mg_orient(vec2 q){ return mg_h(vec3(mg_rseed, 61.0, 3.0)) < 0.5 ? q.yx : q; }
@@ -179,25 +204,32 @@ vec2 mg_orient(vec2 q){ return mg_h(vec3(mg_rseed, 61.0, 3.0)) < 0.5 ? q.yx : q;
 void mg_build(vec2 q){
   float c0 = floor(q.x / mg_pitch);
   float r0 = floor(q.y / mg_pitch);
+  // 探す範囲 (列 / 行の数)。狭いと線がまばらなところで見つからず、範囲の境目で線が宙に浮いて止まるので広く取る。
+  //   見つかった所で抜けるので、ふつうは数回で終わる。上限は uniform 依存 (ANGLE の定数ループ展開を避ける)
+  int NS = int(32.0 + 0.0 * time);
   // 錨 (左): 水平線の区間を決める
   float kA = -1e4;
-  for(int i = 0; i < 12; i++){
+  for(int i = 0; i < 32; i++){
+    if(i >= NS) break;
     float k = c0 + 1.0 - float(i);
     if(mg_lexist(k, 0.0) && mg_anchor(k) && mg_lpos(k, 0.0) <= q.x){ kA = k; break; }
   }
   // 見えている水平線 (下 / 上)
   mg_jB = -1e4; mg_yB = -1e4; mg_jT = 1e4; mg_yT = 1e4;
-  for(int i = 0; i < 9; i++){
+  for(int i = 0; i < 32; i++){
+    if(i >= NS) break;
     float j = r0 + 1.0 - float(i);
     if(mg_hvis(j, kA)){ float y = mg_lpos(j, 1.0); if(y <= q.y){ mg_jB = j; mg_yB = y; break; } }
   }
-  for(int i = 0; i < 9; i++){
+  for(int i = 0; i < 32; i++){
+    if(i >= NS) break;
     float j = r0 + float(i);
     if(mg_hvis(j, kA)){ float y = mg_lpos(j, 1.0); if(y > q.y){ mg_jT = j; mg_yT = y; break; } }
   }
   // 垂直線 (左 / 右): 錨か、行 jB の区間があるもの。錨より先へは探さない (錨で必ず止まる)
   mg_kL = -1e4; mg_xL = -1e4; mg_kR = 1e4; mg_xR = 1e4; mg_aL = 0.0; mg_aR = 0.0;
-  for(int i = 0; i < 12; i++){
+  for(int i = 0; i < 32; i++){
+    if(i >= NS) break;
     float k = c0 + 1.0 - float(i);
     if(!mg_lexist(k, 0.0)) continue;
     float x = mg_lpos(k, 0.0);
@@ -205,7 +237,8 @@ void mg_build(vec2 q){
     bool an = mg_anchor(k);
     if(an || mg_piece(k, mg_jB)){ mg_kL = k; mg_xL = x; mg_aL = an ? 1.0 : 0.0; break; }
   }
-  for(int i = 0; i < 12; i++){
+  for(int i = 0; i < 32; i++){
+    if(i >= NS) break;
     float k = c0 + float(i);
     if(!mg_lexist(k, 0.0)) continue;
     float x = mg_lpos(k, 0.0);
@@ -304,7 +337,7 @@ float mc_eval(vec2 q, float aa, float audio, out vec3 col, out float isPaper){
 vec3 bg_composition(vec2 fc){
   float kick = clamp(uMcKick * 0.01, 0.0, 1.0);
   mg_setTime(getBeat(), uMcSpeed * 0.01, kick, uMcChange, uMcRedraw, uMcDrawIn, uMcSeed);
-  mg_lines = uMcLines * 0.01; mg_full = uMcFull * 0.01; mg_fullH = uMcFullH * 0.01;
+  mg_lines = uMcLines * 0.01; mg_full = uMcFull * 0.01; mg_fullH = uMcFullH * 0.01; mg_setCut(uMcCut);
   mg_irreg = uMcIrreg * 0.01; mg_motion = uMcMotion * 0.01; mg_dyn = uMcDyn * 0.01;
   float audio = clamp(iAudio, 0.0, 1.0) * uMcKick * 0.01;
 
@@ -367,10 +400,10 @@ vec3 bg_composition(vec2 fc){
     float sBest = 1e9; float sideBest = 0.0; vec4 bxBest = vec4(0.0);
     for(int b = 0; b < 5; b++){
       vec4 bx; float h;
-      if(b == 0){ if(mc_on.x < 0.5) continue; bx = vec4(mg_xL, mg_yB, mg_xL + wq.x, mg_yT); h = H; }
-      else if(b == 1){ if(mc_on.y < 0.5) continue; bx = vec4(mg_xR - wq.x, mg_yB, mg_xR, mg_yT); h = H; }
-      else if(b == 2){ if(mc_on.z < 0.5) continue; bx = vec4(mg_xL, mg_yB, mg_xR, mg_yB + wq.y); h = H; }
-      else if(b == 3){ if(mc_on.w < 0.5) continue; bx = vec4(mg_xL, mg_yT - wq.y, mg_xR, mg_yT); h = H; }
+      if(b == 0){ if(mc_on.x < 0.5) continue; bx = vec4(mg_xL, mg_yB, mg_xL + wq.x, mg_yT); h = H * mg_lineH(mg_kL, 0.0, uMcHeightVar * 0.01); }
+      else if(b == 1){ if(mc_on.y < 0.5) continue; bx = vec4(mg_xR - wq.x, mg_yB, mg_xR, mg_yT); h = H * mg_lineH(mg_kR, 0.0, uMcHeightVar * 0.01); }
+      else if(b == 2){ if(mc_on.z < 0.5) continue; bx = vec4(mg_xL, mg_yB, mg_xR, mg_yB + wq.y); h = H * mg_lineH(mg_jB, 1.0, uMcHeightVar * 0.01); }
+      else if(b == 3){ if(mc_on.w < 0.5) continue; bx = vec4(mg_xL, mg_yT - wq.y, mg_xR, mg_yT); h = H * mg_lineH(mg_jT, 1.0, uMcHeightVar * 0.01); }
       else {
         if(HB <= 0.0 || mc_cellSolid() < 0.5) continue;
         bx = vec4(mg_xL, mg_yB, mg_xR, mg_yT) + vec4(wq * mc_on.xz, -wq * mc_on.yw);   // 色面 = 出ている線の内側
@@ -395,12 +428,13 @@ vec3 bg_composition(vec2 fc){
       hitI = float(i);
       tHit = t + sBest;
       side = sideBest;
-      // 色は箱の少し内側 (箱の中心へ寄せた点) で読む。側面の縁で外の白地や隣の色を拾わない
+      // 色は箱の少し内側 (箱の中心へ寄せた点) で読む。側面の縁で外の白地や隣の色を拾わない。
+      //   軸ごとに寄せる (長い線の箱は中心への向きがほぼ長手方向になり、側面の点が線の縁に残って陰が千切れる)
       vec3 ph = ro + rd * tHit;
       vec2 qh = tilt * ((ph.xy / zm + bgCamPx / resolution.y)) * sc;
       vec2 toC = 0.5 * (bxBest.xy + bxBest.zw) - (Q + D * sBest);
-      float dC = length(toC);
-      if(dC > 1e-7) qh += mg_orient(toC / dC * min(0.3 * w, 0.5 * dC) / mc_dq);
+      vec2 lim = min(0.3 * wq, 0.5 * abs(toC));
+      qh += mg_orient(clamp(toC, -lim, lim) / mc_dq);
       mc_eval(qh, sc * tHit / (resolution.y * zm), audio, col, isPaper);
       break;
     }
