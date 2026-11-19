@@ -598,6 +598,30 @@ function snapshotGlyphs(forceAll){
         return result;
       }
 
+      // VJ: 音 (app.js の Audio) を Composition へ。量は md の compAudio (デッドゾーンあり)。0 なら null = 従来どおり
+      function audioDrive(){
+        var a = TD._dp(+TD.P.compAudio || 0);
+        if(!(a > 0) || typeof Audio === 'undefined' || !Audio.fft) return null;
+        var f = Audio.fft, n = f.length;
+        var band = function(lo, hi){
+          var s = 0, c = 0;
+          for(var i = Math.max(1, Math.floor(n*lo)); i < Math.floor(n*hi); i++){ s += f[i]; c++; }
+          return c ? s/c/255 : 0;
+        };
+        return { amount: a, level: Audio.energy || 0, react: Math.min(1, Audio.react || 0), onset: Math.min(1, Audio.onset || 0),
+          low: band(0, 0.04), mid: band(0.04, 0.2), high: band(0.2, 0.6) };
+      }
+      // エンジンへ渡す状態 (音で macros を持ち上げた写し)。保存される compositionState は変えない
+      function audioModulatedState(drive){
+        if(!drive) return null;
+        var m = compositionState.macros, a = drive.amount, k = function(v, add){ return Math.max(0, Math.min(1, v + (1 - v)*Math.min(1, add))); };
+        return Object.assign({}, compositionState, { macros: Object.assign({}, m, {
+          intensity: k(m.intensity, a*drive.react),
+          instability: k(m.instability, a*drive.onset),
+          depth: k(m.depth, a*drive.low*1.5)
+        }) });
+      }
+
       var compositionBusPointer = { x: 0.5, y: 0.5, previousX: 0.5, previousY: 0.5, time: 0 };
       function createCompositionInputBus(tokens, width, height, clock) {
         // VJ: 仮想ポインタ(ステージ座標)を正規化して渡す
@@ -617,6 +641,12 @@ function snapshotGlyphs(forceAll){
         compositionBusPointer.time = now;
         compositionBusPointer.x = px;
         compositionBusPointer.y = py;
+        // 音が鳴っている間は、帯域の偏り (低音寄り=左 / 高音寄り=右、中音で上) の位置にポインタを置く
+        var drive = envState.audio, audioActive = !!(drive && drive.amount*drive.react > 0.12);
+        if(audioActive){
+          compositionBusPointer.x = Math.max(0, Math.min(1, 0.5 + (drive.high - drive.low)*0.9));
+          compositionBusPointer.y = Math.max(0, Math.min(1, 0.55 - drive.mid*0.6));
+        }
         var visible = tokens.filter(function (token) { return token && !token.space && token.glyph; });
         var frequencies = {}, entropy = 0;
         for (var i = 0; i < visible.length; i++) {
@@ -633,8 +663,8 @@ function snapshotGlyphs(forceAll){
             x: compositionBusPointer.x, y: compositionBusPointer.y,
             px: compositionBusPointer.x * width, py: compositionBusPointer.y * height,
             speed: isFinite(speed) ? Math.min(10, speed) : 0,
-            pressure: TD._compPulse != null ? TD._compPulse : 0.5,
-            active: !!(TD._t != null && TD._t < (TD._bloomUntil || 0))   // VJ: bloomスイープ中だけポインタ有効
+            pressure: audioActive ? Math.max(TD._compPulse || 0, drive.react) : (TD._compPulse != null ? TD._compPulse : 0.5),
+            active: audioActive || !!(TD._t != null && TD._t < (TD._bloomUntil || 0))   // VJ: bloomスイープ中 / 音が鳴っている間だけポインタ有効
           },
           text: {
             length: visible.length,
@@ -644,7 +674,7 @@ function snapshotGlyphs(forceAll){
             tokenIndex: 0, codePoint: 0, unicodeHash: 0,
             glyphWidth: params.fontSize, inkCoverage: 0.5
           },
-          audio: null,
+          audio: drive ? { level: drive.level, react: drive.react, onset: drive.onset, low: drive.low, mid: drive.mid, high: drive.high } : null,
           midi: null
         };
       }
@@ -767,7 +797,7 @@ function snapshotGlyphs(forceAll){
       var compositionState = cloneCompositionDefaults();
       var compositionScene = { glyphs: [], bands: [], width: 0, height: 0 };
       var engine = null, engineLoading = null, engineError = '';
-      var envState = { params: {}, paramsKey: '', compositionInputs: {}, sourceGlyphs: [], fontMetrics: {}, qualityOverride: null };
+      var envState = { params: {}, paramsKey: '', compositionInputs: {}, sourceGlyphs: [], fontMetrics: {}, qualityOverride: null, audio: null, modState: null };
       var fontRuntime = null, renderErrorShown = false;
       function ensureEngine(){
         if(engine || engineLoading) return engineLoading;
@@ -776,7 +806,7 @@ function snapshotGlyphs(forceAll){
           fontRuntime = globalThis.TypeDeformerAxes.createRuntime({ fonts: document.fonts });
           engine = globalThis.TypeDeformerWorkerAdapter.create({
             get params(){ return envState.params; }, set params(v){ envState.params = v; },
-            get compositionState(){ return compositionState; }, set compositionState(v){ compositionState = v; },
+            get compositionState(){ return envState.modState || compositionState; }, set compositionState(v){ compositionState = v; },
             get renderedSourceText(){ return textInput.value; }, set renderedSourceText(v){},
             surfaceFxPhase: 0, dataMoshFrame: 0, blobTrackState: { blobs: [] }, surfaceFxScratchCanvases: {},
             get compositionScene(){ return compositionScene; }, set compositionScene(v){ compositionScene = v; },
@@ -825,15 +855,19 @@ function snapshotGlyphs(forceAll){
         var glyphs = snapshotGlyphs(true);
         envState.sourceGlyphs = glyphs;
         var scene;
+        envState.audio = audioDrive();
+        envState.modState = audioModulatedState(envState.audio);
         try{
           var tokens = engine.compositionSourceTokens(glyphs);
           envState.compositionInputs = createCompositionInputBus(tokens, w, h,
             engine.createLoopClock(compositionState.phase, 240, compositionState.seed, compositionState.direction));
           scene = engine.applyCompositionFxRack(generateScene(w, h, glyphs), w, h, 'preview');
         }catch(e){
+          envState.modState = null;
           if(!renderErrorShown){ renderErrorShown = true; console.warn('[TDComp]', e); }
           return false;
         }
+        envState.modState = null;
         compositionScene = scene;
         drawSceneBands(ctx, scene.bands, 1, layout);
         drawGlyphs(ctx, scene.glyphs, 1, layout, envState.fontMetrics, true);
@@ -895,7 +929,8 @@ function snapshotGlyphs(forceAll){
           TD._compPulse = Math.max(0, Math.min(1, (pulse || 1) - 1 + 0.35));
           if(!compositionState.enabled) return;
           var dir = compositionState.direction === -1 ? -1 : 1;
-          compositionState.phase = ((compositionState.phase + dt * compositionState.speed * dir) % 1 + 1) % 1;
+          var drive = audioDrive(), boost = drive ? 1 + drive.amount*drive.react*2 : 1;   // 音で位相の進みを最大 3 倍に
+          compositionState.phase = ((compositionState.phase + dt * compositionState.speed * boost * dir) % 1 + 1) % 1;
         },
         // false = エンジン読み込み中 / 生成に失敗 (呼び出し側は素の文字を描く)
         render(ctx, w, h){ return renderCompositionToCtx(ctx, w, h); }

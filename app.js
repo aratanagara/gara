@@ -17744,6 +17744,7 @@ void mainImage(out vec4 o, in vec2 f){
     bindTdNumber('tdMdVignette', 'vignette');
     bindTdNumber('tdMdGrain', 'grain');
     bindTdNumber('tdMdGrainSize', 'grainSize');
+    bindTdNumber('tdMdCompAudio', 'compAudio');
     bindTdColor('tdMdVignetteColor', 'vignetteColor');
     const tdGrid = $('#tdMdGrid');
     if(tdGrid){
@@ -23678,6 +23679,7 @@ void mainImage(out vec4 o, in vec2 f){
     addNum('tdMdVignette', 'vignette');
     addNum('tdMdGrain', 'grain');
     addNum('tdMdGrainSize', 'grainSize');
+    addNum('tdMdCompAudio', 'compAudio');
     addColor('tdMdVignetteColor', 'vignetteColor');
     const gridSel = $('#tdMdGrid');
     if(gridSel) over.gridEnabled = gridSel.value === 'on';
@@ -23822,6 +23824,7 @@ void mainImage(out vec4 o, in vec2 f){
     setColor('tdMdVignetteColor', 'tdMdVignetteColorVal', 'vignetteColor', '#000000');
     setRange('tdMdGrain', 'tdMdGrainVal', 'grain', 0, v=>Math.round(v) + '%');
     setRange('tdMdGrainSize', 'tdMdGrainSizeVal', 'grainSize', 100, v=>Math.round(v) + '%');
+    setRange('tdMdCompAudio', 'tdMdCompAudioVal', 'compAudio', 0, v=> Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2));
     const lawSel = $('#tdMdRandomLaw');
     if(lawSel){
       const law = String(valFor('randomLaw', 'scatter'));
