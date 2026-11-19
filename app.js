@@ -2134,6 +2134,7 @@ uniform vec4 uClRect[6];
 uniform vec4 uClPar[6];
 uniform float uSepN;
 uniform float uSepSub;
+uniform float uSepOver;
 uniform vec4 uSepPar[8];
 uniform vec4 uSepCol[8];
 uniform vec2 uSepRegN;
@@ -2230,7 +2231,8 @@ void main(){
     float tate = mod(step(0.5, h2) + sp.y, 2.0);
     vec2 ql = tate > 0.5 ? vec2(q.x - uRes.x, q.y) : q;
     float a = nvLayer(ql, q, cell, tate, floor(h3 * uLen), sp.w, 1.0, sp.z, rid, sc.w, ink) * uGrid;
-    if(uSepSub > 0.5) col *= mix(vec3(1.0), sc.rgb, min(1.0, a * uSepGain));
+    if(float(i) >= uSepOver) col = mix(col, sc.rgb, min(1.0, a));   // 後に置く版 (全 8 版の RGB) は下の版を覆う
+    else if(uSepSub > 0.5) col *= mix(vec3(1.0), sc.rgb, min(1.0, a * uSepGain));
     else col += sc.rgb * a * uSepGain;
   }
   // クラスター: 大きさと組み方向の違う字の塊を重ねる (後のものほど上)
@@ -6679,17 +6681,17 @@ void main(){
       const rnd2 = (k)=>{ const x = Math.sin((sep + 1) * 91.7 + k * 57.3) * 43758.5453; return x - Math.floor(x); };
       const gSizes = [0.6, 0.8, 1, 1.3, 1.8, 2.6];
       gl.uniform1f(u('uCell'), vBeats ? cell * gSizes[Math.floor(rnd2(99) * gSizes.length)] : cell);
-      // 分版: Sep の値で版の組を選ぶ (〜1/3 = RGB + 明度 / 〜2/3 = CMYK / それ以上 = 全 8 版)。網の角度のように版ごとに傾け、大きさも Vary で引き直す
       // 分版: Sep の値で版の組を選ぶ (〜1/3 = RGB + 明度 / 〜2/3 = CMYK / それ以上 = 全 8 版)。
       //   版ごとに区画・字の大きさ・組み方向が違うグレーの字の層を重ね、明暗で一枚の絵に戻す
       const sepv = v('novelSep', 0);
-      const sepIdx = sepv <= 0 ? [] : sepv < 1/3 ? [0,1,2,3] : sepv < 2/3 ? [4,5,6,7] : [0,1,2,3,4,5,6,7];
+      const sepIdx = sepv <= 0 ? [] : sepv < 1/3 ? [0,1,2,3] : sepv < 2/3 ? [4,5,6,7] : [4,5,6,7,3,0,1,2];   // 全 8 版: CMYK + 明度を重ねたあとに RGB を上から置く (CMY が強すぎるため)
       const sub = (bgc[0]*0.299 + bgc[1]*0.587 + bgc[2]*0.114) > 0.5 && v('novelBg', 0) < 0.5;
       // 版はグレーで描く (チャンネル表示と同じ)。暗い地 = 白の光で明るさを、明るい地 = 黒のインクで濃さを置く。反転 = 版の濃さを地に合わせて裏返すか
       const ADD = [[1,1,1,0],[1,1,1,0],[1,1,1,0],[1,1,1,0],[1,1,1,1],[1,1,1,1],[1,1,1,1],[1,1,1,1]];   // 光: 色・反転 (CMYK はインクの量なので反転)
       const SUB = [[0,0,0,1],[0,0,0,1],[0,0,0,1],[0,0,0,1],[0,0,0,0],[0,0,0,0],[0,0,0,0],[0,0,0,0]];   // インク: 色・反転 (RGB・明度は光の量なので反転)
       gl.uniform1f(u('uSepN'), sepIdx.length);
       gl.uniform1f(u('uSepSub'), sub ? 1 : 0);
+      gl.uniform1f(u('uSepOver'), sepIdx.length === 8 ? 5 : 99);
       if(sepIdx.length){
         const sp = new Float32Array(32), sc = new Float32Array(32);
         // 版の色: Color で グレー (0) ↔ 版の色 (1)。版の色では各版を自分の色で濃さどおりに置く (明度・K は地に合わせて白 / 黒の反転のまま)
@@ -6706,7 +6708,7 @@ void main(){
         const nReg = 2 + Math.round(4 * v('novelCluster', 0.5));   // 区画の数は Cluster で決める (分版中は重ねるクラスターを出さない)
         gl.uniform2f(u('uSepRegN'), nReg, Math.max(1, nReg - 1));
         gl.uniform1f(u('uSepSeed'), (sep % 997) + ep * 13);
-        gl.uniform1f(u('uSepGain'), (sub ? 1.4 : 1.6) * 4 / Math.max(4, sepIdx.length));
+        gl.uniform1f(u('uSepGain'), (sub ? 1.4 : 1.6) * 4 / Math.max(4, sepIdx.length === 8 ? 5 : sepIdx.length));
       }
       const nCl = sepIdx.length ? 0 : Math.round(6 * v('novelCluster', 0.5));
       gl.uniform1f(u('uClN'), nCl);
