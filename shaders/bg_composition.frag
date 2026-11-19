@@ -43,6 +43,7 @@
 // @param uMcSpin    -100..100 = 20.0
 // @param uMcWallShade 0..100 = 55.0
 // @param uMcBuild   0..400   = 0.0
+// @param uMcBuildVar 0..100  = 65.0
 // @param uMcDist    60..400  = 100.0
 // @param uMcPaper   color = #f2f0e9
 // @param uMcInk     color = #141414
@@ -76,6 +77,7 @@ uniform float uMcPitch;   // 盤面の傾き (度)
 uniform float uMcSpin;    // 盤面の回転の速さ (%)。負で逆回転
 uniform float uMcWallShade; // 線の側面の陰の濃さ (%)
 uniform float uMcBuild;   // 色面 (赤/青/黄/黒) を建物として立ち上げる高さ (%)。0 = 平ら。面ごとに高さがばらつく
+uniform float uMcBuildVar; // 建物の高さのばらつき (%)。0 = 全部 Build の高さ / 100 = 0〜Build でばらつく
 uniform float uMcDist;    // カメラの距離 (%)。上げると引いて盤面を俯瞰する
 uniform vec3 uMcPaper;    // 白地の色
 uniform float uFx3dMatte; // app が設定: 1 = 3D FX 中 (紙を透過で出す)
@@ -372,7 +374,7 @@ vec3 bg_composition(vec2 fc){
       else {
         if(HB <= 0.0 || mc_cellSolid() < 0.5) continue;
         bx = vec4(mg_xL, mg_yB, mg_xR, mg_yT) + vec4(wq * mc_on.xz, -wq * mc_on.yw);   // 色面 = 出ている線の内側
-        h = HB * (0.35 + 0.65 * mg_h(vec3(mg_kL * 7.13 + mg_jB * 131.7, 81.0, mg_seed)));
+        h = HB * (1.0 - uMcBuildVar * 0.01 * (1.0 - mg_h(vec3(mg_kL * 7.13 + mg_jB * 131.7, 81.0, mg_seed))));
       }
       if(h <= 0.0) continue;
       vec2 a = (bx.xy - Q) * iD, c = (bx.zw - Q) * iD;

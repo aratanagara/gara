@@ -54,6 +54,7 @@
 // @param uMbSpin    -100..100 = 20.0
 // @param uMbWallShade 0..100 = 55.0
 // @param uMbBuild   0..400   = 0.0
+// @param uMbBuildVar 0..100  = 65.0
 // @param uMbDist    60..400  = 100.0
 // @param uMbPaper   color = #f2f0e9
 // @param uMbRed     color = #cf1f18
@@ -92,6 +93,7 @@ uniform float uMbPitch;   // 盤面の傾き (度)
 uniform float uMbSpin;    // 盤面の回転の速さ (%)。負で逆回転
 uniform float uMbWallShade; // 線・建物の側面の陰の濃さ (%)
 uniform float uMbBuild;   // 色ブロック (赤/青/黄) を建物として立ち上げる高さ (%)。0 = 平ら。面ごとに高さがばらつく
+uniform float uMbBuildVar; // 建物の高さのばらつき (%)。0 = 全部 Build の高さ / 100 = 0〜Build でばらつく
 uniform float uMbDist;    // カメラの距離 (%)。上げると引いて盤面を俯瞰する
 uniform vec3 uMbPaper;    // 白地の色
 uniform vec3 uMbRed;      // 赤
@@ -487,7 +489,7 @@ vec3 bg_boogie_woogie(vec2 fc){
         float rid, er, sd; bool cellOn; vec2 bU;
         mb_prep(rid, er, cellOn, sd);
         if(!mb_blk(rid, er, cellOn, sd, bx, bU)) continue;
-        h = HB * (0.35 + 0.65 * mg_h(vec3(rid, 81.0 + er, mg_seed)));
+        h = HB * (1.0 - uMbBuildVar * 0.01 * (1.0 - mg_h(vec3(rid, 81.0 + er, mg_seed))));
       }
       if(h <= 0.0) continue;
       vec2 a = (bx.xy - Q) * iD, c = (bx.zw - Q) * iD;
