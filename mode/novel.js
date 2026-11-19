@@ -1263,7 +1263,7 @@ const NovelTerminal = {
       }
       return Math.max(inside, edge*0.65);
     };
-    const composedField = (nx, ny, va, phase) => {
+    const procField = (nx, ny, va, phase) => {
       const geom = fieldAt(nx, ny, va, phase);
       const rects = rectFieldAt(nx, ny, phase);
       return {
@@ -1275,6 +1275,9 @@ const NovelTerminal = {
         lineFront: geom.lineFront
       };
     };
+    // 入力映像があれば (小説化 FX の下準備。setInputField)、図形の場の代わりに映像の輝度・エッジ・動きで字を置く
+    const ext = this._ext;
+    const composedField = ext ? (nx, ny) => this._extField(nx, ny, aspect) : procField;
     const inkMode = (this.P && this.P.inkMode != null) ? (this.P.inkMode|0) : 0;
     const alphaMul = Math.max(0, Math.min(2, (this.P && typeof this.P.alpha === 'number') ? this.P.alpha : 1));
     const drawGlyph = (ch, prev, next, x, y, cs, alpha, vertical) => {
@@ -1325,7 +1328,7 @@ const NovelTerminal = {
     const geoA = fieldAt(0, 0, mu < 0.5 ? variant : nextVariant, mu < 0.5 ? 0.0 : 1.7, true).geo;
     const toPx = (gx, gy) => [((gx/aspect)+1)*0.5*W, (gy+1)*0.5*H];
     // 大きな字: 円の中心に、半径いっぱいの輪郭線の漢字 (図形が切り替わるたびに字も替わる)
-    if(kBig > 0){
+    if(kBig > 0 && !ext){
       const kan = this._fluidKanji || (this._fluidKanji = src.filter(ch => { const c = ch.charCodeAt(0); return c >= 0x4E00 && c <= 0x9FFF; }));
       if(kan.length){
         const ch = kan[(geoA.scene*37 + variant*11 + Math.floor(t/(5.4/((this.P && this.P.sceneSpeed) || 1)))*7) % kan.length];
@@ -1373,6 +1376,11 @@ const NovelTerminal = {
         else if(promptCol && r % 9 === 1) ch = "_";
         else if(noise > 1 - 0.008*Math.max(0, (this.P && typeof this.P.glitch === 'number') ? this.P.glitch : 1)) ch = this.GLITCH[(noise*this.GLITCH.length)|0];
         const idx = (base + r*cols + c + src.length*20) % src.length;
+        if(ext && ext.D){   // 3D の受け口: 深度で字の大きさと位置 (手前ほど大きく、面の傾きの方へずらす)
+          const dp = this._extDepth(nx, ny, aspect);
+          const cs = fs*(0.7 + 0.6*dp.d);
+          drawGlyph(ch, src[(idx-1+src.length)%src.length] || "", src[(idx+1)%src.length] || "", x + dp.gx*adv*0.8 - (cs-fs)*0.5, y + dp.gy*lh*0.8 - (cs-fs)*0.5, cs, alpha, false);
+        } else
         drawGlyph(ch, src[(idx-1+src.length)%src.length] || "", src[(idx+1)%src.length] || "", x, y, fs, alpha, false);
         occupied.add(occKey(x, y));
       }
@@ -1423,7 +1431,7 @@ const NovelTerminal = {
       }
     }
 
-    if(kHud > 0) this._fluidHud(p, geoA, toPx, t, fs, accRGB, monoRGB, kHud, variant);
+    if(kHud > 0 && !ext) this._fluidHud(p, geoA, toPx, t, fs, accRGB, monoRGB, kHud, variant);
 
     const cursorX = W*(0.08 + 0.76*((t*0.047)%1));
     const cursorY = H*(0.88 + 0.025*Math.sin(t*0.8));
@@ -1484,6 +1492,85 @@ const NovelTerminal = {
     dc.fillRect(m, m + sfs*1.6, sfs*6*snap, hair*2);
     try{ dc.letterSpacing = '0px'; }catch(e){}
     dc.restore();
+  },
+  // ===== 小説化 FX (Post FX「Novel」) 用の字のアトラス =====
+  //   本文に出てくる字を 1 枚のテクスチャに焼き、本文の流れを字番号の列にする。横組み用と縦組み用
+  //   (約物の回転・句読点と小書きかなの位置) の 2 本の列を返す。シェーダは画面をマス目に割り、マスの位置から字番号を引いて描く。
+  //   返り値: { canvas, cols, rows, cell, count, streamH: Uint16Array, streamV: Uint16Array }
+  buildGlyphAtlas(cell){
+    cell = cell || 48;
+    const textH = [];
+    for(const para of this.PARAS){
+      const s = this._indent(para);
+      for(const ch of s){ const c = ch.charCodeAt(0); textH.push((c>=0x21 && c<=0x7E) ? String.fromCharCode(c+0xFEE0) : (c===0x20 ? '　' : ch)); }
+    }
+    const keyV = ch => (this._ED_ROT.has(ch) ? 'r' : this._ED_HANG.has(ch) ? 'p' : this._ED_SMALL.has(ch) ? 's' : '') + ch;
+    const ids = new Map(), glyphs = [];
+    const idOf = k => { let i = ids.get(k); if(i === undefined){ i = glyphs.length; ids.set(k, i); glyphs.push(k); } return i; };
+    idOf('　');   // 0 = 空白
+    const streamH = new Uint16Array(textH.length), streamV = new Uint16Array(textH.length);
+    for(let i=0;i<textH.length;i++){ streamH[i] = idOf(textH[i]); streamV[i] = idOf(keyV(textH[i])); }
+    const cols = 64, rows = Math.ceil(glyphs.length/cols);
+    const cv = document.createElement('canvas'); cv.width = cols*cell; cv.height = rows*cell;
+    const x = cv.getContext('2d');
+    const fs = Math.round(cell*0.78);
+    x.font = fs + 'px ' + this.ED_MINCHO; x.textAlign = 'center'; x.textBaseline = 'middle'; x.fillStyle = '#fff';
+    glyphs.forEach((k, i)=>{
+      const cx = (i%cols + 0.5)*cell, cy = (Math.floor(i/cols) + 0.5)*cell;
+      const mode = (k.length > 1 && 'rps'.includes(k[0])) ? k[0] : '', ch = mode ? k.slice(1) : k;
+      if(ch === '　') return;
+      if(mode === 'r'){ x.save(); x.translate(cx, cy); x.rotate(Math.PI/2); x.fillText(ch, 0, 0); x.restore(); }
+      else if(mode === 'p') x.fillText(ch, cx + fs*0.60, cy - fs*0.58);
+      else if(mode === 's') x.fillText(ch, cx + fs*0.11, cy - fs*0.11);
+      else x.fillText(ch, cx, cy);
+    });
+    return { canvas: cv, cols, rows, cell, count: glyphs.length, streamH, streamV };
+  },
+  // ===== 入力駆動 (小説化 FX の下準備) =====
+  //   映像を小さく読み戻した RGBA (GL.asyncReadPixels の結果。下の行から並ぶ) を渡すと、Fluid の字の配置が
+  //   図形の場の代わりに映像の場で決まる: 横組み = 輝度 + 動き / 縦書き = エッジ。depth (R8 か RGBA の R、任意) を渡すと
+  //   字の大きさと位置が深度で変わる (3D Mode の vjDepth = スロット FBO の dtex を同じ寸法で読めばよい)。
+  //   clearInputField() で通常の Fluid に戻る。何も渡さなければ従来どおり (既定では誰も呼ばない)。
+  _ext: null,
+  setInputField(rgba, w, h, opts){
+    if(!rgba || !(w > 2) || !(h > 2)) { this._ext = null; return; }
+    opts = opts || {};
+    const n = w*h, L = new Float32Array(n), E = new Float32Array(n), Mo = new Float32Array(n);
+    const prev = (this._ext && this._ext.w === w && this._ext.h === h) ? this._ext.L : null;
+    const flip = opts.flipY !== false;   // readPixels は下から。true = 上下を返して画面の向きに揃える
+    for(let y=0;y<h;y++){ const sy = flip ? h-1-y : y; for(let x=0;x<w;x++){ const i = (sy*w + x)*4; L[y*w+x] = (rgba[i]*0.299 + rgba[i+1]*0.587 + rgba[i+2]*0.114)/255; } }
+    for(let y=1;y<h-1;y++) for(let x=1;x<w-1;x++){
+      const k = y*w + x;
+      const gx = L[k-w+1] + 2*L[k+1] + L[k+w+1] - L[k-w-1] - 2*L[k-1] - L[k+w-1];
+      const gy = L[k+w-1] + 2*L[k+w] + L[k+w+1] - L[k-w-1] - 2*L[k-w] - L[k-w+1];
+      E[k] = Math.min(1, Math.hypot(gx, gy)*0.5);
+    }
+    if(prev) for(let k=0;k<n;k++) Mo[k] = Math.min(1, Math.abs(L[k] - prev[k])*4);
+    let D = null;
+    if(opts.depth){
+      const ds = opts.depth, st = (ds.length >= n*4) ? 4 : 1;
+      D = new Float32Array(n);
+      for(let y=0;y<h;y++){ const sy = flip ? h-1-y : y; for(let x=0;x<w;x++) D[y*w+x] = ds[(sy*w + x)*st]/255; }
+    }
+    this._ext = { w, h, L, E, M: Mo, D, gain: (typeof opts.gain === 'number') ? opts.gain : 1 };
+  },
+  clearInputField(){ this._ext = null; },
+  _extAt(A, nx, ny, aspect){
+    const e = this._ext, u = Math.max(0, Math.min(0.9999, ((nx/aspect)+1)*0.5)), v = Math.max(0, Math.min(0.9999, (ny+1)*0.5));
+    return A[((v*e.h)|0)*e.w + ((u*e.w)|0)];
+  },
+  _extField(nx, ny, aspect){   // procField と同じ形の場を返す (しきい値 0.48 前後で字が出る尺度)
+    const e = this._ext, g = e.gain;
+    const l = this._extAt(e.L, nx, ny, aspect), ed = this._extAt(e.E, nx, ny, aspect), mo = this._extAt(e.M, nx, ny, aspect);
+    const h = (l*1.05 + mo*0.6)*g, v = (ed*1.6)*g;
+    return { all: Math.max(h, v), h, v, line: ed, back: l*g, lineFront: 0 };
+  },
+  _extDepth(nx, ny, aspect){   // 深度と、その勾配 (面の傾き = 法線の xy の近似)
+    const e = this._ext, D = e.D, sx = 2*aspect/e.w, sy = 2/e.h;
+    const d = this._extAt(D, nx, ny, aspect);
+    const gx = this._extAt(D, nx+sx, ny, aspect) - this._extAt(D, nx-sx, ny, aspect);
+    const gy = this._extAt(D, nx, ny+sy, aspect) - this._extAt(D, nx, ny-sy, aspect);
+    return { d, gx: Math.max(-1, Math.min(1, gx*4)), gy: Math.max(-1, Math.min(1, gy*4)) };
   },
   _dFluidAscii(p, t, cell){
     this._dNovelFullText(p, t);
