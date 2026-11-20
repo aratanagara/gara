@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795160064">
+<link rel="stylesheet" href="style.css?v=1795160206">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1977,7 +1977,8 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <tr><td><kbd>Backspace</kbd></td><td>操作中のスロットを透明に (Settings の Backspace Clear で無効にできる) / <kbd>Shift + Backspace</kbd> Visual 固有の操作</td></tr>
             <tr><td><kbd>Shift</kbd> 単押し</td><td>Visual 固有の操作 (背景切替、組方向など)</td></tr>
             <tr><td>A/B タイル</td><td>クリック = そのスロットを操作対象に (合成プレビューのクリックでは変わらない) / ダブルクリック = 表示切替 / もう一方へドラッグ = A ⇄ B 交換</td></tr>
-            <tr><td><kbd>C</kbd></td><td>IMAGON / Manga キャンバスをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
+            <tr><td><kbd>C</kbd></td><td>IMAGON / Manga キャンバスとドラッグで置いた吹き出しをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
+            <tr><td>左ドラッグ</td><td>S128 Uni Flash のスロットがアクティブのとき、押している間カーソル位置へ吹き出しを連射 (MANGA のマシンガンと同じ)</td></tr>
           </table>
         </div>
         <div class="section">
@@ -2050,60 +2051,60 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795160064"></script>
-<script src="mode/layer.js?v=1795160064"></script>
-<script src="vendor/iro.min.js?v=1795160064"></script>
-<script src="vendor/mediabunny.min.js?v=1795160064"></script>
-<script src="mode/textdeform.js?v=1795160064"></script>
-<script src="mode/textdeform-texts.js?v=1795160064"></script>
-<script src="mode/textdeform-upstream.js?v=1795160064"></script>
-<script src="mode/textdeform-comp.js?v=1795160064"></script>
-<script src="mode/textdeform-surface.js?v=1795160064"></script>
-<script src="mode/textdeform-combos.js?v=1795160064"></script>
-<script src="mode/ugomeki.js?v=1795160064"></script>
-<script src="mode/slicer.js?v=1795160064"></script>
-<script src="mode/video.js?v=1795160064"></script>
-<script src="mode/aratanagara.js?v=1795160064"></script>
-<script src="vendor/p5.min.js?v=1795160064"></script>
-<script src="mode/cyberui.js?v=1795160064"></script>
-<script src="mode/novel.js?v=1795160064"></script>
-<script src="shaders/inkelly.js?v=1795160064"></script>
-<script src="sketchfx.js?v=1795160064"></script>
-<script src="pixelsortfx.js?v=1795160064"></script>
-<script src="shaders/boltzmann.js?v=1795160064"></script>
-<script src="mode/pen.js?v=1795160064"></script>
-<script src="shaders/caverns.js?v=1795160064"></script>
-<script src="mode/shelf.js?v=1795160064"></script>
-<script src="shaders/ribbon.js?v=1795160064"></script>
-<script src="mode/photoplane.js?v=1795160064"></script>
-<script src="mode/shredder.js?v=1795160064"></script>
-<script src="mode/transflock.js?v=1795160064"></script>
-<script src="mode/liquidpeel.js?v=1795160064"></script>
-<script src="mode/windflock.js?v=1795160064"></script>
-<script src="mode/rhizome.js?v=1795160064"></script>
-<script src="mode/surrealfloat.js?v=1795160064"></script>
-<script src="mode/chrometype.js?v=1795160064"></script>
-<script src="mode/tower4149.js?v=1795160064"></script>
-<script src="mode/fude.js?v=1795160064"></script>
-<script src="mode/image.js?v=1795160064"></script>
-<script src="mode/spacetype.js?v=1795160064"></script>
-<script src="fx3d.js?v=1795160064"></script>
-<script src="fx3d-layers.js?v=1795160064"></script>
-<script src="fx3d-cubes.js?v=1795160064"></script>
-<script src="fx3d-blinds.js?v=1795160064"></script>
-<script src="fx3d-diorama.js?v=1795160064"></script>
-<script src="fx3d-points.js?v=1795160064"></script>
-<script src="fx3d-gravity.js?v=1795160064"></script>
-<script src="fx3d-globe.js?v=1795160064"></script>
-<script src="pollockfx.js?v=1795160064"></script>
-<script src="overlay.js?v=1795160064"></script>
-<script src="gif.js?v=1795160064"></script>
-  <script src="ui-icons.js?v=1795160064"></script>
-  <script src="app.js?v=1795160064"></script>
-  <script src="crash-guard.js?v=1795160064"></script>
-  <script src="ui-scrollbar.js?v=1795160064"></script>
-  <script src="ui-settings.js?v=1795160064"></script>
-<script src="camroll.js?v=1795160064" defer></script>
-<script src="dbltap.js?v=1795160064" defer></script>
+<script src="presets.js?v=1795160206"></script>
+<script src="mode/layer.js?v=1795160206"></script>
+<script src="vendor/iro.min.js?v=1795160206"></script>
+<script src="vendor/mediabunny.min.js?v=1795160206"></script>
+<script src="mode/textdeform.js?v=1795160206"></script>
+<script src="mode/textdeform-texts.js?v=1795160206"></script>
+<script src="mode/textdeform-upstream.js?v=1795160206"></script>
+<script src="mode/textdeform-comp.js?v=1795160206"></script>
+<script src="mode/textdeform-surface.js?v=1795160206"></script>
+<script src="mode/textdeform-combos.js?v=1795160206"></script>
+<script src="mode/ugomeki.js?v=1795160206"></script>
+<script src="mode/slicer.js?v=1795160206"></script>
+<script src="mode/video.js?v=1795160206"></script>
+<script src="mode/aratanagara.js?v=1795160206"></script>
+<script src="vendor/p5.min.js?v=1795160206"></script>
+<script src="mode/cyberui.js?v=1795160206"></script>
+<script src="mode/novel.js?v=1795160206"></script>
+<script src="shaders/inkelly.js?v=1795160206"></script>
+<script src="sketchfx.js?v=1795160206"></script>
+<script src="pixelsortfx.js?v=1795160206"></script>
+<script src="shaders/boltzmann.js?v=1795160206"></script>
+<script src="mode/pen.js?v=1795160206"></script>
+<script src="shaders/caverns.js?v=1795160206"></script>
+<script src="mode/shelf.js?v=1795160206"></script>
+<script src="shaders/ribbon.js?v=1795160206"></script>
+<script src="mode/photoplane.js?v=1795160206"></script>
+<script src="mode/shredder.js?v=1795160206"></script>
+<script src="mode/transflock.js?v=1795160206"></script>
+<script src="mode/liquidpeel.js?v=1795160206"></script>
+<script src="mode/windflock.js?v=1795160206"></script>
+<script src="mode/rhizome.js?v=1795160206"></script>
+<script src="mode/surrealfloat.js?v=1795160206"></script>
+<script src="mode/chrometype.js?v=1795160206"></script>
+<script src="mode/tower4149.js?v=1795160206"></script>
+<script src="mode/fude.js?v=1795160206"></script>
+<script src="mode/image.js?v=1795160206"></script>
+<script src="mode/spacetype.js?v=1795160206"></script>
+<script src="fx3d.js?v=1795160206"></script>
+<script src="fx3d-layers.js?v=1795160206"></script>
+<script src="fx3d-cubes.js?v=1795160206"></script>
+<script src="fx3d-blinds.js?v=1795160206"></script>
+<script src="fx3d-diorama.js?v=1795160206"></script>
+<script src="fx3d-points.js?v=1795160206"></script>
+<script src="fx3d-gravity.js?v=1795160206"></script>
+<script src="fx3d-globe.js?v=1795160206"></script>
+<script src="pollockfx.js?v=1795160206"></script>
+<script src="overlay.js?v=1795160206"></script>
+<script src="gif.js?v=1795160206"></script>
+  <script src="ui-icons.js?v=1795160206"></script>
+  <script src="app.js?v=1795160206"></script>
+  <script src="crash-guard.js?v=1795160206"></script>
+  <script src="ui-scrollbar.js?v=1795160206"></script>
+  <script src="ui-settings.js?v=1795160206"></script>
+<script src="camroll.js?v=1795160206" defer></script>
+<script src="dbltap.js?v=1795160206" defer></script>
 </body>
 </html>

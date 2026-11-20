@@ -4890,6 +4890,8 @@ vec3 f3Paper(vec2 q, float lift){
     slot.uniforms.iChannelResolution = U('iChannelResolution[0]');
     slot.customLocs = {};
     for(const p of pp.params) slot.customLocs[p.name] = U(p.name);
+    // ドラッグで置く吹き出し: シェーダが uPlaced / uPlacedB / uPlacedN を宣言しているときだけ (S128 Uni Flash)
+    slot.placedLocs = { a: U('uPlaced[0]'), b: U('uPlacedB[0]'), n: U('uPlacedN') };
     try{
       const fsrc = slot.fbos && slot.fbos[slot.fbIdx];
       if(fsrc){
@@ -5032,7 +5034,10 @@ vec3 f3Paper(vec2 q, float lift){
     if(u.iAttackEnv) gl.uniform1f(u.iAttackEnv, Audio.attackEnv || 0);
     if(u.iCrossfade) gl.uniform1f(u.iCrossfade, App.crossfade);
     // hinotori 互換: beat<0 = drone モード
-    if(u.beat) gl.uniform1f(u.beat, App.beatMode==='beat' ? slotScaledBeat + offB : -1.0);
+    const beatU = App.beatMode==='beat' ? slotScaledBeat + offB : -1.0;
+    slot._uBeat = beatU;   // ドラッグで置いた吹き出しの生まれた拍 (シェーダの拍と同じ値)
+    slot._uScaledBeat = slotScaledBeat;   // ドラッグ連射の刻み
+    if(u.beat) gl.uniform1f(u.beat, beatU);
     // in-shader cosGrad は廃止。シェーダはグレースケール出力にし、Grad Map は sampleAB で全スロットに適用する。
     if(u.uCosGrad){ gl.uniform1f(u.uCosGrad, 0.0); }
     if(u.uCosPalette) gl.uniform1i(u.uCosPalette, (App.post && App.post.cosPalette) || 0);
@@ -5054,6 +5059,7 @@ vec3 f3Paper(vec2 q, float lift){
 
     // GLSL Sandbox aliases
     if(u.time) gl.uniform1f(u.time, t);
+    slot._uT = t;
     if(u.resolution) gl.uniform2f(u.resolution, target.w, target.h);
     if(u.mouse) gl.uniform2f(u.mouse, m.x/Math.max(1,target.w), m.y/Math.max(1,target.h));
     if(u.backbuffer){
@@ -5081,6 +5087,7 @@ vec3 f3Paper(vec2 q, float lift){
       if(p.type==='color') gl.uniform3f(loc, p.value[0], p.value[1], p.value[2]);
       else gl.uniform1f(loc, App.deadParam ? App.deadParam(p.value) : p.value);
     }
+    if(slot.placedLocs && slot.placedLocs.n) App.uploadBalloonDrops(gl, slot, slotKey, target.w, target.h);
 
     // 深度 (vjDepth) を書くシェーダだけ 2 枚目の出力を付けて描く (他は 1 枚 = 従来どおり)。折り系がこの深度で紙を持ち上げる
     if(slot._wdSrc !== slot.src){ slot._wdSrc = slot.src; slot.writesDepth = /\bvjDepth\s*=/.test(slot.src || ''); }
@@ -14740,6 +14747,45 @@ ${outBlock}
     toast('Draw: ' + (this._drawFrozen ? 'FREEZE (フレーム更新OFF)' : 'ON'));
   },
 
+  // ドラッグで吹き出しを連射する (S128 Uni Flash など uPlaced を宣言したシェーダ。C002 MANGA のマシンガンと同じ):
+  //   押している間、カーソル位置へ 1 拍を uDropRate 分割した刻みごとに 1 個ずつ出す。スロットごとに最大 32 個、古いものから消える。
+  //   u, v は画面の割合 (v は上向き)。生まれた時刻はその刻みで描いたときの time / beat (シェーダの拍と同じ値)
+  balloonDrops: { A: [], B: [] },
+  _dropAim: null,
+  balloonDropActive(){
+    const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[this.activeSlot] : null;
+    return !!(sl && sl.placedLocs && sl.placedLocs.n);
+  },
+  balloonDropStart(u, v){ this._dropAim = { u, v, key: this.activeSlot, last: null }; },
+  balloonDropMove(u, v){ if(this._dropAim){ this._dropAim.u = u; this._dropAim.v = v; } },
+  balloonDropEnd(){ this._dropAim = null; },
+  uploadBalloonDrops(gl, slot, key, w, h){
+    const L = this.balloonDrops[key];
+    const aim = this._dropAim;
+    if(aim && aim.key === key){
+      const rp = slot.params.find(p => p.name === 'uDropRate');
+      const rate = Math.max(1, Math.round(rp ? rp.value : 4));
+      const step = Math.floor((slot._uScaledBeat || 0) * rate);
+      if(step !== aim.last){
+        aim.last = step;
+        this._dropSeq = (this._dropSeq || 0) + 1;
+        L.push({ u: aim.u, v: aim.v, id: this._dropSeq, bt: slot._uT || 0, bb: typeof slot._uBeat === 'number' ? slot._uBeat : -1 });
+        while(L.length > 32) L.shift();
+      }
+    }
+    const n = Math.min(32, L.length);
+    const A = this._dropA || (this._dropA = new Float32Array(128));
+    const B = this._dropB || (this._dropB = new Float32Array(128));
+    for(let i = 0; i < n; i++){
+      const e = L[i];
+      A[i*4] = e.u * w;  A[i*4+1] = e.v * h;  A[i*4+2] = 0;  A[i*4+3] = 0;
+      B[i*4] = e.bt;     B[i*4+1] = e.bb;     B[i*4+2] = e.id; B[i*4+3] = 0;
+    }
+    if(slot.placedLocs.a) gl.uniform4fv(slot.placedLocs.a, A);
+    if(slot.placedLocs.b) gl.uniform4fv(slot.placedLocs.b, B);
+    gl.uniform1i(slot.placedLocs.n, n);
+  },
+
   // C キーとクイック行の Clear: 描画系のリセットを集約 + 初期フレームに戻す(shader / mode / 動画)
   resetDraw(){
     // リセットの飛びを緩めるため、プリセット扱いで視覚トランジションを掛ける
@@ -14748,6 +14794,7 @@ ${outBlock}
     if(typeof Overlay !== 'undefined' && Overlay.initialized){ Overlay.clear(); parts.push('overlay'); }
     this.resetUserPanZoom(); parts.push('cam');
     if(typeof Manga !== 'undefined' && Manga.initialized){ Manga.clear(); parts.push('manga'); }
+    if(this.balloonDrops.A.length || this.balloonDrops.B.length){ this.balloonDrops.A.length = 0; this.balloonDrops.B.length = 0; parts.push('balloons'); }
     // ── 初期フレームに戻す ──
     if(typeof GL !== 'undefined'){
       GL.clock = 0; GL.lastTime = 0;                                      // shader iTime / GL.clock 系 mode
@@ -15316,6 +15363,12 @@ ${outBlock}
     // Manga: アクティブスロットが manga のとき、画面上を左ドラッグでマシンガンを走らせる。
     //   カーソル位置が照準になる (Enter の 8 方向自走とは排他)。
     let _mangaDrag = false;
+    // 吹き出しのドラッグ連射 (アクティブスロットのシェーダが uPlaced を宣言しているとき。MANGA のマシンガンと同じ)
+    let _dropDrag = false;
+    const dropUV = (e)=>{
+      const r = c.getBoundingClientRect();
+      return [(e.clientX - r.left) / Math.max(1, r.width), 1 - (e.clientY - r.top) / Math.max(1, r.height)];
+    };
     const mangaSlotActive = ()=>{
       const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[App.activeSlot] : null;
       return !!(sl && sl.kind === 'manga' && typeof Manga !== 'undefined' && Manga.initialized);
@@ -15337,11 +15390,16 @@ ${outBlock}
         _mangaDrag = true;
         mangaAim(e);
         e.preventDefault();
+      } else if(e.button === 0 && App.balloonDropActive()){
+        _dropDrag = true;
+        App.balloonDropStart(...dropUV(e));
+        e.preventDefault();
       }
       this.mouse.down=true; this._mouse(e, false);
     });
     c.addEventListener('mouseup',   (e)=>{
       if(_panDrag){ _panDrag = null; return; }
+      if(_dropDrag){ _dropDrag = false; App.balloonDropEnd(); }
       if(_mangaDrag){
         _mangaDrag = false;
         if(typeof Manga !== 'undefined' && Manga.stopBurst) Manga.stopBurst();
@@ -15353,6 +15411,7 @@ ${outBlock}
     // 発火せずフラグが残り、ボタンを押していないのにカーソルを動かすだけで映像が
     // 勝手にパンし続け、iMouse も凍結していた (パンは画面端へ向かう操作なので頻発)。
     window.addEventListener('mouseup', ()=>{
+      if(_dropDrag){ _dropDrag = false; App.balloonDropEnd(); }
       if(_mangaDrag){
         _mangaDrag = false;
         if(typeof Manga !== 'undefined' && Manga.stopBurst) Manga.stopBurst();
@@ -15362,6 +15421,7 @@ ${outBlock}
     });
     c.addEventListener('mousemove', e=>{
       if(_mangaDrag && mangaSlotActive()){ mangaAim(e); this._mouse(e, true); return; }
+      if(_dropDrag) App.balloonDropMove(...dropUV(e));
       if(_panDrag){
         const rect = c.getBoundingClientRect();
         // NDC ベース: ドラッグ距離 / 半画面サイズ で正規化 (ズームの逆数を掛けて見かけ等速)
@@ -15379,16 +15439,19 @@ ${outBlock}
     c.addEventListener('pointerdown', e=>{
       if(e.pointerType !== 'touch') return;
       if(mangaSlotActive()){ _mangaDrag = true; mangaAim(e); }
+      else if(App.balloonDropActive()){ _dropDrag = true; App.balloonDropStart(...dropUV(e)); }
       this.mouse.down = true; this._mouse(e, false);
     });
     c.addEventListener('pointermove', e=>{
       if(e.pointerType !== 'touch') return;
       if(_mangaDrag && mangaSlotActive()) mangaAim(e);
+      if(_dropDrag) App.balloonDropMove(...dropUV(e));
       this._mouse(e, true);
     });
     for(const ev of ['pointerup', 'pointercancel']){
       c.addEventListener(ev, e=>{
         if(e.pointerType !== 'touch') return;
+        if(_dropDrag){ _dropDrag = false; App.balloonDropEnd(); }
         if(_mangaDrag){
           _mangaDrag = false;
           if(typeof Manga !== 'undefined' && Manga.stopBurst) Manga.stopBurst();
