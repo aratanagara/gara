@@ -556,6 +556,13 @@ const NovelTerminal = {
     fluidHud:100,      // 図形の中心を通る照準線・座標・角のブラケット
     fluidBig:100,      // 円の中心に置く大きな字 (輪郭線)
     fluidAccent:[1,74/255,46/255],
+    // ── Fluid 第 4 弾: 図形ごとの操作・拍で切替・くっきり。既定値 = 従来の見た目 ──
+    fluidBeats:0,      // 構図を切り替える拍数 (0 = 従来どおり Fluid Cycle の時間。drone は 120BPM 換算)
+    fluidSharp:0,      // 図形の縁を切り立たせ、ざらつきを消し、三角を正三角形に
+    fluidCircleMode:0, fluidTriMode:0, fluidRectMode:0,   // 0=Auto (塗りと輪郭が入れ替わる) | 1=Fill | 2=Edge | 3=Off
+    fluidCircleSize:100, fluidTriSize:100, fluidRectSize:100,
+    fluidTriSpin:100, fluidRectSpin:100,
+    fluidCircleLine:100, fluidTriLine:100, fluidRectLine:100,
     edLayout:0,        // 0=Book (縦組・見開き) | 1=Magazine (横組・段組) | 2=Single (縦組・一頁)
     edSize:100, edLeading:100, edTracking:100, edMargin:100,
     edJump:100,        // 見出しのジャンプ率 (100 = 本文の 3 倍。0 = 見出しなし)
@@ -585,6 +592,23 @@ const NovelTerminal = {
     ['Crisp','fluidCrisp',0,150,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 縁のざらつきと散り字を抑える'],
     ['HUD','fluidHud',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 照準線・座標・ブラケットの濃さ'],
     ['Big Glyph','fluidBig',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 円の中心の大きな字の濃さ'],
+    ['Sharp','fluidSharp',0,100,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 図形の縁を切り立たせ、ざらつきを消す。三角は正三角形になる'],
+    ['Fluid Beats','fluidBeats',0,64,1,v=>v<1?'Time':String(v|0),'Fluid: 構図を切り替える拍数 (Time = Fluid Cycle の時間で切替。drone は 120BPM 換算)'],
+  ],
+  FLUID_SHAPE_OPTS:[[0,'Auto'],[1,'Fill'],[2,'Edge'],[3,'Off']],
+  // 図形ごとの UI [見出し, 表示のキー, [label,key,min,max,step,fmt,title]...]。refreshNovelParams が FLUID_SPECS の後ろに並べる
+  FLUID_SHAPES:[
+    ['Circle','fluidCircleMode',[
+      ['Circle Size','fluidCircleSize',30,250,5,v=>v.toFixed(0)+'%','Fluid: 円の大きさ (Shape Scale に掛かる)'],
+      ['Circle Line','fluidCircleLine',30,400,10,v=>v.toFixed(0)+'%','Fluid: 円の輪郭の太さ']]],
+    ['Triangle','fluidTriMode',[
+      ['Tri Size','fluidTriSize',30,250,5,v=>v.toFixed(0)+'%','Fluid: 三角の大きさ (Shape Scale に掛かる)'],
+      ['Tri Spin','fluidTriSpin',0,400,10,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 三角の回る速さ (0 = 場面ごとの向きで止める)'],
+      ['Tri Line','fluidTriLine',30,400,10,v=>v.toFixed(0)+'%','Fluid: 三角の輪郭の太さ']]],
+    ['Rect','fluidRectMode',[
+      ['Rect Size','fluidRectSize',30,250,5,v=>v.toFixed(0)+'%','Fluid: 矩形の大きさ (Shape Scale に掛かる)'],
+      ['Rect Spin','fluidRectSpin',0,400,10,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 矩形の回る速さ (0 = 場面ごとの向きで止める)'],
+      ['Rect Line','fluidRectLine',30,400,10,v=>v.toFixed(0)+'%','Fluid: 矩形の輪郭の太さ']]],
   ],
   ED_TOGGLES:[['edFolio','柱・ノンブル','Editorial: 柱 (ランニングヘッド) とノンブル (頁番号)'],['edMarks','トンボ','Editorial: 版面の角のトンボと罫']],
   ED_COLORS:[['Text Ink','edInk','Editorial: 本文の色'],['Accent','edAccent','Editorial: 見出し番号・カーソルの差し色']],
@@ -1122,6 +1146,18 @@ const NovelTerminal = {
     const tintRGB=this._rgb('tintColor',[72,255,126]), monoRGB=this._rgb('monoColor',[232,234,238]), accRGB=this._rgb('fluidAccent',[255,74,46]);
     const dz = v=>v>=0.1 ? v : 0;   // % 値のデッドゾーン
     const kCon=Math.min(1, dz(this._k('fluidContrast'))), kConX=dz(this._k('fluidContrast')), kCrisp=Math.min(1, dz(this._k('fluidCrisp'))), kHud=dz(this._k('fluidHud')), kBig=dz(this._k('fluidBig'));
+    const kSharp=Math.min(1, dz(this._k('fluidSharp')));
+    const kCS=this._k('fluidCircleSize'), kTS=this._k('fluidTriSize'), kRS=this._k('fluidRectSize');
+    const kTSpin=dz(this._k('fluidTriSpin')), kRSpin=dz(this._k('fluidRectSpin'));
+    const kCL=this._k('fluidCircleLine'), kTL=this._k('fluidTriLine'), kRL=this._k('fluidRectLine');
+    const shapeMode = k=>(this.P && this.P[k]|0) || 0;
+    const mCircle=shapeMode('fluidCircleMode'), mTri=shapeMode('fluidTriMode'), mRect=shapeMode('fluidRectMode');
+    // 構図の時計: 整数で場面が替わる。Scene Beats > 0 なら拍で回す (切替の跳ねが拍頭に来る)
+    const fBeats = (this.P && this.P.fluidBeats|0) || 0;
+    const sceneClock = fBeats > 0
+      ? (((typeof App !== 'undefined') && App.beatMode === 'beat') ? this._beatRev() : t*2) / fBeats
+      : t / (5.4 / (this.P ? this.P.sceneSpeed : 1));
+    const sharpen = x => kSharp > 0 ? 0.48 + (x - 0.48)*(1 + 4*kSharp) : x;   // しきい値 (0.48) を境に場を切り立たせる (縁の位置は変えない)
     const adv = fs*kTrack, lh = fs*1.75*kLead;
     const base = Math.floor(t*17) % src.length;
     const aspect = W/H;
@@ -1130,9 +1166,8 @@ const NovelTerminal = {
     p.noStroke();
 
     const fieldAt = (nx, ny, va, phase, wantGeo) => {
-      const sceneDur = 5.4 / (this.P ? this.P.sceneSpeed : 1);
-      const scene = (Math.floor(t/sceneDur + va + phase*0.33) % 6 + 6) % 6;
-      const local = (t/sceneDur + phase*0.11) % 1;
+      const scene = (Math.floor(sceneClock + va + phase*0.33) % 6 + 6) % 6;
+      const local = (sceneClock + phase*0.11) % 1;
       const snap = local < 0.16 ? local/0.16 : 1;
       const snapEase = snap*snap*(3-2*snap);
       const jolt = (1-snapEase)*0.42;
@@ -1157,7 +1192,15 @@ const NovelTerminal = {
         const e1 = Math.abs(py-s*0.58);
         const e2 = Math.abs(py*0.86 + px*0.50 - s*0.58);
         const e3 = Math.abs(-py-s*0.46);
-        return 1 - Math.min(e1, e2, e3) / 0.050;
+        return 1 - Math.min(e1, e2, e3) / (0.050*kTL);
+      };
+      // 正三角形の符号付き距離 (内側が負)。Sharp で旧来の三角からこちらへ寄せる
+      const eqTri = (x, y, cx, cy, s, a) => {
+        const q = rot(x-cx, y-cy, -a), r = s*1.1, k = Math.sqrt(3);   // r = 辺の半分。旧来の三角とほぼ同じ面積
+        let px = Math.abs(q[0]) - r, py = -q[1] + r/k;
+        if(px + k*py > 0){ const nx2 = (px - k*py)*0.5, ny2 = (-k*px - py)*0.5; px = nx2; py = ny2; }
+        px -= Math.max(-2*r, Math.min(0, px));
+        return -Math.hypot(px, py)*Math.sign(py);
       };
       const rect = (x, y, cx, cy, w, h, a) => {
         const q = rot(x-cx, y-cy, -a);
@@ -1169,7 +1212,7 @@ const NovelTerminal = {
         const by = Math.abs(q[1])-h*0.5;
         const edge = Math.min(Math.abs(bx), Math.abs(by));
         const inside = Math.max(bx, by) < 0 ? 1 : 0;
-        return inside ? 1 - edge/0.052 : -1;
+        return inside ? 1 - edge/(0.052*kRL) : -1;
       };
       const line = (x, y, a, d, width) => {
         return 1 - Math.abs(x*Math.cos(a)+y*Math.sin(a)-d) / width;
@@ -1190,16 +1233,21 @@ const NovelTerminal = {
       const triY = cfg[5] + 0.22*Math.cos(local*4.3 + phase);
       const rectX = cfg[6] + (cfg[8]-cfg[6])*sweep + jumpY*0.12;
       const rectY = cfg[7] + (cfg[9]-cfg[7])*sweep + jumpX*0.10;
-      const circleRadius = (0.26 + 0.20*sweep)*kShape;
-      const circleRing = 1 - Math.abs(Math.hypot(nx-circleX, ny-circleY) - circleRadius) / 0.070;
+      const circleRadius = (0.26 + 0.20*sweep)*kShape*kCS;
+      const circleRing = 1 - Math.abs(Math.hypot(nx-circleX, ny-circleY) - circleRadius) / (0.070*kCL);
       const circleFill = 1 - Math.hypot(nx-circleX, ny-circleY) / circleRadius;
-      const triSize = (0.58 + 0.30*Math.abs(swing))*kShape;
-      const triAngle = scene*0.50 + local*2.45;
-      const triFill = tri(nx, ny, triX, triY, triSize, triAngle);
-      const triEdge = triOutline(nx, ny, triX, triY, triSize, triAngle);
-      const rectW = (0.42 + 0.44*(1-sweep))*kShape;
-      const rectH = (0.34 + 0.26*sweep)*kShape;
-      const rectAngle = scene*0.38 + local*1.70;
+      const triSize = (0.58 + 0.30*Math.abs(swing))*kShape*kTS;
+      const triAngle = scene*0.50 + local*2.45*kTSpin;
+      let triFill = tri(nx, ny, triX, triY, triSize, triAngle);
+      let triEdge = triOutline(nx, ny, triX, triY, triSize, triAngle);
+      if(kSharp > 0){
+        const d = eqTri(nx, ny, triX, triY, triSize, triAngle), w = Math.min(1, kSharp*3);
+        triFill += (1 - d/0.10 - triFill)*w;
+        triEdge += (1 - Math.abs(d)/(0.050*kTL) - triEdge)*w;
+      }
+      const rectW = (0.42 + 0.44*(1-sweep))*kShape*kRS;
+      const rectH = (0.34 + 0.26*sweep)*kShape*kRS;
+      const rectAngle = scene*0.38 + local*1.70*kRSpin;
       const squareFill = rect(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
       const squareEdge = rectOutline(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
       const mainLine = line(nx, ny, -1.20 + scene*0.42 + local*1.35, -0.52 + scene*0.18 - local*0.55 + jumpX*0.15, 0.060*kLine);
@@ -1209,9 +1257,11 @@ const NovelTerminal = {
       const gridY = Math.floor((ny+1.06)*(4 + (scene%2)*3) - Math.floor(local*5));
       const rhythm = (((gridX*2 + gridY + scene + va) % (3 + scene%2)) === 0 ? 0.13 : -0.10)*kRhythm;
       const voidShape = Math.max(0, 1 - Math.hypot(nx-(0.22*Math.sin(local*6.283+scene)), ny-(0.18*Math.cos(local*5.1+phase))) / (0.12+0.08*sweep));
-      const circleShape = (scene + va) % 2 === 0 ? circleRing : circleFill*0.86;
-      const triShape = (scene + Math.floor(local*2)) % 2 === 0 ? triEdge*0.98 : triFill*0.90;
-      const squareShape = (scene + va + 1) % 2 === 0 ? squareEdge*0.96 : squareFill*0.88;
+      // 図形の見せ方: Auto = 場面で塗りと輪郭が入れ替わる / Fill / Edge / Off
+      const pickShape = (mode, auto, edge, fill) => mode === 3 ? -1 : mode === 1 ? fill : mode === 2 ? edge : (auto ? edge : fill);
+      const circleShape = pickShape(mCircle, (scene + va) % 2 === 0, circleRing, circleFill*0.86);
+      const triShape = pickShape(mTri, (scene + Math.floor(local*2)) % 2 === 0, triEdge*0.98, triFill*0.90);
+      const squareShape = pickShape(mRect, (scene + va + 1) % 2 === 0, squareEdge*0.96, squareFill*0.88);
       const lineShape = Math.max(mainLine*0.86, subLineA*0.72, subLineB*0.66);
       const circleV = (scene + va) % 2 === 0;
       const triV = (scene + Math.floor(local*2) + 1) % 2 === 0;
@@ -1233,13 +1283,13 @@ const NovelTerminal = {
       );
       const total = Math.max(horizontal, vertical);
       return {
-        all: total + rhythm + jolt*0.18 - voidShape*0.62,
-        h: horizontal + rhythm + jolt*0.18 - voidShape*0.62,
-        v: vertical + rhythm + jolt*0.18 - voidShape*0.62,
+        all: sharpen(total + rhythm + jolt*0.18 - voidShape*0.62),
+        h: sharpen(horizontal + rhythm + jolt*0.18 - voidShape*0.62),
+        v: sharpen(vertical + rhythm + jolt*0.18 - voidShape*0.62),
         line: lineShape,
         back: backShapes + rhythm - voidShape*0.62,
         lineFront: lineFront ? 1 : 0,
-        geo: wantGeo ? { scene, local, jolt, circleX, circleY, circleRadius, triX, triY, triSize, triAngle, rectX, rectY, rectW, rectH, rectAngle, circleV, squareV } : null
+        geo: wantGeo ? { scene, local, jolt, circleX, circleY, circleRadius, triX, triY, triSize, triAngle, rectX, rectY, rectW, rectH, rectAngle, circleV, squareV, circleOn: mCircle !== 3, triOn: mTri !== 3, rectOn: mRect !== 3 } : null
       };
     };
     const splitWave = Math.max(0, Math.sin(t*0.19-0.55));
@@ -1328,10 +1378,10 @@ const NovelTerminal = {
     const geoA = fieldAt(0, 0, mu < 0.5 ? variant : nextVariant, mu < 0.5 ? 0.0 : 1.7, true).geo;
     const toPx = (gx, gy) => [((gx/aspect)+1)*0.5*W, (gy+1)*0.5*H];
     // 大きな字: 円の中心に、半径いっぱいの輪郭線の漢字 (図形が切り替わるたびに字も替わる)
-    if(kBig > 0 && !ext){
+    if(kBig > 0 && !ext && geoA.circleOn){
       const kan = this._fluidKanji || (this._fluidKanji = src.filter(ch => { const c = ch.charCodeAt(0); return c >= 0x4E00 && c <= 0x9FFF; }));
       if(kan.length){
-        const ch = kan[(geoA.scene*37 + variant*11 + Math.floor(t/(5.4/((this.P && this.P.sceneSpeed) || 1)))*7) % kan.length];
+        const ch = kan[(geoA.scene*37 + variant*11 + Math.floor(sceneClock)*7) % kan.length];
         const [bx, by] = toPx(geoA.circleX, geoA.circleY);
         const bs = Math.max(fs*4, geoA.circleRadius*H*1.15) * (1 + geoA.jolt*0.35);
         const dc = p.drawingContext;
@@ -1364,12 +1414,12 @@ const NovelTerminal = {
         const dens = Math.max(0.3, (this.P && typeof this.P.density === 'number') ? this.P.density : 1);
         const baseThr = 0.48 + splitAmt*0.04;
         const threshold = (hatch || contour ? 0.30 + (baseThr - 0.30)*0.6*kCrisp : baseThr) / dens;   // Crisp で図形の外の散り字 (ハッチ・等高線) を抑える
-        if(field + noise*0.19*kEN*(1 - 0.8*kCrisp) < threshold + 0.05*kCrisp) continue;
+        if(field + noise*0.19*kEN*(1 - 0.8*kCrisp)*(1 - kSharp) < threshold + 0.05*kCrisp) continue;
         if(splitCut && noise < splitAmt*0.20) continue;
         let alpha = shade(58 + Math.max(0, Math.min(1.05, field))*170, field, threshold);
         if(contour) alpha += 34;
         if(splitAmt > 0.35 && rectFieldAt(nx, ny, 0.4) > 0.72) alpha += 38*splitAmt;
-        if(noise < 0.035*(1 - kCrisp)) alpha *= 0.32;
+        if(noise < 0.035*(1 - kCrisp)*(1 - kSharp)) alpha *= 0.32;
         let ch = src[(base + r*cols + c + src.length*20) % src.length] || "　";
         const promptCol = ((c + Math.floor(t*2)) % 34) === 0;
         if(promptCol && r % 9 === 0) ch = ">";
@@ -1452,6 +1502,7 @@ const NovelTerminal = {
     dc.lineWidth = hair;
     // 照準線 (切替のたびに中心から外へ伸びる)
     const [cx, cy] = toPx(g.circleX, g.circleY), ext = 0.25 + 0.75*snap;
+    if(g.circleOn){
     dc.strokeStyle = A(acc, 0.38);
     dc.beginPath(); dc.moveTo(cx - W*ext, cy); dc.lineTo(cx + W*ext, cy); dc.moveTo(cx, cy - H*ext); dc.lineTo(cx, cy + H*ext); dc.stroke();
     // 円周の目盛り
@@ -1460,10 +1511,11 @@ const NovelTerminal = {
     dc.beginPath(); dc.arc(cx, cy, rpx, -Math.PI*0.5, -Math.PI*0.5 + Math.PI*2*snap); dc.stroke();
     dc.strokeStyle = A(acc, 0.8);
     for(let i=0;i<12;i++){ const a = i/12*Math.PI*2 + t*0.15, r0 = rpx*(i%3===0 ? 0.92 : 0.96); dc.beginPath(); dc.moveTo(cx + Math.cos(a)*r0, cy + Math.sin(a)*r0); dc.lineTo(cx + Math.cos(a)*rpx, cy + Math.sin(a)*rpx); dc.stroke(); }
+    }
     // 矩形の角のブラケット (回転に追従)
     const [rx, ry] = toPx(g.rectX, g.rectY), hw = g.rectW*H*0.25, hh = g.rectH*H*0.25, ca = Math.cos(g.rectAngle), sa = Math.sin(g.rectAngle), L = Math.min(hw, hh)*0.28;
     dc.strokeStyle = A(ink, 0.62);
-    for(const [sx, sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
+    if(g.rectOn) for(const [sx, sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
       const P = (u, v)=>[rx + (u*ca - v*sa), ry + (u*sa + v*ca)];
       const c0 = P(sx*hw, sy*hh), c1 = P(sx*hw - sx*L, sy*hh), c2 = P(sx*hw, sy*hh - sy*L);
       dc.beginPath(); dc.moveTo(c1[0], c1[1]); dc.lineTo(c0[0], c0[1]); dc.lineTo(c2[0], c2[1]); dc.stroke();
@@ -1471,16 +1523,16 @@ const NovelTerminal = {
     // 三角の中心の十字
     const [tx, ty] = toPx(g.triX, g.triY), cr = sfs*0.9;
     dc.strokeStyle = A(acc, 0.7);
-    dc.beginPath(); dc.moveTo(tx - cr, ty); dc.lineTo(tx + cr, ty); dc.moveTo(tx, ty - cr); dc.lineTo(tx, ty + cr); dc.stroke();
+    if(g.triOn){ dc.beginPath(); dc.moveTo(tx - cr, ty); dc.lineTo(tx + cr, ty); dc.moveTo(tx, ty - cr); dc.lineTo(tx, ty + cr); dc.stroke(); }
     // 座標ラベル
     dc.font = `${sfs}px ${this.ED_GOTHIC}`; dc.textBaseline = 'alphabetic';
     try{ dc.letterSpacing = (sfs*0.12).toFixed(1)+'px'; }catch(e){}
     const f2 = v=>(v>=0?'+':'−') + Math.abs(v).toFixed(3);
     dc.fillStyle = A(acc, 0.95); dc.textAlign = 'left';
-    dc.fillText(`X${f2(g.circleX)}  Y${f2(g.circleY)}`, cx + sfs*0.8, cy - sfs*0.7);
+    if(g.circleOn) dc.fillText(`X${f2(g.circleX)}  Y${f2(g.circleY)}`, cx + sfs*0.8, cy - sfs*0.7);
     dc.fillStyle = A(ink, 0.75);
-    dc.fillText(`R ${(g.circleRadius).toFixed(3)}`, cx + sfs*0.8, cy + sfs*1.5);
-    dc.fillText(`θ ${((g.rectAngle*180/Math.PI)%360).toFixed(1)}°`, rx + hw*0.0 + sfs*0.6, ry - sfs*0.6);
+    if(g.circleOn) dc.fillText(`R ${(g.circleRadius).toFixed(3)}`, cx + sfs*0.8, cy + sfs*1.5);
+    if(g.rectOn) dc.fillText(`θ ${((g.rectAngle*180/Math.PI)%360).toFixed(1)}°`, rx + hw*0.0 + sfs*0.6, ry - sfs*0.6);
     // 四隅: シーン番号 / 時刻
     const m = Math.round(M*0.045);
     dc.fillStyle = A(ink, 0.78); dc.textAlign = 'left';

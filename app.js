@@ -19651,8 +19651,7 @@ void mainImage(out vec4 o, in vec2 f){
         grp.appendChild(lab);
       }
     };
-    // ── Editorial (組版シーン) ──
-    for(const [label, key, opts, title] of (NovelTerminal.ED_SELECTS || [])){
+    const mkSelect = ([label, key, opts, title])=>{
       const row = mkRow(label);
       const sel = document.createElement('select'); sel.style.flex = '1';
       if(title) sel.title = title;
@@ -19660,7 +19659,9 @@ void mainImage(out vec4 o, in vec2 f){
       sel.value = String(P[key]|0);
       sel.addEventListener('change', ()=>{ P[key] = parseInt(sel.value,10)||0; App._undoSchedule(); });
       row.appendChild(sel);
-    }
+    };
+    // ── Editorial (組版シーン) ──
+    (NovelTerminal.ED_SELECTS || []).forEach(mkSelect);
     (NovelTerminal.ED_SPECS || []).forEach(mkSlider);
     if(NovelTerminal.ED_TOGGLES) mkToggles('Editorial', NovelTerminal.ED_TOGGLES);
     (NovelTerminal.ED_COLORS || []).forEach(mkColor);
@@ -19691,6 +19692,13 @@ void mainImage(out vec4 o, in vec2 f){
         P.fluidCrisp = Math.round(R(30, 150)/5)*5;
         P.fluidHud   = ch(0.2) ? 0 : Math.round(R(50, 200)/5)*5;
         P.fluidBig   = ch(0.3) ? 0 : Math.round(R(50, 200)/5)*5;
+        P.fluidSharp = ch(0.4) ? 0 : Math.round(R(20, 100)/5)*5;
+        P.fluidBeats = [0, 4, 8, 8, 16][(Math.random()*5)|0];
+        for(const k of ['fluidCircleMode','fluidTriMode','fluidRectMode']) P[k] = ch(0.5) ? 0 : 1 + ((Math.random()*3)|0);
+        if(P.fluidCircleMode === 3 && P.fluidTriMode === 3 && P.fluidRectMode === 3) P.fluidTriMode = 0;
+        for(const k of ['fluidCircleSize','fluidTriSize','fluidRectSize']) P[k] = Math.round(R(60, 180)/5)*5;
+        for(const k of ['fluidTriSpin','fluidRectSpin']) P[k] = ch(0.25) ? 0 : Math.round(R(30, 250)/10)*10;
+        for(const k of ['fluidCircleLine','fluidTriLine','fluidRectLine']) P[k] = Math.round(R(60, 250)/10)*10;
         P.edLayout   = (Math.random()*3)|0;
         P.edSize     = Math.round(R(80, 140)/5)*5;
         P.edLeading  = Math.round(R(85, 140)/5)*5;
@@ -19727,6 +19735,10 @@ void mainImage(out vec4 o, in vec2 f){
     ];
     specs.forEach(mkSlider);
     (NovelTerminal.FLUID_SPECS || []).forEach(mkSlider);
+    for(const [label, key, specs2] of (NovelTerminal.FLUID_SHAPES || [])){
+      mkSelect([label, key, NovelTerminal.FLUID_SHAPE_OPTS, `Fluid: ${label} の見せ方 (Auto = 場面で塗りと輪郭が入れ替わる / Off = 出さない)`]);
+      specs2.forEach(mkSlider);
+    }
     (NovelTerminal.SPECS || []).forEach(mkSlider);
     (NovelTerminal.COLORS || []).forEach(mkColor);
     // ── Ink / Palette セレクト ──
