@@ -8,16 +8,16 @@
 // =====================================================
 
 // ─── 調整用パラメータ (既定値は旧版と完全に同一の描画になる) ─────────────────
-// @param uBlade  1..24  = 2.6
-// @param uCut    0..100 = 0.0
-// @param uEdge   0..100 = 0.0
-// @param uGain   20..400 = 100.0
-// @param uThick  2..60  = 12.0
-// @param uBlades 0..12  = 0.0
-// @param uSpin   0..300 = 100.0
-// @param uTwist  0..300 = 100.0
-// @param uTumble 0..300 = 100.0
-// @param uBreathe 0..300 = 100.0
+// @param uBlade  1..24  = 2.6 @desc 刃の細さ (稜線のべき乗)。上げると細く尖る
+// @param uCut    0..100 = 0.0 @desc 外周のフェード幅。上げるほど刃先までシャープに残る
+// @param uEdge   0..100 = 0.0 @desc 輪郭のコントラスト (%)。上げると縁が光り内側が締まる
+// @param uGain   20..400 = 100.0 @desc 明るさ (%)
+// @param uThick  2..60  = 12.0 @desc 羽の厚み (%)。上げると分厚い円盤になる
+// @param uBlades 0..12  = 0.0 @desc 刃の枚数。0 で 3〜6 を時間で自動変化、1 以上で固定枚数
+// @param uSpin   0..300 = 100.0 @desc スピン速度 (%)。0 で止まる
+// @param uTwist  0..300 = 100.0 @desc ひねり・スパイラル量 (%)。0 でまっすぐな放射
+// @param uTumble 0..300 = 100.0 @desc 3D タンブル速度 (%)。0 で姿勢固定
+// @param uBreathe 0..300 = 100.0 @desc 刃の脈動の量 (%)。0 で止まる
 uniform float uBlade;   // 刃の細さ (稜線のべき乗)。既定 2.6 = 従来。上げると細く尖る
 uniform float uCut;     // 外周カットの鋭さ。既定 0 = 従来のゆるいフェード / 上げると刃先までシャープ
 uniform float uEdge;    // 輪郭のコントラスト。既定 0 = 従来 / 上げると縁が光り内側が締まる
@@ -28,28 +28,28 @@ uniform float uSpin;    // スピン速度 (%)。既定 100 = 従来
 uniform float uTwist;   // ひねり/スパイラル量 (%)。既定 100 = 従来。0 でまっすぐな放射
 uniform float uTumble;  // 3D タンブル速度 (%)。既定 100 = 従来。0 で姿勢固定
 uniform float uBreathe; // 刃の脈動 (%)。既定 100 = 従来。0 で呼吸停止
-// @param uBladePhase 0..360 = 0
-// @param uTwistSwing 0..300 = 100
-// @param uRipple 0..300 = 100
-// @param uRippleLobes 0..8 = 2
-// @param uRootFat 0..180 = 100
-// @param uRootSpan 20..300 = 100
-// @param uTipReach 45..119 = 100
-// @param uCamDist 25..400 = 100
-// @param uRoll -180..180 = 0
-// @param uOffX -50..50 = 0
-// @param uOffY -50..50 = 0
-// @param uLightYaw -180..180 = 0
-// @param uLightPitch -60..60 = 0
-// @param uSpecSharp 20..400 = 100
-// @param uSpecGain 0..600 = 100
-// @param uRimGain 0..300 = 100
-// @param uEnvBands 20..300 = 100
-// @param uShade 0..200 = 100
-// @param uValleyDark 0..160 = 100
-// @param uMetalColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uRimColor color = #ffffff
+// @param uBladePhase 0..360 = 0 @desc 刃の位相 (度)。花全体の回転位置
+// @param uTwistSwing 0..300 = 100 @desc ひねり量の時間的な振れ幅 (%)。0 で一定のひねり
+// @param uRipple 0..300 = 100 @desc 刃のうねりの振れ幅 (%)。0 で正確な放射状
+// @param uRippleLobes 0..8 = 2 @desc うねりの山数
+// @param uRootFat 0..180 = 100 @desc 根元の太さ (%)。下げると中心が細く、刃が離れる
+// @param uRootSpan 20..300 = 100 @desc 根元の太い範囲 (%)。中心から外へどこまで太いか
+// @param uTipReach 45..119 = 100 @desc 刃の届く外周の位置 (%)。下げると小さな花、上げると長い刃先
+// @param uCamDist 25..400 = 100 @desc カメラ距離 (%)。下げると遠近が強く、上げると平らになる
+// @param uRoll -180..180 = 0 @desc 画面のロール (度)
+// @param uOffX -50..50 = 0 @desc 花の中心の横位置 (%)
+// @param uOffY -50..50 = 0 @desc 花の中心の縦位置 (%)
+// @param uLightYaw -180..180 = 0 @desc 光源の方位 (度)
+// @param uLightPitch -60..60 = 0 @desc 光源の仰角の傾け (度)
+// @param uSpecSharp 20..400 = 100 @desc ハイライトの鋭さ (%)
+// @param uSpecGain 0..600 = 100 @desc ハイライトの強さ (%)
+// @param uRimGain 0..300 = 100 @desc 縁光りの強さ (%)
+// @param uEnvBands 20..300 = 100 @desc 環境反射の明暗帯の細かさ (%)
+// @param uShade 0..200 = 100 @desc 拡散光による陰影の深さ (%)。下げると陰が浅い
+// @param uValleyDark 0..160 = 100 @desc 谷の暗さ (%)。上げると刃の間が深く沈む
+// @param uMetalColor color = #ffffff @desc 金属の地色の色味 (ティント)
+// @param uSpecColor color = #ffffff @desc ハイライトの色味 (ティント)
+// @param uRimColor color = #ffffff @desc 縁光りの色味 (ティント)
 uniform float uBladePhase; // 刃の位相 (度)。花全体の回転位置
 uniform float uTwistSwing; // ひねり量の時間的な振れ幅 (%)。0 で一定のひねり
 uniform float uRipple;     // 刃のうねりの振れ幅 (%)。0 で正確な放射状

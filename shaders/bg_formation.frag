@@ -19,12 +19,12 @@ float fm_sdTriPrism(vec3 p, vec2 h, float taper){
   return max(q.z - h.y, max(q.x*0.866025 + p.y*0.5*taper, -p.y) - h.x*0.5);
 }
 
-// @param uWingSpan     70..140  = 100.0
-// @param uWingLength   70..150  = 100.0
-// @param uWingTaper    50..200  = 100.0
-// @param uWingDihedral -100..300 = 100.0
-// @param uWingThick    25..300  = 100.0
-// @param uBodyWidth    40..200  = 100.0
+// @param uWingSpan     70..140  = 100.0 @desc 翼の横幅
+// @param uWingLength   70..150  = 100.0 @desc 翼の前後の長さ
+// @param uWingTaper    50..200  = 100.0 @desc 翼の先の細り・後退角
+// @param uWingDihedral -100..300 = 100.0 @desc 翼の上反角。負で下反角
+// @param uWingThick    25..300  = 100.0 @desc 翼の厚み
+// @param uBodyWidth    40..200  = 100.0 @desc 胴体の幅
 uniform float uWingSpan; // 翼の横幅 (%)
 uniform float uWingLength; // 翼の前後の長さ (%)
 uniform float uWingTaper; // 翼の先の細り・後退角 (%)
@@ -45,13 +45,13 @@ float fm_planeDistance(vec3 position){
   return min(wingDistance, bodyDistance);
 }
 
-// @param uSpacing 80..200 = 100.0
-// @param uWarp    0..400 = 100.0
-// @param uMotion  0..300 = 100.0
-// @param uGlow    0..200 = 100.0
-// @param uSize 40..130 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 35..90 = 90.0
+// @param uSpacing 80..200 = 100.0 @desc 飛行機の配置間隔。大きいほど離れる
+// @param uWarp    0..400 = 100.0 @desc 空間のうねりの大きさ
+// @param uMotion  0..300 = 100.0 @desc 機体の傾きの振幅。0 で傾かない
+// @param uGlow    0..200 = 100.0 @desc 機体の照り・明るさ
+// @param uSize 40..130 = 100.0 @desc 機体ひとつの大きさ
+// @param uAngle -180..180 = 0.0 @desc 機体の向き (度)。進行方向まわりの回転
+// @param uSteps 35..90 = 90.0 @desc レイマーチのステップ数。下げると軽いが遠景や細部が欠ける
 uniform float uSpacing; // 飛行機の配置間隔 (%)
 uniform float uWarp; // 空間のうねり (%)
 uniform float uMotion; // 機体の傾きの振幅 (%)
@@ -59,25 +59,25 @@ uniform float uGlow; // 機体の照り・明るさ (%)
 uniform float uSize; // 要素ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
-// @param uWaveFreq   25..250 = 100.0
-// @param uRowGap     50..200 = 100.0
-// @param uDepthGap   60..200 = 100.0
-// @param uShine      25..400 = 100.0
-// @param uLightSide  -300..300 = 100.0
-// @param uAmbientTilt -100..200 = 100.0
-// @param uCamX -100..100 = 0
-// @param uCamY -100..100 = 0
-// @param uCamRoll -180..180 = 0
-// @param uFocal 65..200 = 100
-// @param uCamSway 0..300 = 0
-// @param uFogDensity 0..300 = 100
-// @param uLightElev 20..300 = 100
-// @param uRimLight 0..100 = 0
-// @param uVignette 0..150 = 0
-// @param uShadeTopTint color = #ffffff
-// @param uShadeBottomTint color = #ffffff
-// @param uSpecTint color = #ffffff
-// @param uBodyTint color = #ffffff
+// @param uWaveFreq   25..250 = 100.0 @desc 空間のうねりの細かさ
+// @param uRowGap     50..200 = 100.0 @desc 縦方向の配置間隔
+// @param uDepthGap   60..200 = 100.0 @desc 奥行き方向の配置間隔
+// @param uShine      25..400 = 100.0 @desc 機体の鏡面の鋭さ
+// @param uLightSide  -300..300 = 100.0 @desc 光の横からの振れ。負で反対側から当たる
+// @param uAmbientTilt -100..200 = 100.0 @desc 上面と下面の環境光の差
+// @param uCamX -100..100 = 0 @desc カメラの横位置。編隊を見る位置がずれる
+// @param uCamY -100..100 = 0 @desc カメラの縦位置
+// @param uCamRoll -180..180 = 0 @desc カメラの傾き (度)
+// @param uFocal 65..200 = 100 @desc レンズの焦点距離。小さいと広角、大きいと望遠
+// @param uCamSway 0..300 = 0 @desc カメラのゆるい横揺れの振れ幅。0 で揺れない
+// @param uFogDensity 0..300 = 100 @desc 遠方が透けて消えていく速さ。100 超で色も暗く沈む
+// @param uLightElev 20..300 = 100 @desc 光源の高さ。小さいと横から当たる
+// @param uRimLight 0..100 = 0 @desc 機体の縁の白い光の強さ
+// @param uVignette 0..150 = 0 @desc 画面の周辺を暗くする量
+// @param uShadeTopTint color = #ffffff @desc 上面の環境光に掛ける色
+// @param uShadeBottomTint color = #ffffff @desc 下面の環境光に掛ける色
+// @param uSpecTint color = #ffffff @desc 鏡面ハイライトに掛ける色
+// @param uBodyTint color = #ffffff @desc 機体全体に掛ける色
 uniform float uWaveFreq; // 空間のうねりの細かさ (%)
 uniform float uRowGap; // 縦方向の配置間隔 (%)
 uniform float uDepthGap; // 奥行き方向の配置間隔 (%)

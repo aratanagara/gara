@@ -11,43 +11,43 @@ mat2 cpRot(float a){ return mat2(cos(a),-sin(a),sin(a),cos(a)); }
 
 #define CP_PHI 1.61803398874989
 
-// @param uThick 30..250 = 100.0
-// @param uSpacing 70..250 = 100.0
-// @param uTwist 60..150 = 100.0
-// @param uGlow 0..250 = 100.0
-// @param uDepth 50..300 = 100.0
-// @param uSize 50..150 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 30..40 = 40.0
-// @param uSides 3..8 = 3.0
-// @param uTubeRadius 40..200 = 100.0
-// @param uTubeNeck 30..300 = 100.0
-// @param uFoldClamp 60..130 = 100.0
-// @param uInvScale 70..115 = 100.0
-// @param uInvMin 30..150 = 100.0
-// @param uRimWidth 40..250 = 100.0
-// @param uShade 0..250 = 100.0
-// @param uLightAzimuth -180..180 = 0
-// @param uLightElev -60..60 = 0
-// @param uSpecSharp 20..500 = 100
-// @param uGlareSpread 20..400 = 100
-// @param uAccentAmount 0..600 = 100
-// @param uPalShift -50..50 = 0
-// @param uPalRange 0..200 = 100
-// @param uBlueBand 40..250 = 100
-// @param uMagentaBand 40..250 = 100
-// @param uHitOpacity 40..130 = 100
-// @param uFogStart 20..300 = 100
-// @param uReflectFade 60..130 = 100
-// @param uOrbitRadius 70..130 = 100
-// @param uCamRoll -180..180 = 0
-// @param uCamPitch -40..40 = 0
-// @param uFocalScale 60..160 = 100
-// @param uSilverColor color = #ffffff
-// @param uBlueColor color = #ffffff
-// @param uMagentaColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uReflectColor color = #ffffff
+// @param uThick 30..250 = 100.0 @desc 壁厚 (メッシュの線の太さ) (%)
+// @param uSpacing 70..250 = 100.0 @desc オブジェクトのセル間隔 (%)。大きいほど疎になる
+// @param uTwist 60..150 = 100.0 @desc ねじれの強さ (%)
+// @param uGlow 0..250 = 100.0 @desc 鏡面ハイライトとグレアの強さ (%)
+// @param uDepth 50..300 = 100.0 @desc 遠方フォグの距離 (%)。大きいほど奥まで見える
+// @param uSize 50..150 = 100.0 @desc 要素ひとつの大きさ (%)。配置は変えない
+// @param uAngle -180..180 = 0.0 @desc 各セルの向きを固定角でずらす (度)
+// @param uSteps 30..40 = 40.0 @desc レイマーチの反復回数。下げると軽いが遠景や細部が欠ける
+// @param uSides 3..8 = 3.0 @desc チューブ断面の角数。3 = 三角形 / 4 = 四角形 / 以降 8 まで (四捨五入で整数)
+// @param uTubeRadius 40..200 = 100.0 @desc チューブ断面の半径 (%)
+// @param uTubeNeck 30..300 = 100.0 @desc 中央から端へ細くなる区間の長さ (%)
+// @param uFoldClamp 60..130 = 100.0 @desc 折り返しの境界の位置 (%)
+// @param uInvScale 70..115 = 100.0 @desc 反転写像の拡大率 (%)
+// @param uInvMin 30..150 = 100.0 @desc 反転写像の最小半径 (%)。下げると中心が強く跳ね返る
+// @param uRimWidth 40..250 = 100.0 @desc 縁の光の幅 (%)。下げると縁だけが細く光る
+// @param uShade 0..250 = 100.0 @desc 面ごとの陰影の深さ (%)
+// @param uLightAzimuth -180..180 = 0 @desc 光源の方位 (度)
+// @param uLightElev -60..60 = 0 @desc 光源の仰角 (度)。負で下から照らす
+// @param uSpecSharp 20..500 = 100 @desc 鏡面ハイライトの芯の鋭さ (%)
+// @param uGlareSpread 20..400 = 100 @desc 広いグレアの広がり (%)。下げると広く、上げると締まる
+// @param uAccentAmount 0..600 = 100 @desc 縁に乗るマゼンタの差し色の量 (%)
+// @param uPalShift -50..50 = 0 @desc パレット位相のずらし (%)。銀・青・マゼンタの出る面が入れ替わる
+// @param uPalRange 0..200 = 100 @desc 面ごとの色の振れ幅 (%)。下げると単色寄り
+// @param uBlueBand 40..250 = 100 @desc 群青の帯の幅 (%)
+// @param uMagentaBand 40..250 = 100 @desc マゼンタの帯の幅 (%)
+// @param uHitOpacity 40..130 = 100 @desc 面の乗り方 (%)。下げると背景が透け、重なりが薄い
+// @param uFogStart 20..300 = 100 @desc 霧が効き始める近さ (%)。上げると手前から霞む
+// @param uReflectFade 60..130 = 100 @desc 反射のたびに暗くなる度合い (%)。下げると写り込みが暗い
+// @param uOrbitRadius 70..130 = 100 @desc カメラの公転半径 (%)
+// @param uCamRoll -180..180 = 0 @desc カメラのロール (度)。画面が傾く
+// @param uCamPitch -40..40 = 0 @desc カメラの俯仰 (度)
+// @param uFocalScale 60..160 = 100 @desc 画角の絞り (%)。上げるとズームイン
+// @param uSilverColor color = #ffffff @desc 銀の地色。掛け算のティント
+// @param uBlueColor color = #ffffff @desc 群青の色。掛け算のティント
+// @param uMagentaColor color = #ffffff @desc マゼンタの色。掛け算のティント
+// @param uSpecColor color = #ffffff @desc ハイライトの色。掛け算のティント
+// @param uReflectColor color = #ffffff @desc 反射ごとに乗る色。掛け算のティント
 uniform float uThick;   // 壁厚 (メッシュの線の太さ) (%)
 uniform float uSpacing;   // オブジェクトのセル間隔 (%)
 uniform float uTwist;   // ねじれの強さ (%)

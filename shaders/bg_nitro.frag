@@ -37,21 +37,21 @@ float nit_noise1v(vec3 u){
 
 vec2 nit_minx(vec2 a, vec2 b){ return mix(b, a, step(a.x, b.x)); }
 
-// @param uThick   70..130 = 100.0
-// @param uWarp    0..300  = 100.0
-// @param uDensity 25..400 = 100.0
-// @param uGlow    25..300 = 100.0
-// @param uFog     0..300  = 100.0
-// @param uSteps  28..52 = 52.0
-// @param uBandBlend 100..160 = 100
-// @param uSliceWidth 100..180 = 100
-// @param uFineGrain 100..200 = 100
-// @param uCloudScale 100..300 = 100
-// @param uSquash 100..400 = 100
-// @param uBigPuff 100..180 = 100
-// @param uCamPitch -40..60 = 0
-// @param uCamDist 60..160 = 100
-// @param uCamYaw -100..100 = 0
+// @param uThick   70..130 = 100.0 @desc 雲の厚み (%)。大きいほど雲が太る
+// @param uWarp    0..300  = 100.0 @desc 雲の縦方向のうねり (%)
+// @param uDensity 25..400 = 100.0 @desc 水平な縞 (層) の細かさ (%)。上げると層が増える
+// @param uGlow    25..300 = 100.0 @desc 全体の明るさ (%)
+// @param uFog     0..300  = 100.0 @desc 距離フォグの濃さ (%)
+// @param uSteps  28..52 = 52.0 @desc レイマーチの最大ステップ数。下げると軽くなるが遠景や縁が欠ける
+// @param uBandBlend 100..160 = 100 @desc 縞と雲のなじませ幅 (%)。小さいと段がくっきり
+// @param uSliceWidth 100..180 = 100 @desc 水平な縞の切れ込みの太さ (%)
+// @param uFineGrain 100..200 = 100 @desc 細かい雲粒の量 (%)。0 でなめらかな雲
+// @param uCloudScale 100..300 = 100 @desc 雲の塊の細かさ (%)。上げると塊が小さくなる
+// @param uSquash 100..400 = 100 @desc 雲の縦方向の倍率 (%)。小さいほど縦長、大きいほど平たい層
+// @param uBigPuff 100..180 = 100 @desc 大きな雲塊の量 (%)
+// @param uCamPitch -40..60 = 0 @desc カメラの仰角 (度)。正で見下ろす
+// @param uCamDist 60..160 = 100 @desc カメラの距離 (%)
+// @param uCamYaw -100..100 = 0 @desc カメラの方位の回し (%)
 uniform float uThick;     // 雲の厚み (%) (大きいほど雲が太る)
 uniform float uWarp;      // 雲の縦方向のうねり (%)
 uniform float uDensity;   // 縞(段)の細かさ (%)
@@ -67,22 +67,22 @@ uniform float uFineGrain; // 細かい雲粒の量 (%)。0 でなめらかな雲
 uniform float uCamPitch;  // カメラの仰角 (度)。正で見下ろし
 uniform float uCamDist;   // カメラの距離 (%)
 uniform float uCamYaw;    // カメラの方位の回し (%)
-// @param uCamRoll -90..90 = 0
-// @param uFov 75..140 = 100
-// @param uLookX -100..100 = 0
-// @param uLookY -100..100 = 0
-// @param uCamSide -300..300 = 0
-// @param uCamHeight -200..200 = 0
-// @param uFlyPos -300..300 = 0
-// @param uFogStart 0..400 = 0
-// @param uScatter 0..400 = 100
-// @param uSunPower 0..300 = 100
-// @param uVigReach 60..180 = 100
-// @param uVigPower 50..300 = 100
-// @param uJitter 0..300 = 100
-// @param uFogTint color = #ffffff
-// @param uSunTint color = #ffffff
-// @param uCloudTint color = #ffffff
+// @param uCamRoll -90..90 = 0 @desc カメラのロール (度)。画面を傾ける
+// @param uFov 75..140 = 100 @desc 画角 (%)。大きいほど広角で遠くまで入る
+// @param uLookX -100..100 = 0 @desc 注視点の横ずれ (%)。構図を左右に振る
+// @param uLookY -100..100 = 0 @desc 注視点の縦ずれ (%)。構図を上下に振る
+// @param uCamSide -300..300 = 0 @desc カメラと注視点の横移動 (%)
+// @param uCamHeight -200..200 = 0 @desc カメラと注視点の高さ (%)
+// @param uFlyPos -300..300 = 0 @desc 雲の中での進行位置 (%)。雲の配置を変える
+// @param uFogStart 0..400 = 0 @desc フォグが始まる距離 (%)。0 で手前から
+// @param uScatter 0..400 = 100 @desc 雲の散乱光 (赤みの陰影) の量 (%)
+// @param uSunPower 0..300 = 100 @desc 太陽の強さ (%)
+// @param uVigReach 60..180 = 100 @desc 周辺減光の届く範囲 (%)
+// @param uVigPower 50..300 = 100 @desc 周辺減光の落ち方の鋭さ (%)
+// @param uJitter 0..300 = 100 @desc 粗さを隠す粒状ノイズの量 (%)。0 で縞が出る
+// @param uFogTint color = #ffffff @desc 遠景フォグの色 (掛け算)
+// @param uSunTint color = #ffffff @desc 太陽の色 (掛け算)
+// @param uCloudTint color = #ffffff @desc 雲の散乱光の色 (掛け算)
 uniform float uCamRoll;   // カメラのロール (度)。0 = なし
 uniform float uFov;       // 画角 (%)。大きいほど広角で遠くまで入る
 uniform float uLookX;     // 注視点の横ずれ (%)。構図を左右に振る

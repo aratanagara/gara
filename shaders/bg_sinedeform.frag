@@ -8,39 +8,39 @@
 // =====================================================
 
 // 多重 sin によるドメイン変形(独自の周波数/位相/swizzle)
-// @param uWarp     0..150  = 100.0
-// @param uThick    40..120 = 100.0
-// @param uDensity  0..300  = 100.0
-// @param uContrast 40..200 = 100.0
-// @param uGlow     25..250 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uScale 50..110 = 100.0
-// @param uSteps 120..256 = 256.0
-// @param uWaveAmp 0..250 = 100.0
-// @param uWaveFreq 40..200 = 100.0
-// @param uTubeStretch 50..150 = 100.0
-// @param uCoarseWarp 40..160 = 100.0
-// @param uFineWarp 0..220 = 100.0
-// @param uCoilFreq 70..130 = 100.0
-// @param uTubeSquare 0..100 = 0.0
-// @param uTubeFlat -40..70 = 0.0
-// @param uSssGlow 0..250 = 100.0
-// @param uAoReach 85..200 = 100.0
-// @param uOrbitYaw -70..70 = 0
-// @param uOrbitPitch -50..50 = 0
-// @param uFocal 60..180 = 100
-// @param uCamShiftX -100..100 = 0
-// @param uCamShiftY -100..40 = 0
-// @param uLightLeanX -100..100 = 0
-// @param uLightLeanZ -100..100 = 0
-// @param uAmbientAmt 0..300 = 100
-// @param uBandSlant -100..100 = 0
-// @param uEdgeDark 0..100 = 0
-// @param uVigDepth 0..200 = 100
-// @param uGrain 0..100 = 0
-// @param uDiffTint color = #ffffff
-// @param uAmbTint color = #ffffff
-// @param uSssTint color = #ffffff
+// @param uWarp     0..150  = 100.0 @desc うねり (ドメイン変形) の強さ (%)
+// @param uThick    40..120 = 100.0 @desc チューブの太さ (%)
+// @param uDensity  0..300  = 100.0 @desc 虹色の帯の密度 (%)。0 で一色
+// @param uContrast 40..200 = 100.0 @desc トーンマップのガンマ (%)
+// @param uGlow     25..250 = 100.0 @desc 拡散光の強さ (%)
+// @param uAngle -180..180 = 0.0 @desc 画面全体の回転 (度)
+// @param uScale 50..110 = 100.0 @desc チューブ全体の大きさ (%)。カメラは動かない
+// @param uSteps 120..256 = 256.0 @desc レイマーチのステップ数。下げると軽く、尽きた光線は外れ扱いで面が欠ける
+// @param uWaveAmp 0..250 = 100.0 @desc 全体の大きな蛇行の振れ幅 (%)
+// @param uWaveFreq 40..200 = 100.0 @desc 蛇行の波長の細かさ (%)
+// @param uTubeStretch 50..150 = 100.0 @desc チューブの長手方向の伸縮 (%)
+// @param uCoarseWarp 40..160 = 100.0 @desc いちばん大きいうねりの振れ幅 (%)
+// @param uFineWarp 0..220 = 100.0 @desc 細かいうねり (後ろ 2 段) の振れ幅 (%)
+// @param uCoilFreq 70..130 = 100.0 @desc 大きいうねりの周期の細かさ (%)
+// @param uTubeSquare 0..100 = 0.0 @desc 断面を四角に寄せる量 (%)
+// @param uTubeFlat -40..70 = 0.0 @desc 断面を平たく・縦長にする (%)。正で平たく、負で細く
+// @param uSssGlow 0..250 = 100.0 @desc 縁の暖色の透け感 (%)
+// @param uAoReach 85..200 = 100.0 @desc 陰影 (AO) の届く距離 (%)
+// @param uOrbitYaw -70..70 = 0 @desc カメラをチューブの周りで左右へ回す角度 (度)
+// @param uOrbitPitch -50..50 = 0 @desc カメラをチューブの周りで上下へ回す角度 (度)
+// @param uFocal 60..180 = 100 @desc 画角 (%)。大きいほど望遠で拡大
+// @param uCamShiftX -100..100 = 0 @desc 画面の構図を横へずらす (%)
+// @param uCamShiftY -100..40 = 0 @desc 画面の構図を縦へずらす (%)
+// @param uLightLeanX -100..100 = 0 @desc ドーム光を左右へ傾ける量 (%)
+// @param uLightLeanZ -100..100 = 0 @desc ドーム光を手前・奥へ傾ける量 (%)
+// @param uAmbientAmt 0..300 = 100 @desc 環境光 (影の底上げ) の量 (%)
+// @param uBandSlant -100..100 = 0 @desc 虹色の帯を横方向へ傾ける量 (%)
+// @param uEdgeDark 0..100 = 0 @desc シルエット縁の暗い輪郭 (%)
+// @param uVigDepth 0..200 = 100 @desc 周辺減光の深さ (%)
+// @param uGrain 0..100 = 0 @desc 画面のざらつき (%)
+// @param uDiffTint color = #ffffff @desc 拡散光の色味
+// @param uAmbTint color = #ffffff @desc 環境光の色味
+// @param uSssTint color = #ffffff @desc 縁の透け感の色味
 uniform float uWarp;      // うねり (ドメイン変形) の強さ (%)
 uniform float uThick;     // チューブの太さ (%)
 uniform float uDensity;   // 虹色の帯の密度 (%。0 で一色)

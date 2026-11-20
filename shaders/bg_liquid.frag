@@ -15,38 +15,38 @@ float lq_noise(vec2 p){
   return mix(mix(lq_rand(i + vec2(0, 0)), lq_rand(i + vec2(1, 0)), f.x),
              mix(lq_rand(i + vec2(0, 1)), lq_rand(i + vec2(1, 1)), f.x), f.y);
 }
-// @param uDetail   1..4    = 4.0
-// @param uDensity  25..400 = 100.0
-// @param uWarp     0..300  = 100.0
-// @param uContrast 50..300 = 100.0
-// @param uGlow     25..250 = 100.0
+// @param uDetail   1..4    = 4.0 @desc ノイズのオクターブ数。下げると軽く、模様が粗くなる
+// @param uDensity  25..400 = 100.0 @desc 模様の細かさ (%)
+// @param uWarp     0..300  = 100.0 @desc 流れの歪みの量 (%)。横・縦の歪みに掛かる
+// @param uContrast 50..300 = 100.0 @desc コントラスト (%)。上げると明暗がはっきりする
+// @param uGlow     25..250 = 100.0 @desc 明るさ (%)
 uniform float uDetail;    // fbm のオクターブ数 (下げると軽く、模様が粗くなる)
 uniform float uDensity;   // 模様の細かさ (%)
 uniform float uWarp;      // 流れの歪み量 (%)
 uniform float uContrast;  // コントラスト (%。上げると明暗がはっきりする)
 uniform float uGlow;      // 明るさ (%)
-// @param uLacun    80..130   = 100.0
-// @param uGain     75..115   = 100.0
-// @param uOctShift 0..300    = 100.0
-// @param uAspect   40..250   = 100.0
-// @param uWarpX    0..250    = 100.0
-// @param uWarpY    0..250    = 100.0
-// @param uInner    0..250    = 100.0
-// @param uTurn     -180..180 = 0.0
-// @param uSwirl    -300..300 = 0.0
-// @param uWobble   0..300    = 0.0
-// @param uRidge    0..60     = 0.0
-// @param uCenterX  -100..100 = 0
-// @param uCenterY  -100..100 = 0
-// @param uMirror   -80..80    = 0
-// @param uFlowSkew -100..100 = 0
-// @param uWarpTurn -180..180 = 0
-// @param uBreath   0..100    = 0
-// @param uContour  0..100    = 0
-// @param uVignette 0..150    = 0
-// @param uGrain    0..100    = 0
-// @param uShadeTint color    = #ffffff
-// @param uLightTint color    = #ffffff
+// @param uLacun    80..130   = 100.0 @desc オクターブごとの周波数の倍率 (%)。上げると細部が一気に細かくなる
+// @param uGain     75..115   = 100.0 @desc オクターブごとの振幅の減衰 (%)。上げると細かい模様が強く残る
+// @param uOctShift 0..300    = 100.0 @desc オクターブ間のずらし量 (%)。層の重なり方が変わる
+// @param uAspect   40..250   = 100.0 @desc 模様の横幅の比 (%)。上げると横に詰まり縦縞気味に
+// @param uWarpX    0..250    = 100.0 @desc 横方向の流れの歪み (%)
+// @param uWarpY    0..250    = 100.0 @desc 縦方向の流れの歪み (%)
+// @param uInner    0..250    = 100.0 @desc 最終段のドメイン歪みの量 (%)。0 で歪みなしの素のノイズ
+// @param uTurn     -180..180 = 0.0 @desc 模様全体の回転 (度)
+// @param uSwirl    -300..300 = 0.0 @desc 中心からの距離に比例したねじれ (%)。負で逆回り
+// @param uWobble   0..300    = 0.0 @desc 座標のうねり (%)。0 でなし
+// @param uRidge    0..60     = 0.0 @desc 稜線化 (%)。0 でなめらか、上げると筋状の尾根になる
+// @param uCenterX  -100..100 = 0 @desc 模様の見る位置の横ずらし (%)
+// @param uCenterY  -100..100 = 0 @desc 模様の見る位置の縦ずらし (%)
+// @param uMirror   -80..80    = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし、正で右寄り・負で左寄りに折る
+// @param uFlowSkew -100..100 = 0 @desc 模様の斜めのせん断 (%)。流れが斜めに傾く
+// @param uWarpTurn -180..180 = 0 @desc 流れの歪みの向きの回転 (度)。流れの渦の巻き方が変わる
+// @param uBreath   0..100    = 0 @desc 模様が拡大縮小する呼吸の振れ幅 (%)
+// @param uContour  0..100    = 0 @desc 等高線の濃さ (%)。液面に筋が入る
+// @param uVignette 0..150    = 0 @desc 画面の周辺を暗くする量 (%)
+// @param uGrain    0..100    = 0 @desc 粒状ノイズの量 (%)
+// @param uShadeTint color    = #ffffff @desc 暗い部分に掛ける色味。既定は白で変化なし
+// @param uLightTint color    = #ffffff @desc 明るい部分に掛ける色味。既定は白で変化なし
 uniform float uLacun;     // オクターブごとの周波数の倍率 (%)。上げると細部が一気に細かくなる
 uniform float uGain;      // オクターブごとの振幅の減衰 (%)。上げると細かい模様が強く残る
 uniform float uOctShift;  // オクターブ間のずらし量 (%)。層の重なり方が変わる

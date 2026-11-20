@@ -31,14 +31,14 @@ vec3 mfEnv(vec3 d){
   return sky;
 }
 
-// @param uDetail   3..8 = 8.0
-// @param uWarp     0..300 = 100.0
-// @param uDensity  25..300 = 100.0
-// @param uThick    20..200 = 100.0
-// @param uContrast 50..200 = 100.0
-// @param uScale 50..150 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 55..96 = 96.0
+// @param uDetail   3..8 = 8.0 @desc IFS の反復回数 (四捨五入で整数)。下げると軽く、形が粗くなる
+// @param uWarp     0..300 = 100.0 @desc 段ごとの縮み率のゆらぎ (%)
+// @param uDensity  25..300 = 100.0 @desc 縮み率のゆらぎの細かさ (%)。大きいほど細かい
+// @param uThick    20..200 = 100.0 @desc 線の太さ (%)
+// @param uContrast 50..200 = 100.0 @desc コントラスト (%)。大きいほど暗く締まる
+// @param uScale 50..150 = 100.0 @desc 物体全体の大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 物体の向きを固定角でずらす (度)
+// @param uSteps 55..96 = 96.0 @desc レイマーチのステップ数。下げると軽く、遠景や細部が欠ける
 uniform float uDetail; // IFS の反復回数 (下げると軽く、形が粗くなる)
 uniform float uWarp; // 縮小率のゆらぎ (%)
 uniform float uDensity; // ゆらぎの細かさ (%)
@@ -47,17 +47,17 @@ uniform float uContrast; // コントラスト (%。大きいほど暗く締ま�
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
-// @param uArmReach 60..140 = 100.0
-// @param uArmAngle -35..35 = 0.0
-// @param uTwistPitch 0..250   = 100.0
-// @param uTwistStep  0..250   = 100.0
-// @param uShrink 92..106 = 100.0
-// @param uSquare     0..100   = 0.0
-// @param uNoiseScale 40..250 = 100.0
-// @param uNoiseDepth 0..200   = 100.0
-// @param uOrbit      -80..80  = 0.0
-// @param uDiffuse    0..300   = 100.0
-// @param uIrid       0..250   = 100.0
+// @param uArmReach 60..140 = 100.0 @desc 各段の枝の張り出し (%)
+// @param uArmAngle -35..35 = 0.0 @desc 枝の張り出す向き (度)
+// @param uTwistPitch 0..250   = 100.0 @desc 高さに応じたねじれの粗さ (%)
+// @param uTwistStep  0..250   = 100.0 @desc 段ごとのねじれの積み増し (%)
+// @param uShrink 92..106 = 100.0 @desc 段ごとの縮み方の基準 (%)。大きいほど枝が長く続く
+// @param uSquare     0..100   = 0.0 @desc 管の断面を丸から四角へ寄せる (%)
+// @param uNoiseScale 40..250 = 100.0 @desc 線の太さのむらの細かさ (%)。大きいほど細かい
+// @param uNoiseDepth 0..200   = 100.0 @desc 線の太さのむらの深さ (%)
+// @param uOrbit      -80..80  = 0.0 @desc カメラを物体の周りに回す角度 (度)
+// @param uDiffuse    0..300   = 100.0 @desc 面の陰影の強さ (%)
+// @param uIrid       0..250   = 100.0 @desc 反射に乗る虹色の色相の広がり (%)。0 で単色
 uniform float uArmReach; // 各段の枝の張り出し (%)
 uniform float uArmAngle; // 枝の張り出す向き (度)
 uniform float uTwistPitch; // 高さに応じたねじれの粗さ (%)
@@ -69,19 +69,19 @@ uniform float uNoiseDepth; // 線の太さのむらの深さ (%)
 uniform float uOrbit; // カメラを物体の周りに回す角度 (度)
 uniform float uDiffuse; // 面の陰影の強さ (%)
 uniform float uIrid; // 反射に乗る虹色の色相の広がり (%)。0 で単色
-// @param uCamDist 60..150 = 100.0
-// @param uCamHeight -100..100 = 0.0
-// @param uFovZoom 60..160 = 100.0
-// @param uRoll -180..180 = 0.0
-// @param uShiftX -100..100 = 0.0
-// @param uShiftY -100..100 = 0.0
-// @param uLightPitch -60..60 = 0.0
-// @param uRim 0..300 = 0.0
-// @param uIridFreq 40..300 = 100.0
-// @param uIridShift -100..100 = 0.0
-// @param uBackGlow 0..100 = 0.0
-// @param uReflTint color = #ffffff
-// @param uRimColor color = #ffffff
+// @param uCamDist 60..150 = 100.0 @desc カメラの距離 (%)
+// @param uCamHeight -100..100 = 0.0 @desc カメラの高さ (%)。上げると見下ろす角度になる
+// @param uFovZoom 60..160 = 100.0 @desc 画角の狭さ (%)。大きいほど望遠
+// @param uRoll -180..180 = 0.0 @desc 画面の回転 (度)
+// @param uShiftX -100..100 = 0.0 @desc 画面の中心を左右へずらす (%)
+// @param uShiftY -100..100 = 0.0 @desc 画面の中心を上下へずらす (%)
+// @param uLightPitch -60..60 = 0.0 @desc 光源の仰角の振り (度)。反射する環境光も傾く
+// @param uRim 0..300 = 0.0 @desc リムライト (縁の光) の強さ (%)。0 で出ない
+// @param uIridFreq 40..300 = 100.0 @desc 虹色の縞の細かさ (%)
+// @param uIridShift -100..100 = 0.0 @desc 虹色の位相のずれ (%)
+// @param uBackGlow 0..100 = 0.0 @desc 背景 (何も当たらない部分) に敷く環境色の量 (%)
+// @param uReflTint color = #ffffff @desc 反射色の色味。掛け算のティント
+// @param uRimColor color = #ffffff @desc リムライトの色。uRim が 0 のときは出ない
 uniform float uCamDist; // カメラの距離 (%)
 uniform float uCamHeight; // カメラの高さ (俯角になる。%)
 uniform float uFovZoom; // 画角の狭さ (%。大きいほど望遠)

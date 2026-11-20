@@ -14,33 +14,33 @@ float dc_noise(vec2 p){
   return mix(mix(a,b,f.x), mix(c,d,f.x), f.y);
 }
 
-// @param uSize   50..200 = 100.0
-// @param uColumn 50..300 = 100.0
-// @param uGlow   25..300 = 100.0
-// @param uFill   10..90  = 45.0
-// @param uAngle -180..180 = 0.0
-// @param uStreakFreq 40..250 = 100
-// @param uTrail 30..300 = 100
-// @param uGlyphRes 3..9 = 5
-// @param uGlyphGap -4..12 = 0
-// @param uGlyphTall 50..250 = 100
-// @param uGlyphVariety 4..96 = 48
-// @param uLayer2Width 50..300 = 100
-// @param uLayer2Size 50..300 = 100
-// @param uLayer2Gain 0..300 = 100
-// @param uFlickerScale 30..300 = 100
-// @param uColumnSway -100..100 = 0
-// @param uTrailCurve -100..100 = 0
-// @param uColumnGap 0..90 = 0
-// @param uSpeedSpread 0..300 = 100
-// @param uFlickerAmount 0..200 = 100
-// @param uGlyphSlant -100..100 = 0
-// @param uFadeDown -100..100 = 0
-// @param uMirrorCode 0..100 = 0
-// @param uLayer2Shift -100..100 = 0
-// @param uStreakSeed 0..200 = 0
-// @param uCodeColor color = #ffffff
-// @param uLayer2Color color = #ffffff
+// @param uSize   50..200 = 100.0 @desc 文字 (グリフ) の大きさ (%)。2 層目も連動
+// @param uColumn 50..300 = 100.0 @desc コードの帯の幅 (%)。2 層目も連動
+// @param uGlow   25..300 = 100.0 @desc 帯の明るさ (%)
+// @param uFill   10..90  = 45.0 @desc 文字のドットの埋まり具合 (%)。大きいほどドットが減る
+// @param uAngle -180..180 = 0.0 @desc コード雨全体の傾き (度)
+// @param uStreakFreq 40..250 = 100 @desc 縦の筋の繰り返しの細かさ (%)
+// @param uTrail 30..300 = 100 @desc 筋の尾の長さ (%)。下げると尾が短く切れる
+// @param uGlyphRes 3..9 = 5 @desc 文字のドット格子の分割数 (四捨五入で整数)
+// @param uGlyphGap -4..12 = 0 @desc 文字の周りの余白 (%)
+// @param uGlyphTall 50..250 = 100 @desc 文字の縦横比 (%)。上げると縦長
+// @param uGlyphVariety 4..96 = 48 @desc 文字の種類の数 (四捨五入で整数)
+// @param uLayer2Width 50..300 = 100 @desc 奥の帯 (2 層目) の幅 (%)
+// @param uLayer2Size 50..300 = 100 @desc 奥の帯 (2 層目) の文字の大きさ (%)
+// @param uLayer2Gain 0..300 = 100 @desc 奥の帯 (2 層目) の明るさ (%)。0 で奥の帯が消える
+// @param uFlickerScale 30..300 = 100 @desc 明滅ムラの細かさ (%)。大きいほど細かい
+// @param uColumnSway -100..100 = 0 @desc 帯が左右にうねる量 (%)。0 でまっすぐ
+// @param uTrailCurve -100..100 = 0 @desc 尾の明るさの落ち方 (%)。正で先頭だけ鋭く光り、負で尾まで均す
+// @param uColumnGap 0..90 = 0 @desc 帯が抜ける割合 (%)。上げると空白の列が増える
+// @param uSpeedSpread 0..300 = 100 @desc 帯ごとの流れる速さのばらつき (%)。0 で全帯が同じ速さ
+// @param uFlickerAmount 0..200 = 100 @desc 明滅ムラの深さ (%)。0 で均一
+// @param uGlyphSlant -100..100 = 0 @desc 文字の斜体の傾き (%)
+// @param uFadeDown -100..100 = 0 @desc 画面の縦方向のフェード (%)。正で下へ消え、負で上へ消える
+// @param uMirrorCode 0..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし。上げると左端から中央へ寄り、100 で中央の完全な左右対称
+// @param uLayer2Shift -100..100 = 0 @desc 奥の帯 (2 層目) を横へずらす量 (%)
+// @param uStreakSeed 0..200 = 0 @desc 帯の並びの乱数の種。値を変えると別の配置になる
+// @param uCodeColor color = #ffffff @desc コード全体の色味。掛け算のティント
+// @param uLayer2Color color = #ffffff @desc 奥の帯の色味。掛け算のティント
 uniform float uSize;      // 文字 (グリフ) の大きさ (%)
 uniform float uColumn;    // コードの帯の幅 (%)
 uniform float uGlow;      // 帯の明るさ (%)

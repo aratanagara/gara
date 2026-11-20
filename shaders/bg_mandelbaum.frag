@@ -3,7 +3,7 @@
 // Mandelbrot ベースの 3D ライティング。音声反応(bass/mids/highs)は除去し 0 固定。
 #define MB_MAX_ITER 48
 
-// @param uPalShift -100..100 = 0.0
+// @param uPalShift -100..100 = 0.0 @desc 素材パレットの位相のずれ (%)。色の組み合わせが変わる
 uniform float uPalShift;   // 素材パレットの位相のずれ (%)
 
 vec4 mb_getMaterial(float id, float tm){
@@ -24,21 +24,21 @@ vec4 mb_getMaterial(float id, float tm){
   return mix(c5,c1,f);
 }
 
-// @param uDetail 28..48  = 48.0
-// @param uThick  0..250   = 100.0
-// @param uGlow   25..300  = 100.0
-// @param uGloss  60..300  = 100.0
-// @param uVignette 0..300 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uCross  bool = true
-// @param uSlant  bool = true
-// @param uTri    bool = true
-// @param uSingle bool = true
-// @param uFill   bool = true
-// @param uWaveAmp  0..300 = 100.0
-// @param uWaveFreq 25..300 = 100.0
-// @param uTriSize  30..200 = 100.0
-// @param uReach    30..300 = 100.0
+// @param uDetail 28..48  = 48.0 @desc 反復回数。下げると軽くなるが縁の描き込みが減る
+// @param uThick  0..250   = 100.0 @when uCross > 0.5 || uSlant > 0.5 || uSingle > 0.5 @desc 波線の太さ (%)
+// @param uGlow   25..300  = 100.0 @desc ライト全体の強さ (%)
+// @param uGloss  60..300  = 100.0 @desc ハイライトの鋭さ (%)。上げるほど小さく鋭くなる
+// @param uVignette 0..300 = 100.0 @desc 周辺減光 (%)
+// @param uAngle -180..180 = 0.0 @desc 図全体の回転 (度)
+// @param uCross  bool = true @desc ON で十字に交わる波線が出る
+// @param uSlant  bool = true @desc ON で斜めに交わる波線が出る
+// @param uTri    bool = true @desc ON で三角が出る
+// @param uSingle bool = true @desc ON で 1 本の波線が出る
+// @param uFill   bool = true @desc ON で発散しない内部 (ミニ・マンデルブロ) を単色で埋める。OFF で内部にも模様
+// @param uWaveAmp  0..300 = 100.0 @when uCross > 0.5 || uSlant > 0.5 || uSingle > 0.5 @desc 波線の揺れ幅 (%)。0 で直線
+// @param uWaveFreq 25..300 = 100.0 @when uCross > 0.5 || uSlant > 0.5 || uSingle > 0.5 @desc 波線の細かさ (%)。上げると波が細かくなる
+// @param uTriSize  30..200 = 100.0 @when uTri > 0.5 @desc 三角の大きさ (%)
+// @param uReach    30..300 = 100.0 @when uCross > 0.5 || uSlant > 0.5 || uSingle > 0.5 @desc 波線が伸びる範囲 (%)
 uniform float uDetail;    // 反復回数 (下げると軽く、縁の描き込みが減る)
 uniform float uThick;     // 曲線の太さ (%)
 uniform float uGlow;      // ライトの強さ (%)
@@ -54,25 +54,25 @@ uniform float uWaveAmp;  // 波線の揺れ幅 (%) (0 = 直線)
 uniform float uWaveFreq; // 波線の細かさ (%)
 uniform float uTriSize;  // 三角の大きさ (%)
 uniform float uReach;    // 線が伸びる範囲 (%)
-// @param uKeyYaw -180..180 = 0.0
-// @param uKeyPitch -40..40 = 0.0
-// @param uFillYaw -180..180 = 0.0
-// @param uFillLevel 0..400 = 100.0
-// @param uSpecLevel 0..300 = 100.0
-// @param uRimLevel 0..400 = 100.0
-// @param uRimSharp 1..10 = 4.0
-// @param uAmbientLevel 0..400 = 100.0
-// @param uAoDepth 40..250 = 100.0
-// @param uReliefDepth 30..300 = 100.0
-// @param uGrainLevel 0..500 = 100.0
-// @param uSplitTone 0..600 = 100.0
-// @param uPanX -100..100 = 0.0
-// @param uPanY -100..100 = 0.0
-// @param uMirror 0..100 = 0.0
-// @param uKeyColor color = #ffffff
-// @param uFillColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uAmbientColor color = #ffffff
+// @param uKeyYaw -180..180 = 0.0 @desc 主光源の方位 (度)
+// @param uKeyPitch -40..40 = 0.0 @desc 主光源の高さの振り (度)。正で正面寄り、負で寝かせて当てる
+// @param uFillYaw -180..180 = 0.0 @desc 補助光の方位 (度)
+// @param uFillLevel 0..400 = 100.0 @desc 補助光 (青) の強さ (%)
+// @param uSpecLevel 0..300 = 100.0 @desc 鏡面ハイライトの強さ (%)
+// @param uRimLevel 0..400 = 100.0 @desc リムライト (縁の光) の強さ (%)
+// @param uRimSharp 1..10 = 4.0 @desc リムライトの絞り。大きいほど縁だけが光る
+// @param uAmbientLevel 0..400 = 100.0 @desc 環境光の量 (%)
+// @param uAoDepth 40..250 = 100.0 @desc 凹みの暗さの効き (%)。大きいほど明るい範囲が広がる
+// @param uReliefDepth 30..300 = 100.0 @desc 凹凸の深さ (%)。大きいほど法線が傾いて陰影が強まる
+// @param uGrainLevel 0..500 = 100.0 @desc 粒子ノイズの量 (%)
+// @param uSplitTone 0..600 = 100.0 @desc 主光源が当たる側の赤みと、影側の青みの振り (%)
+// @param uPanX -100..100 = 0.0 @desc 注目点の左右のずらし (%)。拡大率に追従する
+// @param uPanY -100..100 = 0.0 @desc 注目点の上下のずらし (%)。拡大率に追従する
+// @param uMirror 0..100 = 0.0 @desc 左右の鏡像の折り返し位置 (%)。50 で中央、0 で無効に近い
+// @param uKeyColor color = #ffffff @desc 主光源の色 (掛け算)
+// @param uFillColor color = #ffffff @desc 補助光の色 (掛け算)
+// @param uRimColor color = #ffffff @desc リムライトの色 (掛け算)
+// @param uAmbientColor color = #ffffff @desc 環境光の色 (掛け算)
 uniform float uKeyYaw;     // 主光源の方位 (度)
 uniform float uKeyPitch;   // 主光源の高さの振り (度)
 uniform float uFillYaw;    // 補助光の方位 (度)

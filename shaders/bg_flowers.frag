@@ -10,22 +10,22 @@ vec4 bufA[N_HIDDEN/4];
 vec4 bufB[N_HIDDEN/2];
 
 
-// @param uDensity  25..400 = 100.0
-// @param uMotion   0..200  = 100.0
-// @param uContrast 25..300 = 100.0
-// @param uSat      0..250  = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uShapeA   0..200 = 100.0
-// @param uShapeB   0..200 = 100.0
-// @param uShapeC   0..200 = 100.0
-// @param uShapeD   0..200 = 100.0
-// @param uSeedA    -200..200 = 0.0
-// @param uSeedB    -200..200 = 0.0
-// @param uMirrorAxis -60..60 = 0.0
-// @param uSwirl    -200..200 = 0.0
-// @param uStretch  50..200 = 100.0
-// @param uRipple   0..200 = 0.0
-// @param uPetalSym 0..12 = 0.0
+// @param uDensity  25..400 = 100.0 @desc 模様のスケール (%)。大きいほど細かい
+// @param uMotion   0..200  = 100.0 @desc 形の変化の振幅 (%)。速度ではなく変化の幅
+// @param uContrast 25..300 = 100.0 @desc コントラスト (%)
+// @param uSat      0..250  = 100.0 @desc 彩度 (%)。0 でモノクロ
+// @param uAngle -180..180 = 0.0 @desc 花の向き (度)
+// @param uShapeA   0..200 = 100.0 @desc 形の変化 A (ネットワーク入力 1 の振幅、%)
+// @param uShapeB   0..200 = 100.0 @desc 形の変化 B (入力 2 の振幅、%)
+// @param uShapeC   0..200 = 100.0 @desc 形の変化 C (入力 3 の振幅、%)
+// @param uShapeD   0..200 = 100.0 @desc 形の変化 D (入力 4 の振幅、%)
+// @param uSeedA    -200..200 = 0.0 @desc 入力 1 の固定オフセット (%)。花の種類を変える
+// @param uSeedB    -200..200 = 0.0 @desc 入力 2 の固定オフセット (%)
+// @param uMirrorAxis -60..60 = 0.0 @desc 左右の鏡像の軸位置 (%)。0 で無効、正負で軸が左右へ動く
+// @param uSwirl    -200..200 = 0.0 @desc 中心からの距離に比例したねじれ (%)。負で逆回り
+// @param uStretch  50..200 = 100.0 @desc 横方向の伸縮 (%)。下げると横に細長い花
+// @param uRipple   0..200 = 0.0 @desc 座標のさざ波 (%)。花弁の縁がうねる
+// @param uPetalSym 0..12 = 0.0 @desc 放射状の対称数 (枚数)。0 でなし
 uniform float uDensity;   // 模様のスケール (%)
 uniform float uMotion;    // 形の変化の振幅 (%。速度ではなく変化の幅)
 uniform float uContrast;  // コントラスト (%)
@@ -43,20 +43,20 @@ uniform float uStretch; // 横方向の伸縮 (%)。下げると横に細長い�
 uniform float uRipple; // 座標のさざ波 (%)。花弁の縁がうねる
 uniform float uPetalSym; // 放射状の対称数 (枚数)。0 = なし
 
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uShear -100..100 = 0.0
-// @param uLens -100..100 = 0.0
-// @param uTileCount 0..6 = 0.0
-// @param uPixelate 0..100 = 0.0
-// @param uPhase -180..180 = 0.0
-// @param uSeedC -200..200 = 0.0
-// @param uSeedD -200..200 = 0.0
-// @param uEdgeLine -100..100 = 0.0
-// @param uPosterize 0..10 = 0.0
-// @param uVignette 0..100 = 0.0
-// @param uGrain 0..100 = 0.0
-// @param uTint color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc 花の中心を横へずらす (%)
+// @param uCenterY -100..100 = 0.0 @desc 花の中心を縦へずらす (%)
+// @param uShear -100..100 = 0.0 @desc 縦位置に応じた横ずれ (%)。花が斜めに流れる
+// @param uLens -100..100 = 0.0 @desc 画面端の膨らみ・つぼみ (%)。正で樽型、負で糸巻き型
+// @param uTileCount 0..6 = 0.0 @desc 鏡面タイルの数 (2〜6)。0〜1 で無効。花が敷き詰められる
+// @param uPixelate 0..100 = 0.0 @desc 座標のモザイク化 (%)。上げるほど粗いブロック
+// @param uPhase -180..180 = 0.0 @desc 形の変化の位相のずれ (度)。花の開き方の段階を変える
+// @param uSeedC -200..200 = 0.0 @desc 入力 3 の固定オフセット (%)
+// @param uSeedD -200..200 = 0.0 @desc 入力 4 の固定オフセット (%)
+// @param uEdgeLine -100..100 = 0.0 @desc 輪郭の線 (%)。正で白い縁取り、負で黒い縁取り
+// @param uPosterize 0..10 = 0.0 @desc 色の段数 (2〜10)。0〜1 で無効。ポスター調に階調を落とす
+// @param uVignette 0..100 = 0.0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0.0 @desc 粒状ノイズの量 (%)
+// @param uTint color = #ffffff @desc 全体の色味 (掛け算のティント)
 uniform float uCenterX; // 花の中心を横へずらす (%)
 uniform float uCenterY; // 花の中心を縦へずらす (%)
 uniform float uShear; // 縦位置に応じた横ずれ (%)。花が斜めに流れる

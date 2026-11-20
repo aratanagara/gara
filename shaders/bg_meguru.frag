@@ -32,32 +32,32 @@ float bn_k3d(vec3 sp, vec3 d, vec3 dm, float s, vec3 r){
   return sdf;
 }
 
-// @param uSpread 50..150 = 100.0
-// @param uThick  30..200 = 100.0
-// @param uTwist  0..200 = 100.0
-// @param uGlow   60..300 = 100.0
-// @param uScale 50..150 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 28..45 = 45.0
-// @param uBarLength 50..150 = 100.0
-// @param uBarHeight 30..400 = 100.0
-// @param uBarDepth  30..200 = 100.0
-// @param uOffsetX   90..150 = 100.0
-// @param uOffsetZ   70..150 = 100.0
-// @param uSubScale  70..150 = 100.0
-// @param uKnotA     50..150 = 100.0
-// @param uKnotB     85..150 = 100.0
-// @param uCoilTwist 75..150 = 100.0
-// @param uBandWidth 50..150 = 100.0
-// @param uCamHeight -100..100 = 0.0
-// @param uCamSide -40..100 = 0.0
-// @param uLens 100..200 = 100.0
-// @param uStripeScale 0..400 = 100.0
-// @param uDepthHue 100..500 = 100.0
-// @param uBandEdge 20..110 = 100.0
-// @param uBandShift -100..100 = 0.0
-// @param uDepthFade 30..100 = 100.0
-// @param uTint color = #ffffff
+// @param uSpread 50..150 = 100.0 @desc 構造の広がり (%)。折り返しの間隔にかかる
+// @param uThick  30..200 = 100.0 @desc 棒の太さ (%)
+// @param uTwist  0..200 = 100.0 @desc ねじれの強さ (%)
+// @param uGlow   60..300 = 100.0 @desc 明るさ (%)
+// @param uScale 50..150 = 100.0 @desc 物体全体の大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 図全体の向き (度)
+// @param uSteps 28..45 = 45.0 @desc レイマーチのステップ数。下げると軽くなるが遠景や細部が欠ける
+// @param uBarLength 50..150 = 100.0 @desc 棒の長さ (%)
+// @param uBarHeight 30..400 = 100.0 @desc 棒の断面の高さ (%)
+// @param uBarDepth  30..200 = 100.0 @desc 棒の断面の奥行き (%)
+// @param uOffsetX   90..150 = 100.0 @desc 折り返しの X 方向の間隔 (%)
+// @param uOffsetZ   70..150 = 100.0 @desc 折り返しの Z 方向の間隔 (%)
+// @param uSubScale  70..150 = 100.0 @desc 2 段目の小さな棒の縮尺 (%)
+// @param uKnotA     50..150 = 100.0 @desc 折り返しごとの XY 面の回転量 (%)
+// @param uKnotB     85..150 = 100.0 @desc 折り返しごとの ZY 面の回転量 (%)
+// @param uCoilTwist 75..150 = 100.0 @desc 奥行き方向の XY 回転のねじれの強さ (%)
+// @param uBandWidth 50..150 = 100.0 @desc 色の帯 (量子化段) の幅 (%)
+// @param uCamHeight -100..100 = 0.0 @desc カメラの高さ (%)。0 で元の位置
+// @param uCamSide -40..100 = 0.0 @desc カメラの左右位置 (%)。0 で元の位置
+// @param uLens 100..200 = 100.0 @desc 画角 (%)。大きいほど望遠
+// @param uStripeScale 0..400 = 100.0 @desc 空間に沿った色の縞の細かさ (%)。0 で縞なし
+// @param uDepthHue 100..500 = 100.0 @desc 奥行きによる色変化の量 (%)
+// @param uBandEdge 20..110 = 100.0 @desc 色帯の境目のぼかし開始位置 (%)。小さいほどなだらか
+// @param uBandShift -100..100 = 0.0 @desc 色帯の位置ずらし (%)
+// @param uDepthFade 30..100 = 100.0 @desc 奥ほど暗くなる度合い (%)
+// @param uTint color = #ffffff @desc 図柄のティント色 (掛け算)
 uniform float uSpread; // 構造の広がり (%)
 uniform float uThick; // 棒の太さ (%)
 uniform float uTwist; // ねじれの強さ (%)

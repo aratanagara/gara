@@ -30,14 +30,14 @@ vec3 bp_sdBilinearPatch(vec3 p, vec3 p0, vec3 p1, vec3 p2, vec3 p3){
   return vec3(length(bp_barycentric(p0,p1,p2,p3,uv) - p), uv);
 }
 
-// @param uWarp     0..200  = 100.0
-// @param uRound    20..300 = 100.0
-// @param uGlow     25..250 = 100.0
-// @param uContrast 50..200 = 100.0
-// @param uScale 50..120 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uTilt -90..90 = 0.0
-// @param uSteps 128..256 = 256.0
+// @param uWarp     0..200  = 100.0 @desc 立方体が時間で歪む量 (%)。0 で歪まない
+// @param uRound    20..300 = 100.0 @desc 角の丸み・厚み (%)。大きいほど面が太く丸くなる
+// @param uGlow     25..250 = 100.0 @desc 全体の明るさ (ゲイン %)
+// @param uContrast 50..200 = 100.0 @desc ガンマ (%)。上げると暗部が沈み、下げると持ち上がる
+// @param uScale 50..120 = 100.0 @desc 立方体全体の大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 立方体の水平方向の向き (度。縦軸まわりの回転)
+// @param uTilt -90..90 = 0.0 @desc 立方体の前後の傾き (度)
+// @param uSteps 128..256 = 256.0 @desc レイマーチのステップ数。下げると軽く、尽きた光線は当たり扱いで縁が荒れる
 uniform float uWarp;      // 立方体の歪み量 (%)
 uniform float uRound;     // 角の丸み・厚み (%)
 uniform float uGlow;      // 明るさ (ゲイン %)
@@ -46,18 +46,18 @@ uniform float uScale; // 立方体全体の大きさ (%)
 uniform float uAngle; // 立方体の向き (度。固定角でずらす)
 uniform float uTilt; // 立方体の傾き (度。固定角)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は当たり扱いで縁が荒れる)
-// @param uBoxW 50..115 = 100
-// @param uBoxH 50..115 = 100
-// @param uBoxD 50..115 = 100
-// @param uTaper -60..60 = 0
-// @param uSkew -100..100 = 0
-// @param uCubeTwist -90..90 = 0
-// @param uSaddle -60..60 = 0
-// @param uSwayXZ 0..200 = 100
-// @param uSwayYZ 0..200 = 100
-// @param uEnvTop 0..300 = 100
-// @param uFaceRefl 20..180 = 100
-// @param uEnvBands 1..6 = 2
+// @param uBoxW 50..115 = 100 @desc 立方体の幅 (%)
+// @param uBoxH 50..115 = 100 @desc 立方体の高さ (%)
+// @param uBoxD 50..115 = 100 @desc 立方体の奥行き (%)
+// @param uTaper -60..60 = 0 @desc 上すぼまり・下すぼまり (%)。正で上が狭く、負で逆
+// @param uSkew -100..100 = 0 @desc 横ずれ (平行四辺形化) (%)
+// @param uCubeTwist -90..90 = 0 @desc 縦軸まわりのねじれ (度)
+// @param uSaddle -60..60 = 0 @desc 面の鞍状のたわみ (%)。負で逆向き
+// @param uSwayXZ 0..200 = 100 @desc 水平方向のよじれの量 (%)
+// @param uSwayYZ 0..200 = 100 @desc 前後方向のよじれの量 (%)
+// @param uEnvTop 0..300 = 100 @desc 上向きの面に映る天頂の光の強さ (%)
+// @param uFaceRefl 20..180 = 100 @desc 正面向きの面の反射量 (%)
+// @param uEnvBands 1..6 = 2 @desc 反射する横帯の本数
 uniform float uBoxW;      // 立方体の幅 (%)
 uniform float uBoxH;      // 立方体の高さ (%)
 uniform float uBoxD;      // 立方体の奥行き (%)
@@ -70,31 +70,31 @@ uniform float uSwayYZ;    // 前後方向のよじれ量 (%)
 uniform float uEnvTop;    // 上向きの面に映る天頂の光の強さ (%)
 uniform float uFaceRefl;  // 正面向きの面の反射量 (%)
 uniform float uEnvBands;  // 反射する横帯の数
-// @param uWedge -60..60 = 0
-// @param uSkewZ -100..100 = 0
-// @param uVertJitter 0..100 = 0
-// @param uBreath 0..40 = 0
-// @param uSwayPhase 0..300 = 0
-// @param uRoll -180..180 = 0
-// @param uShiftX -100..100 = 0
-// @param uShiftY -100..100 = 0
-// @param uLightYaw -180..180 = 0
-// @param uLightHeight -200..300 = 100
-// @param uSpecPower 4..300 = 100
-// @param uFresnelPower 30..250 = 100
-// @param uFogDepth 0..400 = 100
-// @param uHorizonShift -30..30 = 0
-// @param uBandSharp 4..300 = 100
-// @param uBandAmount 0..400 = 100
-// @param uBandPhase -180..180 = 0
-// @param uEdgeLine 0..100 = 0
-// @param uEdgeGlow 0..100 = 0
-// @param uTopColor color = #ffffff
-// @param uBottomColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uBandColor color = #ffffff
-// @param uEnvGroundColor color = #ffffff
-// @param uEnvSkyColor color = #ffffff
+// @param uWedge -60..60 = 0 @desc 奥行きでの幅の変化 (%)。正で奥が狭いくさび形
+// @param uSkewZ -100..100 = 0 @desc 前後方向のずれ (%)
+// @param uVertJitter 0..100 = 0 @desc 頂点のばらつき (%)。結晶のような不揃いな立方体になる
+// @param uBreath 0..40 = 0 @desc 立方体全体の膨らみ縮みの振れ幅 (%)
+// @param uSwayPhase 0..300 = 0 @desc 頂点ごとのよじれの位相のずれ (%)
+// @param uRoll -180..180 = 0 @desc 画面全体の回転 (度)
+// @param uShiftX -100..100 = 0 @desc 画面の左右の位置 (%)
+// @param uShiftY -100..100 = 0 @desc 画面の上下の位置 (%)
+// @param uLightYaw -180..180 = 0 @desc ハイライト光源の水平回転 (度)
+// @param uLightHeight -200..300 = 100 @desc ハイライト光源の高さ (%)
+// @param uSpecPower 4..300 = 100 @desc ハイライトの絞り (%)。大きいほど小さく鋭い
+// @param uFresnelPower 30..250 = 100 @desc 縁の反射の絞り (%)。大きいほど縁に細く出る
+// @param uFogDepth 0..400 = 100 @desc 奥ほど暗くなる量 (%)
+// @param uHorizonShift -30..30 = 0 @desc 環境の暗から明への切り替わりの高さ (%)
+// @param uBandSharp 4..300 = 100 @desc 反射する横帯の鋭さ (%)
+// @param uBandAmount 0..400 = 100 @desc 反射する横帯の強さ (%)
+// @param uBandPhase -180..180 = 0 @desc 反射する横帯の回り込み (度)
+// @param uEdgeLine 0..100 = 0 @desc 面の継ぎ目 (立方体の辺) の暗い線の濃さ (%)
+// @param uEdgeGlow 0..100 = 0 @desc 面の継ぎ目の光る線の強さ (%)
+// @param uTopColor color = #ffffff @desc 上向きの面の色味
+// @param uBottomColor color = #ffffff @desc 下向きの面の色味
+// @param uSpecColor color = #ffffff @desc ハイライトの色味
+// @param uBandColor color = #ffffff @desc 反射する横帯の色味
+// @param uEnvGroundColor color = #ffffff @desc 環境の暗い側の色味
+// @param uEnvSkyColor color = #ffffff @desc 環境の明るい側の色味
 uniform float uWedge;     // 奥行きでの幅の変化 (%)。0 = なし / 正で奥が狭いくさび形
 uniform float uSkewZ;     // 前後方向のずれ (%)
 uniform float uVertJitter; // 頂点のばらつき (%)。結晶のような不揃いな立方体

@@ -11,43 +11,43 @@ const int   FM_STEPS = 56;     // 元 500 → 軽量化(さらに削減)
 const float FM_MAXD  = 36.0;   // 元 10000 → 近景中心に短縮
 const float FM_EPS   = 0.1;
 
-// @param uTubeRadius 80..112 = 100.0
+// @param uTubeRadius 80..112 = 100.0 @desc 基本形のくびれ・管の太さ (%)
 uniform float uTubeRadius; // 基本形のくびれ・管の太さ (%)
 // 元の length 系 SDF (描画保証)。簡略化はフラクタル層の削減で行う。
 float fm_sdf1(vec3 p){ return (length(abs(sin(p.yzx)) - abs(cos(p)))) - (uTubeRadius / 100.0); }
-// @param uDetail 1..3 = 3.0
-// @param uMoss   0..200 = 100.0
-// @param uBump   0..300 = 100.0
-// @param uGlow   0..300 = 100.0
-// @param uMotion 0..300 = 100.0
-// @param uSteps 20..56 = 56.0
-// @param uPatternScale 96..130 = 100.0
-// @param uInflate 0..160 = 100.0
-// @param uFoldWarp 80..130 = 100.0
-// @param uLayerRatio 85..125 = 100.0
-// @param uSlide -100..100 = 0.0
-// @param uDirt 0..300 = 100.0
-// @param uLumpScale 50..200 = 100.0
-// @param uGrainScale 50..200 = 100.0
-// @param uCamDist 60..150 = 100.0
-// @param uCamBob 0..250 = 100.0
-// @param uFov 60..160 = 100.0
-// @param uLightAzimuth -180..180 = 0
-// @param uSpecSharp 30..300 = 100
-// @param uFresnel 0..300 = 100
-// @param uShadowDark 0..400 = 100
-// @param uShadowLength 25..400 = 100
-// @param uPatchEdge 20..300 = 100
-// @param uChromeBias 50..200 = 100
-// @param uDepthFade 0..100 = 0
-// @param uCamRoll -60..60 = 0
-// @param uOrbitOffset -180..180 = 0
-// @param uCamLift -100..100 = 0
-// @param uVignette 0..150 = 0
-// @param uMetalTint color = #ffffff
-// @param uMossTint color = #ffffff
-// @param uDirtTint color = #ffffff
-// @param uRimTint color = #ffffff
+// @param uDetail 1..3 = 3.0 @desc フラクタル層の数 (四捨五入で整数)。下げると軽く、形が大きく滑らかになる
+// @param uMoss   0..200 = 100.0 @desc 苔・土のパッチの広さ (%)。土のパッチにも連動
+// @param uBump   0..300 = 100.0 @desc 表面のボコボコの凹凸の強さ (%)
+// @param uGlow   0..300 = 100.0 @desc ハイライト・縁のリム光・フレネルをまとめた光の強さ (%)
+// @param uMotion 0..300 = 100.0 @desc 苔・土のうごめきの振幅 (%)
+// @param uSteps 20..56 = 56.0 @desc レイマーチのステップ数。下げると軽く、遠景や細部が欠ける
+// @param uPatternScale 96..130 = 100.0 @desc 構造全体の繰り返しの大きさ (%)
+// @param uInflate 0..160 = 100.0 @desc 構造の膨らみ・肉付き (%)
+// @param uFoldWarp 80..130 = 100.0 @desc 層ごとの折れ曲がりの強さ (%)
+// @param uLayerRatio 85..125 = 100.0 @desc 層ごとの細かさの比 (%)。上げるほど上の層が急に細かくなる
+// @param uSlide -100..100 = 0.0 @desc 構造を横 (X) へずらす量。別の部分が見える
+// @param uDirt 0..300 = 100.0 @desc 土のパッチの広さ (%)
+// @param uLumpScale 50..200 = 100.0 @desc 大きな隆起の大きさ (%)。大きいほど細かい
+// @param uGrainScale 50..200 = 100.0 @desc 細かなザラつきの大きさ (%)。大きいほど細かい
+// @param uCamDist 60..150 = 100.0 @desc カメラの公転半径 (%)
+// @param uCamBob 0..250 = 100.0 @desc カメラの上下動の幅 (%)
+// @param uFov 60..160 = 100.0 @desc 画角 (%)。上げると広角、下げると望遠
+// @param uLightAzimuth -180..180 = 0 @desc 光源の方位 (度)。陰影・ドロップシャドウ・ハイライトの向きが回る
+// @param uSpecSharp 30..300 = 100 @desc 鏡面ハイライトの鋭さ (%)
+// @param uFresnel 0..300 = 100 @desc 縁の白っぽい反射 (フレネル) の強さ (%)
+// @param uShadowDark 0..400 = 100 @desc パッチのドロップシャドウの濃さ (%)
+// @param uShadowLength 25..400 = 100 @desc パッチのドロップシャドウの長さ (%)
+// @param uPatchEdge 20..300 = 100 @desc 苔・土のパッチの縁のぼかし幅 (%)。小さいとくっきり
+// @param uChromeBias 50..200 = 100 @desc クロームの反射グラデの偏り (%)。上げると暗部が広がる
+// @param uDepthFade 0..100 = 0 @desc 遠くが暗く沈む量 (%)
+// @param uCamRoll -60..60 = 0 @desc カメラの傾き (度)。画面が傾く
+// @param uOrbitOffset -180..180 = 0 @desc カメラの公転位置のずらし (度)。別の側から見る
+// @param uCamLift -100..100 = 0 @desc カメラを持ち上げる量 (%)。俯瞰の度合い
+// @param uVignette 0..150 = 0 @desc 画面の周辺を暗くする量 (%)
+// @param uMetalTint color = #ffffff @desc 金属面の色味。掛け算のティント
+// @param uMossTint color = #ffffff @desc 苔の色味。掛け算のティント
+// @param uDirtTint color = #ffffff @desc 土の色味。掛け算のティント
+// @param uRimTint color = #ffffff @desc パッチの縁のリム光の色味。掛け算のティント
 uniform float uDetail; // フラクタル層の数 (下げると軽く、形が大きく滑らかになる)
 uniform float uMoss; // 苔・土のパッチの広さ (%)
 uniform float uBump; // ボコボコの凹凸の強さ (%)

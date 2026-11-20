@@ -8,27 +8,27 @@
 //   cosineGradient(uCosGrad)対応 / Slot B は暗部透過。ヘルパは ss_ で名前空間化。
 // =====================================================
 
-// @param uDetail 4..10 = 10.0
-// @param uSteps 6..14 = 14.0
-// @param uTile 60..200 = 100.0
-// @param uShield 25..400 = 100.0
-// @param uGlow 20..250 = 100.0
+// @param uDetail 4..10 = 10.0 @desc ネビュラのフラクタル折り畳みの反復回数。下げると軽く、単純になる
+// @param uSteps 6..14 = 14.0 @desc ネビュラの層の数。下げると軽く、薄くなる
+// @param uTile 60..200 = 100.0 @desc ネビュラのタイルの大きさ (%)
+// @param uShield 25..400 = 100.0 @desc シールド模様の細かさ (%)。大きいほど細かい
+// @param uGlow 20..250 = 100.0 @desc ネビュラの明るさ (%)
 uniform float uDetail;   // 模様を折り畳む反復回数 (下げると軽く、単純になる)
 uniform float uSteps;   // ネビュラの層の数 (下げると軽く、薄くなる)
 uniform float uTile;   // ネビュラのタイルの大きさ (%)
 uniform float uShield;   // シールド模様の細かさ (%)
 uniform float uGlow;   // ネビュラの明るさ (%)
-// @param uRingW      50..200  = 100.0
-// @param uSegSize    50..250  = 100.0
-// @param uSegSoft    20..180  = 100.0
-// @param uDiag       0..100   = 0.0
-// @param uFoldOff    70..130  = 100.0
-// @param uKaliK      92..108  = 100.0
-// @param uStepDepth  50..140  = 100.0
-// @param uFalloff    80..110  = 100.0
-// @param uShieldPush 0..300   = 100.0
-// @param uCloudFreq  30..300  = 100.0
-// @param uShieldLight 40..300 = 100.0
+// @param uRingW      50..200  = 100.0 @desc シールドの同心リングの間隔 (%)
+// @param uSegSize    50..250  = 100.0 @desc リングの区画の幅 (%)。区画ごとに模様がずれる
+// @param uSegSoft    20..180  = 100.0 @desc 区画の境目の滑らかさ (%)。下げると段差が急になる
+// @param uDiag       0..100   = 0.0 @desc 模様の格子から斜め縞への変形 (%)。0 で格子
+// @param uFoldOff    70..130  = 100.0 @desc ネビュラのタイル折り返しの位置 (%)。ずらすと左右非対称な構造になる
+// @param uKaliK      92..108  = 100.0 @desc フラクタルの折り畳み定数 (%)。わずかな変化で形が大きく変わる
+// @param uStepDepth  50..140  = 100.0 @desc ネビュラの層の間隔 (%)。上げると奥行きが深くなる
+// @param uFalloff    80..110  = 100.0 @desc 層ごとの減衰 (%)。上げると奥の層まで残る
+// @param uShieldPush 0..300   = 100.0 @desc シールド模様がネビュラの位置を歪める量 (%)
+// @param uCloudFreq  30..300  = 100.0 @desc 柔らかい雲の波の細かさ (%)
+// @param uShieldLight 40..300 = 100.0 @desc シールドの陰影の鋭さ (%)
 uniform float uRingW;   // シールドの同心リングの間隔 (%)
 uniform float uSegSize;   // リングの区画の幅 (%)。区画ごとに模様がずれる
 uniform float uSegSoft;   // 区画の境目の滑らかさ (%)。下げると段差が急になる
@@ -40,23 +40,23 @@ uniform float uFalloff;   // 層ごとの減衰 (%)。上げると奥の層ま�
 uniform float uShieldPush;   // シールド模様がネビュラの位置を歪める量 (%)
 uniform float uCloudFreq;   // 柔らかい雲の波の細かさ (%)
 uniform float uShieldLight;   // シールドの陰影の鋭さ (%)
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uFovNarrow 60..200 = 100.0
-// @param uLookYaw -100..100 = 0.0
-// @param uLookPitch -100..100 = 0.0
-// @param uOriginX -100..100 = 0.0
-// @param uOriginY -100..100 = 0.0
-// @param uShieldCenterX -100..100 = 0.0
-// @param uShieldCenterY -100..100 = 0.0
-// @param uShieldTurn -180..180 = 0.0
-// @param uShieldLightYaw -180..180 = 0.0
-// @param uShieldFill 0..600 = 100.0
-// @param uShieldHue 0..100 = 25.0
-// @param uAsagiMix 0..100 = 80.0
-// @param uShadowColor color = #ffffff
-// @param uMidColor color = #ffffff
-// @param uLitColor color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc ネビュラの視線の左右 (%)
+// @param uCenterY -100..100 = 0.0 @desc ネビュラの視線の上下 (%)
+// @param uFovNarrow 60..200 = 100.0 @desc 画角の狭さ (%)。大きいほど望遠
+// @param uLookYaw -100..100 = 0.0 @desc 視線の左右の振り (%)
+// @param uLookPitch -100..100 = 0.0 @desc 視線の上下の振り (%)
+// @param uOriginX -100..100 = 0.0 @desc ネビュラ内の視点位置 X (%)
+// @param uOriginY -100..100 = 0.0 @desc ネビュラ内の視点位置 Y (%)。正側は効きを抑えてある
+// @param uShieldCenterX -100..100 = 0.0 @desc シールド模様の中心の左右 (%)
+// @param uShieldCenterY -100..100 = 0.0 @desc シールド模様の中心の上下 (%)
+// @param uShieldTurn -180..180 = 0.0 @desc シールド模様の回転 (度)
+// @param uShieldLightYaw -180..180 = 0.0 @desc シールドの光の方位 (度)
+// @param uShieldFill 0..600 = 100.0 @desc シールドの補助光の強さ (%)
+// @param uShieldHue 0..100 = 25.0 @desc シールドの虹色の混ざり (%)
+// @param uAsagiMix 0..100 = 80.0 @desc 浅葱グラデへ寄せる度合い (%)
+// @param uShadowColor color = #ffffff @desc 浅葱グラデの暗部の色味 (ティント)
+// @param uMidColor color = #ffffff @desc 浅葱グラデの中間の色味 (ティント)
+// @param uLitColor color = #ffffff @desc 浅葱グラデの明部の色味 (ティント)
 uniform float uCenterX;   // ネビュラの視線の左右 (%)
 uniform float uCenterY;   // ネビュラの視線の上下 (%)
 uniform float uFovNarrow;   // 画角の狭さ (%。大きいほど望遠)

@@ -29,13 +29,13 @@ vec4 jf_hash4(float n){
   return fract((p.xxyz + p.yzzw)*p.zywx);
 }
 
-// @param uCount     3..12 = 12.0
-// @param uDetail    8..30 = 30.0
-// @param uWarp      0..300 = 100.0
-// @param uGlow      0..250 = 100.0
-// @param uHueSpread 0..500 = 100.0
-// @param uSize 40..130 = 100.0
-// @param uAngle -180..180 = 0.0
+// @param uCount     3..12 = 12.0 @desc 結晶の数。下げると軽く、まばらになる
+// @param uDetail    8..30 = 30.0 @desc Julia 反復数。下げると軽く、結晶が粗くなる
+// @param uWarp      0..300 = 100.0 @desc 結晶の歪み (%)
+// @param uGlow      0..250 = 100.0 @desc 内部の白いフィラメントの明るさ (%)
+// @param uHueSpread 0..500 = 100.0 @desc 結晶内の色相のばらつき (%)
+// @param uSize 40..130 = 100.0 @desc 結晶ひとつの大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 結晶の向きのずらし (度。結晶ごとの自転に足される)
 uniform float uCount; // 結晶の数 (下げると軽く、まばらになる)
 uniform float uDetail; // Julia 反復数 (下げると軽く、結晶が粗くなる)
 uniform float uWarp; // 結晶の歪み (%)
@@ -43,38 +43,38 @@ uniform float uGlow; // 白いフィラメントの明るさ (%)
 uniform float uHueSpread; // 結晶内の色相のばらつき (%)
 uniform float uSize; // 結晶ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
-// @param uLanes      50..130  = 100.0
-// @param uSizeSpread 80..200  = 100.0
-// @param uStretch    60..140  = 100.0
-// @param uJuliaZoom  70..130  = 100.0
-// @param uCWobble    0..300   = 100.0
-// @param uTwistAmt   0..250   = 100.0
-// @param uWarpFreq   40..250  = 100.0
-// @param uShardAmt   0..170   = 100.0
-// @param uGiantSize  40..115  = 100.0
-// @param uRimSoft    20..160  = 100.0
-// @param uBoundary   50..140  = 100.0
-// @param uFacet      40..250  = 100.0
-// @param uFilament   30..300  = 100.0
-// @param uFlowTilt -60..60 = 0
-// @param uLaneShift -60..60 = 0
-// @param uBob 0..600 = 100
-// @param uCounterFlow 0..100 = 0
-// @param uEdgeFade 0..100 = 0
-// @param uBodySat 20..150 = 85
-// @param uAmbient 0..300 = 100
-// @param uBodyShade 0..250 = 100
-// @param uLightSwing 0..300 = 100
-// @param uLightHeight 0..200 = 100
-// @param uSpecHard 30..300 = 100
-// @param uSpecAmt 0..400 = 100
-// @param uDomeFlat 0..250 = 100
-// @param uRidgeAmt 0..400 = 100
-// @param uRidgeCut -30..30 = 0
-// @param uBodyColor color = #ffffff
-// @param uFilamentColor color = #ffffff
-// @param uRidgeColor color = #ffffff
-// @param uVoidColor color = #ffffff
+// @param uLanes      50..130  = 100.0 @desc 結晶が散らばる縦の範囲 (%)
+// @param uSizeSpread 80..200  = 100.0 @desc 大きさの偏り (%)。下げると大きな結晶が増え、上げると微小な結晶ばかりになる
+// @param uStretch    60..140  = 100.0 @desc 結晶の流れ方向の伸び (%)。下げると横に引き伸ばされる
+// @param uJuliaZoom  70..130  = 100.0 @desc Julia 集合を覗く倍率 (%)。形の切り取り方が変わる
+// @param uCWobble    0..300   = 100.0 @desc Julia の定数 c の揺れ幅 (%)。0 で形の変化が穏やかになる
+// @param uTwistAmt   0..250   = 100.0 @desc 結晶のひねり (%)
+// @param uWarpFreq   40..250  = 100.0 @desc 歪みの波の細かさ (%)
+// @param uShardAmt   0..170   = 100.0 @desc 欠片になる結晶の割合 (%)。0 で全部が欠片、上げると完全な結晶が増える
+// @param uGiantSize  40..115  = 100.0 @desc 巨大な結晶の最大サイズ (%)
+// @param uRimSoft    20..160  = 100.0 @desc 結晶の輪郭のにじみ (%)。下げると外周がくっきり切れる
+// @param uBoundary   50..140  = 100.0 @desc 結晶の縁の厚み (%)。上げると外側の脱出域まで残る
+// @param uFacet      40..250  = 100.0 @desc 縁の稜線の本数 (%)
+// @param uFilament   30..300  = 100.0 @desc 内部のフィラメントの太さ (%)
+// @param uFlowTilt -60..60 = 0 @desc 流れる向きの傾き (度)。0 で右から左へ水平
+// @param uLaneShift -60..60 = 0 @desc 結晶の流れる帯の上下位置 (%)
+// @param uBob 0..600 = 100 @desc 結晶の上下のゆらぎの振れ幅 (%)
+// @param uCounterFlow 0..100 = 0 @desc 逆向きに流れる結晶の割合 (%)
+// @param uEdgeFade 0..100 = 0 @desc 画面の左右端で結晶が消える度合い (%)
+// @param uBodySat 20..150 = 85 @desc 結晶本体の青の彩度 (%)
+// @param uAmbient 0..300 = 100 @desc 影側の結晶本体の明るさ (%)
+// @param uBodyShade 0..250 = 100 @desc 結晶本体の陰影の強さ (%)
+// @param uLightSwing 0..300 = 100 @desc 光源の左右の振れ幅 (%)
+// @param uLightHeight 0..200 = 100 @desc 光源の高さ (%)。上げると正面から照らす
+// @param uSpecHard 30..300 = 100 @desc ハイライトの鋭さ (%)
+// @param uSpecAmt 0..400 = 100 @desc ハイライトの強さ (%)
+// @param uDomeFlat 0..250 = 100 @desc 結晶のドーム状の膨らみ (%)。下げると平たく見える
+// @param uRidgeAmt 0..400 = 100 @desc 縁の稜線の明るさ (%)
+// @param uRidgeCut -30..30 = 0 @desc 稜線の出る位置のずらし (%)。正で細く、負で太くなる
+// @param uBodyColor color = #ffffff @desc 結晶本体の色味
+// @param uFilamentColor color = #ffffff @desc 白いフィラメントの色味
+// @param uRidgeColor color = #ffffff @desc 縁の稜線の色味
+// @param uVoidColor color = #ffffff @desc 暗い背景の色味
 uniform float uLanes; // 結晶が散らばる縦の範囲 (%)
 uniform float uSizeSpread; // 大きさの偏り (%)。下げると大きな結晶が増え、上げると微小な結晶ばかりになる
 uniform float uStretch; // 結晶の流れ方向の伸び (%)。下げると横に引き伸ばされる

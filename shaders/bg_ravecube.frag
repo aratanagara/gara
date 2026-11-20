@@ -32,19 +32,19 @@ float wr_tesseract4(vec4 p, vec4 b){
   vec4 q = abs(p) - b;
   return length(max(q, 0.0)) + min(max(max(q.x, q.y), max(q.z, q.w)), 0.0);
 }
-// @param uSplitX -30..30 = 0
-// @param uSplitY -30..30 = 0
-// @param uSplitZ -30..30 = 0
-// @param uCellRound 20..250 = 100
-// @param uEdgePush -4..25 = 0
-// @param uSliceW -150..150 = 0
-// @param uWDepth 30..250 = 100
-// @param uStretchPulse 0..300 = 100
-// @param uCubeBound 45..120 = 100
-// @param uSpecSharp 55..300 = 100
-// @param uRimSharp 30..300 = 100
-// @param uAoReach 30..250 = 100
-// @param uFogDist 30..200 = 100
+// @param uSplitX -30..30 = 0 @desc X 方向の分割位置のずれ (%)
+// @param uSplitY -30..30 = 0 @desc Y 方向の分割位置のずれ (%)
+// @param uSplitZ -30..30 = 0 @desc Z 方向の分割位置のずれ (%)
+// @param uCellRound 20..250 = 100 @desc 各ボックスの角の丸み (%)
+// @param uEdgePush -4..25 = 0 @desc 外縁のボックスを外へ押し広げる量 (%)
+// @param uSliceW -150..150 = 0 @desc 4 次元を切る位置 (%)。テッセラクトの断面が変わり、形が変化する
+// @param uWDepth 30..250 = 100 @desc 4 次元方向の厚み (%)
+// @param uStretchPulse 0..300 = 100 @desc ボックスの縦横比の脈動の振れ幅 (%)。0 で脈動しない
+// @param uCubeBound 45..120 = 100 @desc 全体を切り出す外枠の大きさ (%)
+// @param uSpecSharp 55..300 = 100 @desc 反射ハイライトの鋭さ (%)。上げるほど細く鋭い
+// @param uRimSharp 30..300 = 100 @desc 縁の光 (フレネル) の鋭さ (%)。上げるほど縁が細い
+// @param uAoReach 30..250 = 100 @desc 接触影の届く距離 (%)
+// @param uFogDist 30..200 = 100 @desc 遠景が背景に溶ける距離 (%)
 uniform float uSplitX; // X 方向の分割位置のずれ (%)
 uniform float uSplitY; // Y 方向の分割位置のずれ (%)
 uniform float uSplitZ; // Z 方向の分割位置のずれ (%)
@@ -78,14 +78,14 @@ float wr_tesseract_slice(vec3 p, vec3 b, float t, float wSlice){
 vec3  wr_rdg = vec3(0);
 float wr_nsdf = 0.;
 
-// @param uDetail 2..5 = 5.0
-// @param uMotion 0..300 = 100.0
-// @param uWarp   0..300 = 100.0
-// @param uGlow   0..300 = 100.0
-// @param uSize 60..150 = 100.0
-// @param uScale 50..150 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 70..110 = 110.0
+// @param uDetail 2..5 = 5.0 @desc ボックス分割の回数 (2〜5)。下げると軽く、形が大きくなる
+// @param uMotion 0..300 = 100.0 @desc 外縁ボックスの膨らみの振幅 (%)。0 で膨らまない
+// @param uWarp   0..300 = 100.0 @desc 4 次元のうねり (%)。空間の奥行き方向のゆがみ
+// @param uGlow   0..300 = 100.0 @desc ハイライト・縁の光の強さ (%)
+// @param uSize 60..150 = 100.0 @desc ボックスひとつの大きさ (%)。下げるとボックスが痩せて隙間が増える
+// @param uScale 50..150 = 100.0 @desc 物体全体の大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 物体の向き (度)。Y 軸まわりに固定角で回す
+// @param uSteps 70..110 = 110.0 @desc レイマーチのステップ数。下げると軽いが、遠景や細部が欠ける
 uniform float uDetail; // ボックス分割の回数 (下げると軽く、形が大きくなる)
 uniform float uMotion; // ボックスの膨らみの振幅 (%)
 uniform float uWarp; // 4 次元のうねり (%)
@@ -94,21 +94,21 @@ uniform float uSize; // ボックスひとつの大きさ (%)
 uniform float uScale; // 物体全体の大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
-// @param uOffX -60..60 = 0
-// @param uOffY -60..60 = 0
-// @param uEnvShift -60..60 = 0
-// @param uStripeAmt 0..100 = 0
-// @param uAoPow 0..300 = 100
-// @param uFogCurve 40..300 = 100
-// @param uBgSpread 0..300 = 100
-// @param uSheen 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uChromeColor color = #ffffff
-// @param uAoColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uBackColor color = #ffffff
+// @param uOffX -60..60 = 0 @desc 物体の横位置 (%)
+// @param uOffY -60..60 = 0 @desc 物体の縦位置 (%)
+// @param uEnvShift -60..60 = 0 @desc 環境反射の地平線の位置 (%)。反射の明暗の境目が動く
+// @param uStripeAmt 0..100 = 0 @desc 反射に走る縞の濃さ (%)
+// @param uAoPow 0..300 = 100 @desc 接触影の濃さ (%)。上げるとくぼみが暗く沈む
+// @param uFogCurve 40..300 = 100 @desc 遠景が溶ける曲線の指数 (%)
+// @param uBgSpread 0..300 = 100 @desc 背景の中心から周辺へのグラデーションの広がり (%)
+// @param uSheen 0..100 = 0 @desc 虹色の艶 (%)。法線の向きで色が移ろう
+// @param uGrain 0..100 = 0 @desc 粒状のざらつきの量 (%)
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uChromeColor color = #ffffff @desc クロームの地色のティント
+// @param uAoColor color = #ffffff @desc 接触影に掛けるティント
+// @param uSpecColor color = #ffffff @desc ハイライトの色のティント
+// @param uRimColor color = #ffffff @desc 縁のフレネル反射の色のティント
+// @param uBackColor color = #ffffff @desc 背景・遠景の色のティント
 uniform float uOffX; // 物体の横位置 (%)
 uniform float uOffY; // 物体の縦位置 (%)
 uniform float uEnvShift; // 環境反射の地平線の位置 (%)。反射の明暗の境目が動く

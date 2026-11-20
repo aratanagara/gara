@@ -12,17 +12,17 @@ vec2 rn_hash(vec2 p){
   p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
   return fract(sin(p) * 18.5453);
 }
-// @param uLayerRatio 30..200  = 100.0
-// @param uLayerGain  50..130  = 100.0
-// @param uDropAspect 50..250  = 100.0
-// @param uOrbit      0..200   = 100.0
-// @param uOrbitPhase 0..200   = 100.0
-// @param uSlant      -100..100 = 0.0
-// @param uCore       0..30    = 0.0
-// @param uBulge      30..300  = 100.0
-// @param uSpecSharp  20..400  = 100.0
-// @param uSpecAmt    0..300   = 100.0
-// @param uLightAngle -180..180 = 0.0
+// @param uLayerRatio 30..200  = 100.0 @when Math.floor(uDetail + 0.5) >= 2 @desc 層ごとの粒の細かさの増え方 (%)。下げると各層が似た大きさになる。2 層目以降にだけ効く
+// @param uLayerGain  50..130  = 100.0 @when Math.floor(uDetail + 0.5) >= 2 @desc 層ごとの寄与の増減 (%)。上げると細かい層が強く、下げると粗い層が主役。2 層目以降にだけ効く
+// @param uDropAspect 50..250  = 100.0 @desc 粒の縦横比 (%)。上げると縦に潰れた横長の粒、下げると縦に伸びた粒
+// @param uOrbit      0..200   = 100.0 @desc 粒がセル内で揺れる半径 (%)。0 で動かない
+// @param uOrbitPhase 0..200   = 100.0 @desc 粒の揺れの軌道の形 (%)。0 で直線往復、100 で円
+// @param uSlant      -100..100 = 0.0 @desc 雨粒の傾き (%)。負で逆向き
+// @param uCore       0..30    = 0.0 @desc 粒の中心の平らな部分 (%)。0 でなし
+// @param uBulge      30..300  = 100.0 @desc 粒の盛り上がり (%)。下げると斜面が急で縁が強く光る
+// @param uSpecSharp  20..400  = 100.0 @desc ハイライトの鋭さ (%)
+// @param uSpecAmt    0..300   = 100.0 @desc ハイライトの量 (%)
+// @param uLightAngle -180..180 = 0.0 @desc 光の向き (度)
 uniform float uLayerRatio; // 層ごとの粒の細かさの増え方 (%)。下げると各層が似た大きさになる
 uniform float uLayerGain;  // 層ごとの寄与の増減 (%)。上げると細かい層が強く、下げると粗い層が主役
 uniform float uDropAspect; // 粒の縦横比 (%)。上げると縦に潰れた横長の粒、下げると縦に伸びた粒
@@ -34,19 +34,19 @@ uniform float uBulge;      // 粒の盛り上がり (%)。下げると斜面が�
 uniform float uSpecSharp;  // ハイライトの鋭さ (%)
 uniform float uSpecAmt;    // ハイライトの量 (%)
 uniform float uLightAngle; // 光の向き (度)
-// @param uRotate      -180..180 = 0
-// @param uMeander     0..100    = 0
-// @param uShiftX      -100..100 = 0
-// @param uShiftY      -100..100 = 0
-// @param uLightHeight 30..300   = 100
-// @param uDiffAmt     0..300    = 100
-// @param uBodyAmt     0..200    = 100
-// @param uRimLight    0..120    = 0
-// @param uGrain       0..100    = 0
-// @param uGlassTint   color = #ffffff
-// @param uDropTint    color = #ffffff
-// @param uSpecTint    color = #ffffff
-// @param uRimTint     color = #ffffff
+// @param uRotate      -180..180 = 0 @desc 雨粒の流れる向きの回転 (度)。0 で真下
+// @param uMeander     0..100    = 0 @desc 流れの蛇行の振れ幅 (%)。0 でまっすぐ
+// @param uShiftX      -100..100 = 0 @desc 雨粒の配置の横ずれ (%)。別の並びになる
+// @param uShiftY      -100..100 = 0 @desc 雨粒の配置の縦ずれ (%)。別の並びになる
+// @param uLightHeight 30..300   = 100 @desc 光源の高さ (%)。下げると斜めから当たり陰影が強く、上げると正面から
+// @param uDiffAmt     0..300    = 100 @desc 粒の陰影 (拡散光) の強さ (%)
+// @param uBodyAmt     0..200    = 100 @desc 粒そのものの明るさ (%)。ガラス地との差が変わる
+// @param uRimLight    0..120    = 0 @desc 粒の縁の光 (%)。0 でなし
+// @param uGrain       0..100    = 0 @desc ガラスのざらつき (%)。0 でなし
+// @param uGlassTint   color = #ffffff @desc ガラス地の色。掛け算のティント
+// @param uDropTint    color = #ffffff @desc 粒の色。掛け算のティント
+// @param uSpecTint    color = #ffffff @desc ハイライトの色。掛け算のティント
+// @param uRimTint     color = #ffffff @desc 縁の光の色。掛け算のティント
 uniform float uRotate;      // 雨粒の流れる向きの回転 (度)。0 = 真下
 uniform float uMeander;     // 流れの蛇行の振れ幅 (%)。0 = まっすぐ
 uniform float uShiftX;      // 雨粒の配置の横ずれ (%)。別の並びにする
@@ -72,10 +72,10 @@ float rn_grid_noise(float t, vec2 v){
   if(uCore != 0.0) mindist = max(mindist - uCore / 100.0 * 0.5, 0.0);
   return mindist;
 }
-// @param uDensity 30..300 = 100.0
-// @param uDetail  1..3 = 3.0
-// @param uSharp   30..400 = 100.0
-// @param uSize    40..300 = 100.0
+// @param uDensity 30..300 = 100.0 @desc 雨粒の密度 (%)。大きいほど粒が細かく多い
+// @param uDetail  1..3 = 3.0 @desc 粒の層の数 (四捨五入で整数)。下げると軽く、まばらになる
+// @param uSharp   30..400 = 100.0 @desc 粒の縁のくっきり度 (%)
+// @param uSize    40..300 = 100.0 @desc 雨粒の大きさ (%)
 uniform float uDensity; // 雨粒の密度 (%)
 uniform float uDetail; // 粒の層の数 (下げると軽く、まばらになる)
 uniform float uSharp; // 粒の縁のくっきり度 (%)

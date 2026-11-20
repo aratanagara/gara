@@ -18,13 +18,13 @@ float ci_smax(float a, float b, float k){
   return max(a, b) + k*.25*f*f;
 }
 
-// @param uCell     50..200 = 100.0
-// @param uTunnel   50..130 = 100.0
-// @param uTint     0..200  = 100.0
-// @param uDesat    0..250  = 100.0
-// @param uContrast 50..200 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 40..110 = 110.0
+// @param uCell     50..200 = 100.0 @desc 結晶格子の大きさ (%)
+// @param uTunnel   50..130 = 100.0 @desc トンネルの太さ (%)
+// @param uTint     0..200  = 100.0 @desc 浅葱色への寄せ具合 (%)
+// @param uDesat    0..250  = 100.0 @desc 彩度を落とす量 (%)
+// @param uContrast 50..200 = 100.0 @desc ガンマ (%)。上げると暗部が沈む
+// @param uAngle -180..180 = 0.0 @desc カメラのロール角のオフセット (度)
+// @param uSteps 40..110 = 110.0 @desc レイマーチのステップ数。下げると軽く、奥の結晶が粗くなる
 uniform float uCell;      // 結晶格子の大きさ (%)
 uniform float uTunnel;    // トンネルの太さ (%)
 uniform float uTint;      // 浅葱色への寄せ具合 (%)
@@ -32,25 +32,25 @@ uniform float uDesat;     // 彩度を落とす量 (%)
 uniform float uContrast;  // ガンマ (%。上げると暗部が沈む)
 uniform float uAngle; // カメラのロール (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、奥の結晶が粗くなる)
-// @param uTwist 0..250 = 100.0
-// @param uWobble 0..300 = 100.0
-// @param uBar 60..118 = 100.0
-// @param uFacet 0..250 = 100.0
-// @param uCellSkew -100..100 = 0.0
-// @param uCellStretch -50..100 = 0.0
-// @param uStrutZ 0..100 = 0.0
-// @param uOrbSwing 0..300 = 100.0
-// @param uOrbGlow 0..220 = 100.0
-// @param uCamSide -100..100 = 0.0
-// @param uCamLift -100..100 = 0.0
-// @param uOrbTint color = #ffffff
-// @param uAsagiTint color = #ffffff
-// @param uPalPhase -100..100 = 0.0
-// @param uPalRate 30..300 = 100.0
-// @param uGlassLift 0..300 = 100.0
-// @param uFog 0..200 = 0.0
-// @param uVignette 0..200 = 0.0
-// @param uGrainAmt 0..100 = 0.0
+// @param uTwist 0..250 = 100.0 @desc 結晶格子が軸に沿ってねじれる量 (%)
+// @param uWobble 0..300 = 100.0 @desc 結晶面のうねりの大きさ (%)。0 で整った格子
+// @param uBar 60..118 = 100.0 @desc 結晶の梁の太さ (%)
+// @param uFacet 0..250 = 100.0 @desc 細かい折れ面 (多段の三角折り) の強さ (%)。0 で滑らか
+// @param uCellSkew -100..100 = 0.0 @desc 格子セルの斜め歪み (%)。0 で直方体、正負で逆向きに傾く
+// @param uCellStretch -50..100 = 0.0 @desc セルの奥行き方向の伸び (%)。正で長く、負で詰まる
+// @param uStrutZ 0..100 = 0.0 @desc 奥行き方向の第三の梁を足す量 (%)。0 でなし
+// @param uOrbSwing 0..300 = 100.0 @desc 光る球の軌道の振れ幅 (%)
+// @param uOrbGlow 0..220 = 100.0 @desc 光る球のハロの強さ (%)
+// @param uCamSide -100..100 = 0.0 @desc カメラの左右位置 (%)。トンネル内でずらす
+// @param uCamLift -100..100 = 0.0 @desc カメラの高さ (%)。トンネル内でずらす
+// @param uOrbTint color = #ffffff @desc 光る球のハロの色味
+// @param uAsagiTint color = #ffffff @desc 浅葱色の寄せ先の色味
+// @param uPalPhase -100..100 = 0.0 @desc 結晶の虹色の位相ずらし (%)
+// @param uPalRate 30..300 = 100.0 @desc 結晶の虹色の変化の細かさ (%)
+// @param uGlassLift 0..300 = 100.0 @desc 明部を白く抜く量 (%)
+// @param uFog 0..200 = 0.0 @desc 奥を暗く沈める霧の濃さ (%)。0 でなし
+// @param uVignette 0..200 = 0.0 @desc 周辺減光 (%)
+// @param uGrainAmt 0..100 = 0.0 @desc 細かいざらつき (%)
 uniform float uTwist;        // 結晶格子が軸に沿ってねじれる量 (%)
 uniform float uWobble;       // 結晶面のうねりの大きさ (%)。0 で整った格子
 uniform float uBar;          // 結晶の梁の太さ (%)。下げると梁が太く詰まる

@@ -6,42 +6,42 @@
 //   iTime,iResolution → time,resolution / bgZoom・bgCamPx でズーム/パン対応。
 //   ヘルパは rw_ で名前空間化。
 // =====================================================
-// @param uDetail 6..25 = 25.0
-// @param uWarp 0..180 = 100.0
-// @param uDensity 40..170 = 100.0
-// @param uContrast 40..130 = 100.0
-// @param uGlow 0..300 = 100.0
+// @param uDetail 6..25 = 25.0 @desc 波紋の重ね数 (四捨五入で整数)。下げると軽く、模様が粗くなる
+// @param uWarp 0..180 = 100.0 @desc 水面の歪みの強さ (%)
+// @param uDensity 40..170 = 100.0 @desc 波紋の密度 (%)。大きいほど輪が細かい
+// @param uContrast 40..130 = 100.0 @desc 明暗のコントラスト (%)
+// @param uGlow 0..300 = 100.0 @desc きらめき・コースティクス (明るい筋) の強さ (%)
 uniform float uDetail;   // 波紋の重ね数 (下げると軽く、模様が粗くなる)
 uniform float uWarp;   // 水面の歪みの強さ (%)
 uniform float uDensity;   // 波紋の密度 (%)
 uniform float uContrast;   // 明暗のコントラスト (%)
 uniform float uGlow;   // きらめき・コースティクスの強さ (%)
-// @param uSourceSpread 30..200 = 100.0
-// @param uRingStretch  40..250 = 100.0
-// @param uSkew         -100..100 = 0.0
-// @param uFreqGrow 0..180 = 100.0
-// @param uAmpDecay 92..140 = 100.0
-// @param uRingSharp 70..250 = 100.0
-// @param uWarpPasses   1..5    = 5.0
-// @param uWarpFalloff 60..125 = 100.0
-// @param uWarpFreqGain 70..125 = 100.0
-// @param uCausticSharp 60..400 = 100.0
-// @param uSparkleLevel 60..130 = 100.0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRotate -180..180 = 0
-// @param uMirrorAxis -100..100 = 0
-// @param uSwirl -100..100 = 0
-// @param uMosaic 0..60 = 0
-// @param uWarpTurn -180..180 = 0
-// @param uRainbow 0..200 = 0
-// @param uBands 0..6 = 0
-// @param uTopFade -100..100 = 0
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uWaterColor color = #ffffff
-// @param uCausticColor color = #ffffff
-// @param uSparkleColor color = #ffffff
+// @param uSourceSpread 30..200 = 100.0 @desc 波源の散らばり (%)。下げると中央に集まる
+// @param uRingStretch  40..250 = 100.0 @desc 波紋の横の伸び (%)。楕円の波になる
+// @param uSkew         -100..100 = 0.0 @desc 波紋の斜めのずらし (%)。負で逆向き
+// @param uFreqGrow 0..180 = 100.0 @desc 重ねるごとに波が細かくなる速さ (%)
+// @param uAmpDecay 92..140 = 100.0 @desc 重ねるごとに波が弱まる度合い (%)。大きいほど後の層が弱い
+// @param uRingSharp 70..250 = 100.0 @desc 波の山の鋭さ (%)。大きいほど細い輪
+// @param uWarpPasses   1..5    = 5.0 @desc 歪みを重ねる回数 (四捨五入で整数)
+// @param uWarpFalloff 60..125 = 100.0 @desc 歪みの各段の弱まり方 (%)
+// @param uWarpFreqGain 70..125 = 100.0 @desc 歪みの各段で細かくなる速さ (%)
+// @param uCausticSharp 60..400 = 100.0 @desc コースティクス (明るい筋) の鋭さ (%)。大きいほど細い
+// @param uSparkleLevel 60..130 = 100.0 @desc きらめきが出始める明るさの閾値 (%)。上げると出にくい
+// @param uCenterX -100..100 = 0 @desc 波を見る位置を横へずらす (%)
+// @param uCenterY -100..100 = 0 @desc 波を見る位置を縦へずらす (%)
+// @param uRotate -180..180 = 0 @desc 水面全体の回転 (度)
+// @param uMirrorAxis -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし
+// @param uSwirl -100..100 = 0 @desc 中心からの距離に応じた渦のねじれ (%)。負で逆向き
+// @param uMosaic 0..60 = 0 @desc 座標のモザイク化 (%)。大きいほど粗いブロック
+// @param uWarpTurn -180..180 = 0 @desc 歪みの向きの回転 (度)
+// @param uRainbow 0..200 = 0 @desc 波ごとの虹色の混ざり (%)。0 で白黒の水
+// @param uBands 0..6 = 0 @desc 明度を等高線状の段に割る数。0 でなし
+// @param uTopFade -100..100 = 0 @desc 上下方向のグラデーション (%)。正で上が暗く、負で下が暗い
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uVignette 0..100 = 0 @desc 周辺を暗くする量 (%)
+// @param uWaterColor color = #ffffff @desc 水面の色。掛け算のティント
+// @param uCausticColor color = #ffffff @desc コースティクスの色。掛け算のティント
+// @param uSparkleColor color = #ffffff @desc きらめきの色。掛け算のティント
 uniform float uSourceSpread; // 波源の散らばり (%)。下げると中央に集まる
 uniform float uRingStretch; // 波紋の横の伸び (%)。楕円の波になる
 uniform float uSkew; // 波紋の斜めのずらし (%)。負で逆向き

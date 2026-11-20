@@ -9840,7 +9840,11 @@ float vjDepth = 0.0;
     let m;
     while((m = re.exec(body))){
       const name = m[1].trim();
-      const spec = m[2].trim();
+      let spec = m[2].trim();
+      // 行末の @when 式 (グレー表示の条件) と @desc 説明 (ホバーで出る説明)。順不同
+      const wm = spec.match(/\s@when\s+(.+?)(?=\s@desc\s|$)/), dm = spec.match(/\s@desc\s+(.+?)(?=\s@when\s|$)/);
+      const cut = Math.min(wm ? wm.index : spec.length, dm ? dm.index : spec.length);
+      spec = spec.slice(0, cut).trim();
       let p;
       if(/^color\s*=/.test(spec)){
         const c = spec.match(/=\s*#([0-9a-fA-F]{6})/);
@@ -9856,12 +9860,14 @@ float vjDepth = 0.0;
         const dv = mm[3] !== undefined ? parseFloat(mm[3]) : (mi+ma)/2;
         p = {name, type:'float', min:mi, max:ma, value:dv, defaultValue:dv};
       }
+      if(wm) p.when = wm[1].trim();
+      if(dm) p.desc = dm[1].trim();
       params.push(p);
     }
 
     // ---- 3D Mode: 深度 (vjDepth) を出すシェーダには Params の先頭にチェックを足す。ON = 3D FX が深度で立体に掛かる / OFF = 平面として描く ----
     const uses3D = /\bvjDepth\s*=/.test(body) && !/\bu3DMode\b/.test(body);
-    if(uses3D) params.unshift({ name:'u3DMode', label:'3D Mode', type:'bool', value:1, defaultValue:1 });
+    if(uses3D) params.unshift({ name:'u3DMode', label:'3D Mode', type:'bool', value:1, defaultValue:1, desc:'ON で深度を出し、3D FX がシェーダの立体に沿って掛かる。OFF は平らな紙として扱う' });
     const depthExpr = uses3D ? 'clamp(vjDepth, 0.0, 1.0) * u3DMode' : 'clamp(vjDepth, 0.0, 1.0)';
 
     // ---- 透過対応シェーダ (自前で uSlotIsA を宣言し、Slot A では不透明・B では実 alpha を出すもの) に背景色を付ける ----
@@ -9871,7 +9877,7 @@ float vjDepth = 0.0;
     const bgWrap = ownSlotIsA && !/\buBgColor\b/.test(body);
     if(bgWrap){
       body = body.replace(/\buniform\s+float\s+uSlotIsA\s*;/, 'const float uSlotIsA = 0.0;');
-      params.push({ name:'uBgColor', type:'color', value:[0,0,0], defaultValue:[0,0,0] });
+      params.push({ name:'uBgColor', type:'color', value:[0,0,0], defaultValue:[0,0,0], desc:'背景色。透ける部分 (Slot B で下が見える所) に敷く色' });
     }
 
     // ---- Format detection ----
@@ -14341,7 +14347,7 @@ const App = {
     const autoMatte = usesAlpha && !ownMatte && /\bvjDepth\s*=/.test(bgText);
     const matte = usesAlpha && (ownMatte || autoMatte);
     const bgColorDecl = usesAlpha ? `
-// @param uBgColor color = #000000
+// @param uBgColor color = #000000 @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
 uniform vec3 uBgColor;    // 背景色 (bgAlpha<1 の領域に加算。既定=黒)
 ` + (autoMatte ? `// @matte uBgColor
 uniform float uFx3dMatte; // app が設定: 1 = 3D FX 中 (背景を透過で出す)
@@ -14374,14 +14380,14 @@ void _setBgTime(){
 // source: ${g.dir}/${bg.file}  (func: ${bg.func})
 // 各 uniform はスライダーから調整可。time/resolution は vj が自動供給。
 
-// @param uRingZoom      10..200  = 58.0
-// @param uHoldProb      0..1     = 0.18
-// @param uFreeHoverGain 0..30    = 12.0
-// @param uFreeDriftGain 0..1     = 0.10
-// @param uFreeZoomAmp   0..1.5   = 0.50
-// @param uFreeZoomRate  0..1     = 0.10
-// @param uBPM           20..220  = 120
-// @param uBgZoom        0.1..4   = 1.0
+// @param uRingZoom      10..200  = 58.0 @desc 画面座標の縮尺。ピクセルをこの値で割る。大きいほど模様が大きく写る (使うシェーダだけ効く)
+// @param uHoldProb      0..1     = 0.18 @desc Beat モードで、拍ごとの動きを止める確率。大きいほど止まる拍が増える
+// @param uFreeHoverGain 0..30    = 12.0 @desc Drone (Free) モードで、漂うように揺れる動きの大きさ
+// @param uFreeDriftGain 0..1     = 0.10 @desc Drone (Free) モードで、一方向へ流れる動きの速さ
+// @param uFreeZoomAmp   0..1.5   = 0.50 @desc Drone (Free) モードで、ゆっくり寄ったり引いたりするズームの幅
+// @param uFreeZoomRate  0..1     = 0.10 @desc Drone (Free) モードで、ズームが変化する速さ
+// @param uBPM           20..220  = 120 @desc シェーダ内部の動きの基準テンポ。グローバルの BPM とは別
+// @param uBgZoom        0.1..4   = 1.0 @desc 模様の拡大率。表示ズーム (, / .) と掛け合わせて効く
 
 uniform float uRingZoom;
 uniform float uHoldProb;
@@ -15797,7 +15803,8 @@ ${outBlock}
     if(!P){ toast('保存対象がありません'); return; }
     const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
     if(pd) Object.assign(pd, JSON.parse(JSON.stringify(P)));   // プリセット読込で欠けた項目を埋める値 (起動時に取った値) も保存値へ
-    try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(); toast('デフォルト保存: '+kind); }
+    const sc = (kind === 'novel' && typeof NovelTerminal !== 'undefined' && NovelTerminal.snapScene) ? NovelTerminal.snapScene() : null;   // Novel は今の Scene の値も控える
+    try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(); toast('デフォルト保存: '+kind + (sc ? ' (Scene: ' + sc + ')' : '')); }
     catch(e){ toast('保存失敗'); }
   },
   // ライブ調整を捨てて「デフォルト保存」した値へ戻す (保存が無ければ工場出荷値)。保存自体は消さない。
@@ -19683,9 +19690,11 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const P = NovelTerminal.P;
     if(!NovelTerminal._PDef) NovelTerminal._PDef = Object.assign({}, P);
-    const mkRow = (label)=>{
+    const LBL = NovelTerminal.PARAM_LABELS || {};
+    const mkRow = (label, key)=>{
       const row = document.createElement('div'); row.className = 'row';
-      const lab = document.createElement('label'); lab.textContent = label;
+      if(key) row.dataset.pkey = key;
+      const lab = document.createElement('label'); lab.textContent = LBL[key] || label;
       row.appendChild(lab); root.appendChild(row);
       return row;
     };
@@ -19701,7 +19710,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(sel);
     }
     const mkSlider = ([label, key, mi, ma, st2, fmt, title])=>{
-      const row = mkRow(label);
+      const row = mkRow(label, key);
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st2; inp.value=P[key];
       if(title) inp.title = title;
       inp.dataset.default = String(App.resetValueFor('novel', key, NovelTerminal._PDef[key] !== undefined ? NovelTerminal._PDef[key] : P[key]));
@@ -19710,7 +19719,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(inp); row.appendChild(val);
     };
     const mkColor = ([label, key, title])=>{
-      const row = mkRow(label);
+      const row = mkRow(label, key);
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       const col = document.createElement('input'); col.type='color'; col.value = toHex(P[key]);
       if(title) col.title = title;
@@ -19723,6 +19732,7 @@ void mainImage(out vec4 o, in vec2 f){
       const grp = document.createElement('div'); grp.className = 'toggles'; row.appendChild(grp);   // 並ぶチェックはトグルボタン (共通部品 .toggles)
       for(const [key, name, title] of list){
         const lab = document.createElement('label');
+        lab.dataset.pkey = key;
         if(title) lab.title = title;
         const cb = document.createElement('input'); cb.type = 'checkbox'; cb.checked = P[key] !== false;
         cb.addEventListener('change', ()=>{ P[key] = cb.checked; App._undoSchedule(); });
@@ -19731,7 +19741,7 @@ void mainImage(out vec4 o, in vec2 f){
       }
     };
     const mkSelect = ([label, key, opts, title])=>{
-      const row = mkRow(label);
+      const row = mkRow(label, key);
       const sel = document.createElement('select'); sel.style.flex = '1';
       if(title) sel.title = title;
       for(const [v, n] of opts){ const o = document.createElement('option'); o.value = String(v); o.textContent = n; sel.appendChild(o); }
@@ -19773,6 +19783,8 @@ void mainImage(out vec4 o, in vec2 f){
         P.fluidBig   = ch(0.3) ? 0 : Math.round(R(50, 200)/5)*5;
         P.fluidSharp = ch(0.4) ? 0 : Math.round(R(20, 100)/5)*5;
         P.fluidLayout = ch(0.5) ? 1 : 0;
+        P.fluidTriText = ch(0.4); P.fluidRectText = ch(0.4);
+        P.fluidCircleEdge = ch(0.85); P.fluidTriEdge = ch(0.85); P.fluidRectEdge = ch(0.85);
         P.fluidFont = ch(0.4) ? 0 : Math.floor(R(1, (NovelTerminal.FLUID_FONTS || [0]).length));
         P.fluidAspect = ch(0.5) ? 100 : Math.round(R(50, 200)/5)*5;
         P.fluidBeats = [0, 4, 8, 8, 16][(Math.random()*5)|0];
@@ -19822,12 +19834,14 @@ void mainImage(out vec4 o, in vec2 f){
     for(const [label, key, specs2] of (NovelTerminal.FLUID_SHAPES || [])){
       mkSelect([label, key, NovelTerminal.FLUID_SHAPE_OPTS, `Fluid: ${label} の見せ方 (Auto = 場面で塗りと輪郭が入れ替わる / Off = 出さない)`]);
       specs2.forEach(mkSlider);
+      const sh = { fluidCircleMode:['Circle','fluidCircleEdge',null], fluidTriMode:['Tri','fluidTriEdge','fluidTriText'], fluidRectMode:['Rect','fluidRectEdge','fluidRectText'] }[key];
+      if(sh) mkToggles(sh[0] + ' Options', [[sh[1], 'Outline', `${label} の輪郭を描く (OFF = 描かない)`]].concat(sh[2] ? [[sh[2], 'Text Spin', `${label} の中の字を${label}の向きにそろえて回す`]] : []));
     }
     (NovelTerminal.SPECS || []).forEach(mkSlider);
     (NovelTerminal.COLORS || []).forEach(mkColor);
     // ── Ink / Palette セレクト ──
     {
-      const row = mkRow('Ink');
+      const row = mkRow('Ink', 'inkMode');
       const sel = document.createElement('select'); sel.style.flex = '1';
       sel.title = '文字色: Variant=構図ごとの配色 / 品詞=文字種で色分け / Mono=白 / Terminal=緑 / Duotone=横組み Mono Ink + 縦書き Fluid Accent';
       [['0','Variant'],['1','品詞カラー'],['2','Mono'],['3','Terminal'],['4','Duotone']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
@@ -19836,7 +19850,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(sel);
     }
     {
-      const row = mkRow('Palette');
+      const row = mkRow('Palette', 'palette');
       const sel = document.createElement('select'); sel.style.flex = '1';
       sel.title = 'ASCII Render シーンの配色';
       [['-1','Random'],['0','Amber'],['1','Cyan'],['2','Pink'],['3','Green'],['4','Burn'],['5','Mono']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
@@ -19846,6 +19860,22 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // ── チェックボックス ──
     mkToggles('Layers', [['vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー'], ['holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー'], ['cursor', 'カーソル', 'Fluid: 下部の走査カーソル'], ['clash', '重なり除去', 'Fluid: 横組みと重なる縦書きの字を抜く']]);
+    // グループに組む (見出しで畳む。開閉は端末ごとに覚える)。自動のカテゴリ折りたたみ (_initParamFold) からは外す
+    root.classList.add('fold-skip');
+    const rowOf = k => { const el = root.querySelector(`[data-pkey="${k}"]`); return el && el.closest('.row'); };
+    for(const [title, keys] of (NovelTerminal.PARAM_GROUPS || [])){
+      const rows = [...new Set(keys.map(rowOf).filter(Boolean))];
+      if(!rows.length) continue;
+      const head = document.createElement('div'); head.className = 'fold-head'; head.textContent = title; head.dataset.pkey = 'group:' + title;
+      root.appendChild(head);
+      rows.forEach(r=>{ root.appendChild(r); r.classList.add('fold-child'); });
+      const tog = this.foldToggle(head, rows, 'novel.' + title);
+      head.addEventListener('click', ()=> tog && tog.click());
+    }
+    // 今の Scene で使わないパラメータ (とグループ) をグレーにする (値は保持・Save の対象のまま)。見出しにホバーで説明
+    if(NovelTerminal.paramOn) this.bindParamWhen(root, key=>NovelTerminal.paramOn(key));
+    const HELP = NovelTerminal.PARAM_HELP || {};
+    this.bindParamHelp(root, key=>HELP[key]);
   },
 
   refreshCyberParams(){
@@ -24789,6 +24819,58 @@ void mainImage(out vec4 o, in vec2 f){
     this.refreshChannels();
   },
 
+  // パラメータの有効 / 無効表示 (共通): 行や部品に data-pkey を付け、isOn(key) が false のものをグレーにする。
+  //   値は保持し Save の対象のまま (操作もできる)。root の input / change のたびに付け直す
+  bindParamWhen(root, isOn){
+    root._paramIsOn = isOn;
+    if(!root._paramWhenBound){
+      root._paramWhenBound = true;
+      const f = ()=>this.applyParamWhen(root);
+      root.addEventListener('input', f); root.addEventListener('change', f);
+    }
+    this.applyParamWhen(root);
+  },
+  applyParamWhen(root){
+    const isOn = root._paramIsOn; if(!isOn) return;
+    root.querySelectorAll('[data-pkey]').forEach(el=>{
+      let on = true; try{ on = isOn(el.dataset.pkey) !== false; }catch(e){}
+      el.classList.toggle('param-off', !on);
+    });
+  },
+  // パラメータの説明 (共通): data-pkey の行の見出し (label) と操作部分 (スライダー・セレクト・色) に、ホバーで出る説明を付ける。
+  //   helpOf(key) が空なら付けない。title (ブラウザ標準の遅いツールチップ) は使わず、自前の吹き出し (.param-tip) ですぐ出す
+  bindParamHelp(root, helpOf){
+    this._initParamTip();
+    root.querySelectorAll('[data-pkey]').forEach(el=>{
+      let h = ''; try{ h = helpOf(el.dataset.pkey) || ''; }catch(e){}
+      if(!h) return;
+      const lab = el.tagName === 'LABEL' ? el : (el.querySelector(':scope > label') || el);
+      const targets = el.tagName === 'LABEL' ? [el] : [lab, ...el.querySelectorAll(':scope > input, :scope > select, :scope > .colorbar, :scope > div > input')];
+      targets.forEach(t=>{ t.dataset.help = h; t.removeAttribute('title'); });
+      lab.classList.add('param-help');
+    });
+  },
+  _initParamTip(){
+    if(this._paramTip) return;
+    const tip = this._paramTip = document.createElement('div');
+    tip.className = 'param-tip'; document.body.appendChild(tip);
+    let cur = null, timer = null;
+    const hide = ()=>{ clearTimeout(timer); cur = null; tip.classList.remove('show'); };
+    document.addEventListener('pointerover', e=>{
+      const t = e.target && e.target.closest ? e.target.closest('[data-help]') : null;
+      if(t === cur) return;
+      hide(); if(!t) return; cur = t;
+      timer = setTimeout(()=>{
+        if(cur !== t || !t.isConnected) return;
+        tip.textContent = t.dataset.help; tip.classList.add('show');
+        const r = t.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
+        let y = r.top - th - 6; if(y < 6) y = r.bottom + 6;
+        tip.style.left = Math.max(6, Math.min(innerWidth - tw - 6, r.left)) + 'px'; tip.style.top = y + 'px';
+      }, 300);
+    });
+    document.addEventListener('pointerdown', hide, true);   // ドラッグ中は隠す
+    window.addEventListener('scroll', hide, true);
+  },
   refreshParams(){
     const slot = GL.slots[App.activeSlot];
     const root = $('#params'); if(!root) return; root.innerHTML='';
@@ -24803,6 +24885,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(sec) sec.style.display = '';
     for(const p of slot.params){
       const row = document.createElement('div'); row.className='par';
+      row.dataset.pkey = p.name;
       const lab = document.createElement('label'); lab.textContent = p.label || p.name;
       row.appendChild(lab);
       if(p.type==='float'){
@@ -24857,6 +24940,14 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(badge);
       root.appendChild(row);
     }
+    // @param の @when (例: // @param uFoo 0..1 = 0.5 @when uMode > 0.5): 式が偽の間はグレー。式は他の @param 名を変数として使う
+    const ps = slot.params;
+    if(ps.some(p => p.when)){
+      const names = ps.map(p => p.name);
+      for(const p of ps) if(p.when && !p._whenFn){ try{ p._whenFn = new Function(...names, 'return (' + p.when + ');'); }catch(e){ p._whenFn = ()=>true; } }
+      this.bindParamWhen(root, key=>{ const p = ps.find(q => q.name === key); return !p || !p._whenFn || p._whenFn(...ps.map(q => q.value)); });
+    } else root._paramIsOn = null;
+    this.bindParamHelp(root, key=>{ const p = ps.find(q => q.name === key); return p && p.desc; });
   },
   updateParamUI(slotKey, p){
     if(slotKey!==App.activeSlot) return;

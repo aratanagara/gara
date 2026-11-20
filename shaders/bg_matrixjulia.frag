@@ -21,35 +21,35 @@ mat2 mj_Zdist(mat2 prev, mat2 ZR, mat2 ZI){
     vec2(min(min(abs(ZR[0][1]), abs(ZI[0][1])), prev[0][1]), min(min(abs(ZR[1][1]), abs(ZI[1][1])), prev[1][1]))
   );
 }
-// @param uTrapStart 1..5 = 2
-// @param uRing2Pos 40..250 = 100
-// @param uRing3Pos 40..250 = 100
-// @param uRing2Gain 0..200 = 100
-// @param uRing3Gain 0..200 = 100
-// @param uJuliaReal 94..106 = 100
-// @param uJuliaImag 94..106 = 100
-// @param uSliceW 60..160 = 100
-// @param uTailThin 30..300 = 100
-// @param uSilverGain 0..160 = 100
-// @param uBlueGain 0..250 = 100
-// @param uRedGain 0..250 = 100
-// @param uRotate -180..180 = 0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uMirror -100..100 = 0
-// @param uSliceV 60..160 = 100
-// @param uShading 0..300 = 100
-// @param uRing1Gain 0..200 = 100
-// @param uLineProfile 40..300 = 100
-// @param uShear -100..100 = 0
-// @param uTrailDriftX -100..100 = 0
-// @param uTrailDriftY -100..100 = 0
-// @param uVignette 0..100 = 0
-// @param uFilmGrain 0..100 = 0
-// @param uTrailColor color = #ffffff
-// @param uRedColor color = #ffffff
-// @param uBlueColor color = #ffffff
-// @param uSilverColor color = #ffffff
+// @param uTrapStart 1..5 = 2 @desc オービットトラップを取り始める反復番号 (既定 2)。値の分だけ初期の反復を飛ばす
+// @param uRing2Pos 40..250 = 100 @desc 2 本目の輪郭線の位置 (%)
+// @param uRing3Pos 40..250 = 100 @desc 3 本目の輪郭線の位置 (%)
+// @param uRing2Gain 0..200 = 100 @desc 2 本目の輪郭線の濃さ (%)
+// @param uRing3Gain 0..200 = 100 @desc 3 本目の輪郭線の濃さ (%)
+// @param uJuliaReal 94..106 = 100 @desc ジュリア定数の実部側の大きさ (%)
+// @param uJuliaImag 94..106 = 100 @desc ジュリア定数の虚部側の大きさ (%)
+// @param uSliceW 60..160 = 100 @desc 4D 断面の奥行き位置 (%)
+// @param uTailThin 30..300 = 100 @when Math.floor(uTrails + 0.5) >= 2 @desc 古い残像の線の細さ (%)
+// @param uSilverGain 0..160 = 100 @desc シルバー線の濃さ (%)
+// @param uBlueGain 0..250 = 100 @desc 青い線の濃さ (%)
+// @param uRedGain 0..250 = 100 @desc 赤い線の濃さ (%)
+// @param uRotate -180..180 = 0 @desc 模様全体の回転角 (度)
+// @param uCenterX -100..100 = 0 @desc 模様の中心の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 模様の中心の縦位置 (%)
+// @param uMirror -100..100 = 0 @desc 左右対称の折り返し位置 (%)。正で左側を、負で右側を折り返す。0 で無効
+// @param uSliceV 60..160 = 100 @desc 4D 断面の奥行き位置その 2 (%)
+// @param uShading 0..300 = 100 @desc 糸の光が当たる側と影側の差 (%)
+// @param uRing1Gain 0..200 = 100 @desc 主輪郭線 (一番内側の線) の濃さ (%)
+// @param uLineProfile 40..300 = 100 @desc 線の断面の鋭さ (%)。大きいと芯だけが残り、小さいとふわっと太る
+// @param uShear -100..100 = 0 @desc 模様の斜めの流れ (%)
+// @param uTrailDriftX -100..100 = 0 @when Math.floor(uTrails + 0.5) >= 2 @desc 古い残像ほど横へずれる量 (%)
+// @param uTrailDriftY -100..100 = 0 @when Math.floor(uTrails + 0.5) >= 2 @desc 古い残像ほど縦へずれる量 (%)
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uFilmGrain 0..100 = 0 @desc 画面全体のざらつき (%)
+// @param uTrailColor color = #ffffff @when Math.floor(uTrails + 0.5) >= 2 @desc 古い残像ほど強くかかる色味 (掛け算)
+// @param uRedColor color = #ffffff @desc 赤い線の色味 (掛け算)
+// @param uBlueColor color = #ffffff @desc 青い線の色味 (掛け算)
+// @param uSilverColor color = #ffffff @desc シルバー線の色味 (掛け算)
 uniform float uTrapStart; // オービットトラップを取り始める反復 (既定 2)
 uniform float uRing2Pos;  // 2 本目の輪郭線の位置 (%)
 uniform float uRing3Pos;  // 3 本目の輪郭線の位置 (%)
@@ -115,11 +115,11 @@ float mj_line(float a, float wid){
   return L;
 }
 
-// @param uTrails  1..7    = 7.0
-// @param uThick   25..300 = 100.0
-// @param uFade    10..128 = 100.0
-// @param uSpacing 0..300  = 100.0
-// @param uGlow    25..300 = 100.0
+// @param uTrails  1..7    = 7.0 @desc 残像の数。下げると軽くなり、尾が短くなる
+// @param uThick   25..300 = 100.0 @desc 線の太さ (%)
+// @param uFade    10..128 = 100.0 @when Math.floor(uTrails + 0.5) >= 2 @desc 残像の残り方 (%)。大きいほど古い線まで明るい
+// @param uSpacing 0..300  = 100.0 @when Math.floor(uTrails + 0.5) >= 2 @desc 残像どうしの時間間隔 (%)。0 で全て重なる
+// @param uGlow    25..300 = 100.0 @desc 全体の明るさ (%)。トーンマップの露出
 uniform float uTrails;    // 残像の数 (下げると軽く、尾が短くなる)
 uniform float uThick;     // 線の太さ (%)
 uniform float uFade;      // 残像の残り方 (%) (大きいほど古い線まで明るい)

@@ -5,28 +5,28 @@ const PRESETS = [
 {
   name: "Webcam Mirror",
   ch: ["webcam","","",""],
-  src: `// @param mirror 0..1 = 1
-// @param posterize 1..16 = 16
-// @param edge 0..2 = 0
-// @param uKaleido 0..12 = 0
-// @param uFoldX -100..100 = 0
-// @param uTileRepeat 0..7 = 0
-// @param uLens -100..100 = 0
-// @param uSwirl -100..100 = 0
-// @param uWave 0..100 = 0
-// @param uPixel 0..64 = 0
-// @param uRgbSplit -100..100 = 0
-// @param uFoldY -100..100 = 0
-// @param uRotate -180..180 = 0
-// @param uShear -100..100 = 0
-// @param uVignette 0..100 = 0
-// @param uScanlines 0..300 = 0
-// @param uGrain 0..100 = 0
-// @param uSolarize 0..100 = 0
-// @param uGlitchRows 0..100 = 0
-// @param uInterlace 0..100 = 0
-// @param uShadowTint color = #ffffff
-// @param uHighlightTint color = #ffffff
+  src: `// @param mirror 0..1 = 1 @desc ON で左右を鏡像にする (0.5 超で反転)
+// @param posterize 1..16 = 16 @desc 色の階調数。16 で無加工、小さいほどポスター調に粗くなる
+// @param edge 0..2 = 0 @desc 輪郭抽出の幅 (px)。0 で通常の映像、上げると輪郭線だけの絵になる
+// @param uKaleido 0..12 = 0 @desc 放射状の折り返し数。2 以上で万華鏡、0 / 1 で無効
+// @param uFoldX -100..100 = 0 @desc 左右対称の折り返し軸の位置 (%)。正で右側を左へ、負で左側を右へ折る
+// @param uTileRepeat 0..7 = 0 @desc 縦横に増やす繰り返し枚数。0 で等倍
+// @param uLens -100..100 = 0 @desc レンズの歪み (%)。正で樽型、負で糸巻き型
+// @param uSwirl -100..100 = 0 @desc 中心を軸にしたねじれ (%)。負で逆向き
+// @param uWave 0..100 = 0 @desc 縦方向に揺れる波の横ずれ幅 (%)
+// @param uPixel 0..64 = 0 @desc モザイクのブロック幅 (px)。0 で無効
+// @param uRgbSplit -100..100 = 0 @desc 色ずれ (%)。R と B を左右へずらす。負で逆向き
+// @param uFoldY -100..100 = 0 @desc 上下対称の折り返し軸の位置 (%)。正で下側を上へ、負で上側を下へ折る
+// @param uRotate -180..180 = 0 @desc 画像の回転角 (度)。中心まわり
+// @param uShear -100..100 = 0 @desc 横ずらしの傾き (%)。上下で逆方向にずれる
+// @param uVignette 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uScanlines 0..300 = 0 @desc 走査線の本数 (画面の高さあたり)。0 で無効
+// @param uGrain 0..100 = 0 @desc フィルムのざらつきの量 (%)
+// @param uSolarize 0..100 = 0 @desc ソラリゼーション (%)。明るい部分の階調を反転させる
+// @param uGlitchRows 0..100 = 0 @desc 行ごとの横ずれグリッチの量 (%)。12px 単位の帯が時間でランダムにずれる
+// @param uInterlace 0..100 = 0 @desc 偶数行と奇数行の横ずれ (%)。くしの歯状になる
+// @param uShadowTint color = #ffffff @desc 暗部へ掛けるティント色
+// @param uHighlightTint color = #ffffff @desc 明部へ掛けるティント色
 uniform float mirror; uniform float posterize; uniform float edge;
 uniform float uKaleido; // 放射状の折り返し数。0 / 1 で無効
 uniform float uFoldX;   // 左右対称の折り返し軸の位置 (%)。正で右側を左へ / 負で左側を右へ折る
@@ -156,28 +156,28 @@ void mainImage(out vec4 o, in vec2 f){
   name: "Alien Megacity (tlBcDh)",
   ch: ["","","",""],
   src: `// Shadertoy tlBcDh "Alien megacity" 原作そのまま(単一パス移植)。based on https://www.shadertoy.com/view/4tcGDr
-// @param speed 0..3 = 1
-// @param uVineFreq 85..120 = 100
-// @param uFoldScale 90..112 = 100
-// @param uCityScale 80..108 = 100
-// @param uVineThick 98..106 = 100
-// @param uLayers 1..2 = 2
-// @param uCrumple 20..180 = 100
-// @param uCamSway 0..300 = 100
-// @param uCamHeight -60..100 = 0
-// @param uShine 10..300 = 100
-// @param uColorBands 30..200 = 100
-// @param uFov 60..160 = 100
-// @param uCamRoll -90..90 = 0
-// @param uLookAlong -100..100 = 0
-// @param uLookY -100..100 = 0
-// @param uAmbient 0..250 = 100
-// @param uKeyLight 20..250 = 100
-// @param uColorPhase -100..100 = 0
-// @param uDepthFade 0..200 = 0
-// @param uVignette 0..150 = 0
-// @param uSurfaceTint color = #ffffff
-// @param uSpecTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。カメラの前進と揺れの時間に掛かる。0 で止まる
+// @param uVineFreq 85..120 = 100 @desc 蔓の模様の細かさ (角周波数 %)
+// @param uFoldScale 90..112 = 100 @desc 入れ子の折り畳みの倍率 (%)
+// @param uCityScale 80..108 = 100 @desc 構造全体の細かさ (%)。大きいほど細かい
+// @param uVineThick 98..106 = 100 @desc 蔓の太さ (%)
+// @param uLayers 1..2 = 2 @desc 折り畳みの段数。1 = 1 段 / 2 = 2 段
+// @param uCrumple 20..180 = 100 @desc 細かいシワの強さ (%)。0 で滑らか
+// @param uCamSway 0..300 = 100 @desc カメラの横揺れ幅 (%)
+// @param uCamHeight -60..100 = 0 @desc カメラの高さのずれ (%)
+// @param uShine 10..300 = 100 @desc ハイライトの鋭さ (%)
+// @param uColorBands 30..200 = 100 @desc 表面の色縞の細かさ (%)
+// @param uFov 60..160 = 100 @desc 画角 (%)。上げると広角
+// @param uCamRoll -90..90 = 0 @desc カメラのロール (度)
+// @param uLookAlong -100..100 = 0 @desc 注視点を進行方向へずらす量 (%)。視線の左右の振りになる
+// @param uLookY -100..100 = 0 @desc 注視点の上下 (%)
+// @param uAmbient 0..250 = 100 @desc 環境光の量 (%)
+// @param uKeyLight 20..250 = 100 @desc 主光源の強さ (%)
+// @param uColorPhase -100..100 = 0 @desc 表面の色縞の位相のずれ (%)
+// @param uDepthFade 0..200 = 0 @desc 奥ほど暗くなる度合い (%)。0 でなし
+// @param uVignette 0..150 = 0 @desc 周辺減光の強さ (%)。0 でなし
+// @param uSurfaceTint color = #ffffff @desc 表面色へ掛けるティント色
+// @param uSpecTint color = #ffffff @desc ハイライト色へ掛けるティント色
 uniform float speed;
 uniform float uVineFreq; // 蔓の模様の角周波数 (%)
 uniform float uFoldScale; // 入れ子の折り畳み倍率 (%)
@@ -298,43 +298,43 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   name: "Flight Over Dunes (3syGWc)",
   ch: ["","","",""],
   src: `// Shadertoy 3syGWc "Flight Over Dunes" 改 — 太陽/レンズフレアを除去 + ロール360°で天地が反転する砂丘フライト。
-// @param rollSpeed -2..2 = 0.6
-// @param speed 0..3 = 1
-// @param uDuneHeight 40..150 = 100
-// @param uDuneFreq 50..150 = 100
-// @param uDuneGain 40..130 = 100
-// @param uDuneAspect 50..200 = 100
-// @param uDuneShear -100..100 = 0
-// @param uCrestSharp 0..200 = 0
-// @param uCloudAmount 0..300 = 100
-// @param uCloudScale 40..250 = 100
-// @param uHazeBand 30..300 = 100
-// @param uShadowSoft 30..300 = 100
-// @param uDustAmount 0..300 = 100
-// @param uFlyHeight 80..160 = 100
-// @param uSunAzimuth -180..180 = 0
-// @param uSunElevation -15..35 = 0
-// @param uSkyTint color = #ffffff
-// @param uSandTint color = #ffffff
-// @param uCloudTint color = #ffffff
-// @param uHazeTint color = #ffffff
-// @param uDustTint color = #ffffff
-// @param uMountainTint color = #ffffff
-// @param uSunPower 30..200 = 100
-// @param uSkyFill 0..180 = 100
-// @param uCloudShade 0..200 = 100
-// @param uFogCurve 30..300 = 100
-// @param uZenithFade 0..300 = 100
-// @param uSunHalo 40..200 = 100
-// @param uSandPatch 0..250 = 100
-// @param uValleyTone 0..250 = 100
-// @param uSlopeLight 0..250 = 100
-// @param uCamPitch -40..40 = 0
-// @param uCamYaw -60..60 = 0
-// @param uRollOffset -180..180 = 0
-// @param uLensZoom 60..200 = 100
-// @param uFlightRadius 40..200 = 100
-// @param uVignetteAmt 0..160 = 100
+// @param rollSpeed -2..2 = 0.6 @desc カメラが機体軸まわりに回る速さ。0 で水平、負で逆回り
+// @param speed 0..3 = 1 @desc 動きの速さ。飛行と雲・砂煙の時間に掛かる。0 で止まる
+// @param uDuneHeight 40..150 = 100 @desc 砂丘の高さ (%)
+// @param uDuneFreq 50..150 = 100 @desc 砂丘の波長の細かさ (%)。上げると畝が密になる
+// @param uDuneGain 40..130 = 100 @desc 細かい畝の重ね具合 (%)。上げると小さな起伏が強まる
+// @param uDuneAspect 50..200 = 100 @desc 砂丘の筋の横方向の間隔 (%)。上げると畝が横に詰まる
+// @param uDuneShear -100..100 = 0 @desc 砂丘の筋の斜め流れ (%)。負で逆向き
+// @param uCrestSharp 0..200 = 0 @desc 稜線の鋭さ (%)。0 でなだらか
+// @param uCloudAmount 0..300 = 100 @desc 空の雲の量 (%)。0 で雲なし
+// @param uCloudScale 40..250 = 100 @desc 雲の模様の細かさ (%)。上げると細かく詰まる
+// @param uHazeBand 30..300 = 100 @desc 地平線のもやの帯の細さ (%)。上げると細く締まる
+// @param uShadowSoft 30..300 = 100 @desc 影の輪郭のやわらかさ (%)。上げるとくっきりする
+// @param uDustAmount 0..300 = 100 @desc 地表の砂煙の量 (%)
+// @param uFlyHeight 80..160 = 100 @desc 飛行高度 (%)
+// @param uSunAzimuth -180..180 = 0 @desc 太陽の方位 (度)。影の向きと空の明るい側が回る
+// @param uSunElevation -15..35 = 0 @desc 太陽の高さ (度)。下げると影が長く横から照らす
+// @param uSkyTint color = #ffffff @desc 空へ掛けるティント色
+// @param uSandTint color = #ffffff @desc 砂へ掛けるティント色
+// @param uCloudTint color = #ffffff @desc 雲へ掛けるティント色
+// @param uHazeTint color = #ffffff @desc 地平線のもやへ掛けるティント色
+// @param uDustTint color = #ffffff @desc 砂煙へ掛けるティント色
+// @param uMountainTint color = #ffffff @desc 遠景の山並みへ掛けるティント色
+// @param uSunPower 30..200 = 100 @desc 太陽光の強さ (%)。空光との釣り合いが変わる
+// @param uSkyFill 0..180 = 100 @desc 空からの回り込み光の強さ (%)。影側の青み
+// @param uCloudShade 0..200 = 100 @desc 雲が地表に落とす影の濃さ (%)
+// @param uFogCurve 30..300 = 100 @desc 遠景が空に溶ける近さ (%)。下げると手前からかすむ
+// @param uZenithFade 0..300 = 100 @desc 天頂へ向かう空の暗さ (%)
+// @param uSunHalo 40..200 = 100 @desc 太陽側と反対側の空の色差の広がり (%)
+// @param uSandPatch 0..250 = 100 @desc 砂の赤みの斑の濃さ (%)
+// @param uValleyTone 0..250 = 100 @desc 谷間の砂の暗い茶色の強さ (%)
+// @param uSlopeLight 0..250 = 100 @desc 斜面の白い照り返しの強さ (%)
+// @param uCamPitch -40..40 = 0 @desc カメラの俯仰 (%)。負で下向き、正で上向き
+// @param uCamYaw -60..60 = 0 @desc カメラの左右の振り (度)
+// @param uRollOffset -180..180 = 0 @desc ロールの基準角 (度)。天地の傾き
+// @param uLensZoom 60..200 = 100 @desc レンズの倍率 (%)。上げると望遠
+// @param uFlightRadius 40..200 = 100 @desc 飛行ルートの旋回半径 (%)
+// @param uVignetteAmt 0..160 = 100 @desc 周辺減光の強さ (%)。100 で元の強さ
 uniform float rollSpeed; uniform float speed;
 uniform float uDuneHeight;  // 砂丘の高さ (%)
 uniform float uDuneFreq;    // 砂丘の波長の細かさ (%)。上げると畝が密になる
@@ -541,37 +541,37 @@ void mainImage(out vec4 fragColour, in vec2 fragCoord){
   ch: ["","","",""],
   src: `// Shadertoy MdVBRy "Krypto Planes" (Aiekick) 改 — カメラ位置・方向をランダム化(look-at で特異点なし)+ spike で尖らせ、法線バンプで針状の宝石に。
 //   原作の bump は iChannel0 テクスチャ依存のため手続きバンプに置換。
-// @param speed 0..3 = 1
-// @param wild 0..2 = 1.0
-// @param spike 0..4 = 3.0
-// @param bright 0.3..3 = 1.5
-// @param uPatternScale 75..135 = 100
-// @param uPathSwing 0..160 = 100
-// @param uCavity 96..125 = 100
-// @param uFineScale 40..250 = 100
-// @param uBumpFreq 30..300 = 100
-// @param uBumpDepth 0..400 = 100
-// @param uFogDensity 0..250 = 100
-// @param uCamRoll -180..180 = 0
-// @param uFovWide 50..200 = 100
-// @param uLookX -100..100 = 0
-// @param uLookY -100..100 = 0
-// @param uCamShiftX -100..100 = 0
-// @param uCamShiftY -100..100 = 0
-// @param uLightAhead 0..300 = 100
-// @param uLightX -100..100 = 0
-// @param uLightY -100..100 = 0
-// @param uAmbient 0..160 = 100
-// @param uSpecPower 30..600 = 100
-// @param uSpecGain 0..300 = 100
-// @param uRimPower 30..600 = 100
-// @param uRimGain 0..300 = 100
-// @param uGlowTemp 50..250 = 100
-// @param uVignette 0..100 = 0
-// @param uGlowColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uFogColor color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。前進と形の変化に掛かる。0 で止まる
+// @param wild 0..2 = 1.0 @desc カメラの位置と向きのランダムな揺れの大きさ。0 で揺れなし
+// @param spike 0..4 = 3.0 @desc 尖りの細かさと針状バンプの強さ。大きいほど折り畳みが密になる
+// @param bright 0.3..3 = 1.5 @desc 全体の明るさ (出力への倍率)
+// @param uPatternScale 75..135 = 100 @desc 結晶パターンの大きさ (%)。大きいほど目が粗い
+// @param uPathSwing 0..160 = 100 @desc トンネルのうねりの振れ幅 (%)。0 でまっすぐ
+// @param uCavity 96..125 = 100 @desc 空洞の広さ (%)。大きいほど広い
+// @param uFineScale 40..250 = 100 @desc 細かい尖りの層の密度 (%)
+// @param uBumpFreq 30..300 = 100 @desc 針状バンプの細かさ (%)
+// @param uBumpDepth 0..400 = 100 @desc 針状バンプの深さ (%)。0 で滑らか
+// @param uFogDensity 0..250 = 100 @desc 奥の霞の濃さ (%)。0 で霞なし
+// @param uCamRoll -180..180 = 0 @desc カメラのロール角 (度)。0 で水平
+// @param uFovWide 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uLookX -100..100 = 0 @desc 視線の左右の振り (%)
+// @param uLookY -100..100 = 0 @desc 視線の上下の振り (%)
+// @param uCamShiftX -100..100 = 0 @desc カメラ位置の左右ずれ (%)
+// @param uCamShiftY -100..100 = 0 @desc カメラ位置の上下ずれ (%)
+// @param uLightAhead 0..300 = 100 @desc 光源までの前方距離 (%)。0 でカメラ位置
+// @param uLightX -100..100 = 0 @desc 光源の左右ずれ (%)
+// @param uLightY -100..100 = 0 @desc 光源の上下ずれ (%)
+// @param uAmbient 0..160 = 100 @desc 環境光の強さ (%)。影の底上げ
+// @param uSpecPower 30..600 = 100 @desc きらめきの鋭さ (%)。大きいほど点に絞られる
+// @param uSpecGain 0..300 = 100 @desc 鏡面のきらめきの強さ (%)
+// @param uRimPower 30..600 = 100 @desc 縁の光の絞り (%)。大きいほど細い縁
+// @param uRimGain 0..300 = 100 @desc 縁の光の強さ (%)
+// @param uGlowTemp 50..250 = 100 @desc 内側の発光の色温度 (%)。上げると赤から橙・黄へ
+// @param uVignette 0..100 = 0 @desc 周辺の暗がりの強さ (%)
+// @param uGlowColor color = #ffffff @desc 内側の発光へ掛ける色
+// @param uSpecColor color = #ffffff @desc きらめきへ掛ける色
+// @param uRimColor color = #ffffff @desc 縁の光へ掛ける色
+// @param uFogColor color = #ffffff @desc 奥の霞へ掛ける色
 uniform float speed; uniform float wild; uniform float spike; uniform float bright;
 uniform float uPatternScale; // 結晶パターンの大きさ (%)。大きいほど目が粗い
 uniform float uPathSwing;    // トンネルのうねりの振れ幅 (%)。0 でまっすぐ
@@ -717,32 +717,32 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   name: "Viscous Drip (ttVcRt/tlKcDd)",
   ch: ["","","",""],
   src: `// Shadertoy ttVcRt "Day 405"(積層する波の粘り/したたり)を、tlKcDd "Day 410" のカラーパレットで彩色して取り込み。
-// @param speed 0..3 = 1
-// @param colShift -6..6 = 0
-// @param colSpeed 0..3 = 1
-// @param uWaveFreq 50..200 = 100
-// @param uWaveHeight 40..200 = 100
-// @param uSliceSpread 50..150 = 100
-// @param uSliceCount 100..180 = 180
-// @param uLineWidth 20..800 = 100
-// @param uPhaseSway 0..250 = 100
-// @param uEnvelope 0..300 = 100
-// @param uRowBeat 30..300 = 100
-// @param uFillAmount 0..200 = 100
-// @param uLayerTilt -60..60 = 0
-// @param uLayerCurve -100..100 = 0
-// @param uLayerShear -100..100 = 0
-// @param uCenterX -50..50 = 0
-// @param uCenterY -30..30 = 0
-// @param uRotate -90..90 = 0
-// @param uStretchX 50..200 = 100
-// @param uEdgeSoft 30..400 = 100
-// @param uLineBright 30..160 = 100
-// @param uPalBands 20..200 = 100
-// @param uVignetteAmt 0..100 = 0
-// @param uGrainAmt 0..100 = 0
-// @param uLineTint color = #ffffff
-// @param uFillTint color = #ffffff
+// @param speed 0..3 = 1 @desc 波の動きの速さ。0 で止まる
+// @param colShift -6..6 = 0 @desc 層の色の位相をずらす量。値で色味が回る
+// @param colSpeed 0..3 = 1 @desc 色が流れ変わる速さ。0 で固定
+// @param uWaveFreq 50..200 = 100 @desc 波の細かさ (%)
+// @param uWaveHeight 40..200 = 100 @desc 波の振れ幅 (%)
+// @param uSliceSpread 50..150 = 100 @desc 積層の縦の広がり (%)
+// @param uSliceCount 100..180 = 180 @desc 描く層の数。小さいと上の層が省かれる
+// @param uLineWidth 20..800 = 100 @desc 縁線の太さ (%)
+// @param uPhaseSway 0..250 = 100 @desc 波の位相のうねり (%)。粘り具合
+// @param uEnvelope 0..300 = 100 @desc 左右の端で波を消す包絡の揺れ (%)
+// @param uRowBeat 30..300 = 100 @desc 縦方向の振幅変調の速さ (%)
+// @param uFillAmount 0..200 = 100 @desc 塗り (粘り) の濃さ (%)
+// @param uLayerTilt -60..60 = 0 @desc 層の傾き (%)
+// @param uLayerCurve -100..100 = 0 @desc 層の弓なりの曲がり (%)。正で下に垂れ、負で上に反る
+// @param uLayerShear -100..100 = 0 @desc 層ごとの横ずれ (%)。波が斜めに流れる
+// @param uCenterX -50..50 = 0 @desc 構図の左右位置 (%)
+// @param uCenterY -30..30 = 0 @desc 構図の上下位置 (%)
+// @param uRotate -90..90 = 0 @desc 構図の回転 (度)
+// @param uStretchX 50..200 = 100 @desc 横の伸縮 (%)。大きいほど横に詰まる
+// @param uEdgeSoft 30..400 = 100 @desc 縁のにじみ幅 (%)
+// @param uLineBright 30..160 = 100 @desc 縁線の明るさ (%)
+// @param uPalBands 20..200 = 100 @desc 層ごとの色の縞の細かさ (%)
+// @param uVignetteAmt 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrainAmt 0..100 = 0 @desc フィルムグレインの量 (%)
+// @param uLineTint color = #ffffff @desc 縁線へ掛けるティント色
+// @param uFillTint color = #ffffff @desc 塗りへ掛けるティント色
 uniform float speed; uniform float colShift; uniform float colSpeed;
 uniform float uWaveFreq; // 波の細かさ (%)
 uniform float uWaveHeight; // 波の振れ幅 (%)
@@ -825,31 +825,31 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   ch: ["","","",""],
   src: `// Shadertoy dsBGRh "Fractal junkyard (3D)" 改 — 形状(ジオメトリ)を過剰グリッチ。
 //   折り畳み座標を 3D セルごとにステップ状変位/量子化 → フラクタルの形自体が破断・ズレる。画面(2D)グリッチは無し。
-// @param speed 0..4 = 1
-// @param glitch 0..2.5 = 1.3
-// @param warp 0..2.5 = 1.0
-// @param scatter 0..2 = 1.0
-// @param density 0..1 = 1.0
-// @param uFolds 4..6 = 6
-// @param uCellScale 80..130 = 100
-// @param uShell 70..140 = 100
-// @param uFlowSlant -30..30 = 0
-// @param uBlockCount 3..12 = 6
-// @param uShardDensity 60..160 = 100
-// @param uBigShards 0..40 = 15
-// @param uBigPush 30..400 = 100
-// @param uFoldShift 90..115 = 100
-// @param uDepthFog 0..200 = 100
-// @param uFov 50..200 = 100
-// @param uRoll -180..180 = 0
-// @param uLookYaw -180..180 = 0
-// @param uLookPitch -90..90 = 0
-// @param uBodyGain 40..200 = 100
-// @param uTintColor color = #ffffff
-// @param uFogColor color = #ffffff
-// @param uBandFreq 0..400 = 0
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
+// @param speed 0..4 = 1 @desc 動きの速さ。前進・視線の回転・ワープの時間に掛かる。0 で止まる
+// @param glitch 0..2.5 = 1.3 @desc 形状グリッチの強さ。セルごとに破片がずれる量。0 でなし
+// @param warp 0..2.5 = 1.0 @desc sin によるゆがみの強さ。時間で流動する。0 でなし
+// @param scatter 0..2 = 1.0 @desc 破片分布の偏り。大きいほど格子が崩れて密度にムラが出る
+// @param density 0..1 = 1.0 @desc 残す破片の割合。0 に近いほど破片が減って透過する
+// @param uFolds 4..6 = 6 @desc 折り畳みの段数 (4〜6)。少ないほど形が単純になる
+// @param uCellScale 80..130 = 100 @desc フラクタル全体の大きさ (%)
+// @param uShell 70..140 = 100 @desc 破片の殻の厚み (%)
+// @param uFlowSlant -30..30 = 0 @desc 流れの横ずらし (%)。0 で奥行きだけ
+// @param uBlockCount 3..12 = 6 @desc ブロック量子化の格子数。glitch が大きいときに効く
+// @param uShardDensity 60..160 = 100 @desc 破片セルの細かさ (%)
+// @param uBigShards 0..40 = 15 @desc 強く飛ばすセルの割合 (%)
+// @param uBigPush 30..400 = 100 @desc 強く飛ばすセルのずれの大きさ (%)
+// @param uFoldShift 90..115 = 100 @desc 折り畳みのオフセット (%)。フラクタルの形が変わる
+// @param uDepthFog 0..200 = 100 @desc 奥行きによる明るさの上乗せ (%)
+// @param uFov 50..200 = 100 @desc 画角 (%)。上げると広角で奥行きが強まる
+// @param uRoll -180..180 = 0 @desc 画面の回転 (度)。視線まわりに傾ける
+// @param uLookYaw -180..180 = 0 @desc 視線の左右の向きのオフセット (度)
+// @param uLookPitch -90..90 = 0 @desc 視線の上下の向きのオフセット (度)
+// @param uBodyGain 40..200 = 100 @desc 破片そのものの明るさ (%)。奥行きの白みは変えない
+// @param uTintColor color = #ffffff @desc 破片の色へ掛けるティント
+// @param uFogColor color = #ffffff @desc 奥行きの白みへ掛ける色
+// @param uBandFreq 0..400 = 0 @desc 奥行きに沿った明暗の縞の細かさ (%)。0 で縞なし
+// @param uGrain 0..100 = 0 @desc 破片に乗せる粒状ノイズの量 (%)
+// @param uVignette 0..100 = 0 @desc 画面周辺の減光 (%)
 uniform float speed; uniform float glitch; uniform float warp; uniform float scatter; uniform float density;
 uniform float uFolds; // 折り畳みの段数 (3..6)
 uniform float uCellScale; // フラクタル全体の大きさ (%)
@@ -998,34 +998,34 @@ void mainImage(out vec4 o, in vec2 U){
   name: "Deterioration (3dBSW3)",
   ch: ["","","",""],
   src: `// Shadertoy 3dBSW3 "Deterioration" (@blokatt) — 2D fbm の流動(ほぼそのまま移植)。
-// @param speed 0..3 = 1
-// @param uOctaves 4..10 = 10
-// @param uLacunarity 70..130 = 100
-// @param uGain 60..120 = 100
-// @param uWarpStrength 20..250 = 100
-// @param uWarpReach 30..200 = 100
-// @param uBreathe 0..300 = 100
-// @param uZoomBase 0..200 = 100
-// @param uChannelSplit 0..300 = 100
-// @param uVignetteRadius 30..300 = 100
-// @param uVignetteDepth 0..300 = 100
-// @param uTwist -300..300 = 0
-// @param uStretch 50..200 = 100
-// @param uMirrorAxis -100..100 = 0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uTurn -180..180 = 0
-// @param uLens -100..100 = 0
-// @param uShear -200..200 = 0
-// @param uFoldSectors 0..12 = 0
-// @param uWarpBias -180..180 = 0
-// @param uRidge 0..70 = 0
-// @param uBands 0..10 = 0
-// @param uGrain 0..100 = 0
-// @param uChromaOffset -100..100 = 0
-// @param uVignetteTint color = #ffffff
-// @param uShadowTint color = #ffffff
-// @param uHighlightTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。ノイズの流れ・脈動・ゆっくりした回転に掛かる。0 で止まる
+// @param uOctaves 4..10 = 10 @desc 重ねるノイズの層数。多いほど細部が増える
+// @param uLacunarity 70..130 = 100 @desc 層ごとの細かくなり方 (%)
+// @param uGain 60..120 = 100 @desc 層ごとの振幅の残り方 (%)。上げると細部が強まる
+// @param uWarpStrength 20..250 = 100 @desc ノイズによる渦 (角度のゆがみ) の強さ (%)
+// @param uWarpReach 30..200 = 100 @desc ゆがみの到達距離 (%)。上げると色の流れが大きくずれる
+// @param uBreathe 0..300 = 100 @desc ズームの脈動の振れ幅 (%)。0 で止まる
+// @param uZoomBase 0..200 = 100 @desc ノイズの基本の拡大 (%)。上げると模様が膨らむ
+// @param uChannelSplit 0..300 = 100 @desc RGB 3 チャンネルの流れ方のずれ (%)。0 でモノクロに揃う
+// @param uVignetteRadius 30..300 = 100 @desc 周辺の暗がりの外径 (%)
+// @param uVignetteDepth 0..300 = 100 @desc 周辺の暗がりの濃さ (%)。0 で無し
+// @param uTwist -300..300 = 0 @desc 中心からの距離に比例したねじれ (%)。0 でなし
+// @param uStretch 50..200 = 100 @desc 横方向の引き伸ばし (%)
+// @param uMirrorAxis -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし
+// @param uCenterX -100..100 = 0 @desc 模様の中心の左右位置 (%)。ねじれ・鏡像・回転の中心も動く
+// @param uCenterY -100..100 = 0 @desc 模様の中心の上下位置 (%)
+// @param uTurn -180..180 = 0 @desc 模様の向きを固定で回す角度 (度)
+// @param uLens -100..100 = 0 @desc 中心の膨らみ (正) と絞り (負) のレンズ歪み (%)
+// @param uShear -200..200 = 0 @desc 上下で横にずらす斜め流し (%)。0 でなし
+// @param uFoldSectors 0..12 = 0 @desc 放射状の折り返し数。2 以上で万華鏡、0 / 1 でなし
+// @param uWarpBias -180..180 = 0 @desc 渦の向きの底上げ角 (度)。色の流れる向きが一様に回る
+// @param uRidge 0..70 = 0 @desc 稜線化 (%)。上げると雲が山の尾根のような筋になる
+// @param uBands 0..10 = 0 @desc 階調の段数。3 以上で等高線風、0〜2 でなめらか
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)。毎フレーム揺れる
+// @param uChromaOffset -100..100 = 0 @desc RGB の模様を左右へずらす量 (%)。色収差
+// @param uVignetteTint color = #ffffff @desc 周辺の暗がりの色へ掛けるティント
+// @param uShadowTint color = #ffffff @desc 暗部へ掛けるティント色
+// @param uHighlightTint color = #ffffff @desc 明部へ掛けるティント色
 uniform float speed;
 uniform float uOctaves; // 重ねるノイズの層数。既定 10
 uniform float uLacunarity; // 層ごとの細かくなり方 (%)
@@ -1097,35 +1097,35 @@ void mainImage(out vec4 o, in vec2 fc){
   name: "Diffraction Grating (Ds2XRd)",
   ch: ["","","",""],
   src: `// Shadertoy Ds2XRd "[phreax] diffraction grating" 改 — キューブマップ反射を手続き環境に置換して取り込み。
-// @param speed 0..3 = 1
-// @param uTorusRadius 70..140 = 100
-// @param uTwist 0..600 = 100
-// @param uBarWidth 70..150 = 100
-// @param uBarHeight 70..150 = 100
-// @param uCorner 0..500 = 100
-// @param uSplitOuter 0..200 = 100
-// @param uSplitInner 0..200 = 100
-// @param uStripeCount 20..300 = 100
-// @param uGroove 40..160 = 100
-// @param uLightSpread 0..200 = 100
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uViewRoll -180..180 = 0
-// @param uTiltPitch -180..180 = 0
-// @param uTiltYaw -180..180 = 0
-// @param uBarSkew -40..40 = 0
-// @param uLightLift -70..70 = 0
-// @param uLightDist 40..300 = 100
-// @param uLightGain 30..200 = 100
-// @param uLightTintL color = #ffffff
-// @param uLightTintR color = #ffffff
-// @param uEnvTint color = #ffffff
-// @param uRainbowGain 0..300 = 100
-// @param uRainbowShift -150..150 = 0
-// @param uStripeDepth 0..200 = 100
-// @param uReflectMix 0..180 = 100
-// @param uEnvTurn -180..180 = 0
-// @param uBumpStrength 0..800 = 100
+// @param speed 0..3 = 1 @desc トーラスの回転の速さ。0 で止まる
+// @param uTorusRadius 70..140 = 100 @desc トーラスの大きさ (%)
+// @param uTwist 0..600 = 100 @desc 断面のねじれ回数 (%)。100 ごとに半回転、0 でねじれなし
+// @param uBarWidth 70..150 = 100 @desc 断面の幅 (%)
+// @param uBarHeight 70..150 = 100 @desc 断面の高さ (%)
+// @param uCorner 0..500 = 100 @desc 断面の角の丸み (%)。0 で鋭い角
+// @param uSplitOuter 0..200 = 100 @desc 断面の外側の分割の開き (%)
+// @param uSplitInner 0..200 = 100 @desc 断面の内側の分割の開き (%)
+// @param uStripeCount 20..300 = 100 @desc 表面の縞の本数 (%)
+// @param uGroove 40..160 = 100 @desc 回折格子の溝の間隔 (%)。虹の帯の出方が変わる
+// @param uLightSpread 0..200 = 100 @desc 左右のライトの離れ具合 (%)。0 で両方が正面
+// @param uCenterX -100..100 = 0 @desc トーラスの左右位置 (%)
+// @param uCenterY -100..100 = 0 @desc トーラスの上下位置 (%)
+// @param uViewRoll -180..180 = 0 @desc 画面全体の回転 (度)。ライトは回らない
+// @param uTiltPitch -180..180 = 0 @desc トーラスの前後の傾きの基準角 (度)
+// @param uTiltYaw -180..180 = 0 @desc トーラスの左右の傾きの基準角 (度)
+// @param uBarSkew -40..40 = 0 @desc 断面の斜めの歪み (%)。平行四辺形状になる
+// @param uLightLift -70..70 = 0 @desc 左右ライトの高さの開き (%)。正で左が上、右が下
+// @param uLightDist 40..300 = 100 @desc ライトまでの奥行き (%)。遠いほど平行光に近い
+// @param uLightGain 30..200 = 100 @desc 左右ライトの当たりの強さ (%)。環境反射との釣り合い
+// @param uLightTintL color = #ffffff @desc 左ライトへ掛けるティント色
+// @param uLightTintR color = #ffffff @desc 右ライトへ掛けるティント色
+// @param uEnvTint color = #ffffff @desc 映り込む環境へ掛けるティント色
+// @param uRainbowGain 0..300 = 100 @desc 回折の虹の強さ (%)
+// @param uRainbowShift -150..150 = 0 @desc 虹の色の出る位置のずれ。帯の色順が変わる
+// @param uStripeDepth 0..200 = 100 @desc 表面の縞の濃さ (%)
+// @param uReflectMix 0..180 = 100 @desc 環境の映り込みの混ざり (%)
+// @param uEnvTurn -180..180 = 0 @desc 映り込む環境の向き (度)
+// @param uBumpStrength 0..800 = 100 @desc 表面の格子状の凹凸の強さ (%)
 uniform float speed;
 uniform float uTorusRadius; // トーラスの大きさ (%)
 uniform float uTwist;       // 断面のねじれ回数 (%)。100 ごとに半回転。0 でねじれなし
@@ -1259,36 +1259,36 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   name: "Tunnel of Bones (3lByWh)",
   ch: ["","","",""],
   src: `// "Tunnel of Bones" 改 — チューブ網(2場が同時に0=繋がった管) / 固定カメラ+3Dランダム方向。based on 3lByWh
-// @param speed 0..3 = 1
-// @param seed 0..6.3 = 0
-// @param enaDist 0..8 = 2.5
-// @param sparse 0..1 = 0.65
-// @param uNetScale 60..170 = 100
-// @param uWriggle 60..125 = 100
-// @param uWriggleFreq 80..125 = 100
-// @param uFieldRatio 80..130 = 100
-// @param uTubeSquare 0..100 = 0
-// @param uSheen 30..300 = 100
-// @param uBanding 0..100 = 0
-// @param uFog 0..120 = 0
-// @param uTubeAspect 70..140 = 100
-// @param uFov 50..200 = 100
-// @param uRoll -180..180 = 0
-// @param uLookYaw -180..180 = 0
-// @param uLookPitch -60..60 = 0
-// @param uEyeShiftX -60..60 = 0
-// @param uEyeShiftY -40..60 = 0
-// @param uEyeShiftZ -40..40 = 0
-// @param uLightX -40..40 = 0
-// @param uLightY -40..40 = 0
-// @param uLightZ -40..40 = 0
-// @param uRimLight 0..300 = 0
-// @param uOcclusion 0..100 = 0
-// @param uMottle 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uBoneTint color = #ffffff
-// @param uGlossTint color = #ffffff
-// @param uEnamelTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。網のうねりとカメラの揺らぎに掛かる。0 で止まる
+// @param seed 0..6.3 = 0 @desc 網の形とカメラ位置を変える値。見る場所が変わる
+// @param enaDist 0..8 = 2.5 @desc カメラに近い骨がエナメル質へ変わる距離。0 で変化なし
+// @param sparse 0..1 = 0.65 @desc 管の細さ。大きいほど細い管だけが残る
+// @param uNetScale 60..170 = 100 @desc 管網の細かさ (%)。大きいほど管が細かく入り組む
+// @param uWriggle 60..125 = 100 @desc 管ののたうち量 (%)。0 でゆるい直線的な網
+// @param uWriggleFreq 80..125 = 100 @desc のたうちの波長 (%)。大きいほど細かくくねる
+// @param uFieldRatio 80..130 = 100 @desc 2 つの場の周波数比 (%)。管の交わり方が変わる
+// @param uTubeSquare 0..100 = 0 @desc 管の断面を角張らせる量 (%)。0 で丸
+// @param uSheen 30..300 = 100 @desc 骨表面のハイライトの鋭さ (%)
+// @param uBanding 0..100 = 0 @desc 骨の長さ方向の縞 (節) の濃さ (%)
+// @param uFog 0..120 = 0 @desc 遠くの骨が闇に沈む度合い (%)
+// @param uTubeAspect 70..140 = 100 @desc 管の断面の縦横比 (%)。小さいと偏平になり、大きいと逆向きに偏平になる
+// @param uFov 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uRoll -180..180 = 0 @desc カメラの回転 (度)
+// @param uLookYaw -180..180 = 0 @desc 視線の向きの左右のずらし (度)
+// @param uLookPitch -60..60 = 0 @desc 視線の向きの上下のずらし (度)
+// @param uEyeShiftX -60..60 = 0 @desc カメラ位置の移動 X。別の場所の管網を見る
+// @param uEyeShiftY -40..60 = 0 @desc カメラ位置の移動 Y
+// @param uEyeShiftZ -40..40 = 0 @desc カメラ位置の移動 Z
+// @param uLightX -40..40 = 0 @desc 光源のカメラからのずれ X。陰影の向きが変わる
+// @param uLightY -40..40 = 0 @desc 光源のカメラからのずれ Y
+// @param uLightZ -40..40 = 0 @desc 光源のカメラからのずれ Z
+// @param uRimLight 0..300 = 0 @desc 輪郭に沿った青白いリムライト (%)
+// @param uOcclusion 0..100 = 0 @desc 管の込み入った所の陰 (%)
+// @param uMottle 0..100 = 0 @desc 骨の表面の染み・まだらの濃さ (%)
+// @param uGrain 0..100 = 0 @desc 画面のざらつき (%)
+// @param uBoneTint color = #ffffff @desc 骨の地色へ掛けるティント色
+// @param uGlossTint color = #ffffff @desc 光沢へ掛けるティント色
+// @param uEnamelTint color = #ffffff @desc めり込み時のエナメル質へ掛けるティント色
 uniform float speed; uniform float seed; uniform float enaDist; uniform float sparse;
 uniform float uNetScale;    // 管網の細かさ (%)。大きいほど管が細かく入り組む
 uniform float uWriggle;     // 管ののたうち量 (%)。0 でゆるい直線的な網
@@ -1426,35 +1426,35 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   name: "OSTSEE (mdjXDd)",
   ch: ["","","",""],
   src: `// Shadertoy mdjXDd "OSTSEE" by pashafx (Alien Rose fork) 改 — 背景黒 / Slot B透過。iChannel0(cubemap)→黒背景+手続き反射env
-// @param speed 0..3 = 1
-// @param uTwistCore 0..300 = 100
-// @param uSquash 40..250 = 100
-// @param uRippleFreq 25..200 = 100
-// @param uRippleAmp 0..200 = 100
-// @param uShell 50..250 = 100
-// @param uAxisShift -300..300 = 0
-// @param uCamDist 50..200 = 100
-// @param uCamPitch -300..300 = 0
-// @param uGlint 20..400 = 100
-// @param uSunLight 0..300 = 100
-// @param uNormalSoft 50..1500 = 100
-// @param uSquashX 40..250 = 100
-// @param uSquashZ 40..250 = 100
-// @param uCamYaw -180..180 = 0
-// @param uCamRoll -180..180 = 0
-// @param uFov 50..200 = 100
-// @param uSunAzimuth -180..180 = 0
-// @param uSunElevation -60..45 = 0
-// @param uEnvBias -100..100 = 0
-// @param uEnvBands 0..24 = 0
-// @param uRimLight 0..300 = 0
-// @param uCavity 0..100 = 0
-// @param uToonLevels 0..12 = 0
-// @param uGrain 0..100 = 0
-// @param uObjTint color = #ffffff
-// @param uGlareTint color = #ffffff
-// @param uSkyTint color = #ffffff
-// @param uRimTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。塊の変形とカメラの周回に掛かる。0 で止まる
+// @param uTwistCore 0..300 = 100 @desc 中心からの距離に応じた第 1 ねじれの量 (%)
+// @param uSquash 40..250 = 100 @desc 塊の縦方向の伸縮 (%)。大きいほど縦に細くなる
+// @param uRippleFreq 25..200 = 100 @desc 表面の細かい波の周波数 (%)
+// @param uRippleAmp 0..200 = 100 @desc 表面の細かい波の深さ (%)
+// @param uShell 50..250 = 100 @desc 塊の殻の厚み (%)。大きいほど細くなる
+// @param uAxisShift -300..300 = 0 @desc 3 軸の位相のずれ (%)。0 で元の形
+// @param uCamDist 50..200 = 100 @desc カメラから塊までの距離 (%)
+// @param uCamPitch -300..300 = 0 @desc カメラの俯角 (%)。0 で水平
+// @param uGlint 20..400 = 100 @desc 太陽グレアの鋭さ (%)
+// @param uSunLight 0..300 = 100 @desc 太陽光による面の明暗の強さ (%)
+// @param uNormalSoft 50..1500 = 100 @desc 法線の丸め (%)。大きいほど面がなめらか
+// @param uSquashX 40..250 = 100 @desc 塊の横方向の伸縮 (%)
+// @param uSquashZ 40..250 = 100 @desc 塊の奥行き方向の伸縮 (%)
+// @param uCamYaw -180..180 = 0 @desc カメラの左右の振り (度)
+// @param uCamRoll -180..180 = 0 @desc カメラの回転 (度)
+// @param uFov 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uSunAzimuth -180..180 = 0 @desc 太陽の方位 (度)
+// @param uSunElevation -60..45 = 0 @desc 太陽の仰角のずらし (度)
+// @param uEnvBias -100..100 = 0 @desc 映り込む空の明暗の境目の高さ (%)
+// @param uEnvBands 0..24 = 0 @desc 映り込む環境の縦縞の本数。2 以上で有効、0 で無し
+// @param uRimLight 0..300 = 0 @desc 輪郭の青白いリムライト (%)
+// @param uCavity 0..100 = 0 @desc 塊の凹みの陰 (%)
+// @param uToonLevels 0..12 = 0 @desc 階調の段数 (トゥーン化)。2 以上で有効、0 で無効
+// @param uGrain 0..100 = 0 @desc 画面のざらつき (%)。塊の上だけに乗る
+// @param uObjTint color = #ffffff @desc 塊の地色へ掛けるティント色
+// @param uGlareTint color = #ffffff @desc 太陽グレアへ掛けるティント色
+// @param uSkyTint color = #ffffff @desc 映り込む空へ掛けるティント色
+// @param uRimTint color = #ffffff @desc リムライトへ掛けるティント色
 uniform float uTwistCore;  // 中心からの距離に対する第1ねじれの量 (%)
 uniform float uSquash;     // 塊の縦方向の伸縮 (%)。大きいほど縦に細く
 uniform float uRippleFreq; // 表面の細かい波の周波数 (%)
@@ -1620,36 +1620,36 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   name: "Alien Neurons Glitch (ctsyDj)",
   ch: ["","","",""],
   src: `// Shadertoy ctsyDj "Alien nuerons" by jackjackdev 改 — 鋭いワープ + データモッシュ/ブロックグリッチの合わせ技。warp/glitch で各強度
-// @param speed 0..3 = 1
-// @param warp 0..1 = 0.5
-// @param glitch 0..1 = 0.4
-// @param dist 0.03..5 = 1.6
-// @param uTubeThick 40..300 = 100
-// @param uWarpWave 0..300 = 100
-// @param uGlitchSlide 0..300 = 100
-// @param uGlitchRows 2..14 = 6
-// @param uGlitchDensity 0..250 = 100
-// @param uWarpFreq 40..250 = 100
-// @param uCellScale 50..200 = 100
-// @param uCrackFlare 0..400 = 100
-// @param uLens 50..250 = 100
-// @param uLightDirX -100..100 = 0
-// @param uLightDirZ -100..100 = 0
-// @param uLightFalloff 40..300 = 100
-// @param uRimLight 0..120 = 0
-// @param uBeamAmt 0..250 = 100
-// @param uBeamFreq 40..250 = 100
-// @param uHorizon -40..40 = 0
-// @param uFogReach 50..300 = 100
-// @param uGlitchDepth 0..300 = 100
-// @param uCaveShiftY -60..60 = 0
-// @param uCaveShiftX -100..100 = 0
-// @param uVignetteAmt 0..100 = 0
-// @param uGrainAmt 0..100 = 0
-// @param uSurfTint color = #ffffff
-// @param uCrackTint color = #ffffff
-// @param uSkyTint color = #ffffff
-// @param uRimTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。構造の流れ・ワープ・光条に掛かる。0 で止まる
+// @param warp 0..1 = 0.5 @desc 鋭いワープの折り目の強さ。0 でなし
+// @param glitch 0..1 = 0.4 @desc データモッシュの横ずれ・奥行きずれの大きさ。0 でなし
+// @param dist 0.03..5 = 1.6 @desc カメラから構造までの距離
+// @param uTubeThick 40..300 = 100 @desc 柱 (主ジャイロイド) の太さ (%)
+// @param uWarpWave 0..300 = 100 @desc 2 段目のうねりの強さ (%)
+// @param uGlitchSlide 0..300 = 100 @desc 横ずれの幅 (%)
+// @param uGlitchRows 2..14 = 6 @desc データモッシュの横スライスの段数 (高さ方向)
+// @param uGlitchDensity 0..250 = 100 @desc ずれる段の割合 (%)。0 でずれなし
+// @param uWarpFreq 40..250 = 100 @desc 鋭いワープの折り目の細かさ (%)
+// @param uCellScale 50..200 = 100 @desc 表面の割れ目セルの大きさ (周波数 %)
+// @param uCrackFlare 0..400 = 100 @desc 下向きの面で割れ目が広がる量 (%)
+// @param uLens 50..250 = 100 @desc レンズの焦点距離 (%)。大きいと望遠
+// @param uLightDirX -100..100 = 0 @desc 光の向き 左右 (%)。0 で真上
+// @param uLightDirZ -100..100 = 0 @desc 光の向き 前後 (%)。0 で真上
+// @param uLightFalloff 40..300 = 100 @desc 面の明暗の落ち方の鋭さ (%)
+// @param uRimLight 0..120 = 0 @desc 輪郭のリムライト (%)
+// @param uBeamAmt 0..250 = 100 @desc 背景の光条の強さ (%)
+// @param uBeamFreq 40..250 = 100 @desc 背景の光条の本数 (%)
+// @param uHorizon -40..40 = 0 @desc 背景の地平線の高さ (%)
+// @param uFogReach 50..300 = 100 @desc 霧が遠景に変わる距離 (%)
+// @param uGlitchDepth 0..300 = 100 @desc グリッチの奥行きずれの幅 (%)
+// @param uCaveShiftY -60..60 = 0 @desc 構造の上下ずらし (%)
+// @param uCaveShiftX -100..100 = 0 @desc 構造の左右ずらし (%)
+// @param uVignetteAmt 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrainAmt 0..100 = 0 @desc フィルムグレインの量 (%)
+// @param uSurfTint color = #ffffff @desc 氷の面へ掛けるティント色
+// @param uCrackTint color = #ffffff @desc 割れ目の発光へ掛けるティント色
+// @param uSkyTint color = #ffffff @desc 背景の空へ掛けるティント色
+// @param uRimTint color = #ffffff @desc リムライトへ掛けるティント色
 uniform float speed; uniform float warp; uniform float glitch; uniform float dist;
 uniform float uWarpWave; // 2 段目のうねりの強さ (%)
 uniform float uGlitchSlide; // 横ずれの幅 (%)
@@ -1795,37 +1795,37 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   ch: ["","","",""],
   src: `// Shadertoy 4djBzz "Bechamel" by leon 改 — じゃっかん軽量化(STEPS 30→22 / repeat 8→6)
 // Slot B では実 alpha で背景を透過 (クロマキー不使用)
-// @param speed 0..3 = 1
-// @param uRepeat 2..6 = 6
-// @param uRingRadius 50..150 = 100
-// @param uRingSpacing 0..300 = 100
-// @param uRingThick 30..300 = 100
-// @param uTentacle 25..400 = 100
-// @param uRibRadius 40..200 = 100
-// @param uRibThick 30..400 = 100
-// @param uRibPitch 50..300 = 100
-// @param uBlend 20..250 = 100
-// @param uRibBlend 20..300 = 100
-// @param uTwist 0..180 = 100
-// @param uSway 0..250 = 100
-// @param uShell 30..300 = 100
-// @param uCamDist 60..130 = 100
-// @param uFov 60..200 = 100
-// @param uRoll -180..180 = 0
-// @param uCenterX -60..60 = 0
-// @param uCenterY -60..60 = 0
-// @param uViewPitch -90..90 = 0
-// @param uViewYaw -90..90 = 0
-// @param uMirrorX 0..150 = 0
-// @param uTileSize 0..600 = 0
-// @param uSquashX 100..200 = 100
-// @param uPhaseShift -180..180 = 0
-// @param uDither 0..400 = 100
-// @param uDepthFade -60..100 = 0
-// @param uHalo 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uInkColor color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる
+// @param uRepeat 2..6 = 6 @desc 重ねる輪と触手 (ジャイロ) の段数。四捨五入した整数で、最大 6
+// @param uRingRadius 50..150 = 100 @desc 輪 (トーラス) の半径 (%)
+// @param uRingSpacing 0..300 = 100 @desc 段が進むごとに輪の半径が広がる量 (%)。0 で全段が同じ大きさ
+// @param uRingThick 30..300 = 100 @desc 輪の管の太さ (%)
+// @param uTentacle 25..400 = 100 @desc 中心を貫く触手 (棒) の太さ (%)
+// @param uRibRadius 40..200 = 100 @desc 触手に沿って並ぶ小さな輪の半径 (%)
+// @param uRibThick 30..400 = 100 @desc 触手に沿う小さな輪の管の太さ (%)
+// @param uRibPitch 50..300 = 100 @desc 触手に沿う小さな輪の間隔 (%)
+// @param uBlend 20..250 = 100 @desc 輪と触手が溶け合う幅 (%)。大きいほど滑らかにつながる
+// @param uRibBlend 20..300 = 100 @desc 小さな輪が触手と溶け合う幅 (%)
+// @param uTwist 0..180 = 100 @desc 中心から離れるほど形をねじる量 (%)。0 でねじれなし
+// @param uSway 0..250 = 100 @desc 段ごとの横方向のうねり (%)。横位置に応じて形が回る量
+// @param uShell 30..300 = 100 @desc 形と判定する距離のしきい値 (%)。上げると殻が厚く濃くなる
+// @param uCamDist 60..130 = 100 @desc カメラから対象までの距離 (%)
+// @param uFov 60..200 = 100 @desc 画角の係数 (%)。上げるほど狭く拡大、下げると広く遠近が強まる
+// @param uRoll -180..180 = 0 @desc 画面の回転 (度)
+// @param uCenterX -60..60 = 0 @desc 視線の中心の左右ずらし (%)
+// @param uCenterY -60..60 = 0 @desc 視線の中心の上下ずらし (%)
+// @param uViewPitch -90..90 = 0 @desc カメラの上下の振り (度)
+// @param uViewYaw -90..90 = 0 @desc カメラの左右の振り (度)
+// @param uMirrorX 0..150 = 0 @desc 左右に鏡像で折り返す位置のずれ (%)。0 でなし
+// @param uTileSize 0..600 = 0 @desc 空間を繰り返す周期の追加量 (%)。0 でなし、大きいほど間隔が広い
+// @param uSquashX 100..200 = 100 @desc 横方向の伸び (%)。100 で等倍、大きいほど横長
+// @param uPhaseShift -180..180 = 0 @desc 全段の回転の位相ずらし (度)
+// @param uDither 0..400 = 100 @desc 光線の歩幅のランダム量 (%)。下げると縞、上げると粒状
+// @param uDepthFade -60..100 = 0 @desc 奥行きによる明暗 (%)。正で奥ほど暗く、負で奥ほど明るく
+// @param uHalo 0..100 = 0 @desc 形の周りのにじみ (%)
+// @param uVignette 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrain 0..100 = 0 @desc 形の上に乗る粒状ノイズの量 (%)
+// @param uInkColor color = #ffffff @desc 形の色 (掛け算)
 uniform float speed;
 uniform float uSlotIsA; // 1=Slot A / 0=Slot B (B では暗部を実 alpha で透過)
 uniform float uRepeat; // 重ねるジャイロ (輪+触手) の段数。既定 6
@@ -1938,38 +1938,38 @@ void mainImage(out vec4 color, in vec2 coord){
 {
   name: "Wildstyle SDF",
   ch: ["", "", "", ""],
-  src: `// @param uInvRadius 40..250 = 100
-// @param uInvLimit 70..140 = 100
-// @param uBlockSize 50..150 = 100
-// @param uBarThick 40..250 = 100
-// @param uMixExtra 0..30 = 0
-// @param uSdfWarp 0..250 = 0
-// @param uInflate -40..40 = 0
-// @param uTurnXZ -180..180 = 0
-// @param uTurnXY -180..180 = 0
-// @param uAoStrength 30..250 = 100
-// @param uShadowSoft 20..400 = 100
-// @param uCamDist 70..140 = 100
-// @param uRoll -45..45 = 0
-// @param uCenterX -50..50 = 0
-// @param uCenterY -30..30 = 0
-// @param uSwirl 0..300 = 100
-// @param uRipple 0..400 = 100
-// @param uLightDirX -100..100 = 0
-// @param uLightDirY -100..100 = 0
-// @param uLightDirZ -100..100 = 0
-// @param uAoReach 40..250 = 100
-// @param uAmbientFill 20..400 = 100
-// @param uSpecular 0..200 = 0
-// @param uRimLight 0..200 = 0
-// @param uFogAmt 0..200 = 0
-// @param uVignetteAmt 0..100 = 0
-// @param uGrainAmt 0..100 = 0
-// @param uBlockTint color = #ffffff
-// @param uBarTint color = #ffffff
-// @param uSunTint color = #ffffff
-// @param uSkyTint color = #ffffff
-// @param uBgTint color = #ffffff
+  src: `// @param uInvRadius 40..250 = 100 @desc 球面反転の半径 (%)。折りたたみの 2 段目の反転の大きさ
+// @param uInvLimit 70..140 = 100 @desc 後段の反転の最大倍率 (%)
+// @param uBlockSize 50..150 = 100 @desc 太い柱の断面の大きさ (%)
+// @param uBarThick 40..250 = 100 @desc 細い梁の太さ (%)
+// @param uMixExtra 0..30 = 0 @desc 折りたたみの途中で元の座標へ戻す割合の上乗せ (%)
+// @param uSdfWarp 0..250 = 0 @desc 空間をうねらせる追加量 (%)
+// @param uInflate -40..40 = 0 @desc 形の膨らみ (+) と痩せ (-)
+// @param uTurnXZ -180..180 = 0 @desc XZ 平面の回転の位相ずらし (度)
+// @param uTurnXY -180..180 = 0 @desc XY 平面の回転の位相ずらし (度)
+// @param uAoStrength 30..250 = 100 @desc 隙間の暗さ (%)。100 より大きいと隙間が濃く暗くなる
+// @param uShadowSoft 20..400 = 100 @desc 影の抜け具合 (%)。上げるほど影が薄く、下げると濃くなる
+// @param uCamDist 70..140 = 100 @desc カメラの距離 (%)
+// @param uRoll -45..45 = 0 @desc 画面の回転 (度)
+// @param uCenterX -50..50 = 0 @desc 構図の左右ずらし (%)
+// @param uCenterY -30..30 = 0 @desc 構図の上下ずらし (%)
+// @param uSwirl 0..300 = 100 @desc 画面の渦巻きの強さ (%)。中心から離れるほどねじれる
+// @param uRipple 0..400 = 100 @desc 画面のうねりの振れ幅 (%)
+// @param uLightDirX -100..100 = 0 @desc 光の向きの左右への振り (%)
+// @param uLightDirY -100..100 = 0 @desc 光の向きの上下への振り (%)
+// @param uLightDirZ -100..100 = 0 @desc 光の向きの前後への振り (%)
+// @param uAoReach 40..250 = 100 @desc 隙間の暗がりの届く距離 (%)
+// @param uAmbientFill 20..400 = 100 @desc 空の環境光の量 (%)
+// @param uSpecular 0..200 = 0 @desc ハイライトの強さ (%)。0 でなし
+// @param uRimLight 0..200 = 0 @desc 輪郭のリムライトの強さ (%)。0 でなし
+// @param uFogAmt 0..200 = 0 @desc 遠景の霧の濃さ (%)。0 でなし
+// @param uVignetteAmt 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrainAmt 0..100 = 0 @desc フィルムグレインの量 (%)
+// @param uBlockTint color = #ffffff @desc (未使用) 太い柱の色味
+// @param uBarTint color = #ffffff @desc (未使用) 細い梁の色味
+// @param uSunTint color = #ffffff @desc ハイライト (光源) の色。掛け算
+// @param uSkyTint color = #ffffff @desc (未使用) 環境光 (空) の色味
+// @param uBgTint color = #ffffff @desc (未使用) 背景の色味
 uniform float uInvRadius; // 反転球の半径 (%)
 uniform float uInvLimit; // 反転の最大倍率 (%)
 uniform float uBlockSize; // 太い柱の断面の大きさ (%)
@@ -2309,33 +2309,33 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   name: "Cube Surface II (Mty3DV)",
   ch: ["","","",""],
   src: `//By Nestor Vina
-// @param uCubeSize 65..140 = 100
-// @param uCubeHeight 50..300 = 100
-// @param uCubeRound 0..100 = 0
-// @param uGridPitch 70..150 = 100
-// @param uWaveHeight 0..250 = 100
-// @param uWaveFreq 40..200 = 100
-// @param uWaveSkew -100..100 = 0
-// @param uSlope 95..140 = 100
-// @param uCubeTumble 0..60 = 0
-// @param uEyeHeight 70..160 = 100
-// @param uShade 0..200 = 100
-// @param uFog 0..100 = 0
-// @param uColorRing 25..400 = 100
-// @param uFov 30..70 = 45
-// @param uCamYaw -25..25 = 0
-// @param uCamPitch -4..12 = 0
-// @param uCamRoll -30..30 = 0
-// @param uCamSlide -100..100 = 0
-// @param uSunAzimuth -180..180 = 0
-// @param uSunElevation -60..60 = 0
-// @param uSpecular 0..200 = 0
-// @param uRimLight 0..300 = 0
-// @param uAmbientGlow 0..300 = 100
-// @param uColorBias -50..50 = 0
-// @param uVignetteAmount 0..100 = 0
-// @param uCubeTintA color = #ffffff
-// @param uCubeTintB color = #ffffff
+// @param uCubeSize 65..140 = 100 @desc 立方体の大きさ (%)
+// @param uCubeHeight 50..300 = 100 @desc 立方体の縦の長さ (%)。上げると柱状、下げると板状
+// @param uCubeRound 0..100 = 0 @desc 立方体の角の丸み (%)。100 で球に近づく
+// @param uGridPitch 70..150 = 100 @desc 格子の間隔 (%)。下げると立方体が重なり合う
+// @param uWaveHeight 0..250 = 100 @desc 地面のうねりの高さ (%)。0 で平ら
+// @param uWaveFreq 40..200 = 100 @desc 地面のうねりの細かさ (%)
+// @param uWaveSkew -100..100 = 0 @desc うねりの向きの傾き (%)。0 で斜め、-100 で奥行き方向のみ
+// @param uSlope 95..140 = 100 @desc 格子面の傾斜 (%)
+// @param uCubeTumble 0..60 = 0 @desc 立方体を一律にひねる角度 (度)
+// @param uEyeHeight 70..160 = 100 @desc カメラの高さ (%)
+// @param uShade 0..200 = 100 @desc 面ごとの陰影の強さ (%)
+// @param uFog 0..100 = 0 @desc 遠方を灰色に霞ませる量 (%)
+// @param uColorRing 25..400 = 100 @desc 色の同心の縞の細かさ (%)
+// @param uFov 30..70 = 45 @desc カメラの画角 (度)。下げると望遠、上げると広角
+// @param uCamYaw -25..25 = 0 @desc カメラの左右の振り (度)
+// @param uCamPitch -4..12 = 0 @desc カメラの上下の振り (度)。カメラ位置ごと回る
+// @param uCamRoll -30..30 = 0 @desc 画面の傾き (度)
+// @param uCamSlide -100..100 = 0 @desc カメラの横スライド (%)。格子との位置関係が変わる
+// @param uSunAzimuth -180..180 = 0 @desc 光の向きの水平回転 (度)
+// @param uSunElevation -60..60 = 0 @desc 光の向きの上下の傾き (度)
+// @param uSpecular 0..200 = 0 @desc ハイライトの強さ (%)。0 でなし
+// @param uRimLight 0..300 = 0 @desc 輪郭の縁取りの光の強さ (%)。0 でなし
+// @param uAmbientGlow 0..300 = 100 @desc 暗部に足すほのかな橙の明るさ (%)
+// @param uColorBias -50..50 = 0 @desc 立方体の 2 色の偏り (%)。正で青側、負で赤紫側
+// @param uVignetteAmount 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uCubeTintA color = #ffffff @desc 赤紫側の色への掛け算。白で元と同じ
+// @param uCubeTintB color = #ffffff @desc 青側の色への掛け算。白で元と同じ
 uniform float uCubeSize;     // 立方体の大きさ (%)
 uniform float uCubeHeight;   // 立方体の縦の長さ (%)。上げると柱状、下げると板状
 uniform float uCubeRound;    // 立方体の角の丸み (%)。100 で球に近づく
@@ -2590,37 +2590,37 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
   name: "Hand Model (msSXDc)",
   ch: ["","","",""],
-  src: `// @param uPalmWidth 60..150 = 100
-// @param uPalmHeight 70..140 = 100
-// @param uPalmThick 30..400 = 100
-// @param uPalmRound 20..250 = 100
-// @param uPalmBulge 70..140 = 100
-// @param uPalmArch -100..300 = 100
-// @param uFingerLength 60..160 = 100
-// @param uFingerThick 50..250 = 100
-// @param uFingerSpread 50..150 = 100
-// @param uFingerCurl -100..100 = 0
-// @param uFingerBlend 20..300 = 100
-// @param uSkinRough 0..300 = 100
-// @param uFingerWave 0..300 = 100
-// @param uFingerPhase 0..300 = 100
-// @param uThumbOpen -100..100 = 0
-// @param uMiddleLength 60..160 = 100
-// @param uLittleLength 60..160 = 100
-// @param uCamHeight -100..100 = 0
-// @param uCamDist 70..150 = 100
-// @param uCamSide -100..100 = 0
-// @param uFrameY -70..70 = 0
-// @param uFov 50..160 = 100
-// @param uRoll -180..180 = 0
-// @param uLightYaw -70..70 = 0
-// @param uLightPitch -30..60 = 0
-// @param uWrap 0..100 = 0
-// @param uEdgeInk 0..100 = 0
-// @param uAOReach 0..300 = 0
-// @param uToonCoarse 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uBodyColor color = #ffffff
+  src: `// @param uPalmWidth 60..150 = 100 @desc 手のひらの横幅 (%)
+// @param uPalmHeight 70..140 = 100 @desc 手のひらの縦の長さ (%)
+// @param uPalmThick 30..400 = 100 @desc 手のひらの厚み (%)
+// @param uPalmRound 20..250 = 100 @desc 手のひらの角の丸み (%)
+// @param uPalmBulge 70..140 = 100 @desc 手のひらを丸く削る球の半径 (%)。小さいほど丸く削れる
+// @param uPalmArch -100..300 = 100 @desc 手のひらの反り (%)。負で逆に反る
+// @param uFingerLength 60..160 = 100 @desc 指全体の長さ (%)
+// @param uFingerThick 50..250 = 100 @desc 指の太さ (%)
+// @param uFingerSpread 50..150 = 100 @desc 指の開き (%)。付け根の間隔
+// @param uFingerCurl -100..100 = 0 @desc 指を曲げる量 (%)。負で反らす
+// @param uFingerBlend 20..300 = 100 @desc 指と手のひら、指同士のつなぎの滑らかさ (%)
+// @param uSkinRough 0..300 = 100 @desc 肌のごつごつ (%)。0 でなめらか
+// @param uFingerWave 0..300 = 100 @desc 指の屈伸の振れ幅 (%)。0 で屈伸が止まる
+// @param uFingerPhase 0..300 = 100 @desc 指ごとの屈伸のずれ (%)。0 で 4 本が同時に曲がる
+// @param uThumbOpen -100..100 = 0 @desc 親指の開き (%)。負で閉じる
+// @param uMiddleLength 60..160 = 100 @desc 中指だけの長さ (%)
+// @param uLittleLength 60..160 = 100 @desc 小指だけの長さ (%)
+// @param uCamHeight -100..100 = 0 @desc カメラの高さ (%)。負で下から見上げる
+// @param uCamDist 70..150 = 100 @desc カメラの距離 (%)
+// @param uCamSide -100..100 = 0 @desc カメラの横位置 (%)。手を斜めから見る
+// @param uFrameY -70..70 = 0 @desc 注視点の高さ (%)。手の位置が画面上で上下する
+// @param uFov 50..160 = 100 @desc 画角のズーム (%)。上げると手が大きく写る
+// @param uRoll -180..180 = 0 @desc 画面の傾き (度)
+// @param uLightYaw -70..70 = 0 @desc 光源の左右の向き (度)
+// @param uLightPitch -30..60 = 0 @desc 光源の上下の向き (度)
+// @param uWrap 0..100 = 0 @desc 陰影の回り込み (%)。上げると影の境目が柔らかく明るくなる
+// @param uEdgeInk 0..100 = 0 @desc 輪郭の暗い縁取りの幅 (%)。0 でなし、大きいほど内側まで暗くなる
+// @param uAOReach 0..300 = 0 @desc 接触部の暗がりの届く距離 (%)。0 でなし。指の間や付け根が沈む
+// @param uToonCoarse 0..100 = 0 @desc 陰影の段の粗さ (%)。0 で連続、大きいほど少ない段数ではっきり分かれる
+// @param uGrain 0..100 = 0 @desc 手に乗せる粒状ノイズの量 (%)
+// @param uBodyColor color = #ffffff @desc 手の色。掛け算で白なら無変化
 uniform float uPalmWidth; // 手のひらの横幅 (%)
 uniform float uPalmHeight; // 手のひらの縦の長さ (%)
 uniform float uPalmThick; // 手のひらの厚み (%)
@@ -2984,30 +2984,30 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   ch: ["","","",""],
   src: `// Created by Benoit Marini - 2016
 // License Creative Commons Attribution-NonCommercial-ShareAlike 3.0 Unported License.
-// @param uSplitDepth 4..10 = 10
-// @param uSplitSpread 0..160 = 100
-// @param uSplitBias -25..25 = 0
-// @param uDeepCalm 0..100 = 0
-// @param uSplitSeed 0..628 = 0
-// @param uSlant 0..150 = 100
-// @param uSplitLean -60..60 = 0
-// @param uSkew -40..40 = 0
-// @param uBands 0..400 = 100
-// @param uPaletteCycles 30..300 = 100
-// @param uHueSpread 40..200 = 100
-// @param uCenterX -50..50 = 0
-// @param uCenterY -50..50 = 0
-// @param uSplitRotate -180..180 = 0
-// @param uTileCount 100..400 = 100
-// @param uMirrorX 0..100 = 0
-// @param uMirrorY 0..100 = 0
-// @param uZoneScatter 0..100 = 0
-// @param uZoneDim 0..70 = 0
-// @param uEdgeLine 0..8 = 0
-// @param uOddTint color = #ffffff
-// @param uPosterSteps 0..8 = 0
-// @param uGrainAmount 0..60 = 0
-// @param uCornerFade 0..100 = 0
+// @param uSplitDepth 4..10 = 10 @desc 領域を二分割する段数。四捨五入した整数で、最大 10
+// @param uSplitSpread 0..160 = 100 @desc 分割位置のばらつき幅 (%)。0 で毎回ちょうど半分
+// @param uSplitBias -25..25 = 0 @desc 分割位置を一方へ寄せる量 (%)
+// @param uDeepCalm 0..100 = 0 @desc 深い段ほど分割位置を半分に均す度合い (%)
+// @param uSplitSeed 0..628 = 0 @desc 分割パターンの位相 (種)。値ごとに別の割り方になる
+// @param uSlant 0..150 = 100 @desc 分割線の傾きが時間で揺れる幅 (%)
+// @param uSplitLean -60..60 = 0 @desc 分割線の固定の傾き (%)
+// @param uSkew -40..40 = 0 @desc 分割ごとに領域をせん断する量 (%)
+// @param uBands 0..400 = 100 @desc 領域内の縦方向に出る色の帯の量 (%)
+// @param uPaletteCycles 30..300 = 100 @desc 領域番号に対して色が巡る回数 (%)
+// @param uHueSpread 40..200 = 100 @desc RGB の位相の開き (%)。大きいほど色相の幅が広がる
+// @param uCenterX -50..50 = 0 @desc 構図の横ずらし (%)
+// @param uCenterY -50..50 = 0 @desc 構図の縦ずらし (%)
+// @param uSplitRotate -180..180 = 0 @desc 構図全体の回転 (度)
+// @param uTileCount 100..400 = 100 @desc 構図の繰り返し数 (%)。100 で 1 枚、折り返しで継ぎ目なし
+// @param uMirrorX 0..100 = 0 @desc 左右対称にする度合い (%)
+// @param uMirrorY 0..100 = 0 @desc 上下対称にする度合い (%)
+// @param uZoneScatter 0..100 = 0 @desc 領域ごとに色をばらけさせる量 (%)
+// @param uZoneDim 0..70 = 0 @desc 領域ごとにランダムに暗くする量 (%)
+// @param uEdgeLine 0..8 = 0 @desc 領域の縁の暗い線の太さ (%)。0 でなし
+// @param uOddTint color = #ffffff @desc 奇数番の領域の色。掛け算で白なら無変化
+// @param uPosterSteps 0..8 = 0 @desc 色の段数。0 で滑らか
+// @param uGrainAmount 0..60 = 0 @desc 粒状ノイズの量 (%)
+// @param uCornerFade 0..100 = 0 @desc 四隅を暗くする量 (%)
 uniform float uSplitDepth;     // 分割を重ねる回数。既定 10
 uniform float uSplitSpread;    // 分割位置のばらつき幅 (%)。0 で毎回ちょうど半分
 uniform float uSplitBias;      // 分割位置を一方へ寄せる量 (%)
@@ -3155,31 +3155,31 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   name: "Metal Meta (4ssGWS)",
   ch: ["","","",""],
   src: `// Kleber Garcia (c) 2017
-// @param uSphereRadius 55..125 = 100
-// @param uStretchY 75..140 = 100
-// @param uPinch -35..35 = 0
-// @param uMeltAmount 0..150 = 100
-// @param uMeltFreq 60..150 = 100
-// @param uScaleFreq 40..250 = 100
-// @param uCellSize 50..300 = 100
-// @param uBumpDepth 0..250 = 100
-// @param uGrainAmp 20..250 = 100
-// @param uHighlight 20..400 = 100
-// @param uRimGlow 0..500 = 100
-// @param uSway 0..1000 = 100
-// @param uStretchX 75..140 = 100
-// @param uViewYaw -35..35 = 0
-// @param uViewPitch -25..25 = 0
-// @param uViewRoll -45..45 = 0
-// @param uLightAzimuth -90..90 = 0
-// @param uLightElevation -45..60 = 0
-// @param uAmbientAmount 0..250 = 100
-// @param uDiffuseAmount 0..250 = 100
-// @param uBodyColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uTopTint color = #ffffff
-// @param uBottomTint color = #ffffff
+// @param uSphereRadius 55..125 = 100 @desc 球の半径 (%)
+// @param uStretchY 75..140 = 100 @desc 縦の伸び (%)。小さいと潰れ、大きいと縦長
+// @param uPinch -35..35 = 0 @desc 上下で太さを変える量 (%)。正で上が太く下が細い洋梨形、負で逆
+// @param uMeltAmount 0..150 = 100 @desc 表面のうねり (溶け) の大きさ (%)。0 で素の球
+// @param uMeltFreq 60..150 = 100 @desc うねりの細かさ (%)
+// @param uScaleFreq 40..250 = 100 @desc 鱗状の細かい凹凸の細かさ (%)
+// @param uCellSize 50..300 = 100 @desc 格子状の刻みの大きさ (%)
+// @param uBumpDepth 0..250 = 100 @desc 格子の彫りの深さ (%)
+// @param uGrainAmp 20..250 = 100 @desc 鱗状の細かい凹凸の強さ (%)
+// @param uHighlight 20..400 = 100 @desc ハイライトの鋭さ (%)。上げるほど小さく鋭い
+// @param uRimGlow 0..500 = 100 @desc 縁のフレネル光の強さ (%)
+// @param uSway 0..1000 = 100 @desc 球の向きの揺れの振れ幅 (%)
+// @param uStretchX 75..140 = 100 @desc 横の伸び (%)。小さいと細く、大きいと横長
+// @param uViewYaw -35..35 = 0 @desc 球を回り込んで見る角度 (度、左右)
+// @param uViewPitch -25..25 = 0 @desc 球を見上げ・見下ろす角度 (度)
+// @param uViewRoll -45..45 = 0 @desc 画面の傾き (度)
+// @param uLightAzimuth -90..90 = 0 @desc 光の向き (度、左右)
+// @param uLightElevation -45..60 = 0 @desc 光の高さ (度)
+// @param uAmbientAmount 0..250 = 100 @desc 環境光の量 (%)。小さいと影が深い
+// @param uDiffuseAmount 0..250 = 100 @desc 拡散光の強さ (%)
+// @param uBodyColor color = #ffffff @desc 球本体の色。掛け算で白なら無変化
+// @param uSpecColor color = #ffffff @desc ハイライトの色。掛け算で白なら無変化
+// @param uRimColor color = #ffffff @desc 縁の光の色。掛け算で白なら無変化
+// @param uTopTint color = #ffffff @desc 球の上側の色。掛け算で白なら無変化
+// @param uBottomTint color = #ffffff @desc 球の下側の色。掛け算で白なら無変化
 uniform float uSphereRadius; // 球の半径 (%)
 uniform float uStretchY;     // 縦の伸び (%)。小さいと潰れ、大きいと縦長
 uniform float uPinch;        // 上下で太さを変える量 (%)。洋梨・レモン形になる
@@ -3415,35 +3415,35 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 {
   name: "Spicy Plasma (DsffWM)",
   ch: ["","","",""],
-  src: `// @param uRingFreq 50..200 = 100
-// @param uCenterShift 0..300 = 100
-// @param uWaveAmp 20..400 = 100
-// @param uLayerBZoom 40..250 = 100
-// @param uLayerCZoom 40..250 = 100
-// @param uRatioMix 0..300 = 100
-// @param uLayerBMix 0..300 = 100
-// @param uAccentSharp 10..300 = 100
-// @param uAccentSize 80..125 = 100
-// @param uBlueAmount 0..250 = 100
-// @param uRedAmount 0..250 = 100
-// @param uGreenAmount 0..250 = 100
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uTurn -180..180 = 0
-// @param uSwirl -200..200 = 0
-// @param uLens -100..100 = 0
-// @param uMirrorShift -100..100 = 0
-// @param uPhase -150..150 = 0
-// @param uLayerCAdd 0..160 = 100
-// @param uAccentS0 0..300 = 100
-// @param uAccentS1 0..300 = 100
-// @param uBands 0..10 = 0
-// @param uGrain 0..100 = 0
-// @param uVignetteAmount 0..100 = 0
-// @param uBlueTint color = #ffffff
-// @param uRedTint color = #ffffff
-// @param uGreenTint color = #ffffff
-// @param uSparkTint color = #ffffff
+  src: `// @param uRingFreq 50..200 = 100 @desc 波紋の細かさ (%)。リングの本数
+// @param uCenterShift 0..300 = 100 @desc 波紋の中心のずれ幅 (%)。0 で中心がそろう
+// @param uWaveAmp 20..400 = 100 @desc 波の振幅 (%)。大きいと輪郭がはっきりし、小さいと溶ける
+// @param uLayerBZoom 40..250 = 100 @desc 第 2 層 (青の元になる層) の模様の細かさ (%)。大きいほど細かい
+// @param uLayerCZoom 40..250 = 100 @desc 第 3 層の模様の細かさ (%)。大きいほど細かい
+// @param uRatioMix 0..300 = 100 @desc 比の層 (s0 と s1 の比) の混ざり (%)。赤の形に効く
+// @param uLayerBMix 0..300 = 100 @desc 第 2 層 (s8) の混ざり (%)。青の形に効く
+// @param uAccentSharp 10..300 = 100 @desc 火花 (アクセント) の縁の鋭さ (%)
+// @param uAccentSize 80..125 = 100 @desc 火花の広がり (%)。大きいほど広い
+// @param uBlueAmount 0..250 = 100 @desc 青の層の色の量 (%)
+// @param uRedAmount 0..250 = 100 @desc 赤の層の色の量 (%)
+// @param uGreenAmount 0..250 = 100 @desc 緑の層の色の量 (%)
+// @param uCenterX -100..100 = 0 @desc 模様の左右位置 (%)。ねじれ・鏡像・回転の中心も動く
+// @param uCenterY -100..100 = 0 @desc 模様の上下位置 (%)
+// @param uTurn -180..180 = 0 @desc 模様の向きを固定で回す角度 (度)
+// @param uSwirl -200..200 = 0 @desc 中心からの距離に応じたねじれ (%)。0 でなし
+// @param uLens -100..100 = 0 @desc 中心の膨らみ (+) と絞り (-) のレンズ歪み (%)
+// @param uMirrorShift -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし
+// @param uPhase -150..150 = 0 @desc 模様の種 (時間のずらし)。値ごとに別の波紋の組み合わせになる
+// @param uLayerCAdd 0..160 = 100 @desc 第 3 層 (s7) の輪郭を全体に足す量 (%)
+// @param uAccentS0 0..300 = 100 @desc 火花の位置を決める s0 の寄与 (%)
+// @param uAccentS1 0..300 = 100 @desc 火花の位置を決める s1 の寄与 (%)
+// @param uBands 0..10 = 0 @desc 階調の段数。0〜2 でなめらか、3 以上で等高線風
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uVignetteAmount 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uBlueTint color = #ffffff @desc 青の層の色。掛け算で白なら無変化
+// @param uRedTint color = #ffffff @desc 赤の層の色。掛け算で白なら無変化
+// @param uGreenTint color = #ffffff @desc 緑の層の色。掛け算で白なら無変化
+// @param uSparkTint color = #ffffff @desc 火花の色。掛け算で白なら無変化
 uniform float uRingFreq; // 波紋の細かさ (%)。リングの本数
 uniform float uCenterShift; // 波紋の中心のずれ幅 (%)。0 で中心がそろう
 uniform float uWaveAmp; // 波の振幅 (%)。大きいと輪郭がはっきりし、小さいと溶ける
@@ -3582,27 +3582,27 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   ch: ["","","",""],
   src: `// Ice Cave Spikes (w3GSR3) — 原作 "Tunnel Variation #7" に per-cell ランダムネスと
 //   尖り(スパイク鋭化)を追加。八面体タイリング + ツイストトンネル。
-// @param uSpike 0..2.5 = 1.4
-// @param uChaos 0..2 = 1.0
-// @param uSpeed 0..3 = 1.0
-// @param uEmbed 0..1.5 = 1.0
-// @param uCellScale 60..160 = 100
-// @param uTwistRate 25..300 = 100
-// @param uTunnelX 0..250 = 100
-// @param uTunnelY 25..250 = 100
-// @param uOctSize 50..180 = 100
-// @param uIceBand 0..200 = 100
-// @param uCellTint 0..400 = 100
-// @param uRoll -90..90 = 0
-// @param uCenterX -50..50 = 0
-// @param uCenterY -50..50 = 0
-// @param uDepthShift -100..100 = 0
-// @param uCoreSoft 30..300 = 100
-// @param uStepScale 70..130 = 100
-// @param uVignetteAmt 0..100 = 0
-// @param uGrainAmt 0..100 = 0
-// @param uIceTint color = #ffffff
-// @param uFarTint color = #ffffff
+// @param uSpike 0..2.5 = 1.4 @desc 棘の尖りと長さ。大きいほど鋭く長い棘になる
+// @param uChaos 0..2 = 1.0 @desc セルごとの位相と棘の長さのばらつき。0 で揃う
+// @param uSpeed 0..3 = 1.0 @desc トンネルを進む速さとねじれの動き。0 で止まる
+// @param uEmbed 0..1.5 = 1.0 @desc めり込み半透明の強さ。上げると手前の壁を透かして奥を見せる。0 で従来
+// @param uCellScale 60..160 = 100 @desc 八面体の格子の細かさ (%)。大きいほど細かい
+// @param uTwistRate 25..300 = 100 @desc トンネルのねじれの強さ (%)
+// @param uTunnelX 0..250 = 100 @desc トンネル軸の横位置 (%)。100 で原作の位置
+// @param uTunnelY 25..250 = 100 @desc トンネル軸の縦位置 (%)。100 で原作の位置
+// @param uOctSize 50..180 = 100 @desc 八面体の太さ (%)
+// @param uIceBand 0..200 = 100 @desc 氷の奥行き方向の明暗の縞の強さ (%)
+// @param uCellTint 0..400 = 100 @desc セルごとの色ゆらぎの量 (%)
+// @param uRoll -90..90 = 0 @desc 画面の回転 (度)
+// @param uCenterX -50..50 = 0 @desc 構図の左右ずらし (%)
+// @param uCenterY -50..50 = 0 @desc 構図の上下ずらし (%)
+// @param uDepthShift -100..100 = 0 @desc トンネルの奥行き位相のずらし (%)
+// @param uCoreSoft 30..300 = 100 @desc 棘の芯の光の強さを抑える距離の下限 (%)。上げるほど芯の輝きが柔らかくなる
+// @param uStepScale 70..130 = 100 @desc 光線の進み幅 (%)。小さいと密に積算する
+// @param uVignetteAmt 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrainAmt 0..100 = 0 @desc フィルムグレインの量 (%)
+// @param uIceTint color = #ffffff @desc 氷の色。掛け算で白なら無変化
+// @param uFarTint color = #ffffff @desc (未使用) 奥の色味
 uniform float uSpike; uniform float uChaos; uniform float uSpeed; uniform float uEmbed;
 uniform float uCellScale;    // 八面体の格子の細かさ (%)
 uniform float uTwistRate;    // トンネルのねじれの強さ (%)
@@ -3711,37 +3711,37 @@ void mainImage(out vec4 o, vec2 fragCoord) {
   ch: ["","","",""],
   src: `// Strange Lab Goop (dt2cD3) — 原作 2-pass。Buffer A はフィードバック無しの手続き fbm
 //   高さ場なので単一パスにインライン化。mip 相当は多点ぼかしで近似、cubemap 反射は手続き env で代替。
-// @param uEnv 0..1.5 = 1.0
-// @param uSpeed 0..3 = 1.0
-// @param uBlobScale 60..250 = 100
-// @param uCoarseScale 30..300 = 100
-// @param uBlobDetail 2..3 = 3
-// @param uGoopLevel -20..20 = 0
-// @param uRampSharp 0..300 = 0
-// @param uOccAmount 0..250 = 100
-// @param uBlurReach 50..200 = 100
-// @param uBumpStrength 20..300 = 100
-// @param uHighlightSize 40..140 = 100
-// @param uSideLight 0..300 = 100
-// @param uGoopLowColor color = #ffffff
-// @param uGoopHighColor color = #ffffff
-// @param uCavityColor color = #000000
-// @param uSkyColor color = #ffffff
-// @param uHighlightColor color = #ffffff
-// @param uHeightTone 30..300 = 100
-// @param uReflectAmount 0..200 = 100
-// @param uEnvRotate -180..180 = 0
-// @param uHorizonShift -50..50 = 0
-// @param uHighlightSoft 30..300 = 100
-// @param uSurfaceTiltX -100..100 = 0
-// @param uSurfaceTiltY -100..100 = 0
-// @param uReflectFov 30..300 = 100
-// @param uRimReflect 0..150 = 0
-// @param uFieldShiftX -100..100 = 0
-// @param uFieldShiftY -100..100 = 0
-// @param uFieldRotate -180..180 = 0
-// @param uSurfaceGrain 0..60 = 0
-// @param uEdgeDark 0..100 = 0
+// @param uEnv 0..1.5 = 1.0 @desc 映り込むハイライトの強さ。0 で消える
+// @param uSpeed 0..3 = 1.0 @desc 塊が動く速さ。0 で止まる
+// @param uBlobScale 60..250 = 100 @desc 塊の模様の細かさ (%)。大きいほど細かい
+// @param uCoarseScale 30..300 = 100 @desc 最も大きなうねりの細かさ (%)
+// @param uBlobDetail 2..3 = 3 @desc ノイズの重ね数。2 または 3 (四捨五入)
+// @param uGoopLevel -20..20 = 0 @desc 塊の量の偏り。正で山が増え、負で谷が増える
+// @param uRampSharp 0..300 = 0 @desc 塊の縁の硬さ (%)。0 で原作のまま
+// @param uOccAmount 0..250 = 100 @desc 窪みの影の濃さ (%)
+// @param uBlurReach 50..200 = 100 @desc 影と法線をぼかす半径 (%)
+// @param uBumpStrength 20..300 = 100 @desc 表面の凹凸の強さ (%)
+// @param uHighlightSize 40..140 = 100 @desc 上からの映り込みの境目の高さ (%)。上げると狭く、下げると広くなる
+// @param uSideLight 0..300 = 100 @desc 横からの映り込みの強さ (%)
+// @param uGoopLowColor color = #ffffff @desc 谷 (低い所) の色。掛け算で白なら無変化
+// @param uGoopHighColor color = #ffffff @desc 山 (高い所) の色。掛け算で白なら無変化
+// @param uCavityColor color = #000000 @desc 窪みの影に足す色。黒で従来どおり
+// @param uSkyColor color = #ffffff @desc 映り込む空の色。掛け算で白なら無変化
+// @param uHighlightColor color = #ffffff @desc 映り込むハイライトの色。掛け算で白なら無変化
+// @param uHeightTone 30..300 = 100 @desc 谷から山への色の変わり方の指数 (%)。形は変わらない
+// @param uReflectAmount 0..200 = 100 @desc 映り込み全体の強さ (%)
+// @param uEnvRotate -180..180 = 0 @desc 映り込む環境の水平回転 (度)
+// @param uHorizonShift -50..50 = 0 @desc 環境の地平線の上下 (%)
+// @param uHighlightSoft 30..300 = 100 @desc 上からの映り込みの縁のぼけ (%)。小さいと鋭い
+// @param uSurfaceTiltX -100..100 = 0 @desc 表面全体の傾き、横 (%)。映り込みの位置が動く
+// @param uSurfaceTiltY -100..100 = 0 @desc 表面全体の傾き、縦 (%)
+// @param uReflectFov 30..300 = 100 @desc 映り込みの画角 (%)。大きいほど広角で、画面内の映り込みの差が大きい
+// @param uRimReflect 0..150 = 0 @desc 傾いた面ほど映り込みを強める量 (%)
+// @param uFieldShiftX -100..100 = 0 @desc 塊の模様の横ずらし (%)
+// @param uFieldShiftY -100..100 = 0 @desc 塊の模様の縦ずらし (%)
+// @param uFieldRotate -180..180 = 0 @desc 塊の模様の回転 (度)
+// @param uSurfaceGrain 0..60 = 0 @desc 表面の粒の量 (%)
+// @param uEdgeDark 0..100 = 0 @desc 周辺の暗がりの量 (%)
 uniform float uEnv; uniform float uSpeed;
 uniform float uBlobScale; // 塊の細かさ (%)
 uniform float uCoarseScale; // 最も大きなうねりの細かさ (%)
@@ -3973,40 +3973,40 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   src: `// Gyroid Cavern — 三重周期の gyroid 極小曲面を空間充填した SDF 洞窟。
 //   内側を漂う定点カメラを全方位(360°天地左右)に滑らかタンブルさせ、
 //   グリッチ(水平スライス横ずれ)+ めり込み半透明(手前を透過して奥を見せる)を付与。
-// @param uOrbit 0..3 = 1.0
-// @param uWander 0..2 = 1.0
-// @param uRadius 0.2..1.5 = 0.55
-// @param uGlitch 0..1 = 0.15
-// @param uEmbed 0..1.5 = 1.0
-// @param uCellFreq 80..118 = 100
-// @param uWallThick 30..52 = 42
-// @param uStretch 70..125 = 100
-// @param uBumpDepth 0..300 = 100
-// @param uBumpFreq 50..200 = 100
-// @param uSliceCount 2..16 = 6
-// @param uBurstRate 4..60 = 14
-// @param uGloss 10..300 = 100
-// @param uFogStart 10..100 = 100
-// @param uSunAzimuth -180..180 = 0
-// @param uSunElevation -40..40 = 0
-// @param uSpecAmount 0..300 = 100
-// @param uShadowAmount 15..100 = 55
-// @param uAmbientFloor 20..300 = 100
-// @param uFocal 60..160 = 100
-// @param uPitchOffset -40..40 = 0
-// @param uRollOffset -60..60 = 0
-// @param uLensBend -50..100 = 0
-// @param uWetSpots 0..300 = 100
-// @param uBlotchScale 40..250 = 100
-// @param uMicroShade 0..300 = 100
-// @param uColorBandFreq 30..300 = 100
-// @param uColorBias -50..50 = 0
-// @param uVignetteAmount 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uSunTint color = #ffffff
-// @param uSkyTint color = #ffffff
-// @param uTealTint color = #ffffff
-// @param uPurpleTint color = #ffffff
+// @param uOrbit 0..3 = 1.0 @desc カメラのタンブル (回転と移動) の速さ。0 で止まる
+// @param uWander 0..2 = 1.0 @desc 視線の上下の振れ幅。0.2 から 1 の範囲で効き、1 以上は同じ
+// @param uRadius 0.2..1.5 = 0.55 @desc カメラが中心から離れる距離
+// @param uGlitch 0..1 = 0.15 @desc 水平スライスの横ずれ量。0 でなし
+// @param uEmbed 0..1.5 = 1.0 @desc めり込み半透明の強さ。上げると手前の壁を透かして奥を見せる。0 でなし
+// @param uCellFreq 80..118 = 100 @desc gyroid 構造の細かさ (%)
+// @param uWallThick 30..52 = 42 @desc 壁の厚み (%)
+// @param uStretch 70..125 = 100 @desc 縦方向の模様の細かさ (%)。上げると縦に縮み、下げると縦に伸びる
+// @param uBumpDepth 0..300 = 100 @desc 壁の細かい凹凸の深さ (%)
+// @param uBumpFreq 50..200 = 100 @desc 壁の細かい凹凸の細かさ (%)
+// @param uSliceCount 2..16 = 6 @desc グリッチで横ずれする水平の段の細かさ。大きいほど細い段
+// @param uBurstRate 4..60 = 14 @desc 大きくずれる段の割合 (%)
+// @param uGloss 10..300 = 100 @desc 濡れた光沢の鋭さ (%)
+// @param uFogStart 10..100 = 100 @desc 奥の霞が始まる距離 (%)
+// @param uSunAzimuth -180..180 = 0 @desc 光源の水平方向の回転 (度)
+// @param uSunElevation -40..40 = 0 @desc 光源の高さの上げ下げ (度)
+// @param uSpecAmount 0..300 = 100 @desc 濡れた光沢の強さ (%)
+// @param uShadowAmount 15..100 = 55 @desc 影の部分に残る明るさ (%)。小さいほど影が濃い
+// @param uAmbientFloor 20..300 = 100 @desc 影でも残る底上げの明るさ (%)
+// @param uFocal 60..160 = 100 @desc 画角の係数 (%)。上げると望遠
+// @param uPitchOffset -40..40 = 0 @desc 視線の上下の底上げ (度)
+// @param uRollOffset -60..60 = 0 @desc 視界の傾きの底上げ (度)
+// @param uLensBend -50..100 = 0 @desc 画面周辺のレンズ歪み (%)。正で周辺ほど視野が広がり、負で狭まる
+// @param uWetSpots 0..300 = 100 @desc 濡れ斑ハイライトの量 (%)
+// @param uBlotchScale 40..250 = 100 @desc 濡れ斑の細かさ (%)。大きいほど細かい
+// @param uMicroShade 0..300 = 100 @desc 微細な陰影のむら (%)
+// @param uColorBandFreq 30..300 = 100 @desc ティールと紫の色の縞の細かさ (%)
+// @param uColorBias -50..50 = 0 @desc ティールと紫の偏り (%)。正で紫、負でティール
+// @param uVignetteAmount 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uSunTint color = #ffffff @desc 太陽光の色。掛け算で白なら無変化
+// @param uSkyTint color = #ffffff @desc 空と霞の色。掛け算で白なら無変化
+// @param uTealTint color = #ffffff @desc ティール側の壁色。掛け算で白なら無変化
+// @param uPurpleTint color = #ffffff @desc 紫側の壁色。掛け算で白なら無変化
 uniform float uOrbit; uniform float uWander; uniform float uRadius; uniform float uGlitch; uniform float uEmbed;
 uniform float uCellFreq; // gyroid の細かさ (%)
 uniform float uWallThick; // 壁の厚み
@@ -4251,42 +4251,42 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   src: `// Jungle (Wd23RD) — 空間充填フラクタルの中をカメラが飛び抜ける。per-cell 乱数で
 //   セルごとに折り畳み位相と色を変えてランダムネスを付与。さらに WdVXRm "Ghostly Cavern"
 //   を参考に、カメラがシェイプにめり込んでいる(最初のヒットが近い)ときは半透明にして奥を透かす。
-// @param uChaos 0..1.5 = 0.6
-// @param uEmbed 0..1.5 = 1.0
-// @param uSpeed 0..3 = 1.0
-// @param uCellSize 60..200 = 100
-// @param uFoldScale 85..125 = 100
-// @param uFoldBlend 10..400 = 100
-// @param uFoldAngleXY 70..140 = 100
-// @param uFoldAngleYZ 70..140 = 100
-// @param uFoldShear 85..125 = 100
-// @param uBlobRadius 50..200 = 100
-// @param uShellThick 40..400 = 100
-// @param uBumpHeight 0..300 = 100
-// @param uStripeFreq 40..250 = 100
-// @param uFov 50..200 = 100
-// @param uFogDensity 20..300 = 100
-// @param uRoll -180..180 = 0
-// @param uCenterX -60..60 = 0
-// @param uCenterY -60..60 = 0
-// @param uLookYaw -60..60 = 0
-// @param uLookPitch -60..60 = 0
-// @param uSwayAmp 0..200 = 100
-// @param uRollSwing 0..200 = 100
-// @param uLightAzim -150..150 = 0
-// @param uLightElev -60..60 = 0
-// @param uShadowFloor 0..200 = 100
-// @param uGloss 40..300 = 100
-// @param uGlossAmount 0..300 = 100
-// @param uRim 0..100 = 0
-// @param uDepthRed 0..300 = 100
-// @param uEmbedFalloff 40..200 = 100
-// @param uMaxDist 8..100 = 100
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uLeafColor color = #ffffff
-// @param uSkyColor color = #ffffff
-// @param uDeepColor color = #ffffff
+// @param uChaos 0..1.5 = 0.6 @desc セルごとの折り畳み位相のばらつき。大きいほどセルごとに形が揃わない
+// @param uEmbed 0..1.5 = 1.0 @desc カメラがめり込んだとき手前の面を半透明にして奥を透かす量
+// @param uSpeed 0..3 = 1.0 @desc 動きの速さ。0 で止まる (形の変化とカメラの前進)
+// @param uCellSize 60..200 = 100 @desc 折り畳みセルの大きさ (%)
+// @param uFoldScale 85..125 = 100 @desc フラクタルの縮尺 (%)。大きいほど細かい入れ子
+// @param uFoldBlend 10..400 = 100 @desc 折り目の丸め (%)。小さいと鋭く、大きいと滑らか
+// @param uFoldAngleXY 70..140 = 100 @desc 折り畳みの XY 回転の基準角 (%)
+// @param uFoldAngleYZ 70..140 = 100 @desc 折り畳みの YZ 回転の基準角 (%)
+// @param uFoldShear 85..125 = 100 @desc 折り畳みのずらし (%)。形の傾き
+// @param uBlobRadius 50..200 = 100 @desc 核になる球の半径 (%)
+// @param uShellThick 40..400 = 100 @desc 殻の厚み (%)。小さいと薄皮
+// @param uBumpHeight 0..300 = 100 @desc 表面の凹凸の高さ (%)
+// @param uStripeFreq 40..250 = 100 @desc 表面の縞模様の細かさ (%)
+// @param uFov 50..200 = 100 @desc 画角 (%)。大きいと望遠
+// @param uFogDensity 20..300 = 100 @desc 奥の霞の濃さ (%)
+// @param uRoll -180..180 = 0 @desc 画面の回転 (度)
+// @param uCenterX -60..60 = 0 @desc 視線の中心の左右 (%)
+// @param uCenterY -60..60 = 0 @desc 視線の中心の上下 (%)
+// @param uLookYaw -60..60 = 0 @desc 視線の左右へのずれ (度)
+// @param uLookPitch -60..60 = 0 @desc 視線の上下へのずれ (度)
+// @param uSwayAmp 0..200 = 100 @desc カメラの首振りの振れ幅 (%)
+// @param uRollSwing 0..200 = 100 @desc カメラの傾きの揺れ幅 (%)
+// @param uLightAzim -150..150 = 0 @desc 光源の水平の向き (度)
+// @param uLightElev -60..60 = 0 @desc 光源の高さ (度)
+// @param uShadowFloor 0..200 = 100 @desc 影の底の明るさ (%)。下げると影が深い
+// @param uGloss 40..300 = 100 @desc ハイライトの鋭さ (%)。大きいほど絞られる
+// @param uGlossAmount 0..300 = 100 @desc ハイライトの強さ (%)
+// @param uRim 0..100 = 0 @desc 縁の光の強さ (%)
+// @param uDepthRed 0..300 = 100 @desc 奥ほど赤く焼ける量 (%)
+// @param uEmbedFalloff 40..200 = 100 @desc 半透明になる距離の効き方 (%)。上げると近くだけ透ける
+// @param uMaxDist 8..100 = 100 @desc 見通せる最大距離 (%)。下げると奥が背景に抜ける
+// @param uVignette 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrain 0..100 = 0 @desc 粒状のざらつきの量 (%)
+// @param uLeafColor color = #ffffff @desc 葉の色に掛けるティント
+// @param uSkyColor color = #ffffff @desc 背景の明るい側に掛けるティント
+// @param uDeepColor color = #ffffff @desc 背景の周辺 (暗い側) に掛けるティント
 uniform float uChaos; uniform float uEmbed; uniform float uSpeed;
 uniform float uCellSize; // 折り畳みセルの大きさ (%)
 uniform float uFoldScale; // フラクタルの縮尺 (%)。大きいほど細かい入れ子
@@ -4462,32 +4462,32 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   name: "4D Julia Fractal (tt2fRw)",
   ch: ["","","",""],
   src: `// 4D Julia Fractal Animation (tt2fRw) — 4D クォータニオン Julia 集合のレイマーチ。
-// @param uJuliaScale 70..130 = 100
-// @param uJuliaBiasX -100..100 = 0
-// @param uJuliaBiasW -100..100 = 0
-// @param uSliceW -100..100 = 0
-// @param uJuliaIter 6..25 = 25
-// @param uCamDist 60..150 = 100
-// @param uCamHeight -100..100 = 0
-// @param uSurfaceBloat 0..800 = 100
-// @param uSpecPow 20..400 = 100
-// @param uSpecAmount 0..300 = 100
-// @param uLightYaw -180..180 = 0
-// @param uLightPitch -80..80 = 0
-// @param uDiffuseAmount 0..250 = 100
-// @param uAmbientLift 0..100 = 0
-// @param uRimAmount 0..100 = 0
-// @param uDepthDark 0..100 = 0
-// @param uStepAO 0..100 = 0
-// @param uFov 70..200 = 100
-// @param uCamRoll -45..45 = 0
-// @param uViewShiftX -100..100 = 0
-// @param uViewShiftY -100..100 = 0
-// @param uOrbitPhase 0..360 = 0
-// @param uBodyColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uBackColor color = #000000
+// @param uJuliaScale 70..130 = 100 @desc Julia 定数の大きさ (%)。形の複雑さが変わる
+// @param uJuliaBiasX -100..100 = 0 @desc Julia 定数の x 成分のずれ (%)。0 で元の形
+// @param uJuliaBiasW -100..100 = 0 @desc Julia 定数の w 成分のずれ (%)。0 で元の形
+// @param uSliceW -100..100 = 0 @desc 4D 空間を切る w 位置 (%)。0 で元の断面
+// @param uJuliaIter 6..25 = 25 @desc 反復回数。少ないほど単純な塊
+// @param uCamDist 60..150 = 100 @desc カメラの軌道半径 (%)
+// @param uCamHeight -100..100 = 0 @desc カメラの高さ (%)。0 で水平
+// @param uSurfaceBloat 0..800 = 100 @desc 表面の膨らみ (%)。0 で痩せ、大きいと太る
+// @param uSpecPow 20..400 = 100 @desc ハイライトの鋭さ (%)
+// @param uSpecAmount 0..300 = 100 @desc ハイライトの強さ (%)
+// @param uLightYaw -180..180 = 0 @desc 光の水平の向き (度)。カメラ基準
+// @param uLightPitch -80..80 = 0 @desc 光の高さ (度)。0 で水平、正で上から
+// @param uDiffuseAmount 0..250 = 100 @desc 拡散光の強さ (%)
+// @param uAmbientLift 0..100 = 0 @desc 影側の底上げ (%)。0 で影が真っ暗
+// @param uRimAmount 0..100 = 0 @desc 輪郭のリムライトの強さ (%)
+// @param uDepthDark 0..100 = 0 @desc 奥ほど暗く沈む度合い (%)
+// @param uStepAO 0..100 = 0 @desc 窪みの陰の濃さ (%)。レイの反復数から出す
+// @param uFov 70..200 = 100 @desc 画角 (%)。大きいと望遠
+// @param uCamRoll -45..45 = 0 @desc カメラの傾き (度)
+// @param uViewShiftX -100..100 = 0 @desc 画面内の横ずらし (%)
+// @param uViewShiftY -100..100 = 0 @desc 画面内の縦ずらし (%)
+// @param uOrbitPhase 0..360 = 0 @desc 軌道とアニメの位相 (度)。形の出る瞬間を選ぶ
+// @param uBodyColor color = #ffffff @desc 本体の色に掛けるティント
+// @param uSpecColor color = #ffffff @desc ハイライトの色に掛けるティント
+// @param uRimColor color = #ffffff @desc リムライトの色
+// @param uBackColor color = #000000 @desc 背景に足す色。黒で従来どおり
 uniform float uJuliaScale; // Julia 定数の大きさ (%)。形の複雑さが変わる
 uniform float uJuliaBiasX; // Julia 定数の x 成分のずれ (%)。0 で元の形
 uniform float uJuliaBiasW; // Julia 定数の w 成分のずれ (%)。0 で元の形
@@ -4515,7 +4515,7 @@ uniform vec3 uSpecColor;   // ハイライトの色 (ティント)
 uniform vec3 uRimColor;    // リムライトの色
 uniform vec3 uBackColor;   // 背景に足す色。黒で従来どおり
 //   原作に忠実。VJ 向けに速度パラメータとアスペクト補正(横長での歪み防止)を追加。
-// @param uSpeed 0..3 = 1.0
+// @param uSpeed 0..3 = 1.0 @desc 動きの速さ。0 で止まる (軌道・形・光・色の変化)
 uniform float uSpeed;
 
 vec3 cameraPosition;
@@ -4643,39 +4643,39 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   name: "Glitch Aesthetic (wfjfRm)",
   ch: ["","","",""],
   src: `// 20250921 Glitch Aesthetic (wfjfRm) — モーフィングする SDF ブロブ(八面体/四面体/トーラスの
-// @param uBlobCount 3..15 = 15
-// @param uBlobSpread 40..160 = 100
-// @param uBlend 20..250 = 100
-// @param uOctSize 40..150 = 100
-// @param uTetSize 40..200 = 100
-// @param uTorusRadius 50..200 = 100
-// @param uHoleSize 0..200 = 100
-// @param uCamHeight -200..400 = 100
-// @param uCamDist 88..140 = 100
-// @param uAmbient 0..400 = 100
-// @param uHexSize 50..200 = 100
-// @param uTunnelCurve 30..200 = 100
-// @param uLightAzimuth -75..75 = 0
-// @param uLightHeight 20..300 = 100
-// @param uRimWidth 0..100 = 0
-// @param uFog 0..100 = 0
-// @param uFov 50..160 = 100
-// @param uRoll -180..180 = 0
-// @param uOrbitPhase -75..75 = 0
-// @param uFrameY -100..100 = 0
-// @param uOrbitFlatten 20..170 = 100
-// @param uOrbitDepth 20..170 = 100
-// @param uBlobPhase 0..200 = 100
-// @param uTorusTube 40..200 = 100
-// @param uTetCore 40..200 = 100
-// @param uOctCount 1..10 = 6
-// @param uHexStagger 0..200 = 100
-// @param uHexLineSoft 30..180 = 100
-// @param uHexDepthFade 30..250 = 100
-// @param uGrain 0..100 = 0
-// @param uTunnelColor color = #ffffff
-// @param uAmbientColor color = #ffffff
-// @param uRimColor color = #ffffff
+// @param uBlobCount 3..15 = 15 @desc 浮かぶ塊の数
+// @param uBlobSpread 40..160 = 100 @desc 塊が散らばる範囲 (%)
+// @param uBlend 20..250 = 100 @desc 塊同士を溶かし合わせる幅 (%)
+// @param uOctSize 40..150 = 100 @desc 八面体の大きさ (%)
+// @param uTetSize 40..200 = 100 @desc 四面体の大きさ (%)
+// @param uTorusRadius 50..200 = 100 @desc トーラスの輪の半径 (%)
+// @param uHoleSize 0..200 = 100 @desc 八面体にあく四角い穴の大きさ (%)
+// @param uCamHeight -200..400 = 100 @desc カメラの高さ (%)。負で下から見上げる
+// @param uCamDist 88..140 = 100 @desc カメラの軌道半径 (%)
+// @param uAmbient 0..400 = 100 @desc 影の側の底上げ (%)。0 で影が真っ黒
+// @param uHexSize 50..200 = 100 @desc 表面の六角タイルの幅 (%)
+// @param uTunnelCurve 30..200 = 100 @desc 表面トンネルの湾曲 (%)
+// @param uLightAzimuth -75..75 = 0 @desc 光源の回り込み (度)。光が当たる側が変わる
+// @param uLightHeight 20..300 = 100 @desc 光源の高さ (%)
+// @param uRimWidth 0..100 = 0 @desc 輪郭のリムライトの幅 (%)。0 でなし、大きいほど内側まで回り込む
+// @param uFog 0..100 = 0 @desc 奥の塊が背景色へ溶ける度合い (%)
+// @param uFov 50..160 = 100 @desc 画角のズーム (%)。上げると塊が大きく写る
+// @param uRoll -180..180 = 0 @desc 画面の傾き (度)
+// @param uOrbitPhase -75..75 = 0 @desc カメラの周回の開始位置 (度)
+// @param uFrameY -100..100 = 0 @desc 注視点の高さ (%)。塊の群れが画面上で上下する
+// @param uOrbitFlatten 20..170 = 100 @desc 塊の浮かぶ縦方向の広がり (%)
+// @param uOrbitDepth 20..170 = 100 @desc 塊の浮かぶ奥行き方向の広がり (%)
+// @param uBlobPhase 0..200 = 100 @desc 塊ごとの動きのずれ (%)。0 で揃って動く
+// @param uTorusTube 40..200 = 100 @desc トーラスの管の太さ (%)
+// @param uTetCore 40..200 = 100 @desc 四面体にくっつく箱の大きさ (%)
+// @param uOctCount 1..10 = 6 @desc 穴あき八面体にする塊の数。残りは四面体・トーラスへ
+// @param uHexStagger 0..200 = 100 @desc 六角タイルの段ずれ (%)。0 で縦に揃う
+// @param uHexLineSoft 30..180 = 100 @desc 六角の線のにじみ (%)
+// @param uHexDepthFade 30..250 = 100 @desc トンネルの奥行きによる線の消え方 (%)
+// @param uGrain 0..100 = 0 @desc 塊に乗せる粒状ノイズの量 (%)
+// @param uTunnelColor color = #ffffff @desc 表面の六角模様の色に掛けるティント。白で無変化
+// @param uAmbientColor color = #ffffff @desc 影の側の底上げの色。白で無変化
+// @param uRimColor color = #ffffff @desc リムライトの色。白で無変化
 uniform float uBlobCount;  // 浮かぶ塊の数
 uniform float uBlobSpread; // 塊が散らばる範囲 (%)
 uniform float uBlend;      // 塊同士を溶かし合わせる幅 (%)
@@ -4711,7 +4711,7 @@ uniform vec3 uAmbientColor; // 影の側の底上げの色 (掛け算)。白で�
 uniform vec3 uRimColor; // リムライトの色 (掛け算)。白で無変化
 //   スムーズ結合)を hexatunnel パターンでテクスチャリング。原作に忠実。
 //   VJ: 速度パラメータ + 背景 alpha=0 (Slot B に置くと背景が透過して下の Slot A が出る)。
-// @param uSpeed 0..3 = 1.0
+// @param uSpeed 0..3 = 1.0 @desc 動きの速さ。0 で止まる (塊の動き・回転・カメラの周回)
 uniform float uSpeed;
 
 float T;   // = iTime * uSpeed (全体の時間)
@@ -4865,36 +4865,36 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   ch: ["","","",""],
   src: `// EvilSeed (llBGRd) — グリッド状に回転する花/種のレイマーチ。
 //   改変: 中心の縦シリンダ(棒/茎 s-0.1)を削除。テクスチャ入力は手続きノイズに置換して自己完結化。
-// @param uSpeed 0..3 = 1.0
-// @param uPetals 3..16 = 10
-// @param uPetalDepth 0..250 = 100
-// @param uSpiralTight 40..200 = 100
-// @param uBladeThick 30..300 = 100
-// @param uBladeReach 55..110 = 100
-// @param uBob 0..200 = 100
-// @param uStagger 0..100 = 0
-// @param uLensBulge 0..200 = 100
-// @param uEmber 0..160 = 100
-// @param uGrainCount 20..250 = 100
-// @param uFogDensity 0..300 = 100
-// @param uContactDark 0..300 = 100
-// @param uCellDensity 50..200 = 100
-// @param uCamPitch -180..180 = 0
-// @param uCamRoll -180..180 = 0
-// @param uFovWide 50..200 = 100
-// @param uAimX -100..100 = 0
-// @param uAimY -100..100 = 0
-// @param uCamHeight -50..50 = 0
-// @param uCamSide -50..50 = 0
-// @param uTrailGap 0..800 = 100
-// @param uLayerBias -100..100 = 0
-// @param uStripeAmt 0..300 = 100
-// @param uFacingShade -100..100 = 0
-// @param uHaze 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uBladeColor color = #ffffff
-// @param uEmberColor color = #ffffff
-// @param uHazeColor color = #ffffff
+// @param uSpeed 0..3 = 1.0 @desc 動きの速さ。0 で止まる (花の回転・上下の揺れ・カメラの前進)
+// @param uPetals 3..16 = 10 @desc 花弁 (刃) の枚数
+// @param uPetalDepth 0..250 = 100 @desc 花弁の波打ちの深さ (%)。0 で円盤
+// @param uSpiralTight 40..200 = 100 @desc 花弁の渦の巻き (半径方向の波数) (%)
+// @param uBladeThick 30..300 = 100 @desc 刃の厚み (%)
+// @param uBladeReach 55..110 = 100 @desc 刃が外へ伸びる長さ (%)
+// @param uBob 0..200 = 100 @desc 各花が上下に揺れる幅 (%)
+// @param uStagger 0..100 = 0 @desc 列ごとに花を横へずらすレンガ配置 (%)
+// @param uLensBulge 0..200 = 100 @desc 画面周辺の遠近のふくらみ (%)
+// @param uEmber 0..160 = 100 @desc 影側に出る赤い熾火の量 (%)
+// @param uGrainCount 20..250 = 100 @desc 刃の表面の縞模様の細かさ (%)
+// @param uFogDensity 0..300 = 100 @desc 奥へ向かって暗く沈む度合い (%)
+// @param uContactDark 0..300 = 100 @desc 刃のすき間の暗がりの濃さ (%)
+// @param uCellDensity 50..200 = 100 @desc 格子のセルの細かさ (%)。大きいほど花が小さく密
+// @param uCamPitch -180..180 = 0 @desc カメラの俯仰角 (度)
+// @param uCamRoll -180..180 = 0 @desc カメラのロール角 (度)
+// @param uFovWide 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uAimX -100..100 = 0 @desc 画面の中心の左右ずれ (%)
+// @param uAimY -100..100 = 0 @desc 画面の中心の上下ずれ (%)
+// @param uCamHeight -50..50 = 0 @desc カメラの高さ (%)。花の層から上下へ離れる
+// @param uCamSide -50..50 = 0 @desc カメラの横位置 (%)
+// @param uTrailGap 0..800 = 100 @desc 3 層の重ね描きの時間差 (%)。大きいほど残像が散る
+// @param uLayerBias -100..100 = 0 @desc 3 層の重み。正で速く回る層、負で遅い層を強く出す
+// @param uStripeAmt 0..300 = 100 @desc 刃の縞模様が効く強さ (%)
+// @param uFacingShade -100..100 = 0 @desc 刃の向きによる陰影 (%)。正で縁が暗く、負で平坦
+// @param uHaze 0..100 = 0 @desc 奥の霞の色の乗り具合 (%)
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uBladeColor color = #ffffff @desc 明るい面の色に掛けるティント
+// @param uEmberColor color = #ffffff @desc 影側の熾火の色に掛けるティント
+// @param uHazeColor color = #ffffff @desc 奥の霞の色
 uniform float uSpeed;
 uniform float uPetals;      // 花弁 (刃) の枚数。既定 10
 uniform float uPetalDepth;  // 花弁の波打ちの深さ (%)。0 で円盤
@@ -5059,33 +5059,33 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   src: `// sigint (4syfDV) 改変 — 傍受信号風の横帯オシロスコープ。
 //   改変: 各バンドの「高さ・横位置」を常に連続的に変化させ続ける(止まらず動く)。
 //   帯内の信号もスクロール。各バンドは固有の位相/速度で伸縮・横移動する。
-// @param uMorph 0.1..3 = 1.0    高さ・位置が変化し続ける速さ
-// @param uJitter 0..1 = 0.6     横移動の振幅
-// @param uSpeed 0..3 = 1.0      信号スクロール速度
-// @param uBandMinH 20..300 = 100
-// @param uBandMaxH 40..200 = 100
-// @param uBandCount 4..16 = 16
-// @param uFineStripe 40..250 = 100
-// @param uCoarseWave 40..300 = 100
-// @param uCompositeShare 0..300 = 100
-// @param uBinThresh 20..250 = 100
-// @param uBandSlant -100..100 = 0
-// @param uBandGap 0..80 = 0
-// @param uBandShuffle 0..60 = 0
-// @param uStripeEdge 20..300 = 100
-// @param uBinSoft 0..100 = 0
-// @param uWaveShape -100..100 = 0
-// @param uScrollSpread 0..100 = 0
-// @param uBandTaper -100..100 = 0
-// @param uBandLine 0..8 = 0
-// @param uMirrorX 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uScanline 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uSoftTint color = #ffffff
-// @param uStripeTint color = #ffffff
-// @param uOddBandTint color = #ffffff
-// @param uBandLineColor color = #ffffff
+// @param uMorph 0.1..3 = 1.0    高さ・位置が変化し続ける速さ @desc 帯の高さ・位置が変化し続ける速さ
+// @param uJitter 0..1 = 0.6     横移動の振幅 @desc 帯の横移動の振幅
+// @param uSpeed 0..3 = 1.0      信号スクロール速度 @desc 信号スクロールの速さ。0 で流れが止まる
+// @param uBandMinH 20..300 = 100 @desc 帯の最小の高さ (%)
+// @param uBandMaxH 40..200 = 100 @desc 帯の最大の高さ (%)
+// @param uBandCount 4..16 = 16 @desc 帯の数。減らすと最上段の帯が残りを埋める
+// @param uFineStripe 40..250 = 100 @desc 細かい縞の周波数 (%)
+// @param uCoarseWave 40..300 = 100 @desc 中域の波の周波数 (%)
+// @param uCompositeShare 0..300 = 100 @desc 合成波になる帯の割合 (%)
+// @param uBinThresh 20..250 = 100 @desc 2 値化の閾値 (%)。縞の白黒の比が変わる
+// @param uBandSlant -100..100 = 0 @desc 帯内の縞の傾き (%)。符号で向きが変わる
+// @param uBandGap 0..80 = 0 @desc 各帯の端に空ける黒い隙間 (帯の高さの %)
+// @param uBandShuffle 0..60 = 0 @desc 帯ごとの縞の周波数・合成波の組み合わせを入れ替える
+// @param uStripeEdge 20..300 = 100 @desc 縞をソリッドな白黒にする傾きのしきい値 (%)。小さいほど多くが白黒、大きいほど階調が残る
+// @param uBinSoft 0..100 = 0 @desc 白黒の境のにじみ (%)
+// @param uWaveShape -100..100 = 0 @desc 波形の曲がり (%)。正で暗部が広がり、負で明部が広がる
+// @param uScrollSpread 0..100 = 0 @desc 帯ごとの流れる速さのばらつき (%)
+// @param uBandTaper -100..100 = 0 @desc 帯の高さの傾斜 (%)。正で上ほど高く、負で下ほど高い
+// @param uBandLine 0..8 = 0 @desc 帯の端に引く線の太さ (px)
+// @param uMirrorX 0..100 = 0 @desc 左右対称にする度合い (%)
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uScanline 0..100 = 0 @desc 走査線の濃さ (%)
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uSoftTint color = #ffffff @desc なだらかな階調部分の色に掛けるティント
+// @param uStripeTint color = #ffffff @desc ソリッドな縞の色に掛けるティント
+// @param uOddBandTint color = #ffffff @desc 奇数番の帯の色に掛けるティント
+// @param uBandLineColor color = #ffffff @desc 帯の端の線の色
 uniform float uMorph; uniform float uJitter; uniform float uSpeed;
 uniform float uBandMinH; // 帯の最小の高さ (%)
 uniform float uBandMaxH; // 帯の最大の高さ (%)
@@ -5182,24 +5182,24 @@ void mainImage(out vec4 O, vec2 u){
   src: `// Shadertoy ttfBDH "Cave at the Edge of the Universe" by jarble — 単一パスそのまま移植。
 //   iMouse 視点回転は除去(自動フライト固定)。marching 上限 1000→260 に短縮(ANGLE/TDR 対策)。
 //   不透明(透過なし)。
-// @param uCaveWidth 94..104 = 100
-// @param uWallCurve 94..112 = 100
-// @param uCaveOpen 85..115 = 100
-// @param uZStretch 88..108 = 100
-// @param uWarpScale 94..104 = 100
-// @param uCaveShift 50..130 = 100
-// @param uRockRelief 95..130 = 100
-// @param uSwell 50..175 = 100
-// @param uPhaseSpread 70..140 = 100
-// @param uColorBand 50..200 = 100
-// @param uAmbient 0..250 = 100
-// @param uKeyLight 20..250 = 100
-// @param uColorPhase -20..60 = 0
-// @param uRim 0..200 = 0
-// @param uDepthFade 0..150 = 0
-// @param uVignette 0..150 = 0
-// @param uWallTint color = #ffffff
-// @param uSpecTint color = #ffffff
+// @param uCaveWidth 94..104 = 100 @desc 洞窟の断面の広さ (%)
+// @param uWallCurve 94..112 = 100 @desc 壁の反りの強さ (%)
+// @param uCaveOpen 85..115 = 100 @desc 空洞の開き具合 (%)
+// @param uZStretch 88..108 = 100 @desc 奥行き方向の模様の周期 (%)
+// @param uWarpScale 94..104 = 100 @desc 断面の歪みの大きさ (%)
+// @param uCaveShift 50..130 = 100 @desc 洞窟の軸の横ずれ (%)。0 で中心
+// @param uRockRelief 95..130 = 100 @desc 壁の凹凸の深さ (%)
+// @param uSwell 50..175 = 100 @desc 空洞の膨らみ (%)
+// @param uPhaseSpread 70..140 = 100 @desc 反復の初期位相のばらつき (%)
+// @param uColorBand 50..200 = 100 @desc 壁の色の縞の細かさ (%)
+// @param uAmbient 0..250 = 100 @desc 環境光の量 (%)
+// @param uKeyLight 20..250 = 100 @desc 主光源の強さ (%)
+// @param uColorPhase -20..60 = 0 @desc 壁の色縞の位相ずれ (%)
+// @param uRim 0..200 = 0 @desc 縁の明るみ (%)。0 でなし
+// @param uDepthFade 0..150 = 0 @desc 奥ほど暗くなる度合い (%)。0 でなし
+// @param uVignette 0..150 = 0 @desc 周辺減光 (%)。0 でなし
+// @param uWallTint color = #ffffff @desc 壁の色に掛けるティント
+// @param uSpecTint color = #ffffff @desc ハイライトの色に掛けるティント
 uniform float uCaveWidth;    // 洞窟の断面の広さ (%)
 uniform float uWallCurve;    // 壁の反りの強さ (%)
 uniform float uCaveOpen;     // 空洞の開き具合 (%)
@@ -5375,31 +5375,31 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   name: "Wierd Moving Voronoi (WsX3zS)",
   ch: ["","","",""],
   src: `// Shadertoy WsX3zS "Wierd Moving Voronoi Thing" by ritobanrc — 単一パスそのまま移植。
-// @param uPointCount 3..10 = 10
-// @param uPointSpread 20..200 = 100
-// @param uStretch 40..250 = 100
-// @param uManhattan 0..100 = 0
-// @param uFalloff 30..400 = 100
-// @param uEdgeLine 0..300 = 0
-// @param uContourRings 0..60 = 0
-// @param uOrbit -300..300 = 0
-// @param uTile 100..400 = 100
-// @param uSeedDot 0..300 = 0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRotate -180..180 = 0
-// @param uMirrorFold 0..100 = 0
-// @param uSquare 0..100 = 0
-// @param uCellWeight 0..100 = 0
-// @param uWobble 0..100 = 0
-// @param uTerrace 0..16 = 0
-// @param uSeedGlow 0..300 = 0
-// @param uCellTint 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uCoreColor color = #ffffff
-// @param uEdgeColor color = #ffffff
-// @param uSeedColor color = #ffffff
+// @param uPointCount 3..10 = 10 @desc 点の数
+// @param uPointSpread 20..200 = 100 @desc 点が散らばる範囲 (%)。小さいと中央に集まる
+// @param uStretch 40..250 = 100 @desc 横方向の距離の伸縮 (%)。セルが縦長・横長になる
+// @param uManhattan 0..100 = 0 @desc 距離の測り方を円から菱形へ寄せる度合い (%)
+// @param uFalloff 30..400 = 100 @desc 中心から離れたときの落ち方の鋭さ (%)
+// @param uEdgeLine 0..300 = 0 @desc セルの境界線の強さ (%)
+// @param uContourRings 0..60 = 0 @desc 点を囲む等高線の本数
+// @param uOrbit -300..300 = 0 @desc 点が中心まわりに回る量 (%)。点ごとにずれる
+// @param uTile 100..400 = 100 @desc 画面を繰り返す数 (%)
+// @param uSeedDot 0..300 = 0 @desc 点の位置に抜ける黒い芯の大きさ (%)
+// @param uCenterX -100..100 = 0 @desc 模様全体の横ずれ (%)
+// @param uCenterY -100..100 = 0 @desc 模様全体の縦ずれ (%)
+// @param uRotate -180..180 = 0 @desc 模様全体の回転 (度)
+// @param uMirrorFold 0..100 = 0 @desc 左右の折り返しの度合い (%)。100 で左右対称
+// @param uSquare 0..100 = 0 @desc 距離の測り方を円から正方形へ寄せる度合い (%)。セルが角ばる
+// @param uCellWeight 0..100 = 0 @desc 点ごとの勢力のばらつき (%)。大きいセルと小さいセルが混ざる
+// @param uWobble 0..100 = 0 @desc 点の細かい揺れの大きさ (%)
+// @param uTerrace 0..16 = 0 @desc 明るさを段々にする段数。0 で連続
+// @param uSeedGlow 0..300 = 0 @desc 点の位置に灯る光の大きさ (%)
+// @param uCellTint 0..100 = 0 @desc セルごとに違う色が乗る量 (%)
+// @param uVignette 0..100 = 0 @desc 画面周辺の減光 (%)
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uCoreColor color = #ffffff @desc セルの中身の色に掛けるティント。白で無変化
+// @param uEdgeColor color = #ffffff @desc 境界線の色に掛けるティント。白で無変化
+// @param uSeedColor color = #ffffff @desc 点の光の色に掛けるティント。白で無変化
 uniform float uPointCount; // 点の数
 uniform float uPointSpread; // 点が散らばる範囲 (%)。小さいと中央に集まる
 uniform float uStretch;    // 横方向の距離の伸縮 (%)。セルが縦長/横長になる
@@ -5498,29 +5498,29 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   src: `// Shadertoy MljyDt "Klaksrotate" by mbixo (Aiekick fork) — 単一パス移植。
 //   原作の iChannel0 テクスチャ(法線ハイト用 bump)は手続きノイズに置換。iMouse は除去。
 //   ヒット部のみ不透明、背景は alpha=0 → Slot B で透過。
-// @param uBodyScale 97..112 = 100
-// @param uJuliaSkew 92..115 = 100
-// @param uCubicMul 94..106 = 100
-// @param uCamDist 97..130 = 100
-// @param uCamHeight 0..110 = 100
-// @param uBumpNoise 0..300 = 100
-// @param uRimSharp 30..300 = 100
-// @param uSpecSharp 30..300 = 100
-// @param uSssMix 70..125 = 100
-// @param uLightOrbit 20..250 = 100
-// @param uCamAzimuth -180..180 = 0
-// @param uAimX -100..100 = 0
-// @param uAimY -100..100 = 0
-// @param uLensZoom 50..160 = 100
-// @param uCamRoll -90..90 = 0
-// @param uBumpFreq 40..250 = 100
-// @param uDiffGain 0..250 = 100
-// @param uRimGain 0..300 = 100
-// @param uSssGain 0..250 = 100
-// @param uSssDepth 50..200 = 100
-// @param uLightPhase -180..180 = 0
-// @param uCoreTint color = #ffffff
-// @param uSurfTint color = #ffffff
+// @param uBodyScale 97..112 = 100 @desc 立体全体の大きさ (%)。フラクタルの形そのものが変わる
+// @param uJuliaSkew 92..115 = 100 @desc フラクタルの定数 c の縦横比 (%)。形が歪む
+// @param uCubicMul 94..106 = 100 @desc 反復式の 3 乗項の係数 (%)。腕の出方が変わる
+// @param uCamDist 97..130 = 100 @desc カメラまでの距離 (%)
+// @param uCamHeight 0..110 = 100 @desc カメラの上下の振れ幅 (%)
+// @param uBumpNoise 0..300 = 100 @desc 表面のざらつきの深さ (%)。内部の透け光の陰影に出る
+// @param uRimSharp 30..300 = 100 @desc 縁の光の鋭さ (%)。大きいほど細い
+// @param uSpecSharp 30..300 = 100 @desc ハイライトの鋭さ (%)
+// @param uSssMix 70..125 = 100 @desc 表面の反射と内部の透け色の混ぜ具合 (%)。大きいほど表面寄り
+// @param uLightOrbit 20..250 = 100 @desc ライトの回る半径 (%)
+// @param uCamAzimuth -180..180 = 0 @desc カメラの回り込みの基準角 (度)。見る面が変わる
+// @param uAimX -100..100 = 0 @desc 注視点の左右 (%)。立体が画面の左右へずれる
+// @param uAimY -100..100 = 0 @desc 注視点の上下 (%)。立体が画面の上下へずれる
+// @param uLensZoom 50..160 = 100 @desc レンズの倍率 (%)。上げると望遠
+// @param uCamRoll -90..90 = 0 @desc カメラのロール (度)。画面が傾く
+// @param uBumpFreq 40..250 = 100 @desc 表面のざらつきの細かさ (%)
+// @param uDiffGain 0..250 = 100 @desc 拡散光の強さ (%)
+// @param uRimGain 0..300 = 100 @desc 縁の光の強さ (%)
+// @param uSssGain 0..250 = 100 @desc 内部の透け光の強さ (%)
+// @param uSssDepth 50..200 = 100 @desc 透け感を測る深さ (%)
+// @param uLightPhase -180..180 = 0 @desc ライトの回る位相のずれ (度)。カメラとの位置関係が変わる
+// @param uCoreTint color = #ffffff @desc 内部の透け色に掛けるティント
+// @param uSurfTint color = #ffffff @desc 表面の反射色に掛けるティント
 uniform float uSlotIsA;
 uniform float uBodyScale;  // 立体全体の大きさ (%)。フラクタルの形そのものが変わる
 uniform float uJuliaSkew;  // フラクタルの定数 c の縦横比 (%)。形が歪む
@@ -5665,34 +5665,34 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   src: `// Shadertoy 4cBcz1 "Smoked cherry" by julienledortz — 単一パス移植。
 //   原作の iChannel0 立方体テクスチャ(texCube)は手続き triplanar ノイズに置換。iMouse 除去。
 //   march 上限 2048→520 に短縮(ANGLE/TDR 対策)。ヒット部のみ不透明、背景は Slot B で透過。
-// @param uCylRadius 60..200 = 100
-// @param uWarpAmp 60..150 = 100
-// @param uWarpFreq 60..160 = 100
-// @param uTubeAspect 70..170 = 100
-// @param uTubeSquare 0..100 = 0
-// @param uTubeTwist -120..120 = 0
-// @param uShellThick 0..60 = 0
-// @param uRim 0..300 = 100
-// @param uWarpPhase -300..300 = 0
-// @param uWarpPasses 2..4 = 4
-// @param uCamDist 50..200 = 100
-// @param uCamAngle -180..180 = 0
-// @param uCamHeight -100..100 = 0
-// @param uFocal 50..200 = 100
-// @param uCamRoll -180..180 = 0
-// @param uAimX -100..100 = 0
-// @param uAimY -100..100 = 0
-// @param uTexScale 30..300 = 100
-// @param uSmokeAmt 50..120 = 100
-// @param uRedLight 0..300 = 100
-// @param uTopLight 40..130 = 100
-// @param uSkyGradient 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uBaseColor color = #ffffff
-// @param uLightColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uSkyColor color = #ffffff
+// @param uCylRadius 60..200 = 100 @desc 筒の半径 (%)
+// @param uWarpAmp 60..150 = 100 @desc 筒をくねらせる波の振れ幅 (%)
+// @param uWarpFreq 60..160 = 100 @desc くねりの細かさ (%)。上げると曲がりが密になる
+// @param uTubeAspect 70..170 = 100 @desc 筒の断面の縦横比 (%)。100 で円
+// @param uTubeSquare 0..100 = 0 @desc 断面の角張り (%)。0 で円、上げると四角へ
+// @param uTubeTwist -120..120 = 0 @desc 高さに応じた筒のねじれ (%)。0 でなし
+// @param uShellThick 0..60 = 0 @desc 中空の殻の厚み (%)。0 で中身の詰まった筒
+// @param uRim 0..300 = 100 @desc 縁の光の強さ (%)
+// @param uWarpPhase -300..300 = 0 @desc くねりの位相のずれ (%)。形を切り替える (時間とは無関係)
+// @param uWarpPasses 2..4 = 4 @desc くねりを重ねる段数 (2〜4)
+// @param uCamDist 50..200 = 100 @desc カメラの距離 (%)。小さいほど寄る
+// @param uCamAngle -180..180 = 0 @desc カメラの回り込み角 (度)
+// @param uCamHeight -100..100 = 0 @desc カメラの高さ (%)
+// @param uFocal 50..200 = 100 @desc 焦点距離 (%)。大きいほど望遠
+// @param uCamRoll -180..180 = 0 @desc カメラのロール角 (度)
+// @param uAimX -100..100 = 0 @desc 注視点の左右ずれ (%)
+// @param uAimY -100..100 = 0 @desc 注視点の上下ずれ (%)
+// @param uTexScale 30..300 = 100 @desc 表面のノイズ模様の大きさ (%)。大きいほど細かい
+// @param uSmokeAmt 50..120 = 100 @desc 表面のかすれ模様の濃さ (%)
+// @param uRedLight 0..300 = 100 @desc 照明の赤の成分 (%)。上げると水色から白・赤みへ
+// @param uTopLight 40..130 = 100 @desc 上向きの面への光の偏り (%)
+// @param uSkyGradient 0..100 = 0 @desc 背景を下ほど暗くするグラデーション (%)
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uBaseColor color = #ffffff @desc 筒の地の色に掛けるティント
+// @param uLightColor color = #ffffff @desc 照明の色に掛けるティント
+// @param uRimColor color = #ffffff @desc 縁の光の色に掛けるティント
+// @param uSpecColor color = #ffffff @desc ハイライトの色に掛けるティント
+// @param uSkyColor color = #ffffff @desc 背景の色に掛けるティント
 uniform float uSlotIsA;
 uniform float uWarpPhase; // くねりの位相のずれ (%)。形を切り替える (時間とは無関係)
 uniform float uWarpPasses; // くねりを重ねる段数。既定 4
@@ -5919,34 +5919,34 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   name: "Polar Rings (ctsfWM)",
   ch: ["","","",""],
   src: `// Shadertoy ctsfWM "Polar Rings" by BenO — 2パス(Buffer A + Image)を単一パスに統合。
-// @param uRingFreq 50..200 = 100
-// @param uArms 1..8 = 2
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRingWidth 40..125 = 100
-// @param uSpiral -300..300 = 0
-// @param uArcWidth 30..250 = 100
-// @param uNormalEps 50..800 = 100
-// @param uRelief 30..300 = 100
-// @param uSpecPow 30..300 = 100
-// @param uSpecAmount 0..300 = 100
-// @param uLightCount 1..5 = 5
-// @param uRotate -180..180 = 0
-// @param uEllipse 55..180 = 100
-// @param uArmWave 0..300 = 0
-// @param uRingChirp -30..120 = 0
-// @param uRingStagger 0..100 = 0
-// @param uRingSoft 30..200 = 100
-// @param uLineDark 0..500 = 100
-// @param uLightDepth 40..300 = 100
-// @param uLightSpread 40..200 = 100
-// @param uGlowAmount 0..300 = 100
-// @param uGlowShiftX -100..100 = 0
-// @param uGlowShiftY -100..100 = 0
-// @param uVignette 0..100 = 0
-// @param uRingColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uGlowColor color = #ffffff
+// @param uRingFreq 50..200 = 100 @desc 同心リングの密度 (%)
+// @param uArms 1..8 = 2 @desc 円周を分ける弧の分割数
+// @param uCenterX -100..100 = 0 @desc リングの中心の横ずれ (%)
+// @param uCenterY -100..100 = 0 @desc リングの中心の縦ずれ (%)
+// @param uRingWidth 40..125 = 100 @desc リング 1 本の太さ (%)
+// @param uSpiral -300..300 = 0 @desc 外へ行くほど弧がねじれる量 (%)。0 で元の形
+// @param uArcWidth 30..250 = 100 @desc 弧の切れ目の長さ (%)
+// @param uNormalEps 50..800 = 100 @desc 凹凸を拾う幅 (%)。大きいほどリングの縁がなだらか
+// @param uRelief 30..300 = 100 @desc 凹凸の浅さ (%)。小さいほど深く見える
+// @param uSpecPow 30..300 = 100 @desc 縁のハイライトの鋭さ (%)
+// @param uSpecAmount 0..300 = 100 @desc 縁のハイライトの強さ (%)
+// @param uLightCount 1..5 = 5 @desc 縁を照らすライトの数
+// @param uRotate -180..180 = 0 @desc 弧の模様全体の回転 (度)
+// @param uEllipse 55..180 = 100 @desc リングの横の伸縮 (%)。100 で真円
+// @param uArmWave 0..300 = 0 @desc 弧の境目がリングごとにうねる量 (%)
+// @param uRingChirp -30..120 = 0 @desc リング間隔の偏り (%)。正で外側ほど密、負で外側ほど疎
+// @param uRingStagger 0..100 = 0 @desc リングごとに弧の位置をばらけさせる量 (%)
+// @param uRingSoft 30..200 = 100 @desc リング外縁のにじみ (%)
+// @param uLineDark 0..500 = 100 @desc 細い縁線の濃さ (%)
+// @param uLightDepth 40..300 = 100 @desc ライトの高さ (%)。小さいほど斜めから当たり凹凸が強調される
+// @param uLightSpread 40..200 = 100 @desc ライトの動く範囲 (%)
+// @param uGlowAmount 0..300 = 100 @desc 右上の橙の光の強さ (%)
+// @param uGlowShiftX -100..100 = 0 @desc 橙の光の横位置 (%)
+// @param uGlowShiftY -100..100 = 0 @desc 橙の光の縦位置 (%)
+// @param uVignette 0..100 = 0 @desc 画面周辺の減光 (%)
+// @param uRingColor color = #ffffff @desc リングの色に掛けるティント。白で無変化
+// @param uSpecColor color = #ffffff @desc 縁のハイライトの色に掛けるティント。白で無変化
+// @param uGlowColor color = #ffffff @desc 橙の光の色に掛けるティント。白で無変化
 uniform float uRingFreq;   // 同心リングの密度 (%)
 uniform float uArms;       // 円周を分ける弧の分割数
 uniform float uCenterX;    // リングの中心の横ずれ (%)
@@ -6069,35 +6069,35 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 //   依頼により除去: 謎の光の棒(t=2..10 の細長 box とそのグロー)/ 太陽(+x 方向のグレア)/ 背景色(空グラデ)。
 //   背景(空・レイミス)は alpha=0 → Slot B で透過(Slot A は黒背景)。
 //   iChannel0(ノイズテクスチャ)は手続きハッシュに、iChannel1(窓の反射cubemap)は手続き環境色に置換。
-// @param uTowerScale 55..150 = 100
-// @param uTowerVariance 30..180 = 100
-// @param uBuildingWidth 50..150 = 100
-// @param uRoofInset 20..120 = 100
-// @param uRoofDepth 0..400 = 100
-// @param uWindowPitch 60..200 = 100
-// @param uPaneFill 50..110 = 100
-// @param uWindowBand 40..120 = 100
-// @param uCamHeight 100..170 = 100
-// @param uLookPitch -60..60 = 0
-// @param uLightYaw -180..180 = 0
-// @param uLightHeight 20..300 = 100
-// @param uSunAmount 0..250 = 100
-// @param uAoPower 0..400 = 100
-// @param uBaseDark 0..100 = 0
-// @param uDistFade 0..100 = 0
-// @param uWarmShare 5..95 = 30
-// @param uGlassGloss 0..250 = 100
-// @param uGlassBase 0..200 = 100
-// @param uFrameShade 0..250 = 100
-// @param uPillarShade 0..300 = 100
-// @param uRoadLineDark 0..400 = 100
-// @param uFov 50..200 = 100
-// @param uCamRoll -45..45 = 0
-// @param uCamYaw -45..45 = 0
-// @param uWallColor color = #ffffff
-// @param uRoofColor color = #ffffff
-// @param uGlassColor color = #ffffff
-// @param uGroundColor color = #ffffff
+// @param uTowerScale 55..150 = 100 @desc ビルの高さの倍率 (%)
+// @param uTowerVariance 30..180 = 100 @desc ビルの高さのばらつき (%)。小さいと揃い、大きいと高低差が出る
+// @param uBuildingWidth 50..150 = 100 @desc ビルの幅 (%)。大きいほど道が狭くなる
+// @param uRoofInset 20..120 = 100 @desc 屋上のくぼみの広さ (%)
+// @param uRoofDepth 0..400 = 100 @desc 屋上のくぼみの深さ (%)
+// @param uWindowPitch 60..200 = 100 @desc 窓の間隔 (%)
+// @param uPaneFill 50..110 = 100 @desc 窓ガラスが枠を占める割合 (%)
+// @param uWindowBand 40..120 = 100 @desc 窓が並ぶ帯の幅 (%)
+// @param uCamHeight 100..170 = 100 @desc カメラの高さ (%)
+// @param uLookPitch -60..60 = 0 @desc カメラの上下の向き (%)
+// @param uLightYaw -180..180 = 0 @desc 光の向き (度)。壁の明暗の面が変わる
+// @param uLightHeight 20..300 = 100 @desc 光の高さ (%)。小さいと横から、大きいと真上から
+// @param uSunAmount 0..250 = 100 @desc 壁に当たる光の強さ (%)
+// @param uAoPower 0..400 = 100 @desc 建物の根元・隙間の陰の濃さ (%)。0 で陰なし
+// @param uBaseDark 0..100 = 0 @desc ビルの足元の暗がり (%)
+// @param uDistFade 0..100 = 0 @desc 遠くが暗く沈む度合い (%)
+// @param uWarmShare 5..95 = 30 @desc 赤茶色のビルの割合 (%)。残りは灰色
+// @param uGlassGloss 0..250 = 100 @desc 窓ガラスの映り込みの強さ (%)
+// @param uGlassBase 0..200 = 100 @desc 窓ガラスの地の明るさ (%)
+// @param uFrameShade 0..250 = 100 @desc 窓枠の影の明るさ (%)
+// @param uPillarShade 0..300 = 100 @desc 窓の帯のあいだの柱の暗さ (%)。小さいほど暗い
+// @param uRoadLineDark 0..400 = 100 @desc 路面の区画線の濃さ (%)
+// @param uFov 50..200 = 100 @desc 画角 (%)。大きいと望遠
+// @param uCamRoll -45..45 = 0 @desc カメラの傾き (度)
+// @param uCamYaw -45..45 = 0 @desc カメラの左右の向き (度)
+// @param uWallColor color = #ffffff @desc ビルの壁の色に掛けるティント
+// @param uRoofColor color = #ffffff @desc 屋上の色に掛けるティント
+// @param uGlassColor color = #ffffff @desc 窓ガラスの色に掛けるティント
+// @param uGroundColor color = #ffffff @desc 路面の色に掛けるティント
 uniform float uSlotIsA;
 uniform float uTowerScale;    // ビルの高さの倍率 (%)
 uniform float uTowerVariance; // ビルの高さのばらつき (%)。小さいと揃い、大きいと高低差が出る
@@ -6341,33 +6341,33 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   ch: ["","","",""],
   src: `// Shadertoy tdSfRd "Flickering crystals" by jarble — 単一パスそのまま移植(入力なし・手続き)。
 //   iMouse 無し。背景(レイミス)は alpha=0 → Slot B で透過(Slot A は黒背景)。
-// @param uShellAmp 60..140 = 100
-// @param uShellFreq 60..160 = 100
-// @param uHashScale 50..200 = 100
-// @param uCellFreq 70..150 = 100
-// @param uShiftX -200..200 = 0
-// @param uShiftY 0..200 = 0
-// @param uStretchZ 50..200 = 100
-// @param uTwist -200..200 = 0
-// @param uCamHeight 80..180 = 100
-// @param uCamDist 60..150 = 100
-// @param uColorCell 30..300 = 100
-// @param uShine 20..400 = 100
-// @param uSpecular 0..300 = 100
-// @param uSurfThick 30..300 = 100
-// @param uCamYaw -30..30 = 0
-// @param uCamRoll -30..30 = 0
-// @param uLightAzimuth -90..90 = 0
-// @param uLightHeight -100..100 = 0
-// @param uLightPower 20..250 = 100
-// @param uAmbientLevel 0..250 = 100
-// @param uFogAmount 0..60 = 0
-// @param uFogColor color = #000000
-// @param uCrystalTint color = #ffffff
-// @param uSpecTint color = #ffffff
-// @param uColorSteps 0..5 = 0
-// @param uVignetteAmount 0..100 = 0
-// @param uGrainAmount 0..60 = 0
+// @param uShellAmp 60..140 = 100 @desc 同心の殻の厚み (%)。大きいほど殻の間が開く
+// @param uShellFreq 60..160 = 100 @desc 同心の殻の間隔の細かさ (%)
+// @param uHashScale 50..200 = 100 @desc 結晶のきめを作る微小ノイズの大きさ (%)
+// @param uCellFreq 70..150 = 100 @desc 結晶面の繰り返しの細かさ (%)
+// @param uShiftX -200..200 = 0 @desc 結晶場の横ずらし (%)
+// @param uShiftY 0..200 = 0 @desc 結晶場の縦ずらし (%)
+// @param uStretchZ 50..200 = 100 @desc 奥行き方向の引き伸ばし (%)
+// @param uTwist -200..200 = 0 @desc 奥行きに沿ったねじれ (%)。0 でなし
+// @param uCamHeight 80..180 = 100 @desc カメラの高さ (%)。小さいほど水平寄りに見る
+// @param uCamDist 60..150 = 100 @desc カメラまでの距離 (%)。大きいほど引く
+// @param uColorCell 30..300 = 100 @desc 色のまだら模様の大きさ (%)
+// @param uShine 20..400 = 100 @desc ハイライトの絞り (%)。大きいほど鋭い
+// @param uSpecular 0..300 = 100 @desc ハイライトの強さ (%)
+// @param uSurfThick 30..300 = 100 @desc 結晶の殻の厚み (表面と判定する距離) (%)
+// @param uCamYaw -30..30 = 0 @desc カメラを横へ回り込ませる角度 (度)
+// @param uCamRoll -30..30 = 0 @desc 画面の傾き (度)
+// @param uLightAzimuth -90..90 = 0 @desc 光の向き。左右の回転 (度)
+// @param uLightHeight -100..100 = 0 @desc 光の高さ。正で上、負で下
+// @param uLightPower 20..250 = 100 @desc 光の強さ (%)
+// @param uAmbientLevel 0..250 = 100 @desc 環境光の量 (%)。小さいほど影が深い
+// @param uFogAmount 0..60 = 0 @desc 奥へ向かう霧の濃さ (%)。0 でなし
+// @param uFogColor color = #000000 @desc 霧の色
+// @param uCrystalTint color = #ffffff @desc 結晶の色。掛け算 (白で元の色)
+// @param uSpecTint color = #ffffff @desc ハイライトの色。掛け算 (白で元の色)
+// @param uColorSteps 0..5 = 0 @desc 結晶色の段数。0 でなめらか
+// @param uVignetteAmount 0..100 = 0 @desc 周辺を暗くする量 (%)
+// @param uGrainAmount 0..60 = 0 @desc 粒状ノイズの量 (%)
 uniform float uSlotIsA;
 uniform float uShellAmp; // 同心の殻の厚み (%)。上げると殻の間が開く
 uniform float uShellFreq; // 同心の殻の間隔の細かさ (%)
@@ -6588,34 +6588,34 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   ch: ["","","",""],
   src: `// Shadertoy 7lGyD1 "The Redmond wrinkle" by ruojake (Kristian Sivonen) — 単一パス移植。
 //   原作は静止なので、依頼により花びら層を回転/うねりでアニメーション化(iTime 追加)。Slot B は花弁のみ透過合成。
-// @param uPetalFreq 60..160 = 100
-// @param uSpiral 0..220 = 100
-// @param uWrinkleAmp 0..140 = 100
-// @param uHarm2 0..250 = 100
-// @param uHarm3 0..250 = 100
-// @param uRingRadius 70..140 = 100
-// @param uRingGap 50..160 = 100
-// @param uPetalThick 50..1000 = 100
-// @param uBowl 0..160 = 100
-// @param uSheetWrinkle 0..170 = 100
-// @param uViewPitch 60..125 = 100
-// @param uFlowerTurn -180..180 = 0
-// @param uCamHeight 45..200 = 100
-// @param uCamDistance 70..140 = 100
-// @param uFocal 60..180 = 100
-// @param uRoll -25..25 = 0
-// @param uLightAzimuth -180..180 = 0
-// @param uLightElevation -25..25 = 0
-// @param uShadowAmount 0..150 = 100
-// @param uHighlightMix 0..200 = 100
-// @param uRimAmount 0..300 = 100
-// @param uSkyGradient 0..300 = 100
-// @param uVignetteAmount 0..300 = 100
-// @param uBands 0..10 = 0
-// @param uGrain 0..100 = 0
-// @param uShadeTint color = #ffffff
-// @param uLitTint color = #ffffff
-// @param uSkyTint color = #ffffff
+// @param uPetalFreq 60..160 = 100 @desc 花弁の枚数にあたる周方向の周波数 (%)。大きいほど枚数が増える
+// @param uSpiral 0..220 = 100 @desc 花弁の渦巻きのねじれ (%)。0 でまっすぐ放射
+// @param uWrinkleAmp 0..140 = 100 @desc 花弁の縁のうねりの大きさ (%)
+// @param uHarm2 0..250 = 100 @desc 2 倍波のうねりの強さ (%)
+// @param uHarm3 0..250 = 100 @desc 3 倍波のうねりの強さ (%)
+// @param uRingRadius 70..140 = 100 @desc 花全体の輪の半径 (%)
+// @param uRingGap 50..160 = 100 @desc 輪の層どうしの間隔 (%)
+// @param uPetalThick 50..1000 = 100 @desc 花弁の線の太さ (%)
+// @param uBowl 0..160 = 100 @desc 花の皿状のくぼみの深さ (%)。0 で平ら
+// @param uSheetWrinkle 0..170 = 100 @desc 面のしわの深さ (%)
+// @param uViewPitch 60..125 = 100 @desc カメラの見下ろし角 (%)。大きいほど深く見下ろす
+// @param uFlowerTurn -180..180 = 0 @desc 花の向きを回す角度 (度)。カメラと光も一緒に回る
+// @param uCamHeight 45..200 = 100 @desc カメラの高さ (%)
+// @param uCamDistance 70..140 = 100 @desc カメラの距離 (%)。小さいほど寄る
+// @param uFocal 60..180 = 100 @desc 画角 (%)。上げると望遠
+// @param uRoll -25..25 = 0 @desc 画面の傾き (度)
+// @param uLightAzimuth -180..180 = 0 @desc 光の向き。水平方向の回転 (度)
+// @param uLightElevation -25..25 = 0 @desc 光の向き。上下方向の傾き (度)
+// @param uShadowAmount 0..150 = 100 @desc 影の濃さ (%)。0 で影なし
+// @param uHighlightMix 0..200 = 100 @desc 白いハイライトの混ざり (%)
+// @param uRimAmount 0..300 = 100 @desc 縁の光り (%)
+// @param uSkyGradient 0..300 = 100 @desc 背景の明暗グラデーションの強さ (%)
+// @param uVignetteAmount 0..300 = 100 @desc 周辺減光の強さ (%)
+// @param uBands 0..10 = 0 @desc 階調の段数。0〜2 でなめらか / 3 以上で等高線風
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uShadeTint color = #ffffff @desc 影側の青への色の掛け (白で元と同じ)
+// @param uLitTint color = #ffffff @desc 光側の青への色の掛け (白で元と同じ)
+// @param uSkyTint color = #ffffff @desc 背景色への掛け (白で元と同じ)
 uniform float uSlotIsA;
 uniform float uPetalFreq;   // 花弁の枚数にあたる周方向の周波数 (%)
 uniform float uSpiral;      // 花弁の渦巻きのねじれ (%)。0 でまっすぐ放射
@@ -6738,31 +6738,31 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   name: "Distant Rings of Light (3ssfD8)",
   ch: ["","","",""],
   src: `// Shadertoy 3ssfD8 "distantringsoflight" by nabr — Image パスのみ移植(Sound パスは音声合成のため除外)。Slot B はリングのみ透過合成。
-// @param uRings 1..6 = 6
-// @param uRingRadius 30..300 = 100
-// @param uRingWidth 25..400 = 100
-// @param uPlaneTilt 0..300 = 100
-// @param uSpread -200..400 = 100
-// @param uDepth 40..250 = 100
-// @param uBreathe 0..400 = 100
-// @param uLightZ 0..500 = 100
-// @param uFlare 0..200 = 100
-// @param uInkDepth 20..100 = 100
-// @param uRoll -180..180 = 0
-// @param uCenterX -60..60 = 0
-// @param uCenterY -60..60 = 0
-// @param uRigX -100..100 = 0
-// @param uRigY -100..100 = 0
-// @param uRingPhase -60..60 = 0
-// @param uLightPhase -180..180 = 0
-// @param uBreathePhase -180..180 = 0
-// @param uFlareSharp 40..300 = 100
-// @param uBgSway 0..800 = 100
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uInkColor color = #ffffff
-// @param uPaperColor color = #ffffff
-// @param uFlareColor color = #ffffff
+// @param uRings 1..6 = 6 @desc 重ねるリングの数 (1〜6)
+// @param uRingRadius 30..300 = 100 @desc リングの半径 (%)
+// @param uRingWidth 25..400 = 100 @desc リングの太さ (%)
+// @param uPlaneTilt 0..300 = 100 @desc リング面の初期の傾き (%)。0 で正面向きにそろう
+// @param uSpread -200..400 = 100 @desc リングごとのずれ (%)。0 で全部が同じ所に重なる。負で逆向き
+// @param uDepth 40..250 = 100 @desc カメラからリングまでの距離 (%)。遠近のつき方が変わる
+// @param uBreathe 0..400 = 100 @desc 奥行きの呼吸の振れ幅 (%)
+// @param uLightZ 0..500 = 100 @desc ハイライトの光源の高さ (%)。0 で真横から当たる
+// @param uFlare 0..200 = 100 @desc リングの橙のハイライトの強さ (%)
+// @param uInkDepth 20..100 = 100 @desc 墨の濃さ (反転の深さ) (%)。下げると白っぽく淡くなる
+// @param uRoll -180..180 = 0 @desc 画面の回転 (度)
+// @param uCenterX -60..60 = 0 @desc 視線の中心の左右 (%)
+// @param uCenterY -60..60 = 0 @desc 視線の中心の上下 (%)
+// @param uRigX -100..100 = 0 @desc リング群の左右へのずれ (%)。奥へ行くほど流れる
+// @param uRigY -100..100 = 0 @desc リング群の上下へのずれ (%)
+// @param uRingPhase -60..60 = 0 @desc リング面の回転の位相 (度)
+// @param uLightPhase -180..180 = 0 @desc ハイライトの光源が回る位相 (度)
+// @param uBreathePhase -180..180 = 0 @desc 奥行きの呼吸の位相 (度)
+// @param uFlareSharp 40..300 = 100 @desc 橙のハイライトの鋭さ (%)。上げると芯だけ光る
+// @param uBgSway 0..800 = 100 @desc 地の色の揺れの振れ幅 (%)
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0 @desc 粒状のざらつき (%)
+// @param uInkColor color = #ffffff @desc リングと地の墨色への掛け (白で元と同じ)
+// @param uPaperColor color = #ffffff @desc 地の紙色への掛け (白で元と同じ)
+// @param uFlareColor color = #ffffff @desc ハイライトの橙色への掛け (白で元と同じ)
 uniform float uSlotIsA;
 uniform float uRings;      // 重ねるリングの数。既定 6
 uniform float uRingRadius; // リングの半径 (%)
@@ -6838,34 +6838,34 @@ void mainImage(out vec4 O, in vec2 U){
 #define _LightAbsorbtion 100.
 #define _LightAbsorbtionTowardsSun 100.
 #define _PhaseVal 100.
-// @param uBigCell 60..150 = 100
-// @param uSmallCell 70..200 = 100
-// @param uCoverCut 60..150 = 100
-// @param uDensityGain 50..300 = 100
-// @param uLayerWave 0..250 = 100
-// @param uCloudThick 70..160 = 100
-// @param uBlobSoft 40..130 = 100
-// @param uBlobScale 90..200 = 100
-// @param uFlightSwing 0..200 = 100
-// @param uShadowFloor 0..160 = 100
-// @param uSunAzimuth -180..180 = 0
-// @param uSunElevation -40..40 = 0
-// @param uSunHalo 0..300 = 100
-// @param uHorizonGlow 0..200 = 0
-// @param uAbsorb 70..250 = 100
-// @param uShadowDepth 50..200 = 100
-// @param uLightReach 50..200 = 100
-// @param uCamYaw -40..40 = 0
-// @param uCamPitch -15..25 = 0
-// @param uCamRoll -30..30 = 0
-// @param uFocal 60..160 = 100
-// @param uVignetteAmount 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uBands 0..10 = 0
-// @param uSkyTint color = #ffffff
-// @param uSunTint color = #ffffff
-// @param uCloudTint color = #ffffff
-// @param uShadowTint color = #ffffff
+// @param uBigCell 60..150 = 100 @desc 大きな雲粒の格子の細かさ (%)
+// @param uSmallCell 70..200 = 100 @desc 小さな雲粒の格子の細かさ (%)
+// @param uCoverCut 60..150 = 100 @desc 雲の発生しやすさ (%)。上げると雲がまばらになる
+// @param uDensityGain 50..300 = 100 @desc 雲の濃さ (%)
+// @param uLayerWave 0..250 = 100 @desc 雲の層の高さのうねり (%)
+// @param uCloudThick 70..160 = 100 @desc 雲の層の厚み (%)
+// @param uBlobSoft 40..130 = 100 @desc 雲塊の境の広がり (%)
+// @param uBlobScale 90..200 = 100 @desc 雲塊の大きさの細かさ (%)
+// @param uFlightSwing 0..200 = 100 @desc カメラの上下の振れ幅 (%)
+// @param uShadowFloor 0..160 = 100 @desc 雲の下側の影の明るさの下限 (%)
+// @param uSunAzimuth -180..180 = 0 @desc 太陽の水平方向の回転 (度)。後ろへ回すと逆光
+// @param uSunElevation -40..40 = 0 @desc 太陽の高さの上げ下げ (度)
+// @param uSunHalo 0..300 = 100 @desc 太陽まわりの広いにじみの強さ (%)
+// @param uHorizonGlow 0..200 = 0 @desc 地平線の暖色の光 (%)。0 でなし
+// @param uAbsorb 70..250 = 100 @desc 雲の不透明さ (%)。上げると雲が白く詰まる
+// @param uShadowDepth 50..200 = 100 @desc 雲の内側の影の濃さ (%)
+// @param uLightReach 50..200 = 100 @desc 影を測る距離 (%)。上げると雲の奥まで影が届く
+// @param uCamYaw -40..40 = 0 @desc カメラの左右の振り (度)
+// @param uCamPitch -15..25 = 0 @desc カメラの上下の振り (度)。正で見上げる
+// @param uCamRoll -30..30 = 0 @desc 画面の傾き (度)
+// @param uFocal 60..160 = 100 @desc 画角 (%)。上げると望遠
+// @param uVignetteAmount 0..100 = 0 @desc 周辺減光の強さ (%)
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uBands 0..10 = 0 @desc 階調の段数。0〜2 でなめらか / 3 以上で等高線風
+// @param uSkyTint color = #ffffff @desc 空の青への色の掛け (白で元と同じ)
+// @param uSunTint color = #ffffff @desc 太陽まわりのにじみの色への掛け (白で元と同じ)
+// @param uCloudTint color = #ffffff @desc 雲の色への掛け (白で元と同じ)
+// @param uShadowTint color = #ffffff @desc 雲の暗部への色の掛け (白で元と同じ)
 uniform float uBigCell;      // 大きな雲粒の格子の細かさ (%)
 uniform float uSmallCell;    // 小さな雲粒の格子の細かさ (%)
 uniform float uCoverCut;     // 雲の発生しやすさ (%)。上げると雲がまばらに
@@ -7050,33 +7050,33 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   ch: ["","","",""],
   src: `// Shadertoy 3tyyzy "2D fern fractal" by jarble。https://www.shadertoy.com/view/3tyyzy
 // 原作コードそのまま (2026-07-25 に Shadertoy から再取得)。変更点は iTime に speed を掛けるだけ。
-// @param speed 0..3 = 1
-// @param uFernBend 85..125 = 100
-// @param uFernGrow 85..125 = 100
-// @param uFernSplit 85..125 = 100
-// @param uFernKink 70..140 = 100
-// @param uFernSkew 70..140 = 100
-// @param uFernPush 85..125 = 100
-// @param uFernFeed 70..130 = 100
-// @param uFernSlant 90..110 = 100
-// @param uFernAspect 70..140 = 100
-// @param uFernLevels 1..3 = 3
-// @param uFernShear -100..100 = 0
-// @param uFernSpin -300..300 = 0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRotate -180..180 = 0
-// @param uMirror 0..2 = 0
-// @param uChromaSplit -100..100 = 0
-// @param uPixelate 0..100 = 0
-// @param uNegFlip 0..100 = 0
-// @param uPosterize 0..12 = 0
-// @param uOutPow 40..250 = 100
-// @param uEdgeDark 0..150 = 0
-// @param uGrainOut 0..100 = 0
-// @param uRedTint color = #ffffff
-// @param uGreenTint color = #ffffff
-// @param uBlueTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる
+// @param uFernBend 85..125 = 100 @desc 葉の曲がりの基準値 (%)
+// @param uFernGrow 85..125 = 100 @desc 世代ごとの縮み方 (%)
+// @param uFernSplit 85..125 = 100 @desc 枝分かれの分母 (%)
+// @param uFernKink 70..140 = 100 @desc 枝の折れの細かさ (%)
+// @param uFernSkew 70..140 = 100 @desc 葉のずれの周期 (%)
+// @param uFernPush 85..125 = 100 @desc 世代ごとの平行移動量 (%)
+// @param uFernFeed 70..130 = 100 @desc 前チャンネルの色を座標へ戻す量 (%)
+// @param uFernSlant 90..110 = 100 @desc 出力の縦横の重み (%)
+// @param uFernAspect 70..140 = 100 @desc 模様の縦の伸び縮み (%)
+// @param uFernLevels 1..3 = 3 @desc 枝分かれの世代数 (1〜3)
+// @param uFernShear -100..100 = 0 @desc 模様の横ずれ (%)。縦位置に比例して傾く
+// @param uFernSpin -300..300 = 0 @desc 中心からの距離に比例したねじれ (%)
+// @param uCenterX -100..100 = 0 @desc 模様の中心の左右 (%)
+// @param uCenterY -100..100 = 0 @desc 模様の中心の上下 (%)
+// @param uRotate -180..180 = 0 @desc 模様全体の回転 (度)
+// @param uMirror 0..2 = 0 @desc 鏡像。0 = なし / 1 = 左右 / 2 = 左右上下
+// @param uChromaSplit -100..100 = 0 @desc RGB 3 面の模様をずらす量 (%)
+// @param uPixelate 0..100 = 0 @desc モザイク化の粗さ (%)。0 でなし
+// @param uNegFlip 0..100 = 0 @desc 負の値 (黒) を反転して見せる度合い (%)
+// @param uPosterize 0..12 = 0 @desc 階調の段数。0 でなし
+// @param uOutPow 40..250 = 100 @desc 出力の階調カーブの指数 (%)
+// @param uEdgeDark 0..150 = 0 @desc 周辺減光 (%)。0 でなし
+// @param uGrainOut 0..100 = 0 @desc 粒状ノイズ (%)。0 でなし
+// @param uRedTint color = #ffffff @desc R 面の色への掛け (白で元と同じ)
+// @param uGreenTint color = #ffffff @desc G 面の色への掛け (白で元と同じ)
+// @param uBlueTint color = #ffffff @desc B 面の色への掛け (白で元と同じ)
 uniform float speed;
 uniform float uFernBend;     // 葉の曲がりの基準値 (%)
 uniform float uFernGrow;     // 世代ごとの縮み方 (%)
@@ -7171,30 +7171,30 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   name: "Frost Mountains (7sfXW8)",
   ch: ["","","",""],
   src: `// Shadertoy 7sfXW8 "Frost Mountains" by jarble (単一パス移植)。https://www.shadertoy.com/view/7sfXW8
-// @param speed 0..3 = 1
-// @param uFoldScale 92..108 = 100
-// @param uCellRatio 94..108 = 100
-// @param uFoldDepth 4..9 = 9
-// @param uFoldBase 94..104 = 100
-// @param uSkewSpan 60..160 = 100
-// @param uWarpSpan 80..125 = 100
-// @param uColorFeed 60..150 = 100
-// @param uColorShift 40..160 = 100
-// @param uStripeSlope 85..125 = 100
-// @param uStripePeriod 85..125 = 100
-// @param uMountainShift -200..200 = 0
-// @param uViewRoll -180..180 = 0
-// @param uViewStretch 70..160 = 100
-// @param uDriftDir -180..180 = 0
-// @param uMountainLift -200..200 = 0
-// @param uFeedBias 80..125 = 100
-// @param uBlendDiv 97..103 = 100
-// @param uTileOffset 90..110 = 100
-// @param uShadowTint color = #ffffff
-// @param uLightTint color = #ffffff
-// @param uPosterize 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uEdgeDark 0..100 = 0
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる
+// @param uFoldScale 92..108 = 100 @desc 折り返しの縮尺 (%)。山の細かさ
+// @param uCellRatio 94..108 = 100 @desc 折り返しセルの縦横比に効く係数 (%)
+// @param uFoldDepth 4..9 = 9 @desc 折り返しを重ねる回数 (4〜9)
+// @param uFoldBase 94..104 = 100 @desc 折り返しの分母の基準 (%)。山の尖り方が変わる
+// @param uSkewSpan 60..160 = 100 @desc 斜め方向の歪みの広がり (%)
+// @param uWarpSpan 80..125 = 100 @desc 渦状の引き込みの強さ (%)。大きいほど弱い
+// @param uColorFeed 60..150 = 100 @desc 色が次の折り返しの縮尺へ戻る量 (%)
+// @param uColorShift 40..160 = 100 @desc 色が座標をずらす量 (%)
+// @param uStripeSlope 85..125 = 100 @desc 縞の傾き (%)
+// @param uStripePeriod 85..125 = 100 @desc 縞の周期 (%)
+// @param uMountainShift -200..200 = 0 @desc 山並みの位置のずれ (種)。横と縦へずれる
+// @param uViewRoll -180..180 = 0 @desc 模様全体の回転 (度)
+// @param uViewStretch 70..160 = 100 @desc 模様の横方向の伸び (%)
+// @param uDriftDir -180..180 = 0 @desc 模様が流れる向きの回転 (度)
+// @param uMountainLift -200..200 = 0 @desc 山並みの位置のずれ (種)。uMountainShift と別の方向へずれる
+// @param uFeedBias 80..125 = 100 @desc 縞が前の色から受ける量 (%)
+// @param uBlendDiv 97..103 = 100 @desc 色を前の折り返しと平均するときの割り (%)。濃淡の残り方が変わる
+// @param uTileOffset 90..110 = 100 @desc 折り返しの継ぎ目のずれ (%)
+// @param uShadowTint color = #ffffff @desc 暗部の色味。掛け算 (白で元と同じ)
+// @param uLightTint color = #ffffff @desc 明部の色味。掛け算 (白で元と同じ)
+// @param uPosterize 0..100 = 0 @desc 色の段階を粗くする量 (%)。0 でなめらか
+// @param uGrain 0..100 = 0 @desc 粒状のざらつき (%)
+// @param uEdgeDark 0..100 = 0 @desc 周辺減光の強さ (%)
 uniform float speed;
 uniform float uFoldScale;     // 折り返しの縮尺 (%)。山の細かさ
 uniform float uCellRatio;     // 折り返しセルの縦横比に効く係数 (%)
@@ -7285,35 +7285,35 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 // マウスで視点回転 (M で iMouse 取得 ON)。based on https://www.shadertoy.com/view/4tcGDr
 // VJ: 距離関数の入力に多段ドメインワープ (fbm 的な入れ子ワープ + 捻り) を掛けて、
 // 洞窟の壁をぐちゃぐちゃに撹拌する。warpPct=0 で原作。
-// @param speed 0..3 = 1
-// @param warpPct 0..100 = 70
-// @param churnPct 0..100 = 60
-// @param twistPct 0..100 = 45
-// @param steps 40..400 = 70
-// @param iters 6..20 = 20
-// @param stride 100..600 = 500
-// @param randPct 0..100 = 65
-// @param seedRate 1..12 = 3
-// @param uCaveWidth 85..130 = 100
-// @param uWallBias -30..30 = 0
-// @param uColorPattern 40..250 = 100
-// @param uColorShift -15..100 = 0
-// @param uFov 50..200 = 100
-// @param uRoll -180..180 = 0
-// @param uLookYaw -90..90 = 0
-// @param uLookPitch -60..60 = 0
-// @param uEyeX -60..60 = 0
-// @param uEyeY -60..60 = 0
-// @param uLightX -150..150 = 0
-// @param uLightY -150..150 = 0
-// @param uLightZ -150..150 = 0
-// @param uSpecSharp 20..400 = 100
-// @param uRimLight 0..300 = 0
-// @param uOcclusion 0..100 = 0
-// @param uFogDensity 0..200 = 0
-// @param uGrain 0..100 = 0
-// @param uWallTint color = #ffffff
-// @param uSpecTint color = #ffffff
+// @param speed 0..3 = 1 @desc 進む速さと壁の撹拌の速さ。0 で止まる
+// @param warpPct 0..100 = 70 @desc 壁をうねらせるワープの振幅 (%)。0 で原作の形
+// @param churnPct 0..100 = 60 @desc 撹拌の速さ (%)。ワープの時間変化が速くなる
+// @param twistPct 0..100 = 45 @desc 進行方向まわりの捻り (%)
+// @param steps 40..400 = 70 @desc レイマーチの歩数上限。大きいほど遠くまで描くが重い
+// @param iters 6..20 = 20 @desc 壁の生成反復の回数。下げると軽いが壁が薄くなり空洞が増える
+// @param stride 100..600 = 500 @desc 歩幅の倍率 (%)。大きいほど軽いが、大きすぎると壁を突き抜ける
+// @param randPct 0..100 = 65 @desc ランダムネス (%)。細かい乱れと乱数位相の量
+// @param seedRate 1..12 = 3 @desc 乱数位相が 1 秒に切り替わる回数
+// @param uCaveWidth 85..130 = 100 @desc 通路の広さ (%)。大きいほど壁が中心へ迫る
+// @param uWallBias -30..30 = 0 @desc 壁の厚みの偏り。正で空洞が増え、負で壁が厚くなる
+// @param uColorPattern 40..250 = 100 @desc 壁の色の縞の細かさ (%)
+// @param uColorShift -15..100 = 0 @desc 壁の色の縞の位相のずれ
+// @param uFov 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uRoll -180..180 = 0 @desc カメラの回転 (度)
+// @param uLookYaw -90..90 = 0 @desc 視線の左右のずらし (度)
+// @param uLookPitch -60..60 = 0 @desc 視線の上下のずらし (度)
+// @param uEyeX -60..60 = 0 @desc カメラ位置の横移動。別の通路を見る
+// @param uEyeY -60..60 = 0 @desc カメラ位置の縦移動
+// @param uLightX -150..150 = 0 @desc 光源のカメラからの横のずれ。陰影の向きが変わる
+// @param uLightY -150..150 = 0 @desc 光源のカメラからの縦のずれ
+// @param uLightZ -150..150 = 0 @desc 光源のカメラからの奥行きのずれ
+// @param uSpecSharp 20..400 = 100 @desc ハイライトの鋭さ (%)
+// @param uRimLight 0..300 = 0 @desc 輪郭の青白いリムライトの強さ (%)
+// @param uOcclusion 0..100 = 0 @desc 壁の凹みの陰の濃さ (%)
+// @param uFogDensity 0..200 = 0 @desc 遠くが闇に沈む度合い (%)
+// @param uGrain 0..100 = 0 @desc 画面のざらつき (%)
+// @param uWallTint color = #ffffff @desc 壁の色への掛け (白で元と同じ)
+// @param uSpecTint color = #ffffff @desc ハイライトの色への掛け (白で元と同じ)
 uniform float speed;
 uniform float warpPct;   // ワープの振幅
 uniform float churnPct;  // 撹拌の速さ (時間項)
@@ -7638,39 +7638,39 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   name: "Fractal Foliage 3 (WtByzw)",
   ch: ["","","",""],
   src: `// Shadertoy WtByzw "Fractal foliage 3" by jarble (common+image を単一パスへ結合)。https://www.shadertoy.com/view/WtByzw
-// @param uWarpAmp 40..200 = 100
-// @param uWarpScale 50..200 = 100
-// @param uFoldMix 30..200 = 100
-// @param uPlanetSize 80..125 = 100
-// @param uLayerRatio 300..800 = 300
-// @param uSecondLayer 0..200 = 100
-// @param uCamPitch -100..100 = 0
-// @param uCamRoll -300..300 = 0
-// @param uFov 50..200 = 100
-// @param uLeafVariation 0..300 = 100
-// @param uShininess 20..400 = 100
-// @param uDomainPeriod 50..200 = 100
-// @param uCenterX -60..60 = 0
-// @param uCenterY -60..60 = 0
-// @param uCamYaw -300..300 = 0
-// @param uPathX 0..25 = 0
-// @param uPathY -25..25 = 0
-// @param uPathZ -100..100 = 0
-// @param uInflate -60..40 = 0
-// @param uNearClip 0..500 = 0
-// @param uMaxDist 25..100 = 100
-// @param uLightX -100..100 = 0
-// @param uLightY -100..100 = 0
-// @param uSpecAmount 0..600 = 100
-// @param uAmbientLight 0..300 = 100
-// @param uColorFreq 30..400 = 100
-// @param uColorShift -180..180 = 0
-// @param uFogDist 0..300 = 0
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uLeafColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uLightColor color = #ffffff
+// @param uWarpAmp 40..200 = 100 @desc 地形のうねりの大きさ (%)
+// @param uWarpScale 50..200 = 100 @desc うねりの波長 (%)。大きいほどゆるやか
+// @param uFoldMix 30..200 = 100 @desc 折り返しに混ぜる sin 成分の量 (%)。葉の枝分かれ方が変わる
+// @param uPlanetSize 80..125 = 100 @desc 葉の塊の半径 (%)。小さいと痩せる
+// @param uLayerRatio 300..800 = 300 @desc 2 層目以降の細かさの倍率 (%)。300 で元の形
+// @param uSecondLayer 0..200 = 100 @desc 2 層目以降の細かい葉の強さ (%)。0 で 1 層のみ
+// @param uCamPitch -100..100 = 0 @desc カメラの上下の振り。100 で約 57 度
+// @param uCamRoll -300..300 = 0 @desc カメラの傾き。100 で約 57 度
+// @param uFov 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uLeafVariation 0..300 = 100 @desc 葉ごとの色のばらつき (%)
+// @param uShininess 20..400 = 100 @desc ハイライトの鋭さ (%)
+// @param uDomainPeriod 50..200 = 100 @desc 空間の繰り返し周期 (%)。葉の塊の並びが変わる
+// @param uCenterX -60..60 = 0 @desc 視線の中心の左右 (%)
+// @param uCenterY -60..60 = 0 @desc 視線の中心の上下 (%)
+// @param uCamYaw -300..300 = 0 @desc カメラの左右の振り。100 で約 57 度
+// @param uPathX 0..25 = 0 @desc カメラ経路の横ずれ
+// @param uPathY -25..25 = 0 @desc カメラ経路の上下ずれ
+// @param uPathZ -100..100 = 0 @desc カメラ経路の前後ずれ
+// @param uInflate -60..40 = 0 @desc 葉の肉付き。負で痩せ、正で太る
+// @param uNearClip 0..500 = 0 @desc 手前をカットする距離。上げると手前の葉が消えて奥が見える
+// @param uMaxDist 25..100 = 100 @desc 見通せる最大距離 (%)。下げると奥が抜ける
+// @param uLightX -100..100 = 0 @desc 光源の左右へのずれ
+// @param uLightY -100..100 = 0 @desc 光源の上下へのずれ
+// @param uSpecAmount 0..600 = 100 @desc ハイライトの強さ (%)
+// @param uAmbientLight 0..300 = 100 @desc 環境光の強さ (%)。下げると影が深い
+// @param uColorFreq 30..400 = 100 @desc 葉の色の縞の細かさ (%)
+// @param uColorShift -180..180 = 0 @desc 葉の色の縞のずれ (度)
+// @param uFogDist 0..300 = 0 @desc 奥ほど暗くなる霞の濃さ (%)
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0 @desc 粒状のざらつき (%)
+// @param uLeafColor color = #ffffff @desc 葉の色への掛け (白で元と同じ)
+// @param uSpecColor color = #ffffff @desc ハイライトの色。白で元と同じ
+// @param uLightColor color = #ffffff @desc 光源の色への掛け (白で元と同じ)
 uniform float uWarpAmp;    // 地形のうねりの大きさ (%)
 uniform float uWarpScale;  // うねりの波長 (%)。大きいほどゆるやか
 uniform float uFoldMix;    // 折り返しに混ぜる sin 成分の量 (%)。葉の枝分かれ方が変わる
@@ -7705,7 +7705,7 @@ uniform vec3 uLeafColor; // 葉の色のティント
 uniform vec3 uSpecColor; // ハイライトの色のティント
 uniform vec3 uLightColor; // 光源の色のティント
 // マウスで視点回転 (M で iMouse 取得 ON)。based on https://www.shadertoy.com/view/4tcGDr
-// @param speed 0..3 = 1
+// @param speed 0..3 = 1 @desc カメラが進む速さ。0 で止まる
 uniform float speed;
 #define rot(spin) mat2(cos(spin),sin(spin),-sin(spin),cos(spin))
 
@@ -8088,32 +8088,32 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   src: `// Shadertoy ldV3DD "Chinese dragon head" by sben (buffer+image を単一パス化)。https://www.shadertoy.com/view/ldV3DD
 // VJ 版の変更点: 格子(スキャンライン)除去 / 暗転(全黒の時間帯)を除去 /
 //   黒い炎が燃え上がるように、模様が下から上へ舐めるように立ち上がって崩れる
-// @param speed 0..3 = 1
-// @param flame 0..40 = 18
-// @param bright 50..300 = 115
-// @param uHeadWidth 70..150 = 100
-// @param uHeadHeight 70..150 = 100
-// @param uHeadShiftX -100..100 = 0
-// @param uHeadShiftY -100..100 = 0
-// @param uTongueCount 40..250 = 100
-// @param uTongueHeight 0..1000 = 100
-// @param uSwayAmp 0..500 = 100
-// @param uTipTear 0..1500 = 100
-// @param uPulse 0..300 = 100
-// @param uSplitGap 40..300 = 100
-// @param uSceneRotate -180..180 = 0
-// @param uMirrorH 0..100 = 0
-// @param uTileCount 100..300 = 100
-// @param uSwayFreq 40..250 = 100
-// @param uTipTearFreq 50..200 = 100
-// @param uFlameLean -100..100 = 0
-// @param uChromaSplit 0..800 = 100
-// @param uFlameTint color = #ffffff
-// @param uShadowColor color = #000000
-// @param uInkLevels 0..6 = 0
-// @param uVerticalFade -100..100 = 0
-// @param uVignetteAmount 0..100 = 0
-// @param uGrainAmount 0..60 = 0
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる
+// @param flame 0..40 = 18 @desc 炎の勢い。大きいほど舌・横揺れ・千切れ・脈動が強まる (実値は 0.01 倍)
+// @param bright 50..300 = 115 @desc 明るさ (%)
+// @param uHeadWidth 70..150 = 100 @desc 顔の横幅 (%)
+// @param uHeadHeight 70..150 = 100 @desc 顔の縦の長さ (%)
+// @param uHeadShiftX -100..100 = 0 @desc 顔の左右位置
+// @param uHeadShiftY -100..100 = 0 @desc 顔の上下位置
+// @param uTongueCount 40..250 = 100 @desc 炎の舌の本数 (%)
+// @param uTongueHeight 0..1000 = 100 @desc 炎の舌の高さ (%)
+// @param uSwayAmp 0..500 = 100 @desc 炎の横揺れの幅 (%)
+// @param uTipTear 0..1500 = 100 @desc 火先の千切れ方 (%)
+// @param uPulse 0..300 = 100 @desc 顔の太さの脈動 (%)
+// @param uSplitGap 40..300 = 100 @desc 左右の継ぎ目の割れ (%)
+// @param uSceneRotate -180..180 = 0 @desc 画面全体の回転 (度)
+// @param uMirrorH 0..100 = 0 @desc 左右対称にする度合い (%)
+// @param uTileCount 100..300 = 100 @desc 画面の繰り返し数 (%)。折り返しで継ぎ目なし
+// @param uSwayFreq 40..250 = 100 @desc 炎の横揺れの細かさ (%)
+// @param uTipTearFreq 50..200 = 100 @desc 火先の千切れの細かさ (%)
+// @param uFlameLean -100..100 = 0 @desc 炎全体が上に向かって傾く量
+// @param uChromaSplit 0..800 = 100 @desc 色収差のずれ幅 (%)
+// @param uFlameTint color = #ffffff @desc 炎の色。掛け算 (白で元の色)
+// @param uShadowColor color = #000000 @desc 暗部に敷く色
+// @param uInkLevels 0..6 = 0 @desc 色の段数。0 でなめらか
+// @param uVerticalFade -100..100 = 0 @desc 画面の下 (正) または上 (負) を暗くする量
+// @param uVignetteAmount 0..100 = 0 @desc 周辺を暗くする量 (%)
+// @param uGrainAmount 0..60 = 0 @desc 粒状ノイズの量 (%)
 uniform float speed;
 uniform float flame;   // 炎の勢い (deadParam 対策で >1 単位。実値 = flame*0.01)
 uniform float bright;  // 明るさ (%)。原作の上限クランプが 0.35 前後で頭打ちになり全体が暗いため
@@ -8226,33 +8226,33 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
   name: "dzenflow (cdcBDj)",
   ch: ["","","",""],
   src: `// Shadertoy cdcBDj "dzenflow" by Nabuki (原作そのまま単一パス)。https://www.shadertoy.com/view/cdcBDj
-// @param speed 0..3 = 1
-// @param radiusPct 2..40 = 10
-// @param glowPct 5..150 = 50
-// @param grain 0..30 = 10
-// @param uNoiseScale 40..250 = 100
-// @param uStreakLength 30..250 = 100
-// @param uStreakAngle -90..90 = 0
-// @param uStreakCount 3..30 = 30
-// @param uStreakBend -150..150 = 0
-// @param uTurbulence 0..100 = 0
-// @param uGrainCells 30..300 = 100
-// @param uStreakTaper -60..100 = 0
-// @param uCenterX -50..50 = 0
-// @param uCenterY -50..50 = 0
-// @param uRoll -90..90 = 0
-// @param uMirror 0..100 = 0
-// @param uFlowAspect 50..200 = 100
-// @param uFlowPhase -100..100 = 0
-// @param uFlowSharp 50..200 = 100
-// @param uBeadJitter 0..100 = 0
-// @param uBeadSpread -60..100 = 0
-// @param uHaloCurve 30..500 = 100
-// @param uTwinkle 0..300 = 100
-// @param uBackGlow 0..100 = 0
-// @param uVignetteAmt 0..100 = 0
-// @param uStreakTint color = #ffffff
-// @param uBackTint color = #ffffff
+// @param speed 0..3 = 1 @desc 流れの動きの速さ。0 で止まる
+// @param radiusPct 2..40 = 10 @desc 尾を成す玉の半径 (%)
+// @param glowPct 5..150 = 50 @desc 玉の縁のぼかし幅 (%)
+// @param grain 0..30 = 10 @desc 粒ノイズによる暗がりの抜け具合。大きいほどざらつく
+// @param uNoiseScale 40..250 = 100 @desc 流れ場の細かさ (%)。大きいほど細かい渦
+// @param uStreakLength 30..250 = 100 @desc 光の尾の長さ (%)
+// @param uStreakAngle -90..90 = 0 @desc 尾の向きを回す角度 (度)
+// @param uStreakCount 3..30 = 30 @desc 尾を成す玉の数。少ないと粒が離れる
+// @param uStreakBend -150..150 = 0 @desc 尾の曲がり (%)。彗星の尾のように弧を描く
+// @param uTurbulence 0..100 = 0 @desc 流れ場に重ねる細かい乱れ (%)
+// @param uGrainCells 30..300 = 100 @desc 粒子ノイズの細かさ (%)
+// @param uStreakTaper -60..100 = 0 @desc 尾の先を細くする量 (%)。負で先ほど太く
+// @param uCenterX -50..50 = 0 @desc 構図の左右位置 (%)
+// @param uCenterY -50..50 = 0 @desc 構図の上下位置 (%)
+// @param uRoll -90..90 = 0 @desc 画面のロール (度)
+// @param uMirror 0..100 = 0 @desc 左右の鏡像 (%)。値が鏡の位置で、大きいほど右へずれる
+// @param uFlowAspect 50..200 = 100 @desc 流れ場の横縦比 (%)。大きいと横に伸びる
+// @param uFlowPhase -100..100 = 0 @desc 流れ場の位相のずらし (%)
+// @param uFlowSharp 50..200 = 100 @desc 流れの強弱の偏り (%)。小さいと弱い流れも尾を引く
+// @param uBeadJitter 0..100 = 0 @desc 玉の横ぶれ (%)
+// @param uBeadSpread -60..100 = 0 @desc 尾の先ほど玉が離れる量 (%)。負で先ほど詰まる
+// @param uHaloCurve 30..500 = 100 @desc 光の輪郭の立ち上がり (%)。小さいと柔らかい
+// @param uTwinkle 0..300 = 100 @desc 粒のまたたきの量 (%)
+// @param uBackGlow 0..100 = 0 @desc 背景のほのかな色 (%)
+// @param uVignetteAmt 0..100 = 0 @desc 周辺減光 (%)
+// @param uStreakTint color = #ffffff @desc 光の尾の色味。掛け算 (白で元と同じ)
+// @param uBackTint color = #ffffff @desc 背景の色味。掛け算 (白で元と同じ)
 uniform float speed;
 uniform float radiusPct;   // 0..1 だと deadParam に潰されるため % 指定
 uniform float glowPct;
@@ -8439,15 +8439,15 @@ void mainImage(out vec4 fragColor, in vec2 _fragCoord) {
   name: "Decoders (3X2Szc)",
   ch: ["","","",""],
   src: `// Shadertoy 3X2Szc "decoders" by leroyJS (原作そのまま単一パス)。https://www.shadertoy.com/view/3X2Szc
-// @param uMinWidth 50..200 = 100
-// @param uMaxWidth 50..200 = 100
-// @param uWidthWobble 0..150 = 100
-// @param uRowShift -100..100 = 0
-// @param uSlant -100..100 = 0
-// @param uGradCurve 30..300 = 100
-// @param uGradCeil 50..125 = 100
-// @param uBlockGap 0..60 = 0
-// @param uBands 0..16 = 0
+// @param uMinWidth 50..200 = 100 @desc ブロックの最小幅 (%)。小さいほど細いブロックが増える
+// @param uMaxWidth 50..200 = 100 @desc ブロックの最大幅 (%)。大きいほど太いブロックが増える
+// @param uWidthWobble 0..150 = 100 @desc ブロック幅が時間で伸び縮みする振れ幅 (%)
+// @param uRowShift -100..100 = 0 @desc 行ごとの横ずらし (%)。0 で元の並び
+// @param uSlant -100..100 = 0 @desc ブロック内のグラデの傾き (%)。0 で水平、正負で上下の向きが変わる
+// @param uGradCurve 30..300 = 100 @desc グラデの立ち上がりの指数 (%)。小さいと早く明るくなる
+// @param uGradCeil 50..125 = 100 @desc 明部の頭打ちの高さ (%)。小さいと白が出ず灰色止まり
+// @param uBlockGap 0..60 = 0 @desc ブロック左と下の黒い目地の幅 (%)
+// @param uBands 0..16 = 0 @desc グラデの階調の段数。0 でなめらか
 uniform float uMinWidth;   // ブロックの最小幅 (%)
 uniform float uMaxWidth;   // ブロックの最大幅 (%)
 uniform float uWidthWobble; // ブロック幅の伸び縮みの振れ幅 (%)
@@ -8460,27 +8460,27 @@ uniform float uBands;      // グラデの階調の段数。0 でなめらか
 // VJ: contrast/gain でコントラスト可変。さらにグラデ部分を内蔵の Dither Blur で溶かす
 // (Post FX の Dither Blur と同じ構成 = ジッター付き 4-tap Kawase を 2 半径で平均。
 //  ただしブロック内の localUV に対して掛けるので、ブロックの境界は鋭いまま残る)。
-// @param speed 0..3 = 1
-// @param contrast 1..4 = 1.1
-// @param gain 1..2.5 = 1.05
-// @param blackPct 0..90 = 40
-// @param rows 4..24 = 10
-// @param ditherPct 0..100 = 55
-// @param uReverseBias -50..50 = 0
-// @param uGradOffset -50..50 = 0
-// @param uGradDrift 0..200 = 100
-// @param uLayoutShiftX -100..100 = 0
-// @param uLayoutShiftY -100..100 = 0
-// @param uBlackBlockGray 0..60 = 0
-// @param uBlockBrightVar 0..70 = 0
-// @param uBlinkAmount 0..70 = 0
-// @param uScanDepth 0..80 = 0
-// @param uRowGap 0..40 = 0
-// @param uBlockColorVar 0..100 = 0
-// @param uGrainAmount 0..100 = 0
-// @param uFrameVignette 0..100 = 0
-// @param uHighColor color = #ffffff
-// @param uShadowColor color = #000000
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる (ブロック幅・グラデの流れ・明滅に掛かる)
+// @param contrast 1..4 = 1.1 @desc コントラスト。大きいほど明暗がはっきりする
+// @param gain 1..2.5 = 1.05 @desc 明るさの倍率。大きいほど全体が明るくなる
+// @param blackPct 0..90 = 40 @desc 黒ブロックの割合 (%)。大きいほど黒いブロックが増える
+// @param rows 4..24 = 10 @desc 行数。大きいほどブロックの段が細かくなる
+// @param ditherPct 0..100 = 55 @desc グラデをディザで溶かす量 (%)。0 で素のグラデ
+// @param uReverseBias -50..50 = 0 @desc 明暗が反転するブロックの偏り (%)。正で反転が減り、負で増える
+// @param uGradOffset -50..50 = 0 @desc グラデの開始位置のずれ (%)。全ブロック共通
+// @param uGradDrift 0..200 = 100 @desc グラデが左右に流れる振れ幅 (%)。0 で固定
+// @param uLayoutShiftX -100..100 = 0 @desc ブロック配置の横ずらし (%)
+// @param uLayoutShiftY -100..100 = 0 @desc ブロック配置の縦ずらし (%)
+// @param uBlackBlockGray 0..60 = 0 @desc 黒ブロックを灰色に持ち上げる明るさ (%)
+// @param uBlockBrightVar 0..70 = 0 @desc ブロックごとの明るさのばらつき (%)
+// @param uBlinkAmount 0..70 = 0 @desc ブロックの明滅の深さ (%)
+// @param uScanDepth 0..80 = 0 @desc ブロック内の走査線の濃さ (%)
+// @param uRowGap 0..40 = 0 @desc ブロック上端の黒い目地の幅 (%)
+// @param uBlockColorVar 0..100 = 0 @desc ブロックごとの色づきの量 (%)
+// @param uGrainAmount 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uFrameVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uHighColor color = #ffffff @desc 明部の色。白を指定した色に置き換える
+// @param uShadowColor color = #000000 @desc 暗部の色。黒を指定した色に置き換える
 uniform float speed;
 uniform float contrast;
 uniform float gain;
@@ -8641,30 +8641,30 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
   ch: ["","","",""],
   src: `// Shadertoy 4tV3WD "Pool Like Template" by Imsure1200q_1UWE130 (単一パス)。https://www.shadertoy.com/view/4tV3WD
 // VJ: 原作はほぼ静止画のため、水面のドメインワープで揺らぎを追加 (wavePct=0 で原作同等)。
-// @param speed 0..3 = 1
-// @param wavePct 0..60 = 25
-// @param uRippleFreq 50..250 = 100
-// @param uRippleFine 0..300 = 100
-// @param uDriftAmt 0..300 = 100
-// @param uShear -80..80 = 0
-// @param uFrameWarp 40..250 = 100
-// @param uFogDensity 20..300 = 100
-// @param uRadialShift -50..50 = 0
-// @param uRadialCurve 50..200 = 100
-// @param uActivity 50..200 = 100
-// @param uNoiseGrain 50..250 = 100
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRotate -180..180 = 0
-// @param uSwirl -200..200 = 0
-// @param uMirror 0..2 = 0
-// @param uPixelate 0..70 = 0
-// @param uWaveTilt -100..100 = 0
-// @param uBlobScale 50..300 = 100
-// @param uSparkle 0..180 = 100
-// @param uPosterize 0..8 = 0
-// @param uCausticTint color = #ffffff
-// @param uWaterTint color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる
+// @param wavePct 0..60 = 25 @desc 水面の揺らぎの強さ (%)。0 で原作同等の静止
+// @param uRippleFreq 50..250 = 100 @desc 水面のさざ波の細かさ (%)。大きいほど波長が短い
+// @param uRippleFine 0..300 = 100 @desc 細かいさざ波の強さ (%)
+// @param uDriftAmt 0..300 = 100 @desc ゆっくり漂う量 (%)
+// @param uShear -80..80 = 0 @desc 水面の横ずれ (%)。上下で横にずれる
+// @param uFrameWarp 40..250 = 100 @desc 格子の歪みの指数 (%)
+// @param uFogDensity 20..300 = 100 @desc 奥の霞の濃さ (%)。大きいほど暗く沈む
+// @param uRadialShift -50..50 = 0 @desc 明暗の中心の左右ずらし (%)
+// @param uRadialCurve 50..200 = 100 @desc 中心からの明暗の勾配の指数 (%)
+// @param uActivity 50..200 = 100 @desc 反復の活動量 (%)
+// @param uNoiseGrain 50..250 = 100 @desc 泡立ちノイズの粒の細かさ (%)
+// @param uCenterX -100..100 = 0 @desc 模様の中心の左右 (%)
+// @param uCenterY -100..100 = 0 @desc 模様の中心の上下 (%)
+// @param uRotate -180..180 = 0 @desc 模様全体の回転 (度)
+// @param uSwirl -200..200 = 0 @desc 中心からの距離に比例したねじれ (%)
+// @param uMirror 0..2 = 0 @desc 鏡像。0 = なし / 1 = 左右 / 2 = 左右上下
+// @param uPixelate 0..70 = 0 @desc モザイク化の粗さ (%)。0 でなし
+// @param uWaveTilt -100..100 = 0 @desc 水面の揺れの上下勾配 (%)。正で上ほど大きい
+// @param uBlobScale 50..300 = 100 @desc 泡の塊の大きさの細かさ (%)
+// @param uSparkle 0..180 = 100 @desc きらめきノイズの強さ (%)
+// @param uPosterize 0..8 = 0 @desc 階調の段数。0 でなし (2 以上で段階化)
+// @param uCausticTint color = #ffffff @desc 模様の乗算ティント
+// @param uWaterTint color = #ffffff @desc 水の青色の乗算ティント
 uniform float speed;
 uniform float wavePct;
 uniform float uRippleFreq; // 水面のさざ波の細かさ (%)
@@ -8840,38 +8840,38 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
   ch: ["","","",""],
   src: `// Shadertoy 3sK3zy "Infinite House Plan" by 104 (単一パス)。https://www.shadertoy.com/view/3sK3zy
 // VJ: 影(ガンマ)・ビネット・色面を除去して白背景+黒線に。かわりにディザグラデと灰色の面を追加。
-// @param speed 0..3 = 1
-// @param greyPct 0..100 = 60
-// @param uPartitions 3..13 = 13
-// @param uLineWidth 40..300 = 100
-// @param uSplitJitter 0..100 = 100
-// @param uMinCell 0..170 = 100
-// @param uStopBias 50..150 = 100
-// @param uGreyTone 30..120 = 100
-// @param uDitherShare 0..200 = 100
-// @param uDitherGrain 100..800 = 100
-// @param uSway 0..250 = 100
-// @param uCellAspect 40..250 = 100
-// @param uVLineWeight 20..300 = 100
-// @param uHLineWeight 20..300 = 100
-// @param uDeepFade 0..100 = 0
-// @param uRoll -180..180 = 0
-// @param uPanX -100..100 = 0
-// @param uPanY -100..100 = 0
-// @param uShear -100..100 = 0
-// @param uSeed -100..100 = 0
-// @param uSwayPhase -180..180 = 0
-// @param uMirrorY 0..100 = 0
-// @param uLineSharp 40..300 = 100
-// @param uSplitBias -40..40 = 0
-// @param uGreyRange 0..200 = 100
-// @param uGreyShare 0..200 = 100
-// @param uDitherLow 0..200 = 100
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uPaperColor color = #ffffff
-// @param uGreyColor color = #ffffff
-// @param uDitherColor color = #ffffff
+// @param speed 0..3 = 1 @desc 図面が横に流れる速さ。0 で止まる
+// @param greyPct 0..100 = 60 @desc ディザグラデ / 灰色面になるセルの割合 (%)
+// @param uPartitions 3..13 = 13 @desc 四分割を重ねる最大の深さ
+// @param uLineWidth 40..300 = 100 @desc 線の太さ (%)
+// @param uSplitJitter 0..100 = 100 @desc 分割位置のばらつき (%)。0 で必ずセルの中央 = 整った四分木
+// @param uMinCell 0..170 = 100 @desc 細かいセルで分割を打ち切る条件の強さ (%)。上げるとセルが粗くなる
+// @param uStopBias 50..150 = 100 @desc 分割を打ち切る近さの基準 (%)。上げると浅い所で止まる
+// @param uGreyTone 30..120 = 100 @desc 灰色の面の明るさ (%)
+// @param uDitherShare 0..200 = 100 @desc ディザグラデの面の割合 (%)。0 でなし
+// @param uDitherGrain 100..800 = 100 @desc ディザの粒の大きさ (%)。100 で 1px
+// @param uSway 0..250 = 100 @desc 上下にゆれる幅 (%)。0 で水平のまま流れる
+// @param uCellAspect 40..250 = 100 @desc セルの横の長さ (%)。上げると横長
+// @param uVLineWeight 20..300 = 100 @desc 縦線の太さ (%)
+// @param uHLineWeight 20..300 = 100 @desc 横線の太さ (%)
+// @param uDeepFade 0..100 = 0 @desc 深い (細かい) セルの線の薄れ (%)。0 でなし
+// @param uRoll -180..180 = 0 @desc 画面の回転 (度)
+// @param uPanX -100..100 = 0 @desc 図面の左右へのずらし (%)
+// @param uPanY -100..100 = 0 @desc 図面の上下へのずらし (%)
+// @param uShear -100..100 = 0 @desc 行のせん断 (%)。上下で横にずれる
+// @param uSeed -100..100 = 0 @desc 分割パターンの種 (%)。別の図面に切り替わる
+// @param uSwayPhase -180..180 = 0 @desc 上下のゆれの位相 (度)
+// @param uMirrorY 0..100 = 0 @desc 上下を折り返す位置 (%)。0 でなし
+// @param uLineSharp 40..300 = 100 @desc 線の断面の鋭さ (%)。上げると芯が黒く縁がくっきり
+// @param uSplitBias -40..40 = 0 @desc 分割位置の偏り (%)。セルの片側へ寄せる
+// @param uGreyRange 0..200 = 100 @desc 灰色面の濃淡のばらつき (%)
+// @param uGreyShare 0..200 = 100 @desc 灰色の面の割合の倍率 (%)
+// @param uDitherLow 0..200 = 100 @desc ディザの暗い側の濃さ (%)。0 で真っ黒、上げると淡い
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0 @desc 紙の粒状のざらつき (%)
+// @param uPaperColor color = #ffffff @desc 紙の色。全体に掛けるティント
+// @param uGreyColor color = #ffffff @desc 灰色の面の色のティント
+// @param uDitherColor color = #ffffff @desc ディザの面の色のティント
 uniform float speed;
 uniform float greyPct;  // ディザグラデ/灰色面になるセルの割合
 uniform float uPartitions; // 四分割を重ねる最大の深さ。既定 13
@@ -9021,32 +9021,32 @@ void mainImage( out vec4 o, in vec2 fragCoord )
 // 幾何は三角プレートの塊と、左と下へ伸びる針。レイマーチは使わない。
 // 各プレートを三角形の交差で一発判定するので、縁が揺れず、差分法線も AO も無い。
 // 名前は Decal Scaffold (7lt3DN) のまま。カタログ S112 は動かない。
-// @param speed 0..3 = 1
-// @param spike 0..2.5 = 1
-// @param fold 0..2 = 1
-// @param spin 0..2 = 1
-// @param yaw -2..2 = 1
-// @param pitch -2..2 = 1
-// @param roll -2..2 = 1
-// @param sheen 0..1.5 = 1
-// @param uBladeWide 30..200 = 100
-// @param uBladeThin 30..400 = 100
-// @param uBladeTwist 0..250 = 100
-// @param uFaceCam 0..130 = 100
-// @param uBladeCount 4..24 = 24
-// @param uPlateLen 30..200 = 100
-// @param uSmallBladeLen 30..200 = 100
-// @param uCamX -100..100 = 0
-// @param uCamY -100..100 = 0
-// @param uCamDist 60..160 = 100
-// @param uFocal 60..160 = 100
-// @param uCamRoll -90..90 = 0
-// @param uLightAzim -180..180 = 0
-// @param uFresnel 0..300 = 100
-// @param uFillBlue 0..300 = 100
-// @param uHorizonGlow 0..300 = 100
-// @param uEnvTint color = #ffffff
-// @param uFresnelTint color = #ffffff
+// @param speed 0..3 = 1 @desc 回転の速さ。0 で止まる
+// @param spike 0..2.5 = 1 @desc 針の長さの倍率。0 で針が消える
+// @param fold 0..2 = 1 @desc 針の根元の広がり。小さいと中心に寄り、大きいと外へ開く
+// @param spin 0..2 = 1 @desc 回転全体の速さの倍率。0 で止まる (yaw / pitch / roll に掛かる)
+// @param yaw -2..2 = 1 @desc 左右軸の回転の速さ。負で逆回り
+// @param pitch -2..2 = 1 @desc 前後軸の回転の速さ。負で逆回り
+// @param roll -2..2 = 1 @desc 面内の回転の速さ。負で逆回り
+// @param sheen 0..1.5 = 1 @desc 縁に出る油膜の虹色の強さ
+// @param uBladeWide 30..200 = 100 @desc プレートの幅 (%)
+// @param uBladeThin 30..400 = 100 @desc 針の根元の厚み (%)
+// @param uBladeTwist 0..250 = 100 @desc 針ごとのねじれ角 (%)。0 でそろう
+// @param uFaceCam 0..130 = 100 @desc 針がカメラ側へ向く度合い (%)
+// @param uBladeCount 4..24 = 24 @desc 描く針の本数 (先頭から数える)
+// @param uPlateLen 30..200 = 100 @desc 大きいプレート (先頭 8 本) の長さ (%)
+// @param uSmallBladeLen 30..200 = 100 @desc 小さいプレート (13 本目以降) の針の長さ (%)
+// @param uCamX -100..100 = 0 @desc 注視点の左右 (%)
+// @param uCamY -100..100 = 0 @desc 注視点の上下 (%)
+// @param uCamDist 60..160 = 100 @desc カメラの距離 (%)。小さいと近づく
+// @param uFocal 60..160 = 100 @desc レンズの焦点距離 (%)。上げると望遠
+// @param uCamRoll -90..90 = 0 @desc 画面のロール (度)
+// @param uLightAzim -180..180 = 0 @desc 主光源の方位 (度)
+// @param uFresnel 0..300 = 100 @desc 縁のフレネル光の強さ (%)
+// @param uFillBlue 0..300 = 100 @desc 青いフィル光の映り込みの強さ (%)
+// @param uHorizonGlow 0..300 = 100 @desc 地平線の光る帯の映り込みの強さ (%)
+// @param uEnvTint color = #ffffff @desc 映り込みの乗算ティント
+// @param uFresnelTint color = #ffffff @desc 縁の光の乗算ティント
 uniform float speed;
 uniform float spike;
 uniform float fold;
@@ -9346,35 +9346,35 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 // 尾根が数学的に無限に鋭い = トゲを後付けせずフラクタル自身の刃が立ち上がる。
 // 視線に沿って高さ場を追跡 (parallax occlusion) するので稜線が手前を隠し、
 // シルエットも尖る。幾何は低イテレーション / 色は高イテレーションで負荷を分ける。
-// @param speed 0..3 = 1
-// @param zoomPct 0..100 = 45
-// @param driftPct 0..200 = 100
-// @param reliefPct 0..100 = 65
-// @param steps 4..24 = 14
-// @param gIter 2..10 = 4
-// @param cIter 4..30 = 14
-// @param bumpPct 0..200 = 100
-// @param black bool = false
-// @param uSceneAngle -180..180 = 0
-// @param uMirrorX 0..100 = 0
-// @param uStretchX 70..105 = 100
-// @param uBaseShiftX -50..50 = 0
-// @param uBaseShiftY -50..50 = 0
-// @param uViewAngle -180..180 = 0
-// @param uLightAzimuth -180..180 = 0
-// @param uLightElevation 20..250 = 100
-// @param uDiffuseAmount 0..200 = 100
-// @param uAmbientLevel 0..200 = 100
-// @param uSpecSharp 5..300 = 100
-// @param uAOAmount 0..200 = 100
-// @param uNormalRadius 50..400 = 100
-// @param uPaletteDensity 70..160 = 100
-// @param uBlendCurve 40..250 = 100
-// @param uValleyTint color = #ffffff
-// @param uSpecTint color = #ffffff
-// @param uInkLevels 0..6 = 0
-// @param uVignetteAmount 0..100 = 0
-// @param uGrainAmount 0..60 = 0
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる
+// @param zoomPct 0..100 = 45 @desc 脈動ズームの深さ (%)
+// @param driftPct 0..200 = 100 @desc ドメインが流れる量 (%)。Lissajous 状に動く
+// @param reliefPct 0..100 = 65 @desc 高さ (%)。0 で平面
+// @param steps 4..24 = 14 @desc 高さ場を視線に沿って追跡するステップ数。多いほど稜線の隠れ方が正確
+// @param gIter 2..10 = 4 @desc 幾何用フラクタルの反復数。多いと鋭く重い
+// @param cIter 4..30 = 14 @desc 色用フラクタルの反復数。多いと色が細かく重い
+// @param bumpPct 0..200 = 100 @desc 法線の強さ (%)。大きいほど凹凸の陰影が強い
+// @param black bool = false @desc ON で立体を黒インクの版画にする (Slot A は白地に黒、Slot B は黒のみ)
+// @param uSceneAngle -180..180 = 0 @desc 画面全体の回転 (度)
+// @param uMirrorX 0..100 = 0 @desc 左右対称にする度合い (%)
+// @param uStretchX 70..105 = 100 @desc 模様の横幅 (%)。小さいと横に引き伸ばされる
+// @param uBaseShiftX -50..50 = 0 @desc フラクタル窓の横ずらし
+// @param uBaseShiftY -50..50 = 0 @desc フラクタル窓の縦ずらし
+// @param uViewAngle -180..180 = 0 @desc 視線の傾く向き (度)。稜線の隠れ方が変わる
+// @param uLightAzimuth -180..180 = 0 @desc 光の向きのずれ (度)
+// @param uLightElevation 20..250 = 100 @desc 光の高さ (%)。小さいと低く斜めから
+// @param uDiffuseAmount 0..200 = 100 @desc 拡散光の強さ (%)
+// @param uAmbientLevel 0..200 = 100 @desc 環境光の量 (%)。小さいと影が深い
+// @param uSpecSharp 5..300 = 100 @desc ハイライトの絞り (%)。大きいほど小さく鋭い
+// @param uAOAmount 0..200 = 100 @desc 谷の陰り (AO) の強さ (%)
+// @param uNormalRadius 50..400 = 100 @desc 法線を取る幅 (%)。大きいと凹凸がなめらか
+// @param uPaletteDensity 70..160 = 100 @desc 色の縞の細かさ (%)
+// @param uBlendCurve 40..250 = 100 @desc 2 つの色の混ざり方の曲線 (%)
+// @param uValleyTint color = #ffffff @desc 谷 (立体) の色。掛け算
+// @param uSpecTint color = #ffffff @desc ハイライトの色。掛け算
+// @param uInkLevels 0..6 = 0 @desc 色の段数。0 で滑らか
+// @param uVignetteAmount 0..100 = 0 @desc 周辺を暗くする量 (%)
+// @param uGrainAmount 0..60 = 0 @desc 粒状ノイズの量 (%)
 uniform float speed;
 uniform float zoomPct;    // 脈動ズームの深さ
 uniform float driftPct;   // ドメインが流れる量 (Lissajous)
@@ -9405,7 +9405,7 @@ uniform vec3 uSpecTint; // ハイライトの色 (掛け算)
 uniform float uInkLevels; // 色の段数。0 で滑らか
 uniform float uVignetteAmount; // 周辺を暗くする量 (%)
 uniform float uGrainAmount; // 粒状ノイズの量 (%)
-// @param uBgColor color = #000000
+// @param uBgColor color = #000000 @desc 背景の色。Slot A で敷かれ、黒モードでは紙の色 (黒のままなら白紙)
 uniform vec3 uBgColor;    // Slot A の背景色 (黒モードの紙の色。黒のままなら白紙)
 #define FRACTAL_SEQUENCE_LENGTH 9
 int fractalSequence[] = int[FRACTAL_SEQUENCE_LENGTH](0, 0, 1, 0, 0, 0, 1, 1, 1);
@@ -9550,40 +9550,40 @@ void mainImage(out vec4 finalColor, in vec2 pixelCoordinate) {
   src: `// Shadertoy 3tlfRr "Shader Nouveau" (mathieu_h) のタイル構成を流用。
 // ディスク模様のかわりに C008 (cyber ui) の中央エンブレム画像を敷き詰め、
 // タイルごとにランダム回転 (スナップ) + パン + 段階ズーム。
-// @param speed 0..3 = 1
-// @param tiles 2..12 = 4
-// @param randPct 0..100 = 100
-// @param snapPct 0..100 = 80
-// @param black bool = false
-// @param uTileAspect 50..200 = 100
-// @param uEmblemScale 50..160 = 100
-// @param uTileTwist -300..300 = 0
-// @param uTileMirror 0..100 = 0
-// @param uBrickShift 0..100 = 0
-// @param uZoomStep 0..200 = 100
-// @param uVignetteSize 0..400 = 100
-// @param uLineCut 30..300 = 100
-// @param uViewShiftX -100..100 = 0
-// @param uViewShiftY -100..100 = 0
-// @param uViewAngle -180..180 = 0
-// @param uPanAngle -180..180 = 0
-// @param uTileMirrorY 0..100 = 0
-// @param uEmblemShiftX -50..50 = 0
-// @param uEmblemShiftY -50..50 = 0
-// @param uTileSizeJitter 0..100 = 0
-// @param uTileDropout 0..90 = 0
-// @param uTileOffsetJitter 0..60 = 0
-// @param uSnapSharp 20..300 = 100
-// @param uVignetteCurve 40..300 = 100
-// @param uFrameLine 0..100 = 0
-// @param uLightColor color = #ffffff
+// @param speed 0..3 = 1 @desc 動きの速さ。0 で止まる (回転・パン・ズーム段階)
+// @param tiles 2..12 = 4 @desc 画面内のタイル数
+// @param randPct 0..100 = 100 @desc ランダム回転の量 (%)
+// @param snapPct 0..100 = 80 @desc 回転のスナップ量 (%)。100 に近いほどカクッと切り替わる
+// @param black bool = false @desc ON で線を白でなく黒にする (Slot A は白地に黒、Slot B は黒のみ)
+// @param uTileAspect 50..200 = 100 @desc タイルの縦横比 (%)。上げると縦に細長く
+// @param uEmblemScale 50..160 = 100 @desc エンブレムの大きさ (%)
+// @param uTileTwist -300..300 = 0 @desc タイル内の中心からのねじれ (%)。負で逆回り
+// @param uTileMirror 0..100 = 0 @desc エンブレムの左右の鏡像 (%)
+// @param uBrickShift 0..100 = 0 @desc 段ごとの横ずらし (%)。100 でレンガ積み
+// @param uZoomStep 0..200 = 100 @desc 段階ズームの振れ幅 (%)。0 で固定
+// @param uVignetteSize 0..400 = 100 @desc 周辺の暗がりの強さ (%)。0 で消える
+// @param uLineCut 30..300 = 100 @desc 細線の抜け (%)。上げると細く淡くなる
+// @param uViewShiftX -100..100 = 0 @desc 構図全体の横ずらし (%)
+// @param uViewShiftY -100..100 = 0 @desc 構図全体の縦ずらし (%)
+// @param uViewAngle -180..180 = 0 @desc 構図全体の回転角 (度)
+// @param uPanAngle -180..180 = 0 @desc パンの向き (度)。0 で右上へ流れる
+// @param uTileMirrorY 0..100 = 0 @desc エンブレムの上下の鏡像 (%)
+// @param uEmblemShiftX -50..50 = 0 @desc エンブレムをタイル内で横にずらす (%)
+// @param uEmblemShiftY -50..50 = 0 @desc エンブレムをタイル内で縦にずらす (%)
+// @param uTileSizeJitter 0..100 = 0 @desc タイルごとのエンブレムの大小のばらつき (%)
+// @param uTileDropout 0..90 = 0 @desc 空になるタイルの割合 (%)
+// @param uTileOffsetJitter 0..60 = 0 @desc タイルごとの中心ずれのばらつき (%)
+// @param uSnapSharp 20..300 = 100 @desc 回転スナップの急峻さ (%)。上げるとパッと切り替わる
+// @param uVignetteCurve 40..300 = 100 @desc 周辺の暗がりの勾配の指数 (%)
+// @param uFrameLine 0..100 = 0 @desc タイルの縁取り線の太さ (%)。0 でなし
+// @param uLightColor color = #ffffff @desc 線の色。黒モードでは紙の色に掛けるティント
 uniform float speed;
 uniform float tiles;    // 画面内のタイル数
 uniform float randPct;  // ランダム回転の量
 uniform float snapPct;  // 100 に近いほど回転がカクッとスナップ
 uniform float black;    // Black: 線を白ではなく黒に (Slot A=白地に黒 / Slot B=透過に黒のみ)
 uniform float uSlotIsA; // 1=Slot A / 0=Slot B (B では線以外を透過)
-// @param uBgColor color = #000000
+// @param uBgColor color = #000000 @desc 背景の色。Slot A で敷かれ、黒モードでは紙の色 (黒のままなら白紙)
 uniform vec3 uBgColor;  // Slot A の背景色 (黒モードの紙の色。黒のままなら白紙)
 uniform float uTileAspect;   // タイルの縦横比 (%)。上げると縦に細長く
 uniform float uEmblemScale;  // エンブレムの大きさ (%)
@@ -9686,50 +9686,50 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 // https://www.shadertoy.com/view/XflXzn
 // VJ: 原作の5中心・角度鋸波・同心パルスを維持し、各色マスクを高さ場として押し出す。
 //     S039 Shuriken型の厚み + 3軸回転。Slot A=黒背景、Slot B=背景を実alphaで透過。
-// @param speed 0..3 = 0.7
-// @param spin 0..3 = 1.0
-// @param inflatePct 0..140 = 90
-// @param reliefPct 0..100 = 65
-// @param chromePct 0..100 = 100
-// @param satPct 0..60 = 32
-// @param uRayCount 3..8 = 5
-// @param uRayWidth 50..150 = 100
-// @param uSpiralTwist 0..180 = 100
-// @param uSpiralCurve 40..160 = 100
-// @param uRingPitch 50..200 = 100
-// @param uRingFill 60..300 = 100
-// @param uCenterSpread 0..250 = 100
-// @param uWobble 0..160 = 100
-// @param uPieces 3..5 = 5
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uViewRoll -180..180 = 0
-// @param uEyeDistance 70..160 = 100
-// @param uLensZoom 60..170 = 100
-// @param uPoseX -30..30 = 0
-// @param uPoseY -30..30 = 0
-// @param uPoseRoll -180..180 = 0
-// @param uLayerGap 0..300 = 100
-// @param uSpiralPhase -100..100 = 0
-// @param uRingPhase -100..100 = 0
-// @param uRingSoft 40..400 = 100
-// @param uRelief 30..250 = 100
-// @param uCavityDark 0..250 = 100
-// @param uLightAzimuth -180..180 = 0
-// @param uLightElev -25..30 = 0
-// @param uRimSharp 30..300 = 100
-// @param uRimGain 0..300 = 100
-// @param uEnvFloor 0..500 = 100
-// @param uEnvStripe 0..400 = 100
-// @param uEnvBandLow -60..60 = 0
-// @param uEnvBandHigh -60..60 = 0
-// @param uEnvTint color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uPiece1Color color = #ffffff
-// @param uPiece2Color color = #ffffff
-// @param uPiece3Color color = #ffffff
-// @param uPiece4Color color = #ffffff
-// @param uPiece5Color color = #ffffff
+// @param speed 0..3 = 0.7 @desc 渦と輪の動く速さ。0 で止まる
+// @param spin 0..3 = 1.0 @desc 3D 回転の速さ。0 で止まる
+// @param inflatePct 0..140 = 90 @desc 板の厚みの膨らみ (%)
+// @param reliefPct 0..100 = 65 @desc 面の丸みの付き方 (%)。大きいほど中央が盛り上がる
+// @param chromePct 0..100 = 100 @desc クロムの度合い (%)。0 でグラファイト調のつや消し
+// @param satPct 0..60 = 32 @desc 色づきの彩度 (%)。0 で無彩色のクロム
+// @param uRayCount 3..8 = 5 @desc 渦の腕の本数
+// @param uRayWidth 50..150 = 100 @desc 腕の太さ (%)
+// @param uSpiralTwist 0..180 = 100 @desc 腕の渦の巻き込み (%)。0 でまっすぐ放射
+// @param uSpiralCurve 40..160 = 100 @desc 渦の巻き方の曲がり (%)
+// @param uRingPitch 50..200 = 100 @desc 同心の輪の細かさ (%)
+// @param uRingFill 60..300 = 100 @desc 同心の輪の帯の幅 (%)
+// @param uCenterSpread 0..250 = 100 @desc 5 つの渦の中心の散らばり (%)。0 で中央に重なる
+// @param uWobble 0..160 = 100 @desc 3D 回転の揺れ幅 (%)
+// @param uPieces 3..5 = 5 @desc 描く渦の数 (3〜5)。手前の色から数える
+// @param uCenterX -100..100 = 0 @desc 全体の左右位置 (%)
+// @param uCenterY -100..100 = 0 @desc 全体の上下位置 (%)
+// @param uViewRoll -180..180 = 0 @desc 画面全体の回転 (度)
+// @param uEyeDistance 70..160 = 100 @desc カメラまでの距離 (%)。近いほど遠近が強い
+// @param uLensZoom 60..170 = 100 @desc レンズの倍率 (%)。上げると望遠
+// @param uPoseX -30..30 = 0 @desc 板の前後の傾きの基準角 (度)
+// @param uPoseY -30..30 = 0 @desc 板の左右の傾きの基準角 (度)
+// @param uPoseRoll -180..180 = 0 @desc 板の面内の回転の基準角 (度)
+// @param uLayerGap 0..300 = 100 @desc 5 色の板の重なる間隔 (%)。0 で同一平面
+// @param uSpiralPhase -100..100 = 0 @desc 渦の巻きの位相のずれ (%)
+// @param uRingPhase -100..100 = 0 @desc 同心の輪の位相のずれ (%)
+// @param uRingSoft 40..400 = 100 @desc 輪の縁のにじみ (%)
+// @param uRelief 30..250 = 100 @desc 面の膨らみの陰影の強さ (%)
+// @param uCavityDark 0..250 = 100 @desc 縁の落ち込みの暗さ (%)
+// @param uLightAzimuth -180..180 = 0 @desc 光源の方位 (度)
+// @param uLightElev -25..30 = 0 @desc 光源の高さ (度)
+// @param uRimSharp 30..300 = 100 @desc 縁の光の鋭さ (%)。大きいほど縁に細く出る
+// @param uRimGain 0..300 = 100 @desc 縁の光の強さ (%)
+// @param uEnvFloor 0..500 = 100 @desc 映り込みの暗部の明るさ (%)
+// @param uEnvStripe 0..400 = 100 @desc 映り込みの縦の白い帯の強さ (%)
+// @param uEnvBandLow -60..60 = 0 @desc 映り込みの低い帯の高さのずれ (%)
+// @param uEnvBandHigh -60..60 = 0 @desc 映り込みの高い細い帯の高さのずれ (%)
+// @param uEnvTint color = #ffffff @desc 映り込む環境の色味 (掛け算のティント)
+// @param uRimColor color = #ffffff @desc 縁の光の色味 (掛け算のティント)
+// @param uPiece1Color color = #ffffff @desc 1 番目の渦 (紫) の色味 (掛け算のティント)
+// @param uPiece2Color color = #ffffff @desc 2 番目の渦 (緑) の色味 (掛け算のティント)
+// @param uPiece3Color color = #ffffff @desc 3 番目の渦 (赤) の色味 (掛け算のティント)
+// @param uPiece4Color color = #ffffff @when uPieces >= 3.5 @desc 4 番目の渦 (青紫) の色味 (掛け算のティント)
+// @param uPiece5Color color = #ffffff @when uPieces >= 4.5 @desc 5 番目の渦 (桃) の色味 (掛け算のティント)
 uniform float speed;
 uniform float spin;
 uniform float inflatePct;
@@ -10032,47 +10032,47 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 // https://www.shadertoy.com/view/MsyyRc
 // VJ: 原作の「球でくり抜いた箱」の稜を2系統の帯として再構成し、2軸で強くねじる。
 //     反射床は外し、Slot A=純黒背景、Slot B=本体以外を実alphaで透過。
-// @param speed 0..3 = 0.7
-// @param twistPct 0..250 = 175
-// @param spin 0..3 = 0.65
-// @param ribbonPct 0..100 = 56
-// @param contrastPct 0..150 = 105
-// @param uBandA 50..300 = 150
-// @param uBandB 50..300 = 150
-// @param uLatWarp 0..250 = 100
-// @param uBandBias 50..250 = 100
-// @param uSphereRadius 85..118 = 100
-// @param uBevel 0..250 = 100
-// @param uEnvPanels 1..10 = 4
-// @param uCamDist 80..140 = 100
-// @param uPoseX -180..180 = 0
-// @param uPoseY -180..180 = 0
-// @param uPoseZ -180..180 = 0
-// @param uTwistAxisA 40..200 = 100
-// @param uTwistAxisB 40..200 = 100
-// @param uStretchY 60..160 = 100
-// @param uBandSkewA 0..200 = 100
-// @param uBandSkewB 0..200 = 100
-// @param uPhaseA -180..180 = 0
-// @param uPhaseB -180..180 = 0
-// @param uFov 60..160 = 100
-// @param uRoll -180..180 = 0
-// @param uKeyAzimuth -180..180 = 0
-// @param uKeyElevation -60..60 = 0
-// @param uSpecSharp 30..300 = 100
-// @param uSpecGain 0..800 = 100
-// @param uRimGain 0..600 = 100
-// @param uEnvBandY -100..100 = 0
-// @param uEnvBandGain 0..500 = 100
-// @param uPanelGain 0..800 = 100
-// @param uEdgeSoftness 50..1000 = 100
-// @param uEdgeDark 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uSkyTint color = #ffffff
-// @param uWhiteBandTint color = #ffffff
-// @param uPanelTint color = #ffffff
-// @param uInnerTint color = #ffffff
-// @param uSpecTint color = #ffffff
+// @param speed 0..3 = 0.7 @desc 動きの速さ。0 で止まる
+// @param twistPct 0..250 = 175 @desc ねじれの強さ (%)。大きいほど帯が深い螺旋に曲がる
+// @param spin 0..3 = 0.65 @desc 3 軸タンブルの速さ。0 で回転が止まる (ねじれの揺れは残る)
+// @param ribbonPct 0..100 = 56 @desc 帯の太さ (%)
+// @param contrastPct 0..150 = 105 @desc コントラスト (%)。大きいほど黒締まりと白い映り込みが強い
+// @param uBandA 50..300 = 150 @desc 帯 1 系統の巻き数 (%)。50 刻みで 0.5 巻きずつ変わる
+// @param uBandB 50..300 = 150 @desc 帯 2 系統の巻き数 (%)。50 刻みで 0.5 巻きずつ変わる
+// @param uLatWarp 0..250 = 100 @desc 帯 1 の緯度方向のよじれ (%)
+// @param uBandBias 50..250 = 100 @desc 帯 2 の出にくさ (%)。大きいと帯 2 が細く減る
+// @param uSphereRadius 85..118 = 100 @desc 球全体の半径 (%)
+// @param uBevel 0..250 = 100 @desc 帯の縁の面取りの強さ (%)。0 で平ら
+// @param uEnvPanels 1..10 = 4 @desc 映り込む環境のパネル枚数
+// @param uCamDist 80..140 = 100 @desc カメラまでの距離 (%)。近いほど遠近が強い
+// @param uPoseX -180..180 = 0 @desc 球の静的な傾き X (度)。回転の初期姿勢が変わる
+// @param uPoseY -180..180 = 0 @desc 球の静的な傾き Y (度)
+// @param uPoseZ -180..180 = 0 @desc 球の静的な傾き Z (度)
+// @param uTwistAxisA 40..200 = 100 @desc 1 つ目のねじれ軸の強さ (%)。帯の曲がり方が変わる
+// @param uTwistAxisB 40..200 = 100 @desc 2 つ目のねじれ軸の強さ (%)
+// @param uStretchY 60..160 = 100 @desc 帯の模様の縦方向の伸縮 (%)。大きいと縦に伸びる
+// @param uBandSkewA 0..200 = 100 @desc 帯 1 の斜め具合 (%)。大きいほど螺旋がきつい
+// @param uBandSkewB 0..200 = 100 @desc 帯 2 の斜め具合 (%)
+// @param uPhaseA -180..180 = 0 @desc 帯 1 の位置のずらし (度)
+// @param uPhaseB -180..180 = 0 @desc 帯 2 の位置のずらし (度)
+// @param uFov 60..160 = 100 @desc 画角 (%)。大きいほど広角で球が小さく遠近が強い
+// @param uRoll -180..180 = 0 @desc カメラの回転 (度)
+// @param uKeyAzimuth -180..180 = 0 @desc 主光源の方位 (度)
+// @param uKeyElevation -60..60 = 0 @desc 主光源の仰角のずらし (度)
+// @param uSpecSharp 30..300 = 100 @desc ハイライトの鋭さ (%)
+// @param uSpecGain 0..800 = 100 @desc ハイライトの強さ (%)
+// @param uRimGain 0..600 = 100 @desc 縁のフレネル光の強さ (%)
+// @param uEnvBandY -100..100 = 0 @desc 映り込む白い帯の高さ (%)
+// @param uEnvBandGain 0..500 = 100 @desc 映り込む白い帯の明るさ (%)
+// @param uPanelGain 0..800 = 100 @desc 映り込むパネルの明るさ (%)
+// @param uEdgeSoftness 50..1000 = 100 @desc 帯の縁のぼかし (%)。大きいと透明感のあるにじみ
+// @param uEdgeDark 0..100 = 0 @desc 帯の縁の暗がり (%)。縁を締めて立体感を強める
+// @param uGrain 0..100 = 0 @desc 金属面のざらつき (%)
+// @param uSkyTint color = #ffffff @desc 環境の空 (地平線の明暗) へ掛けるティント
+// @param uWhiteBandTint color = #ffffff @desc 環境の白い帯へ掛けるティント
+// @param uPanelTint color = #ffffff @desc 環境のパネルへ掛けるティント
+// @param uInnerTint color = #ffffff @desc 球の奥側の面へ掛けるティント
+// @param uSpecTint color = #ffffff @desc ハイライトへ掛けるティント
 uniform float speed;
 uniform float twistPct;
 uniform float spin;
@@ -10285,37 +10285,37 @@ void mainImage(out vec4 fragColor,in vec2 fragCoord){
   src: `// Shadertoy 4dSBDc "Painty" by manylegged (単一パス)。https://www.shadertoy.com/view/4dSBDc
 // simplex noise: Ian McEwan / Ashima Arts (MIT)。
 // VJ: 帯の流れ/歪み量/ブラシ本数を可変化。オクターブとブラシループは ANGLE 対策で uniform 依存上限。
-// @param speed 0..3 = 1
-// @param warpPct 0..60 = 10
-// @param brush 2..16 = 10
-// @param octaves 1..8 = 6
-// @param uBandTop 60..90 = 75
-// @param uBandMid 42..58 = 50
-// @param uBandLow 10..40 = 25
-// @param uKnee 10..50 = 25
-// @param uTempRange 30..200 = 100
-// @param uHueSpan 30..140 = 100
-// @param uGreyCurve 30..300 = 100
-// @param uWarpTilt -90..90 = 0
-// @param uNoiseScale 30..250 = 100
-// @param uBrushSpread 20..400 = 100
-// @param uBrushDriftX -300..300 = 0
-// @param uBrushDriftY -300..300 = 0
-// @param uGain 30..120 = 100
-// @param uLacunarity 75..130 = 100
-// @param uBandWave 0..30 = 0
-// @param uBandTilt -100..100 = 0
-// @param uPaletteShift -25..25 = 0
-// @param uTempBase 300..3000 = 1000
-// @param uHueSat 0..150 = 100
-// @param uHueFloor 0..90 = 50
-// @param uPosterize 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uTopTint color = #ffffff
-// @param uGreyTint color = #ffffff
-// @param uHueTint color = #ffffff
-// @param uLowTint color = #ffffff
+// @param speed 0..3 = 1 @desc ノイズの流れる速さ。0 で止まる
+// @param warpPct 0..60 = 10 @desc ノイズによる歪み量 (%)。原作は 10
+// @param brush 2..16 = 10 @desc 重ねるブラシストローク数。多いほど筆跡がなめらかに平均される
+// @param octaves 1..8 = 6 @desc ノイズのオクターブ数。多いほど細部が増えて重い
+// @param uBandTop 60..90 = 75 @desc 最上段 (熱色の帯) の下端の高さ (%)
+// @param uBandMid 42..58 = 50 @desc 灰色の帯の下端の高さ (%)
+// @param uBandLow 10..40 = 25 @desc 紫〜赤の帯の下端の高さ (%)
+// @param uKnee 10..50 = 25 @desc 最上段の黒から立ち上がる幅 (%)
+// @param uTempRange 30..200 = 100 @desc 最上段の色温度の振れ幅 (%)
+// @param uHueSpan 30..140 = 100 @desc 第 3 段の色相の回り幅 (%)
+// @param uGreyCurve 30..300 = 100 @desc 灰色の帯のグラデの曲がり (%)。上げると暗部が広がる
+// @param uWarpTilt -90..90 = 0 @desc 歪みの向き (度)。0 で斜め、±45 付近で縦・横だけに流れる
+// @param uNoiseScale 30..250 = 100 @desc 歪みのうねりの細かさ (%)。上げると細かく波打つ
+// @param uBrushSpread 20..400 = 100 @desc ブラシごとの揺らぎのずれ (%)。上げるほど筆跡が散る
+// @param uBrushDriftX -300..300 = 0 @desc ブラシごとの横ずれ (%)。0 でなし
+// @param uBrushDriftY -300..300 = 0 @desc ブラシごとの縦ずれ (%)。0 でなし
+// @param uGain 30..120 = 100 @desc ノイズの細部の残り方 (%)
+// @param uLacunarity 75..130 = 100 @desc ノイズの層ごとの細かくなり方 (%)
+// @param uBandWave 0..30 = 0 @desc 帯の境目の波打ちの振れ幅 (%)
+// @param uBandTilt -100..100 = 0 @desc 帯の境目の傾き (%)
+// @param uPaletteShift -25..25 = 0 @desc グラデーションの横ずれ (%)
+// @param uTempBase 300..3000 = 1000 @desc 最上段の色温度の始点 (K)。上げると黒から立ち上がる色が白寄りへ
+// @param uHueSat 0..150 = 100 @desc 第 3 段の鮮やかさ (%)
+// @param uHueFloor 0..90 = 50 @desc 第 3 段の暗部の持ち上げ (%)。0 で暗部は黒へ
+// @param uPosterize 0..100 = 0 @desc 色の段階化 (%)。大きいほど階調が少ない
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uTopTint color = #ffffff @desc 最上段 (熱色) の色 (掛け算)
+// @param uGreyTint color = #ffffff @desc 灰色の帯の色 (掛け算)
+// @param uHueTint color = #ffffff @desc 第 3 段 (虹色) の色 (掛け算)
+// @param uLowTint color = #ffffff @desc 最下段 (水色) の色 (掛け算)
 uniform float speed;
 uniform float warpPct;  // ノイズによる歪み量 (原作は 10)
 uniform float brush;    // 重ねるブラシストローク数

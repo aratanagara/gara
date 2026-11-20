@@ -15,46 +15,46 @@
 // =====================================================
 
 // ─── 調整用パラメータ ─────────────────────────────────────
-// @param uFtShards  4..64   = 22.0
-// @param uFtRings   2..40   = 11.0
-// @param uFtCenters 1..5    = 4.0
-// @param uFtLines   0..24   = 0.0
-// @param uFtArcs    0..100  = 100.0
-// @param uFtJitter  0..200  = 0.0
-// @param uFtSpin    0..300  = 150.0
-// @param uFtDepth   0..200  = 0.0
-// @param uFtGrain   0..200  = 100.0
-// @param uFtGrad    0..200  = 200.0
-// @param uFtRough   0..200  = 0.0
-// @param uFtMisreg  0..200  = 200.0
-// @param uFtDry     0..200  = 15.0
-// @param uFtIrreg   0..200  = 100.0
-// @param uFtDith    0..100  = 35.0
-// @param uFtPal     0..5    = 0.0
-// @param uFtCenterX -100..100 = 0
-// @param uFtCenterY -100..100 = 0
-// @param uFtTurn    -180..180 = 0
-// @param uFtMirrorAxis -100..100 = 0
-// @param uFtSwirl   -100..100 = 0
-// @param uFtCircleAspect 50..200 = 100
-// @param uFtCenterSpread 30..200 = 100
-// @param uFtBandRange 50..200 = 100
-// @param uFtOffcenter 0..300 = 100
-// @param uFtPigments 3..7 = 7
-// @param uFtEdgeWidth 40..250 = 100
-// @param uFtPool 0..300 = 100
-// @param uFtGradReach 40..200 = 100
-// @param uFtColorSeed 0..50 = 0
-// @param uFtWhiteCells 0..60 = 0
-// @param uFtNodeThreshold 50..150 = 100
-// @param uFtSpeck 50..300 = 100
-// @param uFtPaperFiber 0..400 = 100
-// @param uFtVignette 0..200 = 100
-// @param uFtPaperColor color = #ffffff
-// @param uFtInkColor color = #ffffff
-// @param uFtWhiteColor color = #ffffff
-// @param uFtWarmColor color = #ffffff
-// @param uFtCoolColor color = #ffffff
+// @param uFtShards  4..64   = 22.0 @desc 全体ワープの周波数。小さいと大きくたわみ、大きいと細かく歪む (Jitter が 0 のときは効かない)
+// @param uFtRings   2..40   = 11.0 @desc リング密度。単位半径あたりの輪の本数
+// @param uFtCenters 1..5    = 4.0 @desc 同心円システムの数 (1〜5)。増やすと干渉セルが細かくなる
+// @param uFtLines   0..24   = 0.0 @desc 墨線 (円弧の手描き線) を引く円の割合。0 で線なし、24 で全部
+// @param uFtArcs    0..100  = 100.0 @desc 円弧の交点に溜まる顔料 (結節) の強さ (%)
+// @param uFtJitter  0..200  = 0.0 @desc 全体ワープの強さ。0 で幾何学的な真円、上げると画面ごと歪む
+// @param uFtSpin    0..300  = 150.0 @desc 運動の速さ (%)。リング膨張・中心の移動・点描の再抽選。0 で止まる
+// @param uFtDepth   0..200  = 0.0 @desc 黒セルの割合 (%)。0 で黒なし、上げるほど黒い破片が増える
+// @param uFtGrain   0..200  = 100.0 @desc 水彩マチエールの強さ (%)。粒状・滲みムラ・紙目。0 でフラット
+// @param uFtGrad    0..200  = 200.0 @desc 円のフチから内側へ向かう色グラデの強さ (%)。顔料がフチに溜まり内側で薄れる
+// @param uFtRough   0..200  = 0.0 @desc 縁の荒れ (%)。円弧の境界を高周波ノイズで乱し、手切り風の縁にする
+// @param uFtMisreg  0..200  = 200.0 @desc 版ズレ (%)。墨線が色面の境界から刷りズレのようにずれ、ゴースト線が付く
+// @param uFtDry     0..200  = 15.0 @desc かすれ (%)。ディザ状に顔料が抜けて紙が透ける
+// @param uFtIrreg   0..200  = 100.0 @desc リング間隔のムラ (%)。0 で等間隔、大きいほど太い輪と細い輪が混ざる
+// @param uFtDith    0..100  = 35.0 @desc ディザ強度。0 で滑らかな合成、100 で完全な二値点描
+// @param uFtPal     0..5    = 0.0 @desc 配色。0 = Balla / 1 = Boccioni / 2 = Severini / 3 = Depero / 4 = Mono / 5 = Aurora (暗地)
+// @param uFtCenterX -100..100 = 0 @desc 構図全体の横ずらし (%)
+// @param uFtCenterY -100..100 = 0 @desc 構図全体の縦ずらし (%)
+// @param uFtTurn    -180..180 = 0 @desc 構図全体の回転 (度)
+// @param uFtMirrorAxis -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし
+// @param uFtSwirl   -100..100 = 0 @desc 中心からの距離に応じた渦のねじれ (%)。負で逆向き
+// @param uFtCircleAspect 50..200 = 100 @desc 同心円の縦横比 (%)。下げると横長の楕円、上げると縦長
+// @param uFtCenterSpread 30..200 = 100 @desc 同心円の中心の散らばり (%)。下げると中央に集まる
+// @param uFtBandRange 50..200 = 100 @desc システムごとのリング密度の差 (%)。下げると全部同じ細かさ
+// @param uFtOffcenter 0..300 = 100 @desc リングごとの中心ズレ (%)。0 で完全な同心円
+// @param uFtPigments 3..7 = 7 @desc セルに使う顔料の種類数 (3〜7)
+// @param uFtEdgeWidth 40..250 = 100 @desc 円弧の縁の太さ (%)。縁の顔料溜まりと結節の広がり
+// @param uFtPool 0..300 = 100 @desc 縁に溜まる顔料の濃さ (%)
+// @param uFtGradReach 40..200 = 100 @desc フチのグラデが内側へ届く距離 (%)
+// @param uFtColorSeed 0..50 = 0 @desc 色の割り振りの振り直し。形は変わらず、どのセルが何色かだけ入れ替わる
+// @param uFtWhiteCells 0..60 = 0 @desc 紙白に抜けるセルの割合 (%)
+// @param uFtNodeThreshold 50..150 = 100 @desc 結節が現れる交差の濃さ (%)。上げると結節が減る
+// @param uFtSpeck 50..300 = 100 @desc 粒状・斑点の粗さ (%)。上げると大きな点になる
+// @param uFtPaperFiber 0..400 = 100 @desc 紙目の繊維の強さ (%)
+// @param uFtVignette 0..200 = 100 @desc 周辺減光の強さ (%)
+// @param uFtPaperColor color = #ffffff @desc 紙の色の掛け合わせ
+// @param uFtInkColor color = #ffffff @desc 墨の色の掛け合わせ
+// @param uFtWhiteColor color = #ffffff @desc 白絵具の色の掛け合わせ
+// @param uFtWarmColor color = #ffffff @desc 暖色の顔料 (朱・黄土・煉瓦) の掛け合わせ
+// @param uFtCoolColor color = #ffffff @desc 寒色の顔料 (コバルト・オリーブ) の掛け合わせ
 uniform float uFtShards;   // 全体ワープの周波数 (小=大きくたわむ / 大=細かく歪む)
 uniform float uFtRings;    // リング密度 (単位半径あたりの本数)
 uniform float uFtCenters;  // 同心円システムの数

@@ -1,36 +1,36 @@
 // Source : https://www.shadertoy.com/view/sdjGWR
 // License: Shadertoy default (CC BY-NC-SA 3.0) unless noted by the author
 // 3) sdjGWR
-// @param uDetail  1..6    = 6.0
-// @param uFoldScale 70..115 = 100.0
-// @param uSize    40..400 = 100.0
-// @param uReveal  0..200  = 100.0
-// @param uAngle   -180..180 = 0.0
-// @param uContrast 0..800 = 100.0
-// @param uCellShape -100..100 = 0.0
-// @param uCellStagger 0..100 = 0.0
-// @param uCellAspect 50..200 = 100.0
-// @param uRevealSoft 20..300 = 100.0
-// @param uFoldRatio 85..125 = 100.0
-// @param uFoldTaper 85..125 = 100.0
-// @param uFoldSkew 85..125 = 100.0
-// @param uColFeed 0..200 = 100.0
-// @param uFoldBias 85..125 = 100.0
-// @param uCellInvert 0..100 = 0.0
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uFoldRotate -180..180 = 0.0
-// @param uFoldMirror 0..100 = 0.0
-// @param uFoldSwirl -100..100 = 0.0
-// @param uLevels 0..8 = 0.0
-// @param uTint color = #ffffff
-// @param uCellTint color = #ffffff
-// @param uCellBorder 0..100 = 0.0
-// @param uCellVary 0..100 = 0.0
-// @param uCellEmpty 0..90 = 0.0
-// @param uCellHalo 0..100 = 0.0
-// @param uVignette 0..200 = 0.0
-// @param uGrainAmt 0..100 = 0.0
+// @param uDetail  1..6    = 6.0 @desc 折り畳みの反復回数。下げると軽くなり模様が単純になる
+// @param uFoldScale 70..115 = 100.0 @desc 折り畳みの基準スケール (%)
+// @param uSize    40..400 = 100.0 @desc 円形セルひとつの大きさ (%)
+// @param uReveal  0..200  = 100.0 @desc 拍ごとに広がる円の最大の大きさ (%)
+// @param uAngle   -180..180 = 0.0 @desc 円形セル格子の向き (度)
+// @param uContrast 0..800 = 100.0 @desc 円の内外の明暗差 (%)
+// @param uCellShape -100..100 = 0.0 @desc セルの形。正で四角、負でひし形に寄る (%)。0 で円
+// @param uCellStagger 0..100 = 0.0 @desc 段ごとの半セルずらし (%)。100 でレンガ積み
+// @param uCellAspect 50..200 = 100.0 @desc セルの横幅 (%)。下げると横に広いセル、上げると縦長
+// @param uRevealSoft 20..300 = 100.0 @desc 円の縁のぼかし幅 (%)
+// @param uFoldRatio 85..125 = 100.0 @desc 折り畳みの縮尺比 (%)。畳み込みの密度が変わる
+// @param uFoldTaper 85..125 = 100.0 @desc 斜め方向の畳み込みの効き (%)。下げると斜めの歪みが強まる
+// @param uFoldSkew 85..125 = 100.0 @desc 横方向の反転と圧縮の度合い (%)
+// @param uColFeed 0..200 = 100.0 @desc 前の色が畳み込みへ戻る量 (%)
+// @param uFoldBias 85..125 = 100.0 @desc 畳み込みの波長のずれ (%)
+// @param uCellInvert 0..100 = 0.0 @desc 円の内側の色を反転する量 (%)
+// @param uCenterX -100..100 = 0.0 @desc 折り畳みの中心の X 位置 (%)。0 で元の位置
+// @param uCenterY -100..100 = 0.0 @desc 折り畳みの中心の Y 位置 (%)。0 で元の位置
+// @param uFoldRotate -180..180 = 0.0 @desc 折り畳みへ入れる前の画面の回転 (度)
+// @param uFoldMirror 0..100 = 0.0 @desc 折り畳み前の左右鏡像。0 でなし、値を上げると鏡の軸が右へずれる (%)
+// @param uFoldSwirl -100..100 = 0.0 @desc 折り畳み前の渦巻きのねじれ (%)。負で逆向き
+// @param uLevels 0..8 = 0.0 @desc 色の階調数。0 でなめらか、2 以上で段階化 (1 は 2 段扱い)
+// @param uTint color = #ffffff @desc 全体のティント色 (掛け算)
+// @param uCellTint color = #ffffff @desc 円の内側のティント色 (掛け算)
+// @param uCellBorder 0..100 = 0.0 @desc 円の縁の暗い線の濃さ (%)
+// @param uCellVary 0..100 = 0.0 @desc 円の大きさのばらつき (%)
+// @param uCellEmpty 0..90 = 0.0 @desc 円が現れないセルの割合 (%)
+// @param uCellHalo 0..100 = 0.0 @desc 円の外側ににじむ明るいハロの強さ (%)
+// @param uVignette 0..200 = 0.0 @desc 周辺減光 (%)
+// @param uGrainAmt 0..100 = 0.0 @desc 細かいざらつき (%)
 uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、模様が単純になる)
 uniform float uFoldScale;    // 折り畳みの基準スケール (%)
 uniform float uSize;      // 円形セルひとつの大きさ (%)

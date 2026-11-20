@@ -1,23 +1,23 @@
 // Source : https://www.shadertoy.com/view/7sKSDd
 // License: Shadertoy default (CC BY-NC-SA 3.0) unless noted by the author
-// @param uDetail   1..6     = 6.0
-// @param uDensity  50..400  = 100.0
-// @param uWarp     0..300   = 100.0
-// @param uFeedback 0..300   = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uFoldPeriod  80..130 = 100.0
-// @param uCrossX      80..130 = 100.0
-// @param uCrossY      80..130 = 100.0
-// @param uPinchX      80..130 = 100.0
-// @param uPinchY      80..130 = 100.0
-// @param uWaveFreqX   50..200 = 100.0
-// @param uWaveFreqY   50..200 = 100.0
-// @param uWaveCos     0..200 = 100.0
-// @param uInject      70..130 = 100.0
-// @param uBands       50..300 = 100.0
-// @param uSkew        -100..100 = 0.0
-// @param uSwirl       -200..200 = 0.0
-// @param uChannelSplit 0..100 = 0.0
+// @param uDetail   1..6     = 6.0 @desc 折り畳みの反復回数 (1〜6)。下げると軽く、模様が粗くなる
+// @param uDensity  50..400  = 100.0 @desc 模様の密度 (%)
+// @param uWarp     0..300   = 100.0 @desc 歪み (うねり) の強さ (%)
+// @param uFeedback 0..300   = 100.0 @desc 色の回り込み (チャンネル間フィードバック) の強さ (%)
+// @param uAngle -180..180 = 0.0 @desc 模様の向き (度)。固定角で回す
+// @param uFoldPeriod  80..130 = 100.0 @desc 折り畳みの周期 (%)。下げると細かく折れる
+// @param uCrossX      80..130 = 100.0 @desc 折り畳み前の X 成分の混ぜ具合 (%)
+// @param uCrossY      80..130 = 100.0 @desc 折り畳み前の Y 成分の混ぜ具合 (%)
+// @param uPinchX      80..130 = 100.0 @desc 折り畳み後に掛ける (X − Y) の X 側の重み (%)
+// @param uPinchY      80..130 = 100.0 @desc 折り畳み後に掛ける (X − Y) の Y 側の重み (%)
+// @param uWaveFreqX   50..200 = 100.0 @desc うねりの X 方向の波数 (%)
+// @param uWaveFreqY   50..200 = 100.0 @desc うねりの Y 方向の波数 (%)
+// @param uWaveCos     0..200 = 100.0 @desc Y 方向のうねりの振れ幅 (%)。0 で X 方向のみ
+// @param uInject      70..130 = 100.0 @desc 各段で色へ足し込む量 (%)
+// @param uBands       50..300 = 100.0 @desc 出力の縞の本数 (%)
+// @param uSkew        -100..100 = 0.0 @desc 初期座標の横ずれ (%)。Y に比例して X をずらす
+// @param uSwirl       -200..200 = 0.0 @desc 中心からの距離に比例したねじれ (%)。負で逆回り
+// @param uChannelSplit 0..100 = 0.0 @desc RGB チャンネルごとの座標のずれ (%)
 uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、模様が粗くなる)
 uniform float uDensity;   // 模様の密度 (%)
 uniform float uWarp;      // 歪み (うねり) の強さ (%)
@@ -37,20 +37,20 @@ uniform float uSkew;        // 初期座標の横ずれ (%)。Y に比例して 
 uniform float uSwirl;       // 中心からの距離に比例したねじれ (%)。負で逆回り
 uniform float uChannelSplit; // RGB チャンネルごとの座標のずれ (%)
 
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uMirrorX -100..100 = 0.0
-// @param uMirrorY -100..100 = 0.0
-// @param uPixelate 0..100 = 0.0
-// @param uWarpPhase -180..180 = 0.0
-// @param uDrift 0..600 = 100.0
-// @param uBandShift -100..100 = 0.0
-// @param uBandDephase 0..100 = 0.0
-// @param uBandFold 0..100 = 0.0
-// @param uPosterize 0..10 = 0.0
-// @param uVignette 0..100 = 0.0
-// @param uGrain 0..100 = 0.0
-// @param uTint color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc 模様の中心を横へずらす (%)
+// @param uCenterY -100..100 = 0.0 @desc 模様の中心を縦へずらす (%)
+// @param uMirrorX -100..100 = 0.0 @desc 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+// @param uMirrorY -100..100 = 0.0 @desc 上下の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+// @param uPixelate 0..100 = 0.0 @desc 座標のモザイク化 (%)。上げるほど粗いブロック
+// @param uWarpPhase -180..180 = 0.0 @desc うねりの位相のずれ (度)。うねり方の形を変える
+// @param uDrift 0..600 = 100.0 @desc ゆらゆら漂う動きの振れ幅 (%)。0 で漂わない
+// @param uBandShift -100..100 = 0.0 @desc 縞の位置を丸ごとずらす (%)
+// @param uBandDephase 0..100 = 0.0 @desc RGB ごとに縞の位置をずらす (%)。色の縞がずれて虹色になる
+// @param uBandFold 0..100 = 0.0 @desc 縞をのこぎり波から三角波へ (%)。縞の継ぎ目が消えてなめらか
+// @param uPosterize 0..10 = 0.0 @desc 色の段数 (2〜10)。0〜1 で無効。ポスター調に階調を落とす
+// @param uVignette 0..100 = 0.0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0.0 @desc 粒状ノイズの量 (%)
+// @param uTint color = #ffffff @desc 全体の色味 (掛け算のティント)
 uniform float uCenterX; // 模様の中心を横へずらす (%)
 uniform float uCenterY; // 模様の中心を縦へずらす (%)
 uniform float uMirrorX; // 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効

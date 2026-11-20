@@ -17,33 +17,33 @@ const vec3  TW_LIGHTPOS = vec3(10.0);
 
 int tw_m; // material index
 
-// @param uBarHeight 40..250 = 100
-// @param uBarSpaceX 60..200 = 100
-// @param uBarSpaceZ 60..200 = 100
-// @param uWaveFreq 50..200 = 100
-// @param uSwayFreq 50..200 = 100
-// @param uCamHeight 60..160 = 100
-// @param uCamPitch 75..130 = 100
-// @param uEnvBands 1..8 = 2
-// @param uAoDepth 0..150 = 100
-// @param uSpecSharp 30..300 = 100
-// @param uShadowSoft 30..300 = 100
-// @param uCamX -100..100 = 0
-// @param uCamBob 0..300 = 100
-// @param uYawSway 0..300 = 100
-// @param uPitchSway 0..300 = 100
-// @param uCamRoll -90..90 = 0
-// @param uFocal 50..200 = 100
-// @param uLightHeight 10..300 = 100
-// @param uLightSide -100..100 = 0
-// @param uEnvBandSharp 30..300 = 100
-// @param uEnvBandAmt 0..300 = 100
-// @param uFresnel 0..200 = 100
-// @param uVignette 0..150 = 0
-// @param uMetalTint color = #ffffff
-// @param uBandTint color = #ffffff
-// @param uZenithTint color = #ffffff
-// @param uHighlightTint color = #ffffff
+// @param uBarHeight 40..250 = 100 @desc 柱の上下方向の長さ (%)
+// @param uBarSpaceX 60..200 = 100 @desc 縦柱の X 方向の間隔 (%)
+// @param uBarSpaceZ 60..200 = 100 @desc 横柱の Z 方向の間隔 (%)
+// @param uWaveFreq 50..200 = 100 @desc 柱の上下うねりの細かさ (%)。大きいほど波が細かい
+// @param uSwayFreq 50..200 = 100 @desc トンネルの歪みの細かさ (%)。大きいほど波が細かい
+// @param uCamHeight 60..160 = 100 @desc カメラの高さ (%)
+// @param uCamPitch 75..130 = 100 @desc カメラの俯角 (%)。大きいほど深く見下ろす
+// @param uEnvBands 1..8 = 2 @desc 映り込む縦帯の本数 (四捨五入で整数)
+// @param uAoDepth 0..150 = 100 @desc 接触影の濃さ (%)
+// @param uSpecSharp 30..300 = 100 @desc 鏡面ハイライトの鋭さ (%)
+// @param uShadowSoft 30..300 = 100 @desc 影のぼかし幅 (%)
+// @param uCamX -100..100 = 0 @desc カメラの横位置 (%)
+// @param uCamBob 0..300 = 100 @desc カメラの上下の揺れの振れ幅 (%)
+// @param uYawSway 0..300 = 100 @desc カメラの左右の振りの振れ幅 (%)
+// @param uPitchSway 0..300 = 100 @desc カメラの上下の首振りの振れ幅 (%)
+// @param uCamRoll -90..90 = 0 @desc カメラの傾き (度)。画面が傾く
+// @param uFocal 50..200 = 100 @desc レンズの焦点距離 (%)。小さいと広角
+// @param uLightHeight 10..300 = 100 @desc 光源の高さ (%)
+// @param uLightSide -100..100 = 0 @desc 光源の横位置 (%)。負で反対側
+// @param uEnvBandSharp 30..300 = 100 @desc 映り込む縦帯の鋭さ (%)
+// @param uEnvBandAmt 0..300 = 100 @desc 映り込む縦帯の明るさ (%)
+// @param uFresnel 0..200 = 100 @desc 縁の反射 (フレネル) の強さ (%)
+// @param uVignette 0..150 = 0 @desc 画面の周辺を暗くする量 (%)
+// @param uMetalTint color = #ffffff @desc 金属の映り込み全体の色味。掛け算のティント
+// @param uBandTint color = #ffffff @desc 映り込む縦帯の色味。掛け算のティント
+// @param uZenithTint color = #ffffff @desc 映り込む天頂のグローの色味。掛け算のティント
+// @param uHighlightTint color = #ffffff @desc 鏡面ハイライトの色味。掛け算のティント
 uniform float uBarHeight; // 柱の上下方向の長さ (%)
 uniform float uBarSpaceX; // 縦柱の X 方向の間隔 (%)
 uniform float uBarSpaceZ; // 横柱の Z 方向の間隔 (%)
@@ -77,14 +77,14 @@ float tw_cube(vec4 c, vec3 pos){
   return max(max(abs(c.x)-c.w, abs(c.y)-c.w*(uBarHeight / 100.0)), abs(c.z)-c.w);
 }
 
-// @param uWarp 0..180 = 100.0
-// @param uSize 40..300 = 100.0
-// @param uWave 0..200 = 100.0
-// @param uGlow 0..300 = 100.0
-// @param uFog 0..300 = 100.0
-// @param uScale 70..160 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 36..50 = 50.0
+// @param uWarp 0..180 = 100.0 @desc トンネルのうねり (歪み) の大きさ (%)
+// @param uSize 40..300 = 100.0 @desc 立方体 (柱) の太さ (%)
+// @param uWave 0..200 = 100.0 @desc 柱の上下のうねりの振れ幅 (%)
+// @param uGlow 0..300 = 100.0 @desc 鏡面ハイライトの強さ (%)
+// @param uFog 0..300 = 100.0 @desc 遠方の暗くなり方 (%)。大きいほど奥が早く暗くなる
+// @param uScale 70..160 = 100.0 @desc 柱の列全体の大きさ (%)。間隔も一緒に変わる
+// @param uAngle -180..180 = 0.0 @desc カメラの向きの左右を固定角でずらす (度)
+// @param uSteps 36..50 = 50.0 @desc レイマーチの反復回数。下げると軽いが、尽きた光線は当たり扱いで面が崩れる
 uniform float uWarp;   // トンネルのうねり (歪み) の大きさ (%)
 uniform float uSize;   // 立方体の太さ (%)
 uniform float uWave;   // 立方体の上下のうねり (%)

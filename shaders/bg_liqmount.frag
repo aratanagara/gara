@@ -7,15 +7,15 @@
 //         cosineGradient(uCosGrad)対応。ヘルパは lm_ で名前空間化。
 // =====================================================
 
-// @param uRidgeX    60..160 = 100.0
-// @param uRidgeZ    50..200 = 100.0
-// @param uRidgeMix  0..160 = 100.0
-// @param uPersist   50..130 = 100.0
-// @param uOctTurn   -90..90 = 0.0
-// @param uHorizon   -40..30 = 0.0
-// @param uCamHeight 60..160 = 100.0
-// @param uSnowLine  -80..80 = 0.0
-// @param uCrest     0..70 = 0.0
+// @param uRidgeX    60..160 = 100.0 @desc 大きなうねりの X 方向の細かさ (%)
+// @param uRidgeZ    50..200 = 100.0 @desc 大きなうねりの Z 方向の細かさ (%)
+// @param uRidgeMix  0..160 = 100.0 @desc Z 方向のうねりの混ざり具合 (%)。0 で X 方向だけの畝
+// @param uPersist   50..130 = 100.0 @desc 細かい波の残り方 (%)。上げるとギザギザ、下げるとなめらか
+// @param uOctTurn   -90..90 = 0.0 @desc 重ねる波ごとの向きのずれ (度)
+// @param uHorizon   -40..30 = 0.0 @desc 地平線の高さ (%)。カメラの俯角が変わる
+// @param uCamHeight 60..160 = 100.0 @desc カメラの高さ (%)
+// @param uSnowLine  -80..80 = 0.0 @desc 雪線の高さ (%)。上げると雪が高い所だけになる
+// @param uCrest     0..70 = 0.0 @desc 稜線の鋭さ (%)。波の山を尖らせた折れ線状の尾根にする
 uniform float uRidgeX;    // 大きなうねりの X 方向の細かさ (%)
 uniform float uRidgeZ;    // 大きなうねりの Z 方向の細かさ (%)
 uniform float uRidgeMix;  // Z 方向のうねりの混ざり具合 (%)。0 で X 方向だけの畝
@@ -26,28 +26,28 @@ uniform float uCamHeight; // カメラの高さ (%)
 uniform float uSnowLine;  // 雪線の高さ (%)。上げると雪が高い所だけに
 uniform float uCrest;     // 稜線の鋭さ (%)。波の山を尖らせた折れ線状の尾根にする
 
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uMirrorX -100..100 = 0.0
-// @param uRoll -45..45 = 0.0
-// @param uCamDist 70..120 = 100.0
-// @param uCamSway 0..300 = 100.0
-// @param uFov 60..160 = 100.0
-// @param uLightAz -180..180 = 0.0
-// @param uLightLift -100..100 = 0.0
-// @param uAmbient 0..300 = 100.0
-// @param uRimLight 0..300 = 100.0
-// @param uEnvBands 40..300 = 100.0
-// @param uEnvTilt 0..300 = 100.0
-// @param uFog 0..100 = 0.0
-// @param uGrit 0..100 = 0.0
-// @param uNormalEps 30..300 = 100.0
-// @param uVignette 0..100 = 0.0
-// @param uGrain 0..100 = 0.0
-// @param uChromeTint color = #ffffff
-// @param uGlacierTint color = #ffffff
-// @param uIceTint color = #ffffff
-// @param uSnowTint color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc 山の中心を横へずらす (%)
+// @param uCenterY -100..100 = 0.0 @desc 山の中心を縦へずらす (%)
+// @param uMirrorX -100..100 = 0.0 @desc 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+// @param uRoll -45..45 = 0.0 @desc カメラのロール (度)。水平線が傾く
+// @param uCamDist 70..120 = 100.0 @desc カメラの距離 (%)。下げると近づく
+// @param uCamSway 0..300 = 100.0 @desc カメラの上下の揺れ幅 (%)。0 で揺れない
+// @param uFov 60..160 = 100.0 @desc 画角 (%)。上げると広角、下げると望遠
+// @param uLightAz -180..180 = 0.0 @desc 太陽光の方位 (度)
+// @param uLightLift -100..100 = 0.0 @desc 太陽光の高さ (%)。負で低く、正で高く
+// @param uAmbient 0..300 = 100.0 @desc 影の浮き (環境光、%)
+// @param uRimLight 0..300 = 100.0 @desc 縁のフレネル反射の強さ (%)
+// @param uEnvBands 40..300 = 100.0 @desc 鏡面の筋の細かさ (%)
+// @param uEnvTilt 0..300 = 100.0 @desc 鏡面の筋の傾き (%)
+// @param uFog 0..100 = 0.0 @desc 遠くの山を暗く沈める霧の濃さ (%)
+// @param uGrit 0..100 = 0.0 @desc 表面のざらつき (%)。法線を荒らす
+// @param uNormalEps 30..300 = 100.0 @desc 法線を取る幅 (%)。上げるほど鏡面がなめらか
+// @param uVignette 0..100 = 0.0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0.0 @desc 粒状ノイズの量 (%)
+// @param uChromeTint color = #ffffff @desc クローム部分の色味 (掛け算のティント)
+// @param uGlacierTint color = #ffffff @desc 氷河の緑の色味 (掛け算のティント)
+// @param uIceTint color = #ffffff @desc 氷の青の色味 (掛け算のティント)
+// @param uSnowTint color = #ffffff @desc 雪の白の色味 (掛け算のティント)
 uniform float uCenterX; // 山の中心を横へずらす (%)
 uniform float uCenterY; // 山の中心を縦へずらす (%)
 uniform float uMirrorX; // 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
@@ -77,13 +77,13 @@ float lm_h(vec3 p){
   return hh;
 }
 
-// @param uDetail 1..4 = 4.0
-// @param uRelief 20..200 = 100.0
-// @param uDensity 60..300 = 100.0
-// @param uChrome 10..300 = 100.0
-// @param uGlow 0..400 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 40..100 = 100.0
+// @param uDetail 1..4 = 4.0 @desc 波の重ね回数 (1〜4)。下げると面がなめらかで軽い
+// @param uRelief 20..200 = 100.0 @desc 山の起伏の高さ (%)
+// @param uDensity 60..300 = 100.0 @desc 波の細かさ (%)
+// @param uChrome 10..300 = 100.0 @desc クローム化する暗部の範囲 (%)。上げると鏡面が広がる
+// @param uGlow 0..400 = 100.0 @desc 鏡面の筋・太陽のハイライトの強さ (%)
+// @param uAngle -180..180 = 0.0 @desc 山を回り込むカメラの向き (度)。固定角でずらす
+// @param uSteps 40..100 = 100.0 @desc レイマーチの反復回数。下げると軽いが、遠景や細部が欠ける
 uniform float uDetail;   // 波の重ね回数 (下げると面がなめらかで軽い)
 uniform float uRelief;   // 山の起伏の高さ (%)
 uniform float uDensity;   // 波の細かさ (%)

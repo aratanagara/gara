@@ -12,18 +12,18 @@ float sp_Psphere(vec3 p, vec3 c, float r){
   return length(p - c) - r;
 }
 
-// @param uCoreRadius 60..130  = 100.0
-// @param uTipRadius  25..800  = 100.0
-// @param uTaper      55..250  = 100.0
-// @param uPolarStep  60..160  = 100.0
-// @param uLengthVar  0..100   = 0.0
-// @param uTwistAmt   0..200   = 100.0
-// @param uStretch    70..125  = 100.0
-// @param uFresnel    30..300  = 100.0
-// @param uEnvTurn    -180..180 = 0.0
-// @param uEnvRamp    40..250  = 100.0
-// @param uLightAzim  -180..180 = 0.0
-// @param uEnvBand    0..300   = 100.0
+// @param uCoreRadius 60..130  = 100.0 @desc 中心の球の半径 (%)
+// @param uTipRadius  25..800  = 100.0 @desc トゲの先端の太さ (%)。上げると先が丸く鈍くなる
+// @param uTaper      55..250  = 100.0 @desc トゲの先細りの指数 (%)。下げると根元から細く、上げると先端だけ急に細くなる
+// @param uPolarStep  60..160  = 100.0 @desc 緯度方向のトゲの間隔 (%)。上げると緯度のトゲの段が減る
+// @param uLengthVar  0..100   = 0.0 @desc トゲの長さのばらつき (%)。0 で全部同じ長さ
+// @param uTwistAmt   0..200   = 100.0 @desc 中心から離れるほどのねじれ (%)。0 でねじれなし
+// @param uStretch    70..125  = 100.0 @desc 球の縦の倍率 (%)。下げると平たく、上げると縦長
+// @param uFresnel    30..300  = 100.0 @desc 縁の反射の広がり (%)。上げると縁だけが鋭く光る
+// @param uEnvTurn    -180..180 = 0.0 @desc 映り込む環境の向き (度)
+// @param uEnvRamp    40..250  = 100.0 @desc 環境の明暗グラデの広がり (%)。上げると暗部が広がる
+// @param uLightAzim  -180..180 = 0.0 @desc ハイライトの光の方位 (度)
+// @param uEnvBand    0..300   = 100.0 @desc 環境の横の反射帯の強さ (%)
 uniform float uCoreRadius; // 中心の球の半径 (%)
 uniform float uTipRadius;  // トゲの先端の太さ (%)。上げると先が丸く鈍くなる
 uniform float uTaper;      // トゲの先細りの指数 (%)。下げると根元から細く、上げると先端だけ急に細くなる
@@ -36,23 +36,23 @@ uniform float uEnvTurn;    // 映り込む環境の向き (度)
 uniform float uEnvRamp;    // 環境の明暗グラデの広がり (%)。上げると暗部が広がる
 uniform float uLightAzim;  // ハイライトの光の向き (度)
 uniform float uEnvBand;    // 環境の横の反射帯の強さ (%)
-// @param uAxisTilt    20..400 = 100
-// @param uStretchX    70..125 = 100
-// @param uStretchZ    80..120 = 100
-// @param uSpikeSkip   0..90   = 0
-// @param uHaloRing    0..100  = 0
-// @param uCamRoll     -90..90 = 0
-// @param uPerspective 50..200 = 100
-// @param uViewYaw     -180..180 = 0
-// @param uShiftX      -70..70 = 0
-// @param uShiftY      -60..60 = 0
-// @param uFacing      10..150 = 100
-// @param uEnvBands    1..6    = 2
-// @param uBandSharp   25..300 = 100
-// @param uCrevice     0..100  = 0
-// @param uDepthDark   0..100  = 0
-// @param uEnvTint     color = #ffffff
-// @param uRimTint     color = #ffffff
+// @param uAxisTilt    20..400 = 100 @desc 自転軸の傾き (%)。小さいと横軸の転がり、大きいと縦軸の回転に近づく
+// @param uStretchX    70..125 = 100 @desc 球の左右の倍率 (%)。下げると細く、上げると広がる
+// @param uStretchZ    80..120 = 100 @desc 球の奥行きの倍率 (%)。下げると薄く、上げると厚くなる
+// @param uSpikeSkip   0..90   = 0 @desc 間引くトゲの割合 (%)。0 で全部残す
+// @param uHaloRing    0..100  = 0 @desc 赤道に巻く輪の半径 (%)。0 で輪なし
+// @param uCamRoll     -90..90 = 0 @desc カメラのロール (度)。画面を傾ける
+// @param uPerspective 50..200 = 100 @desc カメラ距離と焦点距離 (%)。上げると望遠で平たく、下げると広角で奥行きが強まる
+// @param uViewYaw     -180..180 = 0 @desc カメラ公転の開始角 (度)。見る方向を変える
+// @param uShiftX      -70..70 = 0 @desc 物体の横位置 (%)
+// @param uShiftY      -60..60 = 0 @desc 物体の縦位置 (%)
+// @param uFacing      10..150 = 100 @desc 正面を向いた面の映り込みの強さ (%)。縁との差が変わる
+// @param uEnvBands    1..6    = 2 @desc 環境の横の反射帯の本数
+// @param uBandSharp   25..300 = 100 @desc 反射帯の細さ (%)。上げると細い線になる
+// @param uCrevice     0..100  = 0 @desc トゲの根元の暗がり (%)。0 でなし
+// @param uDepthDark   0..100  = 0 @desc 奥側の面の暗さ (%)。0 でなし
+// @param uEnvTint     color = #ffffff @desc 映り込む環境の色 (掛け算)
+// @param uRimTint     color = #ffffff @desc 縁の反射の色 (掛け算)
 uniform float uAxisTilt;    // 自転軸の傾き (%)。小さいと横軸の転がり、大きいと縦軸の回転に近づく
 uniform float uStretchX;    // 球の左右の縦横比 (%)。下げると細く、上げると広がる
 uniform float uStretchZ;    // 球の奥行きの縦横比 (%)。下げると薄く、上げると厚くなる
@@ -95,14 +95,14 @@ float sp_PcapsuleC(vec3 p, vec3 a, vec3 b, float rmin, float rmax){
   return length(pa - ba*h) - r;
 }
 
-// @param uSpikes 6..32   = 16.0
-// @param uSoft   10..300 = 100.0
-// @param uSize   25..300 = 100.0
-// @param uLength 70..150 = 100.0
-// @param uAngle  -180..180 = 0.0
-// @param uTilt   -60..60 = 0.0
-// @param uScale  60..150 = 100.0
-// @param uSteps  24..40 = 40.0
+// @param uSpikes 6..32   = 16.0 @desc トゲの密度。経度方向の分割数で、大きいほどトゲが増えて細かくなる
+// @param uSoft   10..300 = 100.0 @desc トゲの根元の滑らかさ (%)。上げると球となめらかにつながる
+// @param uSize   25..300 = 100.0 @desc トゲひとつの根元の太さ (%)
+// @param uLength 70..150 = 100.0 @desc トゲの長さ (%)
+// @param uAngle  -180..180 = 0.0 @desc 球の回転の位相 (度)。自転に足されて向きがずれる
+// @param uTilt   -60..60 = 0.0 @desc カメラの仰角のオフセット (度)
+// @param uScale  60..150 = 100.0 @desc 物体全体の大きさ (%)
+// @param uSteps  24..40 = 40.0 @desc レイマーチの最大ステップ数。下げると軽くなるが遠景や縁が欠ける
 uniform float uSpikes;   // トゲの密度 (角度の分割数)
 uniform float uSoft;     // トゲの根元の滑らかさ (%)
 uniform float uSize;     // トゲひとつの太さ (%)

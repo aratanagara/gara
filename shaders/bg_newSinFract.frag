@@ -1,21 +1,21 @@
 // 6) sin/fract
-// @param uDetail   2..12   = 12.0
-// @param uFolds    2..12   = 12.0
-// @param uWarp     0..250  = 100.0
-// @param uContrast 25..200 = 100.0
+// @param uDetail   2..12   = 12.0 @desc 外側の反復回数。下げると軽く、色の混ざりが減る
+// @param uFolds    2..12   = 12.0 @desc 内側の折り返し回数。下げると軽く、模様が単純になる
+// @param uWarp     0..250  = 100.0 @desc 反復ごとの歪みのフィードバック量 (%)
+// @param uContrast 25..200 = 100.0 @desc 明暗の強さ (%)
 uniform float uDetail;     // 外側の反復回数 (下げると軽く、色の混ざりが減る)
 uniform float uFolds;      // 内側の折り返し回数 (下げると軽く、模様が単純になる)
 uniform float uWarp;       // 反復ごとの歪みのフィードバック量 (%)
 uniform float uContrast;   // 明暗の強さ (%)
-// @param uCrossFold 85..125 = 100
-// @param uWarpFreq  25..300 = 100
-// @param uRibbon    50..300 = 100
-// @param uRibbonX   50..300 = 100
-// @param uMirror    0..100 = 0
-// @param uTwirl     -300..300 = 0
-// @param uLens      -100..100 = 0
-// @param uSkyShift  50..150 = 100
-// @param uSway      0..300 = 100
+// @param uCrossFold 85..125 = 100 @desc 交差軸方向の折り込み量 (%)
+// @param uWarpFreq  25..300 = 100 @desc 歪みフィードバックの縞の細かさ (%)
+// @param uRibbon    50..300 = 100 @desc 縦リボンの密度 (%)
+// @param uRibbonX   50..300 = 100 @desc 横リボンの密度 (%)
+// @param uMirror    0..100 = 0 @desc 左右の鏡像対称 (%)。0 でなし、100 で完全な左右対称
+// @param uTwirl     -300..300 = 0 @desc 中心からの距離に比例したねじれ (%)。負で逆回り
+// @param uLens      -100..100 = 0 @desc 中心の膨らみ・絞り (%)。0 でなし、負で外側が広がる
+// @param uSkyShift  50..150 = 100 @desc 開始位置の縦のずれ (%)
+// @param uSway      0..300 = 100 @desc 開始位置の横揺れの振れ幅 (%)
 uniform float uCrossFold; // 交差軸方向の折り込み量 (%)
 uniform float uWarpFreq;  // 歪みフィードバックの縞の細かさ (%)
 uniform float uRibbon;    // 縦リボンの密度 (%)
@@ -25,16 +25,16 @@ uniform float uTwirl;     // 中心からの距離に比例したねじれ (%)�
 uniform float uLens;      // 中心の膨らみ・絞り (%)。0 = なし / 負で外側が広がる
 uniform float uSkyShift;  // 開始位置の縦のずれ (%)
 uniform float uSway;      // 開始位置の横揺れの振れ幅 (%)
-// @param uCenterX   -100..100 = 0
-// @param uCenterY   -100..100 = 0
-// @param uRotate    -180..180 = 0
-// @param uMirrorY   0..100 = 0
-// @param uSwayY     0..300 = 100
-// @param uSeed      0..100 = 0
-// @param uPosterize 0..8 = 0
-// @param uVignette  0..100 = 0
-// @param uTintLow   color = #ffffff
-// @param uTintHigh  color = #ffffff
+// @param uCenterX   -100..100 = 0 @desc 開始位置の横ずれ (%)
+// @param uCenterY   -100..100 = 0 @desc 開始位置の縦ずれ (%)
+// @param uRotate    -180..180 = 0 @desc 開始位置の回転 (度)
+// @param uMirrorY   0..100 = 0 @desc 上下の鏡像対称 (%)。0 でなし、100 で完全な上下対称
+// @param uSwayY     0..300 = 100 @desc 開始位置の縦揺れの振れ幅 (%)
+// @param uSeed      0..100 = 0 @desc 模様の別バージョン (%)。0 で既定
+// @param uPosterize 0..8 = 0 @desc 階調の段数。0 でなし、小さいほど段が粗い
+// @param uVignette  0..100 = 0 @desc 周辺の暗さ (%)。0 でなし
+// @param uTintLow   color = #ffffff @desc 暗い部分の色
+// @param uTintHigh  color = #ffffff @desc 明るい部分の色
 uniform float uCenterX;   // 開始位置の横ずれ (%)。0 = なし
 uniform float uCenterY;   // 開始位置の縦ずれ (%)。0 = なし
 uniform float uRotate;    // 開始位置の回転 (度)。0 = なし
