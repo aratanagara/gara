@@ -12647,9 +12647,10 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
     { const bg = App.parseHexRgb(state.slotABg || '#000000');
       gl.clearColor(bg[0], bg[1], bg[2], 1); gl.clear(gl.COLOR_BUFFER_BIT); }
     let drewB = false;
-    if(isShader(B)){ const eB = this._compile(B.src); if(eB && !eB.err && !eB.pending){ this._drawShader(eB, B.params); drewB = true; } }
+    const srcOf = (s)=> (typeof App !== 'undefined' && App._freshSlotSrc) ? App._freshSlotSrc(s) : s.src;   // 呼出と同じく、いまのシェーダで描く
+    if(isShader(B)){ const eB = this._compile(srcOf(B)); if(eB && !eB.err && !eB.pending){ this._drawShader(eB, B.params); drewB = true; } }
     if(isShader(A)){
-      const eA = this._compile(A.src);
+      const eA = this._compile(srcOf(A));
       if(eA && !eA.err && !eA.pending){
         if(drewB){                                     // 合成: A*(1-cf) + B*cf (定数αブレンド)
           gl.enable(gl.BLEND);
@@ -14441,6 +14442,28 @@ const App = {
       'vec3 cosGradColor(float t){\n  float tt = clamp(t, 0.0, 1.0);\n  if(uGradN < 2) return vec3(tt);\n  vec3 mapped = uGradStops[0];\n  for(int i=0;i<7;i++){ if(i < uGradN-1){ float p0=uGradPos[i],p1=uGradPos[i+1]; if(tt>=p0){ float f=clamp((tt-p0)/max(p1-p0,0.0001),0.0,1.0); mapped=mix(uGradStops[i],uGradStops[i+1],f); } } }\n  return mapped;\n}');
     return s;
   },
+  // helper (shaders/*.frag の共通関数) のうち、本文で bpm を使う関数と、それを呼ぶ関数 (間接も含む) の名前
+  _bpmHelperFns(helperBlock){
+    if(this._bpmFnsCache && this._bpmFnsCache.src === helperBlock) return this._bpmFnsCache.fns;
+    const bodies = {};
+    const re = /\b(?:float|int|bool|void|vec[234]|mat[234])\s+(\w+)\s*\([^)]*\)\s*\{/g;
+    let m;
+    while((m = re.exec(helperBlock))){
+      let i = re.lastIndex, depth = 1;
+      while(i < helperBlock.length && depth > 0){ const ch = helperBlock[i++]; if(ch === '{') depth++; else if(ch === '}') depth--; }
+      bodies[m[1]] = (bodies[m[1]] || '') + helperBlock.slice(re.lastIndex, i);
+    }
+    const fns = new Set(Object.keys(bodies).filter(n => /\bbpm\b/.test(bodies[n])));
+    for(let grew = true; grew;){
+      grew = false;
+      for(const n of Object.keys(bodies)){
+        if(fns.has(n)) continue;
+        if([...fns].some(f => new RegExp('\\b' + f + '\\s*\\(').test(bodies[n]))){ fns.add(n); grew = true; }
+      }
+    }
+    this._bpmFnsCache = { src: helperBlock, fns: [...fns] };
+    return this._bpmFnsCache.fns;
+  },
   // 単独 bg シェーダ用ソース生成
   //  - GLSL Sandbox 流 (time/resolution は vj 側 Sandbox 互換で自動接続)
   //  - hinotori 独自 uniform は @param 化、または const 固定
@@ -14449,6 +14472,10 @@ const App = {
     // 内部で getBeat() を使っているシェーダは自前で beat 対応済みとみなしラップしない。
     // それ以外は beat モード時、拍ごとに time をランダムオフセット = フレームが「飛ぶ」。
     const usesBeat = /\bgetBeat\s*\(/.test(bgText);
+    // bpm (BPM Sync / uBPM) が絵に効くか: bg 関数が bpm か、bpm を (間接に) 使う helper を呼ぶとき。効かないシェーダは 2 つの param をグレーにする
+    const bpmFns = this._bpmHelperFns(helperBlock);
+    const usesBpm = /\bbpm\b/.test(bgText) || bpmFns.some(f => new RegExp('\\b' + f + '\\s*\\(').test(bgText));
+    const bpmWhen = usesBpm ? '' : ' @when false';
     // 透過対応シェーダ (bgAlpha を書くもの) だけ背景色 uBgColor を持たせる。
     // 背景 (bgAlpha<1) に uBgColor を加算 → 既定 #000000 では従来と完全に同じ絵。
     const usesAlpha = /\bbgAlpha\s*=/.test(bgText);
@@ -14497,7 +14524,8 @@ void _setBgTime(){
 // @param uFreeDriftGain 0..1     = 0.10 @desc Drone (Free) モードで、一方向へ流れる動きの速さ
 // @param uFreeZoomAmp   0..1.5   = 0.50 @desc Drone (Free) モードで、ゆっくり寄ったり引いたりするズームの幅
 // @param uFreeZoomRate  0..1     = 0.10 @desc Drone (Free) モードで、ズームが変化する速さ
-// @param uBPM           20..220  = 120 @desc シェーダ内部の動きの基準テンポ。グローバルの BPM とは別
+// @param uBPMSync       bool = true${bpmWhen} @desc ON で動きのテンポを、拾っている BPM (Tap / MIDI / 音声) に合わせる。OFF で下の uBPM を使う
+// @param uBPM           20..220  = 120${usesBpm ? ' @when uBPMSync < 0.5' : bpmWhen} @desc BPM Sync が OFF のときの、動きの基準テンポ (手動)
 // @param uBgZoom        0.1..4   = 1.0 @desc 模様の拡大率。表示ズーム (, / .) と掛け合わせて効く
 
 uniform float uRingZoom;
@@ -14506,6 +14534,7 @@ uniform float uFreeHoverGain;
 uniform float uFreeDriftGain;
 uniform float uFreeZoomAmp;
 uniform float uFreeZoomRate;
+uniform float uBPMSync;
 uniform float uBPM;
 uniform float uBgZoom;
 uniform float uCosGrad;   // Post FX の Cos Grad 強度を bg 側に供給 (各シェーダ固有の彩色を ON)
@@ -14523,7 +14552,7 @@ uniform sampler2D uBsodText;  // BSOD 実テキスト(1024x768 RGBA) vj が接�
 // iPan / iZoom は HEADER で宣言済 (vj が cursor keys / < > から供給)
 
 // hinotori uniform 名にエイリアス
-#define bpm    uBPM
+#define bpm    (uBPMSync > 0.5 ? iBPM : uBPM)
 #define bgZoom (uBgZoom * iZoom)
 
 // beat は vj 側の Motion Mode (drone/beat) で切替:
@@ -17022,7 +17051,7 @@ ${outBlock}
     if(!p || !p.state){ toast('プリセット '+(i+1)+' は空です'); return; }
     if(typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(this.transBeats||0, this.transStyle||0);  // 現出力を退避→Beat拍で転換
     // beat×A (beatScale) は演奏中に手で決める設定なので、プリセット呼出では復元しない
-    this._applyState(p.state, {restoreOverlayEnabled:true, restoreBeatScale:false, restoreBeatMode:false, restoreMixControls:true, resetMissingDefaults:true});
+    this._applyState(p.state, {restoreOverlayEnabled:true, restoreBeatScale:false, restoreBeatMode:false, restoreMixControls:true, resetMissingDefaults:true, freshShaders:true});   // 保存時のコードでなく、いまのシェーダで読む (値は同名の param へ戻す。エディタで編集したものは保存時のコード)
     if(typeof GL !== 'undefined' && GL.forceRenderOnce) GL.forceRenderOnce();   // Draw フリーズ / Pause 中でも呼出結果を即反映
     // 実値が入れ替わり MIDI つまみの物理位置とズレるので、基準点を通すまで取り込み待ちにする
     if(typeof MIDI !== 'undefined' && MIDI.armPickup) MIDI.armPickup();
@@ -17676,6 +17705,12 @@ ${outBlock}
       n = old.replacedBy;
     }
     return PRESETS.findIndex(p => p && p.name === name);
+  },
+  // 保存スロットのシェーダのコード: エディタで編集していなければ、いまのプリセットのコード (旧版なら新版) を使う
+  _freshSlotSrc(sk){
+    if(!sk || !sk.src || sk.edited || !sk.presetName) return sk && sk.src;
+    const fi = this._presetIndexByName(sk.presetName);
+    return (fi >= 0 && PRESETS[fi].src) ? PRESETS[fi].src : sk.src;
   },
   // 旧版を指す保存スロット: 新版の名前とコードで復元する (編集したシェーダは保存時のコードのまま)
   _replacedSlotState(sk){
