@@ -304,7 +304,7 @@ vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : cl
 `,
   shade(k){ return Math.min(1, k / 0.22); },
   // シェーダの深度で面を持ち上げる uniform (VS で fx3dRelief(uv) を呼ぶエンジン用。3D Depth × 表示中のシェーダの深度)
-  reliefUniforms(gl, pr){ GL._reliefBind(pr); },
+  reliefUniforms(gl, pr, cell){ GL._reliefBind(pr, cell); },   // cell = メッシュの 1 マス (画面 uv、[横, 縦])。深度をその細かさに均して拾う
 
   // e = 0..1 の量。戻り値: 描けたか
   render(name, o){

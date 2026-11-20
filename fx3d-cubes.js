@@ -5,9 +5,9 @@
    beat = 拍ごとに軸 X / Y と向きを選んで転がる / drone = 流れる波の位相で転がり続ける。転がっている間は少し縮んで手前へ出る。
    (内部は格子の作り。uCg = 1 × 1 で描く)
    k = 0 で回転 0・正面カメラ = 元画面と画素一致。カメラは正面のまま振らない (傾けると画面の外が見えるため)。
-   面は 3 × 3 に分割してある (折り系を物体へ掛けたとき、折り線が面の中で曲がるように)。 */
+   面は 32 × 32 に分割してある (折り系を物体へ掛けたとき折り線が面の中で曲がり、立体シェーダの深度で面を持ち上げたとき物体の形が出るように)。 */
 (function(){
-const SUB = 3;                                     // 1 面の分割 (SUB × SUB マス)
+const SUB = 32;                                    // 1 面の分割 (SUB × SUB マス。立体シェーダの深度で面を持ち上げたとき、頂点が物体の形を拾える細かさ)
 const FV = SUB * SUB * 6;                          // 1 面あたりの頂点数
 const PER = 6 * FV;                                // 1 キューブあたりの頂点数
 // キューブ cube (0 .. gx*gy-1) の面 face (0 前 / 1 奥 / 2 +x / 3 -x / 4 +y / 5 -y) の面内座標 ab (0..1) → 位置。uvo = 貼る絵の uv、ctr = キューブの中心
@@ -175,7 +175,7 @@ Fx3d.EXTRA.cubes = {
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'cubes');
       Fx3d.ovUniforms(gl, pr, o);
-      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
+      Fx3d.reliefUniforms(gl, pr, [1 / SUB, 1 / SUB]);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;

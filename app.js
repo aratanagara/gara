@@ -3432,7 +3432,7 @@ void main(){
     lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 * uNvMargin / uNvGrid.y);
     if(uNvMask.z + uNvMask.w > 0.0 && uNvMask.x + uNvMask.y > 0.0){   // 物体の外 (深度 0 = 背景) の面には針を生やさない
       vec2 fm = 0.5 + (nvFaceA - 0.5) * uNvMargin;
-      float on = uNvMask.x * (uNvMask.z > 0.5 ? step(0.004, vjDepthAt(uDepthA, vjDepthUv(fm, uDepthOs.xy))) : 1.0) + uNvMask.y * (uNvMask.w > 0.5 ? step(0.004, vjDepthAt(uDepthB, vjDepthUv(fm, uDepthOs.zw))) : 1.0);
+      float on = uNvMask.x * (uNvMask.z > 0.5 ? step(0.004, vjDepthAt(uDepthA, vjDepthUv(fm, uDepthOs.xy), uDepthLod.x)) : 1.0) + uNvMask.y * (uNvMask.w > 0.5 ? step(0.004, vjDepthAt(uDepthB, vjDepthUv(fm, uDepthOs.zw), uDepthLod.y)) : 1.0);
       lift *= on / (uNvMask.x + uNvMask.y);
     }
   } else {
@@ -7897,18 +7897,57 @@ void main(){
     return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, rollShift, rollK, rollM, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5, scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) };
   },
   // 統合折りの uniform を prog へ送る。pre は _foldPaperGLSL の接頭辞 ('u' = 統合パス / 'uF3' = フック)
+  // 深度 (dtex) をミップマップ付きの別テクスチャ (dmip) に写して均す。1 フレームに 1 回。
+  //   dtex そのものは合成・マスクが等倍で読むので、拾い方を変えないよう触らない
+  _depthMip(f){
+    const gl = this.gl;
+    if(f.dmip && f._dmipFrame === this.frame) return f.dmip;
+    const w = f.dw || f.w, h = f.dh || f.h;
+    if(!f.dmip || f.dmipW !== w || f.dmipH !== h){
+      if(f.dmip) gl.deleteTexture(f.dmip);
+      f.dmip = gl.createTexture();
+      gl.activeTexture(gl.TEXTURE0 + 15);
+      gl.bindTexture(gl.TEXTURE_2D, f.dmip);
+      gl.texStorage2D(gl.TEXTURE_2D, Math.floor(Math.log2(Math.max(w, h))) + 1, gl.R8, w, h);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      f.dmipW = w; f.dmipH = h;
+    }
+    if(!this._dmipFB) this._dmipFB = [gl.createFramebuffer(), gl.createFramebuffer()];
+    const pr = gl.getParameter(gl.READ_FRAMEBUFFER_BINDING), pd = gl.getParameter(gl.DRAW_FRAMEBUFFER_BINDING);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._dmipFB[0]);
+    gl.framebufferTexture2D(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.dtex, 0);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._dmipFB[1]);
+    gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, f.dmip, 0);
+    gl.blitFramebuffer(0, 0, w, h, 0, 0, w, h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, pr);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, pd);
+    gl.activeTexture(gl.TEXTURE0 + 15);
+    gl.bindTexture(gl.TEXTURE_2D, f.dmip);
+    gl.generateMipmap(gl.TEXTURE_2D);
+    gl.activeTexture(gl.TEXTURE0);
+    f._dmipFrame = this.frame;
+    return f.dmip;
+  },
   // 統合パスの紙を、表示中のシェーダの深度 (vjDepth) で持ち上げる uniform を送る。量 = 3D Depth × 各スロットの表示の割合
-  _reliefBind(P){
+  //   cell = 呼び出し側のメッシュの 1 マスの大きさ (画面 uv、[横, 縦])。渡すと深度をそのマスの細かさに均して拾う (_depthMip)。
+  //   頂点 1 つが深度を点で拾うと、マスより細かい起伏が頂点ごとにばらばらに出て面が尖る・輪郭がギザギザになる (エイリアス) ため
+  _reliefBind(P, cell){
     const gl = this.gl;
     const amt = Math.max(0, Math.min(1, App.deadParam(App.post && App.post.fx3dDepth != null ? +App.post.fx3dDepth : 0.5)));
     const U = (n)=>gl.getUniformLocation(P, n);
-    const rel = [0, 0], tex = [null, null], dos = [0, 0, 0, 0];
+    const rel = [0, 0], tex = [null, null], dos = [0, 0, 0, 0], lod = [0, 0];
     ['A', 'B'].forEach((k, j)=>{
       const s = this.slots[k], f = s && s.fbos && s.fbos[s.fbIdx ^ 1];   // いま描き終えたフレーム
       const off = this._matte && this._matte.only && this._matte.slot !== k;   // 3D Slot = A / B: 3D 段に乗らないスロットの深度は使わない
-      if(!off && f && f.depthValid && f.dtex && s.kind !== 'none' && App.slotVisibleAmount(k) > 0){ tex[j] = f.dtex; rel[j] = App.slotVisibleAmount(k); const o = this.slotOs(f); dos[j * 2] = o[0]; dos[j * 2 + 1] = o[1]; }
+      if(!off && f && f.depthValid && f.dtex && s.kind !== 'none' && App.slotVisibleAmount(k) > 0){ tex[j] = f.dtex; rel[j] = App.slotVisibleAmount(k); const o = this.slotOs(f); dos[j * 2] = o[0]; dos[j * 2 + 1] = o[1];
+        if(cell){ const L = Math.log2(Math.max(cell[0] * (f.bw || f.w), cell[1] * (f.bh || f.h))) - 1; if(L > 0.05){ lod[j] = L; tex[j] = this._depthMip(f); } }
+      }
     });
     gl.uniform4f(U('uDepthOs'), dos[0], dos[1], dos[2], dos[3]);
+    gl.uniform2f(U('uDepthLod'), lod[0], lod[1]);
     // 両方が深度を出すときだけクロスフェードで分ける (片方だけならその深度を全量)
     if(rel[0] > 0 && rel[1] > 0){
       const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0));
@@ -8096,7 +8135,7 @@ void main(){
     gl.uniform1f(U('uUzN'), 0);
     gl.uniform1f(U('uPaperFade'), fade);
     this._foldUpload(P, 'u', F);
-    this._reliefBind(P);
+    this._reliefBind(P, [1 / GRID[0], 1 / GRID[1]]);
     return U;
   },
   // 3D FX の段に折りを掛けたとき: エンジンが描いた T の下へ、物体に抜けきっていない元の絵 (= 紙、薄さ 1 - m) を折って敷く。
@@ -8178,10 +8217,16 @@ vec4 fx3dApply(vec4 clip){
     return `uniform sampler2D uDepthA;
 uniform sampler2D uDepthB;
 uniform vec2 uRelief;
+uniform vec2 uDepthLod;  // 深度を均す細かさ (xy = Slot A / B。0 = 等倍。_reliefBind の cell = メッシュの 1 マスに合わせる)
 uniform vec4 uDepthOs;   // 3D Overscan: 深度テクスチャの余白 (xy = Slot A / zw = Slot B。全体 / 画面分 - 1)
 // 画面座標 → 深度テクスチャ座標 (余白があれば画面の外も実際の深度。その外はミラー)
 vec2 vjDepthUv(vec2 uv, vec2 o){ return 1.0 - abs(1.0 - mod((o.x == 0.0 && o.y == 0.0) ? uv : (uv - 0.5) / (1.0 + o) + 0.5, 2.0)); }
-float vjDepthAt(sampler2D t, vec2 m){
+float vjDepthAt(sampler2D t, vec2 m, float L){
+  if(L > 0.0){   // メッシュの 1 マスぶんに均した深度 (ミップ L 段 + マスの半分ずらした 4 点) = 頂点ごとの拾い漏れで面が尖らない
+    vec2 q = exp2(L) / vec2(textureSize(t, 0));
+    return (textureLod(t, m, L).r * 2.0 + textureLod(t, m + vec2(q.x, 0.0), L).r + textureLod(t, m - vec2(q.x, 0.0), L).r
+          + textureLod(t, m + vec2(0.0, q.y), L).r + textureLod(t, m - vec2(0.0, q.y), L).r) / 6.0;
+  }
   // 深度の段差 (輪郭) で面が壁のように裂けないよう、格子 1 つぶんほどの範囲を 5 点で均す
   vec2 o = vec2(0.006, 0.0107);
   return (texture(t, m).r * 2.0 + texture(t, m + vec2(o.x, 0.0)).r + texture(t, m - vec2(o.x, 0.0)).r
@@ -8189,7 +8234,7 @@ float vjDepthAt(sampler2D t, vec2 m){
 }
 float vjRelief(vec2 uv){
   // 紙を広げたときの画面の外は、スロットに余白 (3D Overscan) があればその深度、なければミラー
-  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, vjDepthUv(uv, uDepthOs.xy)) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, vjDepthUv(uv, uDepthOs.zw)) : 0.0);
+  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, vjDepthUv(uv, uDepthOs.xy), uDepthLod.x) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, vjDepthUv(uv, uDepthOs.zw), uDepthLod.y) : 0.0);
 }
 float fx3dRelief(vec2 uv){ return (uRelief.x + uRelief.y > 0.0) ? vjRelief(uv) : 0.0; }
 `;
@@ -8392,7 +8437,7 @@ vec3 fx3dFoldShade(vec3 c){
     gl.uniform1f(U('uShade'), shade);
     gl.uniform1f(U('uBgDark'), bgDark);
     this._foldUpload(P, 'u', F);
-    this._reliefBind(P);
+    this._reliefBind(P, [1 / GRID[0], 1 / GRID[1]]);
     gl.uniform1f(U('uNeedleMix'), aN / Math.max(aN + aO + aK, 1e-6));   // 結晶シェーディングの寄与比
     const eyeU = uzOn ? UZ.eye : eye;
     gl.uniform3f(U('uEye'), eyeU[0], eyeU[1], eyeU[2]);

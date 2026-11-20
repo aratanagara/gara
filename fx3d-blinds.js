@@ -181,7 +181,7 @@ Fx3d.EXTRA.blinds = {
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'blinds');
       Fx3d.ovUniforms(gl, pr, o);
-      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
+      Fx3d.reliefUniforms(gl, pr, [1 / SEG, 1 / nUse]);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'blindsNeedle', NV_VS, FS) : null;

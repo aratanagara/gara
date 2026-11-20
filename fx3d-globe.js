@@ -144,7 +144,7 @@ Fx3d.EXTRA.globe = {
       gl.uniform1f(uloc(gl, pr, 'uFacet'), 1 - ss(16, 56, detail));
       gl.uniform1f(uloc(gl, pr, 'uMirror'), m2 * (0.9 + (0.15 - 0.9) * detail / 96));
       Fx3d.popUniforms(gl, pr, 'globe');
-      Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
+      Fx3d.reliefUniforms(gl, pr, [1 / cols, 1 / rows]);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'globeNeedle', NV_VS, FS) : null;
