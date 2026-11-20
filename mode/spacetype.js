@@ -12,7 +12,7 @@
  * ==================================================================== */
 
 /* md ごとに保存するパラメータのキー */
-const ST_MD_KEYS = ['scene','fontFamily','bold','ink','paper','accent','accentRatio',
+const ST_MD_KEYS = ['depth3D','scene','fontFamily','bold','ink','paper','accent','accentRatio',
   'size','density','depth','waveAmp','waveFreq','speed','spin','jitter',
   // 注: sceneBeats / sceneSecs (サイクル周期) は md ごとに保存しない。
   //     保存すると md を送るたびに周期が上書きされ、拍グリッドが再同期されて

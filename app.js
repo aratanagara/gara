@@ -5094,7 +5094,7 @@ vec3 f3Paper(vec2 q, float lift){
     if(target) target.depthValid = false;          // Code はまず「深度なし」(前のシェーダの深度を残さない)
     const get = this.KIND_DEPTH[slot.kind];
     if(!get || !target || App.code3D === false) return;
-    const eng = get(); if(!eng) return;
+    const eng = get(); if(!eng || (eng.P && !eng.P.depth3D)) return;   // Params の 3D Mode が OFF = 平面として扱う
     const gl = this.gl;
     if(!target.ztex || target.zw !== target.w || target.zh !== target.h){
       if(!target.ztex) target.ztex = gl.createTexture();
@@ -14044,6 +14044,11 @@ const App = {
   paused:false,
 
   async init(){
+    // 深度を出す Code エンジンの Params の 3D Mode (P.depth3D、既定 ON)。状態の復元・工場出荷値の取り込みより先に入れておく
+    for(const kind in GL.KIND_DEPTH){
+      const eng = GL.KIND_DEPTH[kind]();
+      if(eng && eng.P && eng.P.depth3D === undefined){ eng.P.depth3D = 1; if(eng.PDefaults) eng.PDefaults.depth3D = 1; }
+    }
     // ?reset : 保存状態(localStorage)を全破棄してクリーン起動。フリーズ復旧・原因切り分け用。
     try{
       if(/[?&]reset\b/.test(location.search)){
@@ -17166,15 +17171,16 @@ ${outBlock}
     this._confirm('プリセット「'+nm+'」を現在の状態で上書きしますか？', ()=>{
       const lib = this._loadPresetLib();
       while(lib.length <= i) lib.push({ name:'Preset '+(lib.length+1), state:null });
-      lib[i] = { name: name || (lib[i] && lib[i].name) || ('Preset '+(i+1)), state: this._capturePresetState(), thumb: this._grabPresetThumb() };
+      const id = (lib[i] && lib[i].id) || ('p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));   // id を保つ (サムネの照合キー)
+      lib[i] = { id, name: name || (lib[i] && lib[i].name) || ('Preset '+(i+1)), state: this._capturePresetState(), thumb: this._grabPresetThumb() };
       this._savePresetLib();
       if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
       toast('プリセット '+(i+1)+' を上書き — GIF生成中…');
-      // 更新のたびに GIF アニメサムネを生成して差し替え
+      // 更新のたびに GIF アニメサムネを生成して差し替え。生成中に一覧が同期・並べ替えされても、番号でなく id で同じプリセットへ入れる
       this._captureGifThumb({ maxW:128, frames:16, delay:70 }).then(gif=>{
         if(!gif){ toast('GIF生成に失敗 (静止画のまま)'); return; }
-        const cur = this._loadPresetLib();
-        if(cur[i]){ cur[i].thumb = gif; this._savePresetLib(); if(UI && UI.refreshPresetLib) UI.refreshPresetLib(); toast('プリセット '+(i+1)+' GIF更新完了'); }
+        const tgt = this._loadPresetLib().find(q => q && q.id === id);
+        if(tgt){ tgt.thumb = gif; this._savePresetLib(); if(UI && UI.refreshPresetLib) UI.refreshPresetLib(); toast('プリセット「'+tgt.name+'」GIF更新完了'); }
       });
     });
   },
@@ -24689,7 +24695,27 @@ void mainImage(out vec4 o, in vec2 f){
     }
   },
 
+  // 深度を出す Code エンジン (GL.KIND_DEPTH) の Params の見出しのすぐ下に 3D Mode を置く (シェーダの 3D Mode と同じ。OFF = 平面として扱う)
+  refreshKind3D(){
+    for(const kind in GL.KIND_DEPTH){
+      const eng = GL.KIND_DEPTH[kind](); if(!eng || !eng.P) continue;
+      const btn = document.querySelector('.saveDefBtn[data-kind="' + ({ spacetype:'spacetypeMd', slicer:'slicerImg' }[kind] || kind) + '"]');   // md / 画像ごとに保存するエンジンは見出しの Save の名前が違う
+      const h = btn && btn.closest('h3'); if(!h) continue;
+      let cb = h.parentNode.querySelector('input.kind3DMode[data-kind="' + kind + '"]');
+      if(!cb){
+        const row = document.createElement('div');
+        row.className = 'row';
+        row.innerHTML = '<label>3D Mode</label><input type="checkbox" class="kind3DMode" data-norand="1" data-no-midi="1" title="ON = 3D FX がこの Visual の深度で立体に掛かる / OFF = 平面として描く">';
+        h.after(row);
+        cb = row.querySelector('input');
+        cb.dataset.kind = kind;
+        cb.addEventListener('change', ()=>{ eng.P.depth3D = cb.checked ? 1 : 0; });
+      }
+      cb.checked = !!eng.P.depth3D;
+    }
+  },
   refreshAll(){
+    this.refreshKind3D();
     this.refreshMidiRelative();
     this.refreshAudioTransport();
     this.refreshSlot();
@@ -25017,6 +25043,7 @@ void mainImage(out vec4 o, in vec2 f){
         entry.srcIdx = nm ? App._presetIndexByName(nm) : -1;
         if(p.thumb){
           const im = new Image();
+          entry.saved = im;   // 保存サムネを持つタイルは、ホバー中以外は簡易ライブ描画で上書きしない
           im.onload = ()=>{ try{ cv.getContext('2d').drawImage(im, 0, 0, cv.width, cv.height); }catch(e){} entry.drawn = true; if(ph.parentNode) ph.remove(); };
           im.src = p.thumb;
         }
@@ -25097,6 +25124,7 @@ void mainImage(out vec4 o, in vec2 f){
     const src = this.thumbCanvases; if(!src) return;
     for(const t of arr){
       if(!t.canvas) continue;                               // 動画タイルは img なのでスキップ
+      if(t.saved) continue;                                 // 保存サムネがあればそれを出す (Shader タブのサムネは流用しない)
       if(t.drawn) continue;                                 // 静的サムネは一度だけコピー (ホバーは別途インターバル)
       if(t.srcIdx < 0 && t.shaderName) t.srcIdx = App._presetIndexByName(t.shaderName);  // 遅延解決
       if(t.srcIdx < 0) continue;
@@ -25116,9 +25144,17 @@ void mainImage(out vec4 o, in vec2 f){
       if(!Preview.renderPreset(t._state)) return false;     // 非シェーダ(動画/mode)は false → 静止のまま
       try{ t.canvas.getContext('2d').drawImage(Preview.canvas, 0, 0, t.canvas.width, t.canvas.height); }catch(e){ return false; }
       if(t.ph && t.ph.parentNode) t.ph.remove();
-      t.drawn = true;
+      t.drawn = true; t.live = true;
       return true;
     };
+    // 簡易ライブ描画はシェーダ + 色補正だけで 3D FX などを含まないため、保存サムネを持つタイルは
+    //   ホバー中だけライブにし、ホバーが外れたら保存サムネへ戻す
+    for(const t of arr){
+      if(t.live && !t.hover && t.saved && t.saved.complete && t.saved.naturalWidth){
+        try{ t.canvas.getContext('2d').drawImage(t.saved, 0, 0, t.canvas.width, t.canvas.height); }catch(e){}
+        t.live = false;
+      }
+    }
     const hovered = arr.find(t => t.hover && t.canvas);
     if(hovered){ render(hovered); return; }                 // ホバー中はそのタイルを毎フレーム
     this._presetAnimTick = (this._presetAnimTick || 0) + 1;
@@ -25127,6 +25163,7 @@ void mainImage(out vec4 o, in vec2 f){
     const n = arr.length;                                   // ラウンドロビンで次のシェーダタイル1枚
     for(let step = 0; step < n; step++){
       this._presetAnimI = (this._presetAnimI + 1) % n;
+      if(arr[this._presetAnimI] && arr[this._presetAnimI].saved) continue;
       if(render(arr[this._presetAnimI])) break;
     }
   },
