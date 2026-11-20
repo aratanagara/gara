@@ -563,6 +563,7 @@ const NovelTerminal = {
     fluidCircleEdge:true, fluidTriEdge:true, fluidRectEdge:true,   // 図形の輪郭を描くか (OFF = 輪郭を描かない。Auto は塗りだけ、Edge は出さない)
     sceneVals:null,    // Scene ごとの保存値 { fluid:{...}, editorial:{...}, _common:{...} } (snapScene / applyScene)
     fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
+    fluidRunCaret:false,   // 字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける
     fluidBigFont:0,    // Big Glyph の書体 (0 = Fluid Font と同じ / 1〜 = FLUID_FONTS の番号)
     fluidBigAspect:100,   // Big Glyph の縦横比 % (100 = 正体 / 小さいほど長体 / 大きいほど平体)
     fluidFont:0,       // Fluid の書体 (FLUID_FONTS の番号。0 = 従来のリュウミン + MS ゴシック)
@@ -1506,8 +1507,10 @@ const NovelTerminal = {
     const driftAmt = (this.P && typeof this.P.drift === 'number') ? this.P.drift : 1;
     const driftX = Math.sin(t*0.12)*adv*2.1*driftAmt;
     const driftY = Math.cos(t*0.10)*lh*1.7*driftAmt;
+    const carets = (this.P && this.P.fluidRunCaret === true) ? [] : null;   // 字のひと続きの末尾 [x, y, 縦書き]
     for(let r=-6; r<rows; r++){
       const rowWave = Math.sin(t*0.20+r*0.13*kWF)*adv*0.55*kRW;
+      const rowHit = carets ? new Map() : null;
       for(let c=-6; c<cols; c++){
         const x = c*adv + driftX + rowWave;
         const y = r*lh + driftY + Math.cos(t*0.16+c*0.09*kWF)*lh*0.35*kCW;
@@ -1543,7 +1546,9 @@ const NovelTerminal = {
         } else
         drawGlyph(ch, src[(idx-1+src.length)%src.length] || "", src[(idx+1)%src.length] || "", x, y, fs, alpha, false);
         occupied.add(occKey(x, y));
+        if(rowHit && ch !== "　" && ch !== " ") rowHit.set(c, [x, y]);   // 空白は字に数えない (キャレットは見える字のすぐ後ろ)
       }
+      if(rowHit) rowHit.forEach(([x, y], c)=>{ if(!rowHit.has(c + 1)) carets.push([x + adv, y, false]); });
     }
 
     const vfs = Math.max(kVSize===1 ? 10 : 6, Math.round(M/58*kVSize));
@@ -1553,6 +1558,7 @@ const NovelTerminal = {
     const vRows = Math.ceil(H/chH) + 10;
     for(let c=-4; c<vCols; c++){
       const x = W - c*colW + Math.sin(t*0.11+c*0.34)*colW*0.42;
+      const colHit = carets ? new Map() : null;
       for(let r=-5; r<vRows; r++){
         const y = r*chH;
         const nx = ((x/W)*2-1)*aspect;
@@ -1569,7 +1575,9 @@ const NovelTerminal = {
         const alpha = shade(54 + Math.max(0, Math.min(1, field))*132, field, vThr);
         drawGlyph(ch, vSrc[(idx-1+vSrc.length)%vSrc.length] || "", vSrc[(idx+1)%vSrc.length] || "", x, y, vfs, alpha, true);
         occupied.add(occKey(x, y));
+        if(colHit) colHit.set(r, [x, y]);
       }
+      if(colHit) colHit.forEach(([x, y], r)=>{ if(!colHit.has(r + 1)) carets.push([x, y + chH, true]); });
     }
 
     for(let si = 0; si < turnShapes.length; si++){
@@ -1625,6 +1633,10 @@ const NovelTerminal = {
     if((!this.P || this.P.cursor !== false) && Math.floor(t*3.8)%2 === 0){
       if(inkMode === 4) p.fill(accRGB[0], accRGB[1], accRGB[2], 200); else p.fill(96,255,142,78);
       p.rect(cursorX, cursorY, adv*1.2*kCur, lh*0.92*kCur);
+    }
+    if(carets && carets.length && Math.floor(t*3.8)%2 === 0){   // 字のひと続きの末尾のキャレット (色と点滅は走査カーソルと同じ)
+      if(inkMode === 4) p.fill(accRGB[0], accRGB[1], accRGB[2], 200); else p.fill(96,255,142,78);
+      for(const [x, y, v] of carets){ if(v) p.rect(x, y, vfs*kCur, vfs*0.5*kCur); else p.rect(x, y, fs*0.5*kCur, fs*kCur); }
     }
 
     this.fR = fontSave[0]; this.fM = fontSave[1]; this.fG = fontSave[2]; this._glyAspect = null;
@@ -2149,7 +2161,8 @@ const NovelTerminal = {
     vertSize:'縦書きの層の字の大きさ',
     vertGap:'縦書きの列の間隔',
     vertCut:'縦書きの字が出るしきい値。大きいほど図形の芯にだけ残る',
-    cursorSize:'下を走るカーソルの大きさ',
+    cursorSize:'カーソル (下を走るカーソルと、字の末尾のキャレット) の大きさ',
+    fluidRunCaret:'字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける。色と点滅は走査カーソルと同じ',
     drift:'字面全体がゆっくり流れる量',
     rowWave:'行ごとに横へうねる幅',
     colWave:'列ごとに縦へうねる幅',
@@ -2182,7 +2195,7 @@ const NovelTerminal = {
     fluid: ['alpha','colWave','cursorSize','density','drift','edgeNoise','flicker','fluidAccent','fluidAspect','fluidBeats','fluidBig',
       'fluidCircleMode','fluidCircleLine','fluidCircleSize','fluidTriMode','fluidTriLine','fluidTriSize','fluidTriSpin','fluidRectMode','fluidRectLine','fluidRectSize','fluidRectSpin',
       'fluidContrast','fluidCrisp','fluidFont','fluidHud','fluidLayout','fluidSharp','glitch','inkMode','leading','lineWidth','monoColor','rhythmAmt','rowWave',
-      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect'],
+      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect','fluidRunCaret'],
     editorial: ['edAccent','edCols','edFolio','edGrid','edInk','edJump','edLayout','edLeading','edMargin','edMarks','edReveal','edSize','edTracking','edTurnBeats'],
     melt: ['dripLen','meltDepth','meltFade','meltGhost','meltLeading','meltSize'],
     columns: ['colCount','colGutter','colLeading','colMargin'],
@@ -2206,7 +2219,7 @@ const NovelTerminal = {
     const edge = { fluidCircleLine:'fluidCircleEdge', fluidTriLine:'fluidTriEdge', fluidRectLine:'fluidRectEdge' }[key];
     if(edge && P[edge] === false) return false;
     if(['vertSize','vertGap','vertCut','clash'].includes(key) && P.vertLayer === false) return false;
-    if(key === 'cursorSize' && P.cursor === false) return false;
+    if(key === 'cursorSize' && P.cursor === false && P.fluidRunCaret !== true) return false;
     if((key === 'fluidBigFont' || key === 'fluidBigAspect') && ((P.fluidBig || 0) < 10 || (P.fluidCircleMode|0) === 3)) return false;   // 大きな字が出ないとき (Big Glyph 0 か円が Off)
     return true;
   },
