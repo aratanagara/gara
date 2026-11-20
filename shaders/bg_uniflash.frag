@@ -28,7 +28,7 @@
 // @param uSizeHi  6..80   = 19.0  @desc 大きさの最大 (画面高に対する %)
 // @param uAspLo   20..500 = 40.0  @desc 縦横比の最小 (横 / 縦 × 100。100 = 正円、小さいほど縦長)
 // @param uAspHi   20..500 = 220.0 @desc 縦横比の最大 (横 / 縦 × 100。大きいほど横長)
-// @param uTilt    0..45   = 0.0   @desc 傾きのばらつき (度)。0 で傾けない (斜めの印象を出さない)
+// @param uTiltVar 0..45   = 0.0   @desc 傾きのばらつき (度)。吹き出しごとに ±この角度までランダムに傾ける。0 で傾けない (既定)
 // @param uWEllipse 0..100 = 50.0  @desc 丸い吹き出しの出やすさ (形ごとの比率。全部 0 なら丸だけ)
 // @param uWBox    0..100  = 30.0  @desc 四角い吹き出し (ナレーション枠のような正確な長方形) の出やすさ。傾けない。角にたまりが付く
 // @param uWPoly   0..100  = 50.0  @desc ふくらみ多角形の出やすさ。楕円に沿った 3〜8 本の辺 (三角形も出る。全体は傾けない) を、全部すぼませた吹き出しと全部膨らませた吹き出し (半々。角にたまりが付く)
@@ -83,7 +83,7 @@ uniform float uSizeLo;
 uniform float uSizeHi;
 uniform float uAspLo;
 uniform float uAspHi;
-uniform float uTilt;
+uniform float uTiltVar;
 uniform float uWEllipse;
 uniform float uWPoly;
 uniform float uWBox;
@@ -523,6 +523,7 @@ void uf_balloon(inout vec3 rgb, inout float a, vec2 p, vec2 c, vec2 rad, float s
   float wt = clamp(uWeight, 0.0, 100.0) * 0.01;
   float hw0 = 0.5 * max(uThick, 0.0) * 0.1 * zoomPx / 1080.0;
   float fillAmt = clamp(uFill, 0.0, 100.0) * 0.01;
+  // 傾きは uTiltVar で指定したときだけ (既定 0 = 傾けない)
   float cs = cos(tilt), sn = sin(tilt);
   vec2 d = (p - c) / sc;
   d = vec2(cs * d.x + sn * d.y, -sn * d.x + cs * d.y);
@@ -721,7 +722,7 @@ vec3 bg_uniflash(vec2 fc){
       float asp = exp(mix(aLo, aHi, h4));
       vec2 rad = sz * vec2(sqrt(asp), 1.0 / sqrt(asp));
       vec2 c = (vec2(h1, h2) - 0.5) * vec2(aspect * 0.82, 0.78);
-      float tilt = (h5 - 0.5) * 2.0 * radians(clamp(uTilt, 0.0, 45.0));
+      float tilt = (h5 - 0.5) * 2.0 * radians(clamp(uTiltVar, 0.0, 45.0));
       uf_balloon(rgb, a, p, c, rad, sz, tilt, shape, pop.x, pop.y, key, h5, h6, inkCol, fillCol, zoomPx);
      }
     }
@@ -753,7 +754,8 @@ vec3 bg_uniflash(vec2 fc){
     float birth = isFree() ? Q.x * max(bpm, 1.0) / 60.0 : Q.y;
     vec2 pop = uf_pop(max(B - birth, 0.0), dropL, key);
     if(pop.x < 0.03 || pop.y <= 0.0) continue;
-    uf_balloon(rgb, a, p, c, rad, sz, 0.0, shape, pop.x, pop.y, key, h5, h6, inkCol, fillCol, zoomPx);
+    float tilt = (h5 - 0.5) * 2.0 * radians(clamp(uTiltVar, 0.0, 45.0));
+    uf_balloon(rgb, a, p, c, rad, sz, tilt, shape, pop.x, pop.y, key, h5, h6, inkCol, fillCol, zoomPx);
   }
 
   bgAlpha = a;
