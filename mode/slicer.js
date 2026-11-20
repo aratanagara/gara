@@ -7,7 +7,7 @@
 */
 
 // 画像ごとの保存対象キー (postScale=品質設定は共通のまま)
-const SL_IMG_KEYS = ['pieces','seed','sides','maxSides','explode','bend','curl','warpAmp','warpFreq',
+const SL_IMG_KEYS = ['depth3D','pieces','seed','sides','maxSides','explode','bend','curl','warpAmp','warpFreq',
   'overlapShadow','shadowStr','shadowRadius','shadowBias','autorot','camEl','fov','dist',
   'autoMode','autoRebuildBeats','autoZoomAmp','autoElAmp','bgMode','bgColor',
   'shardScale','smallShare','largeShare','scatterX','scatterY','polyBoost','sliverBoost','alignPull','alignAngle',
