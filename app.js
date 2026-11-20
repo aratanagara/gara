@@ -530,8 +530,6 @@ uniform int   uGradN;         // 有効な停止点数 (2..8)
 uniform float uCosGrad;    // Cos Grad (in-shader 未処理スロット向けの汎用マッピング強度)
 uniform int   uCosPalette; // cosineGradient パレット選択 (0=浅葱5/1=Rainbow)
 uniform float uBlm;
-uniform float uUnsharp;       // アンシャープマスク強度 (0=off)
-uniform float uUnsharpRadius; // 半径 (px, 4-tap オフセット)
 // glitch-style FX (ported from hinotori-vj visual.frag)
 uniform float uGlass;     // 0..1 Hipass (旧Glass / Liquid Glass)
 uniform float uSlice;     // 0..1
@@ -1645,20 +1643,6 @@ void main(){
 
   // Pollock は composite shader 内では描かず、捕獲フレームを Canvas2D で蓄積描画する
   // PollockFX (2-pass Post FX) としてこの後段で適用する。
-
-  // Unsharp mask: Photoshop の「アンシャープマスク」相当。
-  //   元 col との差分 (high-pass) を amount 倍して加算 → エッジ強調 / ディテール強化。
-  //   サンプル元は uA/uB (sampleAB) なので CA 後の col との差で実装。十分シャープになる。
-  if(abs(uUnsharp) > 0.0001 && uVoxel < 0.001){
-    // 正=シャープ / 負=ぼかし。半径は効果量の絶対値に応じて指数的に拡大 (Unsharp R が基準)。
-    // 固定リングではなく、中心から外へ連続減衰するGaussianディスクを使う。
-    // 外側のサンプルほど重みが下がるため、複数の輪郭層ではなく霧状のぼかしになる。
-    float r = max(0.5, uUnsharpRadius) * exp2(abs(uUnsharp) * 1.9);   // 半径を強めに拡大(+シャープ/-ぼかし共通)
-    vec3 blur = sampleGaussClean(uv, r);
-    if(uUnsharp > 0.0) col += uUnsharp * 2.8 * (col - blur);  // シャープ (ハイパス加算・ゲイン強化)
-    else col = mix(col, blur, clamp(-uUnsharp, 0.0, 1.0));    // ぼかし(半径拡大でより強く)
-    col = max(col, vec3(0.0));
-  }
 
   // bloom (cheap 4-tap blur of bright parts)
   if(uBlm > 0.0001 && uVoxel < 0.001){
@@ -5357,8 +5341,6 @@ void main(){
     gl.uniform1f(U('uBKeyBlack'), this.slots.B.bKey ? 1.0 : 0.0);   // @bkey シェーダ(保存プリセットの焼き込み src 互換)のみ黒キー。novel/ribbon は実 alpha に移行
     gl.uniform1f(U('uBKeyWhite'), this.slots.B.bKeyWhite ? 1.0 : 0.0);   // ribbon 等を Slot B で白キー透過
     gl.uniform1f(U('uBlm'),       p.blm);
-    gl.uniform1f(U('uUnsharp'),       p.unsharp || 0);
-    gl.uniform1f(U('uUnsharpRadius'), App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(p.unsharp) : (p.unsharpRadius || 1.5));
     gl.uniform1f(U('uSlice'),     0);
     gl.uniform1f(U('uRingSlice'), 0);
     // Ring Slice の回転位相: 値 (= 速さ。1.0 で最大 0.8 rad/s) × 時間を積分。0 で止まる (角度は保持、次に上げると続きから)
@@ -5510,12 +5492,13 @@ void main(){
     //   3.5) 3D FX: Photo → Slicer → Layers → Diorama → Points → Box → Blinds → Gravity → Globe
     //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Flames → Uzumaki → (Gravity) → Needle (最後)
     //      Gravity は Origami / Kaiser / Roll / Uzumaki のどれかと一緒のときだけ、3D FX の段でなく統合パスで Uzumaki のあとに掛かる
-    //   4.5) Audio / Pattern → 4.6) Shards
-    //   5) Glitch 段: Slit-scan → Waveform → Barcode → Datamosh → Pixelsort
+    //   4.5) Pattern (Slice / Ring Slice / Mondrian / Rings / Voxel / Tunnel)
+    //   5) Glitch 段: Slit-scan → Barcode → Datamosh
     //   6) Lens 段: Mirror → Pixelate → Chroma Ab
     //   7) Twist → FB Add/Multiply
-    //   8) FXAA → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
+    //   8) FXAA → Unsharp → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
+    //   9.5) Audio: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter → RGB → Shards → Waveform → Pixelsort
     //  10) Color: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
     //  11) プリセット切替トランジション (最後): 旧の最終画面と新の最終画面を混ぜる
 
@@ -5559,23 +5542,15 @@ void main(){
     this._applyUzumakiPost(p, _safe);   // 渦巻き展開 (折り紙系と同じ幾何変形枠)
     if(this._matte) this._fx3dBgNeed = true;   // 紙抜き中は、どの段も描かなかったフレームでも紙を敷く (alpha 0 の紙を画面へ出さない)
     this._fx3dBgUnder();                // 折り系 / Uzumaki が抜いた背景 (alpha < 1) に 3D BG を敷く
-    this._applyAudioPatternPost(p, _safe);   // 4.5) Audio / Pattern: 3D 段のあと (3D で折れた・吸い込まれた絵に乗る)
-    this._applyShardsPost(p, _safe);         // 4.6) Shards: 3D / Audio・Pattern のあとの画面を多角形に切り抜いて音で拡縮
+    this._applyAudioPatternPost(p, _safe, 'pattern');   // 4.5) Pattern: 3D 段のあと (3D で折れた・吸い込まれた絵に乗る)
 
-    // 5) Glitch 段: 折った結果にグリッチを掛ける (Slit-scan → Waveform → Barcode → Datamosh → Pixelsort)
+    // 5) Glitch 段: 折った結果にグリッチを掛ける (Slit-scan → Barcode → Datamosh。Waveform / Pixelsort は Audio 段)
     this._applySlitScan(p, _safe);
-    this._applyWaveformPost(p, _safe);
     this._applyBarcodePost(p, _safe);
     this._applyGlitchTrail(p);
-    if(typeof PixelSortFX !== 'undefined' && p && (p.pixsort || 0) > 0.001 && !(App.safeMode)){
-      const psHit = (typeof Audio !== 'undefined') ? (Audio.hit || 0) : 0;
-      const psTime = this.clock || 0;
-      PixelSortFX.apply(gl, this._finalFBO, p.pixsort, psHit, psTime);
-      gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
-    }
 
     // 6) Lens 段: Mirror → Pixelate → Chroma Ab (全 0 / Off ならパスごとスキップ)
-    this._applyLensPost(p, _safe);
+    this._applyLensPost(p && p.aRgb ? Object.assign({}, p, { aRgb: 0 }) : p, _safe);   // Audio の RGB は Color の直前の Audio 段で掛ける
 
     // 7) Twist / Feedback (折った結果ごとうねらせ、トレイルを残す)
     this._applyTwistPost(p, _safe);
@@ -5583,6 +5558,7 @@ void main(){
 
     // 8) 仕上げの線とブラー (FXAA → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur)
     if(App.post && App.post.fxaa){ this._applyFXAA(); }
+    this._applyUnsharpPost(p, _safe);
     this._applyOutlinePost(p, _safe);
     this._applyInkBleedPost(p, _safe);
     this._applyDitherPost(p, _safe);
@@ -5612,6 +5588,18 @@ void main(){
 
     // 10) Color 段: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma。
     //     FB のトレイルは上で色を掛ける前の絵から採るので、残像にも Color が一度だけ掛かる
+    // 9.5) Audio 段 (Color の直前): 音・拍で画面を揺らす / 光らせる / 割る。FB のトレイルは上で採り終えているので、残像には入らない
+    this._applyAudioPatternPost(p, _safe, 'audio');   // Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter
+    if(p && (+p.aRgb || 0) > 0) this._applyLensPost({ chr: 0, pix: 0, mir: 0, aRgb: p.aRgb }, _safe);   // RGB (音量で色収差)
+    this._applyShardsPost(p, _safe);
+    this._applyWaveformPost(p, _safe);
+    if(typeof PixelSortFX !== 'undefined' && p && (p.pixsort || 0) > 0.001 && !(App.safeMode)){
+      const psHit = (typeof Audio !== 'undefined') ? (Audio.hit || 0) : 0;
+      const psTime = this.clock || 0;
+      PixelSortFX.apply(gl, this._finalFBO, p.pixsort, psHit, psTime);
+      gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
+    }
+
     this._applyFinalColorGrade();
 
     // 11) プリセット切替トランジション (最後)。旧の画面 (snapFinal) は前のフレームの最終画面 = 3D FX も Color も掛け終わった絵なので、
@@ -6155,8 +6143,14 @@ void main(){
   frag = vec4(max(col, 0.0), 1.0);
 }`;
   },
-  _applyAudioPatternPost(p, safe){
-    const V = this._apVals;
+  // part = 'pattern' (3D 段のあと: Slice / Ring Slice / Mondrian / Rings / Voxel / Tunnel) か
+  //        'audio' (Color の直前: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter)。
+  //   同じプログラムを、もう一方の欄の値を 0 にして 2 回通す
+  AUDIO_AP_KEYS: ['uAScan','uAStrobe','uAShock','uAExplode','uMosaic','uShake','uGain','uSpecWarp','uZoomPump','uShatter'],
+  _applyAudioPatternPost(p, safe, part){
+    const V0 = this._apVals;
+    let V = null;
+    if(V0){ V = {}; for(const k in V0) V[k] = ((part === 'audio') === this.AUDIO_AP_KEYS.includes(k)) ? V0[k] : 0; }
     if(!this.compositeProg) return;
     // 合成のプログラムが上がったら裏でコンパイルを始めておく (スライダーを上げた瞬間に待たせない)
     if(!this._audioPatQueued){ this._audioPatQueued = true; this._linkDeferred('audioPatProg', this._audioPatFS()); }
@@ -6886,6 +6880,41 @@ void main(){
       gl.uniform1f(u('uShine'), v('glossShine', 0.6));
       gl.uniform1f(u('uWet'),   v('glossWet', 0.4));
       gl.uniform1f(u('uLight'), v('glossLight', 0.3));
+    });
+  },
+  // Unsharp (Blur の段): 正 = シャープ (ハイパス加算) / 負 = ぼかし。半径は量の絶対値で指数的に広げる。
+  //   ぼかしは合成シェーダの sampleGaussClean (連続減衰の Gaussian ディスク) を、出来上がった画面 (uTex) から読む形に写して使う
+  _applyUnsharpPost(p, safe){
+    const u = +(p && p.unsharp) || 0;
+    if(safe || Math.abs(u) <= 0.0001 || !this._finalFBO || !this._compositeFS) return;
+    if(!this._unsharpQueued){
+      this._unsharpQueued = true;
+      const fn = /vec3 sampleGaussClean\(vec2 uv, float radPx\)\{[\s\S]*?\n\}/.exec(this._compositeFS);
+      if(!fn){ console.warn('unsharp: sampleGaussClean が見つからない'); return; }
+      this._linkDeferred('unsharpProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uUnsharp;
+uniform float uUnsharpRadius;
+vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
+vec4 sampleAB(vec2 uv){ return vec4(texture(uTex, fl_mirror(uv)).rgb, 1.0); }
+${fn[0]}
+void main(){
+  vec3 col = texture(uTex, vUv).rgb;
+  float r = max(0.5, uUnsharpRadius) * exp2(abs(uUnsharp) * 1.9);
+  vec3 blur = sampleGaussClean(vUv, r);
+  if(uUnsharp > 0.0) col += uUnsharp * 2.8 * (col - blur);
+  else col = mix(col, blur, clamp(-uUnsharp, 0.0, 1.0));
+  frag = vec4(max(col, vec3(0.0)), 1.0);
+}`);
+    }
+    if(!this.unsharpProg) return;   // 非同期コンパイル待ち
+    this._runFinalPost(this.unsharpProg, '_unsharpTmp', (P)=>{
+      const gl = this.gl;
+      gl.uniform1f(gl.getUniformLocation(P, 'uUnsharp'), u);
+      gl.uniform1f(gl.getUniformLocation(P, 'uUnsharpRadius'), App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(u) : (p.unsharpRadius || 1.5));
     });
   },
   _applyLensPost(p, safe){
@@ -14104,20 +14133,20 @@ const App = {
   // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
   POST_GROUPS: {
     color:      ['inv','gamma','bri','con','sat','vibrance','gradMix','hue','hueRotSpeed','vig','pos'],
-    quality:    ['clarity','denoise','deband','unsharp','unsharpRadius','fxaa'],
+    quality:    ['clarity','denoise','deband','fxaa'],
     material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','novel','novelSize','novelThresh','novelColor','novelFlow','novelBg','novelTate','novelDepth','novelTrack','novelLead','novelSwitch','novelCluster','novelGrid','novelVary','novelSep','novelTone','novelShape','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat'],
     texture:    ['scn','grn','texNoise','texNoiseScale'],
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','waveform','mosaic','shake','specWarp','zoomPump','shatter','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
     pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
     fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','fx3dDepth','uzumaki','river','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot'],
-    blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline'],
+    blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline','unsharp','unsharpRadius'],
     glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
   // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
   POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion',
     pos:'texture', vibrance:'quality', boltz:'distortion', split:['glitch','audioFx'], rings:['glitch','audioFx'], voxel:['glitch','texture'], blm:'texture',
-    candy:'distortion', slice:'glitch', ringSlice:'glitch', ringBlur:'glitch' },
+    candy:'distortion', slice:'glitch', ringSlice:'glitch', ringBlur:'glitch', unsharp:'quality', unsharpRadius:'quality' },
   // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
   INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper'],
   // 他欄から移したキーの旧保存値 (POST_KEY_FROM の値は欄名、または新しい順の欄名の配列)
