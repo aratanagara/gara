@@ -15,6 +15,7 @@
 */
 
 const Tower4149 = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   fx3dVertex: true,   // 3D FX (Needle / Origami / Kaiser) を 3D のまま掛けられる (頂点フック fx3dApply を持つ)
   gl:null, initialized:false, ok:false,
   progMesh:null, progBg:null, vaoMesh:null, vaoBg:null, nVert:0,
@@ -258,9 +259,10 @@ void main(){
     this.progBg = this._link(`#version 300 es
 precision highp float;
 out vec2 vUv;
+uniform vec2 uOsS;   // 3D Overscan: スロットの余白 (全体 / 画面分 - 1)。空のグラデーションを画面基準のまま外へ続ける
 void main(){
   vec2 p = vec2((gl_VertexID & 1) == 1 ? 3.0 : -1.0, (gl_VertexID & 2) == 2 ? 3.0 : -1.0);
-  vUv = p;
+  vUv = p * (1.0 + uOsS);
   gl_Position = vec4(p, 0.99999, 1.0);
 }`, `#version 300 es
 precision highp float;
@@ -471,6 +473,7 @@ void main(){
       gl.useProgram(this.progBg);
       gl.uniform3f(gl.getUniformLocation(this.progBg, 'uTop'), bc[0], bc[1], bc[2]);
       gl.uniform1f(gl.getUniformLocation(this.progBg, 'uWarm'), 0);
+      { const o = (typeof GL !== 'undefined' && GL.slotOs) ? GL.slotOs(GL._osCur) : [0, 0]; gl.uniform2f(gl.getUniformLocation(this.progBg, 'uOsS'), o[0], o[1]); }
       gl.uniform1f(gl.getUniformLocation(this.progBg, 'uGround'), groundK);
       gl.uniform1f(gl.getUniformLocation(this.progBg, 'uBgGlow'), 0.25*Math.max(0, dz(P.skyGlow)*0.01));
       gl.bindVertexArray(this.vaoBg);
@@ -517,7 +520,7 @@ void main(){
     if(on3d && !this.progMesh3d) this.progMesh3d = this._mkMesh(true);
     const pm = (on3d && this.progMesh3d) ? this.progMesh3d : this.progMesh, U = (n)=>gl.getUniformLocation(pm, n);
     gl.useProgram(pm);
-    gl.uniformMatrix4fv(U('uVP'), false, VP);
+    gl.uniformMatrix4fv(U('uVP'), false, on3d ? VP : (GL.osProj ? GL.osProj(VP) : VP));   // 3D Overscan: 余白の分だけ画角を広げる (3D Native は fx3dUniforms が折りのカメラ側を広げる)
     gl.uniformMatrix3fv(U('uRot'), false, new Float32Array(R));
     gl.uniform3f(U('uCenter'), dz(P.posX)*0.01, dz(P.posY)*0.01, 0.0);
     gl.uniform1i(U('uK'), K);

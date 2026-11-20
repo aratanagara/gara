@@ -21,9 +21,10 @@ vec3 cubeSurf(int cube, int face, vec2 ab, out vec2 uvo, out vec3 ctr){
   int gx = int(uCg.x);
   int cyi = cube / gx, cxi = cube - cyi * gx;
   vec2 cell = vec2(float(cxi), float(cyi));
-  vec2 hs = vec2(uAsp / uCg.x, 1.0 / uCg.y);
+  vec2 ex = vec2(uAsp, 1.0) * (1.0 + 2.0 * uOvM);   // 3D Overscan: 箱を素材の余白の分だけ大きく (前面の中央が画面。転がると画面の外の絵が見える)
+  vec2 hs = ex / uCg;
   float hz = sqrt(hs.x * hs.y);
-  vec2 cc = vec2(-uAsp, -1.0) + hs * (2.0 * cell + 1.0);
+  vec2 cc = -ex + hs * (2.0 * cell + 1.0);
   float u = ab.x * 2.0 - 1.0, v = ab.y * 2.0 - 1.0;
   // 各面の向き: 90° 転がって前に来たとき u が右・v が上になる (+y 面 = X 軸 +90° / -y 面 = X 軸 -90° / -x 面 = Y 軸 +90° / +x 面 = Y 軸 -90°)
   vec3 p;
@@ -124,7 +125,7 @@ uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
-  vec4 t0 = texture(uTex, clamp(vUv, 0.0, 1.0));
+  vec4 t0 = texture(uTex, fx3dSrcC(vUv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
   frag = vec4(fx3dFoldShade(fx3dLit(t0.rgb, vW, uEye, uShade)), 1.0);
 }`;
@@ -133,6 +134,7 @@ function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get
 const ss = (a, b, x)=>{ const y = Math.max(0, Math.min(1, (x - a) / (b - a))); return y * y * (3 - 2 * y); };
 
 Fx3d.EXTRA.cubes = {
+  ov: true,
   foldHook: true,
   spikes: true,
   render(gl, o){
@@ -172,6 +174,7 @@ Fx3d.EXTRA.cubes = {
       gl.uniform1f(uloc(gl, pr, 'uGap'), 1 - 0.04 * ss(0.1, 0.6, k));   // キューブ同士の隙間 (側面がのぞく)
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'cubes');
+      Fx3d.ovUniforms(gl, pr, o);
       Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };

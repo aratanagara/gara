@@ -229,12 +229,26 @@ float fx3dPop(float idx){
     vs = this._withHooks(vs, 'fx3dPop(', this.POP_GLSL);
     vs = this._withHooks(vs, 'fx3dRelief(', GL.reliefGLSL());   // シェーダの深度 (vjDepth) で面を持ち上げる
     vs = this._withHooks(vs, 'fx3dApply(', GL.fx3dHookGLSL());
+    vs = this._withHooks(vs, /fx3dAB\(|fx3dSrc|uOvM/.exec(vs) ? /fx3dAB\(|fx3dSrc|uOvM/.exec(vs)[0] : 'fx3dAB(', this.OV_GLSL);
+    fs = this._withHooks(fs, 'fx3dSrc', this.OV_GLSL);
     fs = this._withHooks(fs, 'fx3dFoldShade(', GL.fx3dShadeGLSL());
     const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);
     const p = GL._link(v, f);
     if(!p || p.err){ console.error('fx3d program failed:', id, p && p.err); return (c[id] = null); }
     return (c[id] = p);
   },
+  // ── 3D Overscan: 素材 (o.srcTex) が余白付き (GL._ovSrc) のとき ──
+  //   エンジンに ov: true を立てると、GL は余白付きの素材と o.ovM (= 余白 / 画面。x, y) を渡す。
+  //   VS: fx3dAB(面座標 0..1) = 余白まで広げた画面座標 (-m..1+m) / FS: fx3dSrc(画面座標) = 素材の座標 (余白の外はミラー)。
+  //   uniform は ovUniforms(gl, pr, o)。余白 0 のときは fx3dAB = そのまま、fx3dSrc = ミラー (0..1 の中は従来と同じ)
+  OV_GLSL: `uniform vec2 uOvM;
+vec2 fx3dAB(vec2 ab){ return ab * (1.0 + 2.0 * uOvM) - uOvM; }
+vec2 fx3dSrc(vec2 uv){ return 1.0 - abs(1.0 - mod((uv + uOvM) / (1.0 + 2.0 * uOvM), 2.0)); }
+vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : clamp(uv, 0.0, 1.0); }   // 余白なしは従来どおり端を伸ばす (clamp)
+`,
+  ovUniforms(gl, pr, o){ const m = (o && o.ovM) || [0, 0]; gl.uniform2f(gl.getUniformLocation(pr, 'uOvM'), m[0], m[1]); },
+  // 余白を面に載せたぶん面を縮める率 (k = 0 で 1 = 元の画面と画素一致 → k = 1 で 1 / (1 + 2m) = 面の大きさは従来どおりで、画面の外の絵まで載る)
+  ovShrink(o, k){ const m = (o && o.ovM) || [0, 0]; return [1 + (1 / (1 + 2 * m[0]) - 1) * k, 1 + (1 / (1 + 2 * m[1]) - 1) * k]; },
   // カメラ。az / el はラジアン、原点を見る。dist = 1.35 で z=0 の紙 q=(uv-0.5)*2*(asp,1) が画面をちょうど満たす
   camera(asp, az, el, dist){
     const ce = Math.cos(el);

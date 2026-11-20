@@ -101,6 +101,7 @@ function stIsEmoji(ch){
 const stDP = v => (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
 
 const SpaceType = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   initialized: false,
   gl: null,
   ok: false,
@@ -1322,7 +1323,7 @@ void main(){
     }
     const lkX = stDP(P.lookX), lkY = stDP(P.lookY);
     if(lkX !== 0 || lkY !== 0){ center[0] += lkX; center[1] += lkY; }
-    const proj = m4.persp(P.fov*Math.PI/180, w/h, 0.05, 300.0);
+    const proj = (typeof GL !== 'undefined' && GL.osProj) ? GL.osProj(m4.persp(P.fov*Math.PI/180, w/h, 0.05, 300.0)) : m4.persp(P.fov*Math.PI/180, w/h, 0.05, 300.0);   // 3D Overscan: スロットに余白があれば画角を広げる
     let view = m4.lookAt(eye, center, [0,1,0]);
     const camRollA = stDP(P.camRoll)*Math.PI/180;
     if(camRollA !== 0){

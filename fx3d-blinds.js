@@ -15,7 +15,7 @@ float h1(float p){ return fract(sin(p * 127.1 + 311.7) * 43758.5453); }
 float easeOut(float x){ float y = 1.0 - x; return 1.0 - y * y * y; }
 vec3 bSurf(int slat, vec2 ab, out vec2 uv, out vec3 Nn, out float vc, out vec3 Cs){
   float i = float(slat);
-  float u = ab.x;                                       // 帯の長さ方向 0..1
+  float u = ab.x * (1.0 + 2.0 * uOvM.x) - uOvM.x;       // 帯の長さ方向 0..1 (3D Overscan: 素材の余白の分だけ画面の外まで伸ばす)
   float local = ab.y * 2.0 - 1.0;                       // 帯の幅方向 -1..1
   float e0 = uEdge[slat], e1 = uEdge[slat + 1];
   float yc = 0.5 * (e0 + e1), hh = 0.5 * (e1 - e0);     // 帯の中心と半幅 (短辺方向 -1..1)
@@ -100,7 +100,7 @@ void main(){
   vec2 uv = vUv;
   bool back = uNv > 0.5 ? vBack > 0.5 : !gl_FrontFacing;
   if(back){ if(uVert > 0.5) uv.x = 2.0 * vVc - uv.x; else uv.y = 2.0 * vVc - uv.y; }   // 裏面は帯の中で反転 (返りきった帯が元の絵に戻る)
-  vec4 t0 = texture(uTex, clamp(uv, 0.0, 1.0));
+  vec4 t0 = texture(uTex, fx3dSrcC(uv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
   vec3 alb = t0.rgb;
   vec3 V = normalize(uEye - vW);
@@ -129,6 +129,7 @@ function partition(ep, N){
 }
 
 Fx3d.EXTRA.blinds = {
+  ov: true,
   foldHook: true,
   spikes: true,
   render(gl, o){
@@ -179,6 +180,7 @@ Fx3d.EXTRA.blinds = {
       gl.uniform1fv(uloc(gl, pr, 'uEdge'), this._E);
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'blinds');
+      Fx3d.ovUniforms(gl, pr, o);
       Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };

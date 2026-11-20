@@ -7,6 +7,7 @@
 */
 
 const Layer = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   gl:null,
   initialized:false,
   programs:{},
@@ -763,7 +764,7 @@ void main(){
     const lightVP=this._makeLightVP();
     const lightDir=this._getLightDir();
     const asp=w/Math.max(1,h);
-    const proj=this.m4.perspective(this.P.fov*Math.PI/180, asp, .05, 1000);
+    const proj=(typeof GL !== 'undefined' && GL.osProj) ? GL.osProj(this.m4.perspective(this.P.fov*Math.PI/180, asp, .05, 1000)) : this.m4.perspective(this.P.fov*Math.PI/180, asp, .05, 1000);   // 3D Overscan: スロットに余白があれば画角を広げる
     const eye=this._camEye();
     const vp=this.m4.mul(proj, this.m4.lookAt(eye, this.cam.target, this._camUp()));
     const bgv=(this.P.bg!=null)?this.P.bg:1.0;

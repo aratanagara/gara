@@ -34,7 +34,7 @@ in vec2 vUv;
 flat in int vLayer;
 out vec4 frag;
 float luma(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
-vec2 mirror(vec2 p){ return 1.0 - abs(1.0 - mod(p, 2.0)); }
+vec2 mirror(vec2 p){ return fx3dSrc(p); }   // 余白は素材の余白 (3D Overscan)、その外はミラー
 void main(){
   vec2 uv = mirror(vUv);
   vec4 t0 = texture(uTex, uv);
@@ -58,6 +58,7 @@ void main(){
   const hash = (n)=>{ const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 
   Fx3d.EXTRA.diorama = {
+    ov: true,
     foldHook: true,
     render(gl, o){
       const p = Fx3d.prog(gl, 'diorama', VS, FS);
@@ -104,6 +105,7 @@ void main(){
       gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
       gl.uniform1i(u('uTex'), 0);
       Fx3d.popUniforms(gl, p, 'diorama');
+      Fx3d.ovUniforms(gl, p, o);
       Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
       gl.drawArrays(gl.TRIANGLES, 0, N * 12 * 12 * 6);
       gl.disable(gl.BLEND);

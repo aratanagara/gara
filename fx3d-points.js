@@ -17,8 +17,8 @@ void main(){
   int cols = int(uCols);
   int cx = gl_VertexID % cols, cy = gl_VertexID / cols;
   vec2 cell = vec2(float(cx), float(cy));
-  vec2 uv = (cell + 0.5) / vec2(uCols, uRows);
-  vec4 c4 = textureLod(uTex, uv, 0.0);
+  vec2 uv = fx3dAB((cell + 0.5) / vec2(uCols, uRows));   // 3D Overscan: 点の格子は素材の余白まで広げる
+  vec4 c4 = textureLod(uTex, fx3dSrcC(uv), 0.0);
   vec3 c = c4.rgb;
   vA = c4.a;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -51,6 +51,7 @@ void main(){
   const smooth01 = (a, b, x)=>{ const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
 
   Fx3d.EXTRA.points = {
+    ov: true,
     foldHook: true,
     render(gl, o){
       const p = Fx3d.prog(gl, 'points', VS, FS);
@@ -86,8 +87,11 @@ void main(){
       gl.uniformMatrix4fv(u('uView'), false, cam.view);
       gl.uniformMatrix4fv(u('uProj'), false, cam.proj);
       gl.uniform1f(u('uAsp'), o.asp);
-      gl.uniform1f(u('uCols'), D);
-      gl.uniform1f(u('uRows'), rows);
+      // 3D Overscan: 余白の分だけ点を増やして画面の外まで並べる (点の大きさ・間隔は画面の中と同じ)
+      const om = o.ovM || [0, 0], cols2 = Math.round(D * (1 + 2 * om[0])), rows2 = Math.round(rows * (1 + 2 * om[1]));
+      gl.uniform1f(u('uCols'), cols2);
+      gl.uniform1f(u('uRows'), rows2);
+      Fx3d.ovUniforms(gl, p, o);
       gl.uniform1f(u('uK'), k);
       gl.uniform1f(u('uHit'), o.hit);
       gl.uniform1f(u('uT'), t);
@@ -101,7 +105,7 @@ void main(){
       gl.uniform1i(u('uTex'), 0);
       Fx3d.popUniforms(gl, p, 'points');
       Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
-      gl.drawArrays(gl.POINTS, 0, D * rows);
+      gl.drawArrays(gl.POINTS, 0, cols2 * rows2);
       return true;
     },
   };

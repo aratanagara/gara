@@ -20,6 +20,7 @@
    FX 用: render(opts) に clock (数値) / keepDepth:true (呼び出し側 FBO の深度を使い、RBO の付け外しをしない)。
           P.softFocus は 0 にする (texture(uTex,uv,bias) はミップ前提。FBO テクスチャはミップ無し)。 */
 const PhotoPlane = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   gl:null, initialized:false,
   prog:null, vao:null, vbo:null, ibo:null, idxCount:0,
   depthRBO:null, depthW:0, depthH:0,
@@ -378,7 +379,7 @@ void main(){
     // 3D FX: w=0 のカメラは z=0 平面が画面にぴったり収まる真正面 (位置は有界なので補間しても時刻で跳ねない)
     const fxD = P.dist, fxH = 2*fxD*Math.tan(P.fov*Math.PI/360);   // z=0 平面で画面に映る高さ
     if(this._fx){ eye[0]*=fxw; eye[1]*=fxw; eye[2]=fxD+(eye[2]-fxD)*fxw; }
-    const proj=this.m4.persp(P.fov*Math.PI/180, w/h, 0.05, 200.0);
+    const proj=(typeof GL !== 'undefined' && GL.osProj) ? GL.osProj(this.m4.persp(P.fov*Math.PI/180, w/h, 0.05, 200.0)) : this.m4.persp(P.fov*Math.PI/180, w/h, 0.05, 200.0);   // 3D Overscan: スロットに余白があれば画角を広げる
     const dz=(v)=>(typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v;
     const nv=(k,d)=>P[k]==null ? d : dz(P[k]);
     const lookY=nv('lookY',0), roll=nv('camRoll',0)*Math.PI/180;
