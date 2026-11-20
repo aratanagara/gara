@@ -7805,6 +7805,9 @@ void main(){
     gl.uniform1f(U('uMode'), 1.0);
     gl.drawArrays(gl.TRIANGLES, 0, GRID[0] * GRID[1] * 6);
     gl.bindVertexArray(null);
+    // 紙の深度は消す: 物体は紙より手前に描く決まりなので見た目は変わらない。紙の深度 (折りのカメラの値) が
+    //   スロットの深度 (3D Target = Object の抜き・3D Depth) に混ざると、背景が物体扱いになり手前と奥も逆に見える
+    gl.clear(gl.DEPTH_BUFFER_BIT);
   },
   // 統合パスのプログラムで「紙」(折りの格子メッシュ) を描く準備。テクスチャ tex を貼り、fade (0..1) だけ薄く (前乗算) する。
   //   戻り値は uniform を引く関数。描くのは呼び出し側 (uMode 1 + GRID の三角形)

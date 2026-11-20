@@ -479,9 +479,20 @@ void main(){
     // 3D のまま掛けるフレーム: 背景 (空) を紙のテクスチャに描き、紙 (折りの格子) を先に描いてから物体を重ねる。Slot B は紙なし
     const fr3 = (typeof GL !== 'undefined') ? GL._fx3dFrame : null;
     const on3d = !!(fr3 && fr3.target === opts.slot);
+    if(on3d && kd && fr3.F && fr3.F.proj){
+      // 3D のまま掛けるフレームは fx3dApply が折りのカメラ (F.proj / F.view) で投影し直すので、深度もそのカメラの値になる。
+      //   近い/遠い (near / far) とカメラからの距離は折りのカメラ、塔の奥行きは紙の単位 (1 / s) に直して読む
+      const pf = fr3.F.proj, zn = pf[14] / (pf[10] - 1), zf = pf[14] / (pf[10] + 1);
+      const s = (camZ + 1.5*persK) / F, zs = fr3.zs != null ? fr3.zs : 1;
+      const camF = Math.hypot(fr3.F.eye[0], fr3.F.eye[1], fr3.F.eye[2]);
+      const Rt = Math.max(1.0, camZ*0.5);
+      this.depthInfo = { near:zn, far:zf, cam:camF - 1.5*persK / s * zs, R:Math.max(0.02, Rt / s * zs) };
+    }
     if(on3d){
       let paperTex = null;
-      if(opaque){
+      // 3D Target = Object (深度を出しているとき) は背景を紙にせず平らに描く (背景には 3D FX を掛けない)
+      const objOnly = kd && !(typeof App !== 'undefined' && App.post && App.post.fx3dTarget === 'all');
+      if(opaque && !objOnly){
         const PT = GL.fx3dPaperTarget(w, h);
         gl.bindFramebuffer(gl.FRAMEBUFFER, PT.fbo);
         gl.viewport(0, 0, w, h);
@@ -490,6 +501,7 @@ void main(){
         paperTex = PT.tex;
       }
       GL.fx3dBegin(M.fbo, w, h, paperTex);
+      if(opaque && objOnly) drawBg();
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
       gl.viewport(0, 0, w, h);
