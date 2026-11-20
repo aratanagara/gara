@@ -563,6 +563,7 @@ const NovelTerminal = {
     fluidCircleEdge:true, fluidTriEdge:true, fluidRectEdge:true,   // 図形の輪郭を描くか (OFF = 輪郭を描かない。Auto は塗りだけ、Edge は出さない)
     sceneVals:null,    // Scene ごとの保存値 { fluid:{...}, editorial:{...}, _common:{...} } (snapScene / applyScene)
     fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
+    bgMode:'none', bgColor:[0,0,0],   // Fluid の背景: 'none' = 透明 (従来) / 'color' = bgColor で塗る。Option のスポイトもここに入れる (bgColor + bgMode)
     fluidRunCaret:false,   // 字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける
     fluidBigFont:0,    // Big Glyph の書体 (0 = Fluid Font と同じ / 1〜 = FLUID_FONTS の番号)
     fluidBigAspect:100,   // Big Glyph の縦横比 % (100 = 正体 / 小さいほど長体 / 大きいほど平体)
@@ -690,7 +691,7 @@ const NovelTerminal = {
     ['Render Freq','renderFreq',30,300,5,v=>v.toFixed(0)+'%','ASCII Render: 波の細かさ'],
   ],
   // 色 param の UI 定義 [label,key,title]
-  COLORS:[['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色']],
+  COLORS:[['Bg Color','bgColor','Fluid: 背景の色 (Background = Color のとき)'],['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色']],
   _k(key){ const v=this.P && this.P[key]; if(v==null) return 1; return ((typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v)/100; },
   _rgb(key,def){ const c=this.P && this.P[key]; return c ? [Math.round(c[0]*255),Math.round(c[1]*255),Math.round(c[2]*255)] : def; },
   novMode: 0, _novT0: 0,
@@ -747,8 +748,8 @@ const NovelTerminal = {
   _glyV(p, ch, x, y, cs){
     const c = ch.charCodeAt(0);
     if(c >= 0x21 && c <= 0x7E) ch = String.fromCharCode(c + 0xFEE0);   // 縦組みは半角英数記号を全角化
-    // 横倒しになる字(長音・ダーシ・ハイフン・イコール・波ダッシュ・括弧)は90°起こす
-    if("ー―—‐－＝〜～：；「」『』（）〔〕【】〈〉《》｛｝".includes(ch)){
+    // 横倒しになる字 (長音・ダーシ・三点リーダ・罫線・ハイフン・イコール・波ダッシュ・括弧) は 90° 起こす。一覧は Editorial・Novel FX と共通 (_ED_ROT)
+    if(this._ED_ROT.has(ch)){
       p.push(); p.translate(x+cs*0.5, y+cs*0.5); p.rotate(Math.PI/2); this._gly(p, ch, -cs*0.5, -cs*0.5, cs); p.pop(); return;
     }
     if("、。".includes(ch)){ this._gly(p, ch, x+cs*0.42, y-cs*0.38, cs); return; }
@@ -764,7 +765,8 @@ const NovelTerminal = {
     const lh = cell*1.5*this._k('typerLeading'), perLine = Math.max(8, Math.floor((p.width*0.82*this._k('typerWidth'))/cell));
     const maxRows = Math.max(1, Math.floor((p.height - cell)/lh));
     const flat = this._chars().join("");
-    const head = this._eased(t)*78, typed = Math.floor(head);
+    // 全文を打ち終えたら 3 秒ほど止めて頭から打ち直す (起動から約 5 分で本文の末尾を越え、何も出なくなっていた)
+    const head = Math.min(this._eased(t)*78 % (flat.length + 78*3), flat.length), typed = Math.floor(head);
     const totalLines = Math.floor(typed/perLine) + 1;
     const nShow = Math.min(totalLines, maxRows), startLine = totalLines - nShow;
     const topY = (p.height - nShow*lh)/2 + lh*0.2;
@@ -1184,6 +1186,7 @@ const NovelTerminal = {
     const muRaw = vf - variant;
     const mu = muRaw*muRaw*(3-2*muRaw);
     p.clear();
+    if(this.P && this.P.bgMode === 'color' && Array.isArray(this.P.bgColor)){ const b = this.P.bgColor; p.background(b[0]*255, b[1]*255, b[2]*255); }   // 背景色 (既定は透明のまま)
     const fontSave = [this.fR, this.fM, this.fG], fset = this._fluidFontSet(this.P ? this.P.fluidFont|0 : 0);
     if(fset){ this.fR = fset[0]; this.fM = fset[1]; this.fG = fset[2]; }
     const asp = this.P && typeof this.P.fluidAspect === 'number' ? this.P.fluidAspect/100 : 1;
@@ -1785,7 +1788,7 @@ const NovelTerminal = {
   _ED_NOSTART: new Set("、。，．・：；？！‼⁉ー―…‥）」』】〕〉》］｝〙〗’”ゝゞヽヾ々ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"),
   _ED_NOEND: new Set("（「『【〔〈《［｛〘〖‘“"),
   _ED_HANG: new Set("、。，．"),
-  _ED_ROT: new Set("ー―—‐－＝〜～：；（）「」『』〈〉《》【】〔〕［］｛｝…‥"),
+  _ED_ROT: new Set("ー―—‐–－＝〜～：；（）「」『』〈〉《》【】〔〕［］｛｝…‥─━"),   // 縦組みで 90° 起こす字 (全部の縦組みで共通)
   _ED_SMALL: new Set("ぁぃぅぇぉっゃゅょゎゕゖァィゥェォッャュョヮヵヶ"),
   _edKanji(n){ const d='〇一二三四五六七八九'; return String(n).split('').map(c=>d[+c]).join(''); },
   // 段落を 1 マス 1 トークンへ。縦組み = 半角英数は全角化し、2 桁の数字だけ縦中横 1 トークン /
@@ -2106,7 +2109,7 @@ const NovelTerminal = {
     ['Type', ['fluidFont','fluidAspect','density','leading','tracking','alpha','fluidContrast','glitch']],
     ['Layers', ['vertLayer','vertSize','vertGap','vertCut','cursorSize']],
     ['Motion', ['drift','rowWave','colWave','waveFreq','flicker','beatFlash','morph']],
-    ['Color', ['inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
+    ['Color', ['bgMode','bgColor','inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
     ['HUD', ['fluidHud','fluidBig','fluidBigFont','fluidBigAspect']],
     ['Editorial', ['edLayout','edSize','edLeading','edTracking','edMargin','edJump','edCols','edGrid','edReveal','edTurnBeats','edFolio','edInk','edAccent']],
     ['Meltdown', ['meltDepth','dripLen','meltFade','meltGhost','meltLeading','meltSize']],
@@ -2162,6 +2165,8 @@ const NovelTerminal = {
     vertGap:'縦書きの列の間隔',
     vertCut:'縦書きの字が出るしきい値。大きいほど図形の芯にだけ残る',
     cursorSize:'カーソル (下を走るカーソルと、字の末尾のキャレット) の大きさ',
+    bgMode:'背景。None = 透明 (Slot B では下の絵が透ける) / Color = Bg Color で塗る。Option のスポイトで色を拾うと Color になる',
+    bgColor:'背景の色 (Background = Color のとき)',
     fluidRunCaret:'字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける。色と点滅は走査カーソルと同じ',
     drift:'字面全体がゆっくり流れる量',
     rowWave:'行ごとに横へうねる幅',
@@ -2195,7 +2200,7 @@ const NovelTerminal = {
     fluid: ['alpha','colWave','cursorSize','density','drift','edgeNoise','flicker','fluidAccent','fluidAspect','fluidBeats','fluidBig',
       'fluidCircleMode','fluidCircleLine','fluidCircleSize','fluidTriMode','fluidTriLine','fluidTriSize','fluidTriSpin','fluidRectMode','fluidRectLine','fluidRectSize','fluidRectSpin',
       'fluidContrast','fluidCrisp','fluidFont','fluidHud','fluidLayout','fluidSharp','glitch','inkMode','leading','lineWidth','monoColor','rhythmAmt','rowWave',
-      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect','fluidRunCaret'],
+      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect','fluidRunCaret','bgMode','bgColor'],
     editorial: ['edAccent','edCols','edFolio','edGrid','edInk','edJump','edLayout','edLeading','edMargin','edMarks','edReveal','edSize','edTracking','edTurnBeats'],
     melt: ['dripLen','meltDepth','meltFade','meltGhost','meltLeading','meltSize'],
     columns: ['colCount','colGutter','colLeading','colMargin'],
@@ -2220,6 +2225,7 @@ const NovelTerminal = {
     if(edge && P[edge] === false) return false;
     if(['vertSize','vertGap','vertCut','clash'].includes(key) && P.vertLayer === false) return false;
     if(key === 'cursorSize' && P.cursor === false && P.fluidRunCaret !== true) return false;
+    if(key === 'bgColor' && P.bgMode !== 'color') return false;
     if((key === 'fluidBigFont' || key === 'fluidBigAspect') && ((P.fluidBig || 0) < 10 || (P.fluidCircleMode|0) === 3)) return false;   // 大きな字が出ないとき (Big Glyph 0 か円が Off)
     return true;
   },
