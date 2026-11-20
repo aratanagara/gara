@@ -58,6 +58,14 @@ function regenMovies(root, fallbackRoot){
   try{ writeJson(path.join(dir, 'manifest.json'), files); }catch(_){}
 }
 
+// shaders/thumbs/manifest.json を再生成 (Visual タブの JPG サムネの一覧。app.js は載っているものだけ取りに行く)
+function regenThumbs(root, fallbackRoot){
+  const dir = path.join(root, 'shaders', 'thumbs');
+  if(!fs.existsSync(dir) && !fallbackRoot) return;
+  const files = listUnion(dir, fallbackRoot ? path.join(fallbackRoot, 'shaders', 'thumbs') : null).filter(f => /\.jpg$/i.test(f)).sort();
+  try{ if(!fs.existsSync(dir)) fs.mkdirSync(dir, {recursive:true}); writeJson(path.join(dir, 'manifest.json'), files); }catch(_){}
+}
+
 // images/ 配下の manifest.json 一式 + images/folders.json を再生成 (deploy.sh の PYIMAGES と同じ規則)
 function regenImages(root, fallbackRoot){
   const base = path.join(root, 'images');
@@ -129,6 +137,7 @@ function regenShaders(root, fallbackRoot){
 function regenForPath(contentRoot, fallbackRoot, urlPath){
   try{
     if(urlPath === '/movies/manifest.json') regenMovies(contentRoot, fallbackRoot);
+    else if(urlPath === '/shaders/thumbs/manifest.json') regenThumbs(contentRoot, fallbackRoot);
     else if(urlPath === '/images/folders.json' || urlPath === '/images/manifest.json'
             || /^\/images\/[^/]+\/manifest\.json$/.test(urlPath)) regenImages(contentRoot, fallbackRoot);
     else if(urlPath === '/shaders/manifest.json') regenShaders(contentRoot, fallbackRoot);

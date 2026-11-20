@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795158472">
+<link rel="stylesheet" href="style.css?v=1795160064">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1483,6 +1483,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Hipass</label><input type="range" id="pxGlass" min="0" max="1" step="0.01" value="0" title="Hipass: 初速から高域強調が強く効き、後段でブラー範囲が広がる。補色は弱めに抑えつつ残す"><div class="val" id="pxGlassVal">0.00</div></div>
           <div class="row"><label>Bloom</label><input type="range" id="pxBlm" min="0" max="2" step="0.01" value="0"><div class="val" id="pxBlmVal">0.00</div></div>
           <div class="row"><label>Unsharp</label><input type="range" id="pxUnsharp" min="-1" max="1" step="0.01" value="0" title="中央0=無効。負=ぼかし / 正=シャープ"><div class="val" id="pxUnsharpVal">0.00</div></div>
+          <div class="row"><label>Sharpen</label><input type="range" id="pxSharpen" min="0" max="1" step="0.01" value="0" title="Sharpen (CAS): 甘い所だけを持ち上げて自然にピントを合わせる。硬い縁は控えめで、上げても白い縁取りやノイズが出にくい"><div class="val" id="pxSharpenVal">0.00</div></div>
+          <div class="row"><label>Crisp</label><input type="range" id="pxCrisp" min="0" max="1" step="0.01" value="0" title="Crisp: 輪郭を周りとの差で強めるカリッとした硬いシャープ。細い線・文字・粒が立つ (ノイズや Grain も一緒に強まる)"><div class="val" id="pxCrispVal">0.00</div></div>
+          <div class="row"><label>Shock</label><input type="range" id="pxShock" min="0" max="1" step="0.01" value="0" title="Shock: ぼけた境界を詰めて段差にする。グラデーションが平らな面に分かれ、セル画・ポスターのようなくっきり感になる"><div class="val" id="pxShockVal">0.00</div></div>
           <div class="row"><label>Outline</label><input type="range" id="pxOutline" min="0" max="1" step="0.01" value="0" title="Outline: 色差対応Scharr + Canny細線化で、白地にAAなしの1pxドット輪郭を引き直す"><div class="val" id="pxOutlineVal">0.00</div></div>
           <div class="row"><label>Dither Blur</label><input type="range" id="pxDither" min="0" max="1" step="0.01" value="0" title="Kawase Jitter Blur: ジッター付き 2 半径 Kawase ブラー。指数カーブ"><div class="val" id="pxDitherVal">0.00</div></div>
           <div class="row"><label>Ring Blur</label><input type="range" id="pxRingBlur" min="0" max="1" step="0.01" value="0" title="Ring Slice と同じ同心円の帯ごとに、円周方向の回転ブラー。帯ごとに量と向きが違い、時間で脈動する。一部の帯はぼかさない"><div class="val" id="pxRingBlurVal">0.00</div></div>
@@ -2047,60 +2050,60 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795158472"></script>
-<script src="mode/layer.js?v=1795158472"></script>
-<script src="vendor/iro.min.js?v=1795158472"></script>
-<script src="vendor/mediabunny.min.js?v=1795158472"></script>
-<script src="mode/textdeform.js?v=1795158472"></script>
-<script src="mode/textdeform-texts.js?v=1795158472"></script>
-<script src="mode/textdeform-upstream.js?v=1795158472"></script>
-<script src="mode/textdeform-comp.js?v=1795158472"></script>
-<script src="mode/textdeform-surface.js?v=1795158472"></script>
-<script src="mode/textdeform-combos.js?v=1795158472"></script>
-<script src="mode/ugomeki.js?v=1795158472"></script>
-<script src="mode/slicer.js?v=1795158472"></script>
-<script src="mode/video.js?v=1795158472"></script>
-<script src="mode/aratanagara.js?v=1795158472"></script>
-<script src="vendor/p5.min.js?v=1795158472"></script>
-<script src="mode/cyberui.js?v=1795158472"></script>
-<script src="mode/novel.js?v=1795158472"></script>
-<script src="shaders/inkelly.js?v=1795158472"></script>
-<script src="sketchfx.js?v=1795158472"></script>
-<script src="pixelsortfx.js?v=1795158472"></script>
-<script src="shaders/boltzmann.js?v=1795158472"></script>
-<script src="mode/pen.js?v=1795158472"></script>
-<script src="shaders/caverns.js?v=1795158472"></script>
-<script src="mode/shelf.js?v=1795158472"></script>
-<script src="shaders/ribbon.js?v=1795158472"></script>
-<script src="mode/photoplane.js?v=1795158472"></script>
-<script src="mode/shredder.js?v=1795158472"></script>
-<script src="mode/transflock.js?v=1795158472"></script>
-<script src="mode/liquidpeel.js?v=1795158472"></script>
-<script src="mode/windflock.js?v=1795158472"></script>
-<script src="mode/rhizome.js?v=1795158472"></script>
-<script src="mode/surrealfloat.js?v=1795158472"></script>
-<script src="mode/chrometype.js?v=1795158472"></script>
-<script src="mode/tower4149.js?v=1795158472"></script>
-<script src="mode/fude.js?v=1795158472"></script>
-<script src="mode/image.js?v=1795158472"></script>
-<script src="mode/spacetype.js?v=1795158472"></script>
-<script src="fx3d.js?v=1795158472"></script>
-<script src="fx3d-layers.js?v=1795158472"></script>
-<script src="fx3d-cubes.js?v=1795158472"></script>
-<script src="fx3d-blinds.js?v=1795158472"></script>
-<script src="fx3d-diorama.js?v=1795158472"></script>
-<script src="fx3d-points.js?v=1795158472"></script>
-<script src="fx3d-gravity.js?v=1795158472"></script>
-<script src="fx3d-globe.js?v=1795158472"></script>
-<script src="pollockfx.js?v=1795158472"></script>
-<script src="overlay.js?v=1795158472"></script>
-<script src="gif.js?v=1795158472"></script>
-  <script src="ui-icons.js?v=1795158472"></script>
-  <script src="app.js?v=1795158472"></script>
-  <script src="crash-guard.js?v=1795158472"></script>
-  <script src="ui-scrollbar.js?v=1795158472"></script>
-  <script src="ui-settings.js?v=1795158472"></script>
-<script src="camroll.js?v=1795158472" defer></script>
-<script src="dbltap.js?v=1795158472" defer></script>
+<script src="presets.js?v=1795160064"></script>
+<script src="mode/layer.js?v=1795160064"></script>
+<script src="vendor/iro.min.js?v=1795160064"></script>
+<script src="vendor/mediabunny.min.js?v=1795160064"></script>
+<script src="mode/textdeform.js?v=1795160064"></script>
+<script src="mode/textdeform-texts.js?v=1795160064"></script>
+<script src="mode/textdeform-upstream.js?v=1795160064"></script>
+<script src="mode/textdeform-comp.js?v=1795160064"></script>
+<script src="mode/textdeform-surface.js?v=1795160064"></script>
+<script src="mode/textdeform-combos.js?v=1795160064"></script>
+<script src="mode/ugomeki.js?v=1795160064"></script>
+<script src="mode/slicer.js?v=1795160064"></script>
+<script src="mode/video.js?v=1795160064"></script>
+<script src="mode/aratanagara.js?v=1795160064"></script>
+<script src="vendor/p5.min.js?v=1795160064"></script>
+<script src="mode/cyberui.js?v=1795160064"></script>
+<script src="mode/novel.js?v=1795160064"></script>
+<script src="shaders/inkelly.js?v=1795160064"></script>
+<script src="sketchfx.js?v=1795160064"></script>
+<script src="pixelsortfx.js?v=1795160064"></script>
+<script src="shaders/boltzmann.js?v=1795160064"></script>
+<script src="mode/pen.js?v=1795160064"></script>
+<script src="shaders/caverns.js?v=1795160064"></script>
+<script src="mode/shelf.js?v=1795160064"></script>
+<script src="shaders/ribbon.js?v=1795160064"></script>
+<script src="mode/photoplane.js?v=1795160064"></script>
+<script src="mode/shredder.js?v=1795160064"></script>
+<script src="mode/transflock.js?v=1795160064"></script>
+<script src="mode/liquidpeel.js?v=1795160064"></script>
+<script src="mode/windflock.js?v=1795160064"></script>
+<script src="mode/rhizome.js?v=1795160064"></script>
+<script src="mode/surrealfloat.js?v=1795160064"></script>
+<script src="mode/chrometype.js?v=1795160064"></script>
+<script src="mode/tower4149.js?v=1795160064"></script>
+<script src="mode/fude.js?v=1795160064"></script>
+<script src="mode/image.js?v=1795160064"></script>
+<script src="mode/spacetype.js?v=1795160064"></script>
+<script src="fx3d.js?v=1795160064"></script>
+<script src="fx3d-layers.js?v=1795160064"></script>
+<script src="fx3d-cubes.js?v=1795160064"></script>
+<script src="fx3d-blinds.js?v=1795160064"></script>
+<script src="fx3d-diorama.js?v=1795160064"></script>
+<script src="fx3d-points.js?v=1795160064"></script>
+<script src="fx3d-gravity.js?v=1795160064"></script>
+<script src="fx3d-globe.js?v=1795160064"></script>
+<script src="pollockfx.js?v=1795160064"></script>
+<script src="overlay.js?v=1795160064"></script>
+<script src="gif.js?v=1795160064"></script>
+  <script src="ui-icons.js?v=1795160064"></script>
+  <script src="app.js?v=1795160064"></script>
+  <script src="crash-guard.js?v=1795160064"></script>
+  <script src="ui-scrollbar.js?v=1795160064"></script>
+  <script src="ui-settings.js?v=1795160064"></script>
+<script src="camroll.js?v=1795160064" defer></script>
+<script src="dbltap.js?v=1795160064" defer></script>
 </body>
 </html>
