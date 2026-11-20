@@ -14,6 +14,9 @@
 //         一部の帯の柄と色も拍ごとに振り直され、拍の最初の 1/4 で溶けるように入れ替わる (uReroll)。
 //         拍の境目ではどの動きも途切れない (飛ばない)。
 //         拍頭ではうねりも一瞬強まる。iAudio も同じ (uKick)。bgZoom・bgCamPx でズーム/パン
+//   配色: uPalette で 8 種から選ぶ (0 = 現行のくすんだ原色)。帯の色・柄の濃淡のアクセント・太陽・
+//         混色・拍ごとの振り直しはすべて同じパレットから引く。紙の色 (uPaperCol) と黒い縁線・等高線は変えない
+//   透過: Slot B では紙 (紙地の帯・隙間・かすれ・スクラッチ) が透ける。Slot A は uBgColor が黒なら紙を敷く
 //   性能: 値ノイズ 4 オクターブの fbm を 7 回 + 定数回の柄計算のみ (ループの
 //         レイマーチなし)。重いときは uDetail を下げる (fbm のオクターブ数)
 // =====================================================
@@ -39,6 +42,7 @@
 // @param uDrift    0..300    = 100.0 @desc drone 時、場が漂って新しい構図が入ってくる量 (%)
 // @param uReroll   0..100    = 40.0 @desc beat 時、拍ごとに柄と色を振り直す帯の割合 (%)
 // @param uMixCol   0..100    = 0.0 @desc 隣り合う帯の色が境目で溶け合う量 (%)。0 でくっきり塗り分け
+// @param uPalette  0..7      = 0.0 @desc 配色 (0 現行 / 1 パステル / 2 モノクロ / 3 補色 / 4 ネオン / 5 リソ / 6 海 / 7 夕焼け)
 // @param uPaperCol color     = #c9ad8e @desc 紙地の色。紙地の帯と背景に使う
 // @param uWhiteLines 0..200  = 100.0 @desc 暗い帯の上の白抜き等高線 (%)。100 まで濃さ、超えると太さ
 // @param uFieldRotate -180..180 = 0.0 @desc 場全体の回転 (度)
@@ -92,8 +96,12 @@ uniform float uJump;     // beat: 拍頭でかき混ぜる渦の強さ (%。0 = 
 uniform float uDrift;    // drone: 場が漂って新しい構図が入ってくる量 (%)
 uniform float uMixCol;   // 混色: 隣り合う帯の色が境目で溶け合う (%。0 = くっきり塗り分け)
 uniform float uReroll;   // beat: 拍ごとに柄と色を振り直す帯の割合 (%)
+uniform float uPalette;  // 配色 (0 現行 / 1 パステル / 2 モノクロ / 3 補色 / 4 ネオン / 5 リソ / 6 海 / 7 夕焼け)
 float FC_ROLL = 0.0;     // 振り直しの拍番号 (beat のみ。drone は 0 = 振り直さない)
 float FC_FADE = 1.0;     // 振り直しの溶け具合 (拍の最初の 1/4 で前の拍の柄から溶ける。1 = 溶け終わり)
+int   FC_PAL  = 0;       // 選んだパレットの番号 (uPalette を丸めたもの)
+vec3  FC_DK   = vec3(0.09, 0.09, 0.11);   // 柄のアクセントの濃色 (パレットのスロット 6)
+vec3  FC_LT   = vec3(0.91, 0.87, 0.78);   // 柄のアクセントの淡色 (パレットのスロット 7)
 uniform vec3  uPaperCol; // 紙の色
 uniform float uWhiteLines; // 暗い帯の上の白抜きの等高線 (%。0 = 出さない / 〜100 = 濃さ / 100〜 = 太さ)
 uniform float uFieldRotate; // 場全体の回転 (度)
@@ -154,20 +162,100 @@ float fc_fbm(vec2 p){
   return s / n;
 }
 
-// ─── パレット (くすんだ原色) ──────────────────────────────
-vec3 fc_pal(float x){
-  int i = int(floor(fract(x)*10.0));
-  if(i == 0) return vec3(0.17, 0.29, 0.60);   // コバルトブルー
-  if(i == 1) return vec3(0.76, 0.26, 0.17);   // 朱赤
-  if(i == 2) return vec3(0.84, 0.47, 0.18);   // オレンジ
-  if(i == 3) return vec3(0.83, 0.65, 0.22);   // マスタード
-  if(i == 4) return vec3(0.40, 0.29, 0.52);   // 紫
-  if(i == 5) return vec3(0.17, 0.33, 0.27);   // 深緑
-  if(i == 6) return vec3(0.09, 0.09, 0.11);   // 黒
-  if(i == 7) return vec3(0.91, 0.87, 0.78);   // オフホワイト
-  if(i == 8) return vec3(0.11, 0.15, 0.27);   // 紺
-  return            vec3(0.40, 0.18, 0.20);   // 臙脂
-}
+// ─── パレット ────────────────────────────────────────────
+// 8 種 × 10 色 (FC_PALS[パレット番号*10 + スロット])。スロット 2・3 は太陽の色 (明るい暖色・目立つ色)、6 = 柄の濃色、7 = 柄の淡色
+const vec3 FC_PALS[80] = vec3[80](
+  // 0: 現行 (くすんだ原色)
+  vec3(0.17, 0.29, 0.60), // コバルトブルー
+  vec3(0.76, 0.26, 0.17), // 朱赤
+  vec3(0.84, 0.47, 0.18), // オレンジ
+  vec3(0.83, 0.65, 0.22), // マスタード
+  vec3(0.40, 0.29, 0.52), // 紫
+  vec3(0.17, 0.33, 0.27), // 深緑
+  vec3(0.09, 0.09, 0.11), // 黒
+  vec3(0.91, 0.87, 0.78), // オフホワイト
+  vec3(0.11, 0.15, 0.27), // 紺
+  vec3(0.40, 0.18, 0.20), // 臙脂
+  // 1: パステル
+  vec3(0.56, 0.69, 0.86), // 水色
+  vec3(0.94, 0.62, 0.60), // コーラル
+  vec3(0.97, 0.75, 0.55), // ピーチ
+  vec3(0.97, 0.88, 0.58), // レモンクリーム
+  vec3(0.75, 0.67, 0.87), // ラベンダー
+  vec3(0.62, 0.82, 0.71), // ミント
+  vec3(0.32, 0.33, 0.41), // 薄墨
+  vec3(0.98, 0.96, 0.92), // クリーム
+  vec3(0.49, 0.57, 0.75), // ペリウィンクル
+  vec3(0.89, 0.66, 0.77), // ローズ
+  // 2: モノクロ
+  vec3(0.30),
+  vec3(0.52),
+  vec3(0.82),
+  vec3(0.72),
+  vec3(0.42),
+  vec3(0.20),
+  vec3(0.07),
+  vec3(0.94),
+  vec3(0.13),
+  vec3(0.62),
+  // 3: 補色 (青 × 橙)
+  vec3(0.12, 0.30, 0.64), // コバルト
+  vec3(0.91, 0.44, 0.12), // 橙
+  vec3(0.96, 0.60, 0.20), // 明るい橙
+  vec3(0.98, 0.77, 0.42), // 杏
+  vec3(0.27, 0.50, 0.80), // 青
+  vec3(0.58, 0.74, 0.89), // 水色
+  vec3(0.05, 0.08, 0.15), // 濃紺の黒
+  vec3(0.95, 0.92, 0.86), // オフホワイト
+  vec3(0.07, 0.15, 0.36), // 紺
+  vec3(0.66, 0.28, 0.08), // 焦げ橙
+  // 4: ネオン
+  vec3(0.05, 0.85, 0.95), // シアン
+  vec3(1.00, 0.13, 0.56), // ショッキングピンク
+  vec3(1.00, 0.56, 0.05), // 蛍光オレンジ
+  vec3(0.94, 0.96, 0.10), // 蛍光イエロー
+  vec3(0.62, 0.22, 1.00), // バイオレット
+  vec3(0.22, 1.00, 0.38), // 蛍光グリーン
+  vec3(0.04, 0.03, 0.08), // 黒
+  vec3(0.97, 0.97, 1.00), // 白
+  vec3(0.12, 0.28, 1.00), // エレクトリックブルー
+  vec3(1.00, 0.16, 0.16), // 赤
+  // 5: リソ (蛍光ピンク × 青 × 黄と、その刷り重ね)
+  vec3(0.00, 0.47, 0.75), // 青
+  vec3(1.00, 0.28, 0.52), // 蛍光ピンク
+  vec3(1.00, 0.45, 0.30), // ピンク × 黄
+  vec3(1.00, 0.91, 0.00), // 黄
+  vec3(0.45, 0.30, 0.62), // ピンク × 青
+  vec3(0.00, 0.62, 0.52), // 青 × 黄
+  vec3(0.10, 0.10, 0.12), // 黒
+  vec3(0.95, 0.93, 0.88), // 紙白
+  vec3(0.16, 0.25, 0.56), // フェデラルブルー
+  vec3(0.88, 0.20, 0.26), // 赤
+  // 6: 海 (寒色)
+  vec3(0.10, 0.36, 0.56), // 青
+  vec3(0.12, 0.56, 0.60), // ティール
+  vec3(0.55, 0.82, 0.86), // アクア
+  vec3(0.86, 0.93, 0.88), // 泡
+  vec3(0.26, 0.30, 0.56), // 藍
+  vec3(0.10, 0.42, 0.40), // 深いティール
+  vec3(0.03, 0.07, 0.12), // 深海
+  vec3(0.91, 0.95, 0.96), // 白波
+  vec3(0.06, 0.16, 0.31), // 紺
+  vec3(0.36, 0.62, 0.78), // 空色
+  // 7: 夕焼け (暖色)
+  vec3(0.36, 0.16, 0.42), // 深紫
+  vec3(0.90, 0.30, 0.28), // 珊瑚
+  vec3(0.98, 0.60, 0.25), // 夕日
+  vec3(0.99, 0.82, 0.40), // 金
+  vec3(0.62, 0.22, 0.42), // 赤紫
+  vec3(0.78, 0.42, 0.50), // 桃
+  vec3(0.12, 0.06, 0.12), // 宵闇
+  vec3(0.99, 0.92, 0.82), // 薄明
+  vec3(0.22, 0.12, 0.30), // 茄子紺
+  vec3(0.58, 0.18, 0.20)  // 臙脂
+);
+vec3 fc_palI(int i){ return FC_PALS[FC_PAL*10 + min(i, 9)]; }
+vec3 fc_pal(float x){ return fc_palI(int(floor(fract(x)*10.0))); }
 
 // 帯 1 本ぶんの柄。band = 帯座標 (整数部 = 帯 ID)、al = 帯に沿う座標、
 // r = ワープ後の座標、px = 画素座標 (網点のピッチ用)。返り値 = (色, 不透明度)
@@ -178,12 +266,17 @@ float fc_id(float b, float layer){
   id += step(fc_h1(id + 211.0 + FC_ROLL*3.1), clamp(uReroll*0.01, 0.0, 1.0)) * FC_ROLL * 31.7 * step(0.5, FC_ROLL);
   return id;
 }
+// 下のレイヤーの紙地の帯か (1 = 紙地)
+float fc_isPaper(float id, float paper){
+  return fc_h1(id + 29.3) < 0.30*paper ? 1.0 : 0.0;
+}
 // 下のレイヤーの帯の地の色 (紙地の帯は紙の色)
 vec3 fc_baseCol(float id, float paper){
-  return fc_h1(id + 29.3) < 0.30*paper ? uPaperCol : fc_pal(fc_h1(id + 13.7));
+  return fc_isPaper(id, paper) > 0.5 ? uPaperCol : fc_pal(fc_h1(id + 13.7));
 }
 
-vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, float paper){
+// pap = 返す色に含まれる紙の割合 (Slot B で紙を透かすのに使う)
+vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, float paper, out float pap){
   float id  = fc_id(floor(band), layer);
   float mixc = clamp(uMixCol*0.01, 0.0, 1.0);
   float tb  = fract(band);
@@ -230,7 +323,7 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
     float rad  = sqrt(tone)*0.5*(uDotSize / 100.0);
     float pw   = fwidth(g.x) + 1e-4;
     float dotm = 1.0 - smoothstep(rad - pw, rad + pw, length(cel));
-    col = mix(vec3(0.91, 0.87, 0.78) * uCreamTint, c1, dotm);
+    col = mix(FC_LT * uCreamTint, c1, dotm);
   } else if(kind < t1){
     col = c1;                                                    // 無地
   } else if(kind < t2){
@@ -240,7 +333,7 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
     float sw = fwidth(s) + 1e-4;
     float duty = 0.5 * (uStripeDuty / 100.0);
     float m  = smoothstep(duty - sw, duty + sw, abs(fract(s) - 0.5)*2.0);
-    vec3  c3 = hC > 0.6 ? vec3(0.09, 0.09, 0.11) : vec3(0.91, 0.87, 0.78) * uCreamTint;
+    vec3  c3 = hC > 0.6 ? FC_DK : FC_LT * uCreamTint;
     col = mix(c1, (fract(floor(s)*0.5) > 0.25 && hC > 0.35) ? c2 : c3, m);
   } else if(kind < t3){
     // 市松: 帯の幅方向 × 帯に沿う方向
@@ -248,7 +341,7 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
     vec2  qw = fwidth(q) + 1e-4;
     vec2  sq = smoothstep(0.5 - qw, 0.5 + qw, fract(q));
     float m  = abs(sq.x - sq.y);
-    col = mix(c1, hB > 0.5 ? vec3(0.09, 0.09, 0.11) : vec3(0.91, 0.87, 0.78) * uCreamTint, m);
+    col = mix(c1, hB > 0.5 ? FC_DK : FC_LT * uCreamTint, m);
   } else {
     // 同心円の渦: 帯ごとの中心から、角度でねじれたリング
     vec2  cen = vec2(fc_h1(id + 3.1), fc_h1(id + 5.9))*8.0 - 4.0;
@@ -260,25 +353,34 @@ vec4 fc_pattern(float band, float al, vec2 r, vec2 px, float layer, float dens, 
     col = mix(c1, c2, m);
   }
 
-  if(paperBand && mixc > 0.0) col = uPaperCol;
+  pap = 0.0;
+  if(paperBand && mixc > 0.0){ col = uPaperCol; pap = 1.0; }
   // 混色: 帯の端へ向かって隣の帯の地の色へ寄せる。境目ではちょうど両側の色の半々になってつながる
   if(layer < 0.5 && mixc > 0.0){
     float b0 = floor(band);
     float wP = 0.5*(1.0 - smoothstep(0.0, 0.5, tb));
     float wN = 0.5*smoothstep(0.5, 1.0, tb);
-    col = mix(col, fc_baseCol(fc_id(b0 - 1.0, 0.0), paper), wP*mixc);
-    col = mix(col, fc_baseCol(fc_id(b0 + 1.0, 0.0), paper), wN*mixc);
+    float iP = fc_id(b0 - 1.0, 0.0), iN = fc_id(b0 + 1.0, 0.0);
+    col = mix(col, fc_baseCol(iP, paper), wP*mixc);
+    pap = mix(pap, fc_isPaper(iP, paper), wP*mixc);
+    col = mix(col, fc_baseCol(iN, paper), wN*mixc);
+    pap = mix(pap, fc_isPaper(iN, paper), wN*mixc);
   }
 
   // 縁の黒線 (一部の帯。混色では消えていく)
   float edgeOn = step(fc_h1(id + 41.0), 0.55*clamp(uEdge*0.01, 0.0, 2.0)) * (1.0 - mixc);
   float e = min(tb - gap*0.5, 1.0 - gap*0.5 - tb);
   float ew = aa*(0.9 + 0.8*hA)*(uEdgeWidth / 100.0);
-  col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, edgeOn*(1.0 - smoothstep(ew*0.6, ew*1.6, e)));
+  float ed = edgeOn*(1.0 - smoothstep(ew*0.6, ew*1.6, e));
+  col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, ed);
+  pap *= 1.0 - ed;
   return vec4(col, alpha);
 }
 
 vec3 bg_flowcollage(vec2 fc){
+  FC_PAL = int(clamp(floor(uPalette + 0.5), 0.0, 7.0));
+  FC_DK  = fc_palI(6);
+  FC_LT  = fc_palI(7);
   float bt   = getBeat();
   float kick = uKick * 0.01;
   // 時間: beat モードは拍頭で押し出してから減速 (単調増加。1 拍の量は uBeatFlow)、drone は一定の速さ
@@ -348,22 +450,38 @@ vec3 bg_flowcollage(vec2 fc){
   float a2 = dot(r, vec2(0.50, 0.86)) + w2.y*2.0;
 
   // ─── 合成 ───
+  // 紙の成分も並べて追う (Slot B で紙を透かす): pc = 色に含まれる紙の色、wp = 紙の割合
   vec3 col = uPaperCol;
-  vec4 L1 = fc_pattern(b1, a1, r, px, 0.0, dens, paper);
+  vec3 pc  = uPaperCol;
+  float wp = 1.0;
+  float k1, k2;
+  vec4 L1 = fc_pattern(b1, a1, r, px, 0.0, dens, paper, k1);
   col = mix(col, L1.rgb, L1.a);
-  vec4 L2 = fc_pattern(b2, a2, r + 3.7, px, 1.0, dens, paper);
+  pc  = mix(pc, uPaperCol*k1, L1.a);
+  wp  = mix(wp, k1, L1.a);
+  vec4 L2 = fc_pattern(b2, a2, r + 3.7, px, 1.0, dens, paper, k2);
   col = mix(col, L2.rgb, L2.a);
+  pc  = mix(pc, uPaperCol*k2, L2.a);
+  wp  = mix(wp, k2, L2.a);
   float ink = max(L1.a, L2.a);
   // 振り直しの溶け: 拍の最初の 1/4 だけ前の拍の柄も描いて、そこから溶かす (拍頭で柄が飛ばない)
   if(FC_FADE < 1.0 && uReroll > 0.0){
     FC_ROLL -= 1.0;
     vec3 c0 = uPaperCol;
-    vec4 P1 = fc_pattern(b1, a1, r, px, 0.0, dens, paper);
-    c0 = mix(c0, P1.rgb, P1.a);
-    vec4 P2 = fc_pattern(b2, a2, r + 3.7, px, 1.0, dens, paper);
-    c0 = mix(c0, P2.rgb, P2.a);
+    vec3 pc0 = uPaperCol;
+    float wp0 = 1.0;
+    vec4 P1 = fc_pattern(b1, a1, r, px, 0.0, dens, paper, k1);
+    c0  = mix(c0, P1.rgb, P1.a);
+    pc0 = mix(pc0, uPaperCol*k1, P1.a);
+    wp0 = mix(wp0, k1, P1.a);
+    vec4 P2 = fc_pattern(b2, a2, r + 3.7, px, 1.0, dens, paper, k2);
+    c0  = mix(c0, P2.rgb, P2.a);
+    pc0 = mix(pc0, uPaperCol*k2, P2.a);
+    wp0 = mix(wp0, k2, P2.a);
     FC_ROLL += 1.0;
     col = mix(c0, col, FC_FADE);
+    pc  = mix(pc0, pc, FC_FADE);
+    wp  = mix(wp0, wp, FC_FADE);
     ink = mix(max(P1.a, P2.a), ink, FC_FADE);
   }
 
@@ -381,9 +499,12 @@ vec3 bg_flowcollage(vec2 fc){
       // 白抜きの線: uWhiteLines 〜100% は濃さ、100% を超えると線が太くなる
       float wl = uWhiteLines*0.01;
       float lw = (1.0 - smoothstep(0.5, 1.3, dd/max(1.0, wl))) * gate * clamp(lineAmt, 0.0, 1.0);
-      col = mix(col, vec3(0.90, 0.86, 0.77) * uCreamTint, lw*min(wl, 1.0));
+      ln = lw*min(wl, 1.0);
+      col = mix(col, vec3(0.90, 0.86, 0.77) * uCreamTint, ln);
     }
     else           col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, ln);
+    pc *= 1.0 - ln;
+    wp *= 1.0 - ln;
   }
 
   // ─── 太陽モチーフ: 放射線つきの半円 ───
@@ -417,7 +538,10 @@ vec3 bg_flowcollage(vec2 fc){
       vec3 sunC = fc_pal(0.2 + 0.1*floor(fc_h2(cc + 8.8)*2.0) + 0.05) * uSunTint;  // オレンジ / マスタード
       col = mix(col, sunC, disk);
       float rim = (1.0 - smoothstep(pw*0.8, pw*2.0, abs(dl - R))) * half_;          // 半円の輪郭
-      col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, clamp(rim + ray, 0.0, 1.0));
+      float rr  = clamp(rim + ray, 0.0, 1.0);
+      col = mix(col, vec3(0.08, 0.08, 0.10) * uInkTint, rr);
+      pc *= (1.0 - disk)*(1.0 - rr);
+      wp *= (1.0 - disk)*(1.0 - rr);
       ink = max(ink, disk);
     }
   }
@@ -427,17 +551,39 @@ vec3 bg_flowcollage(vec2 fc){
   // インクのかすれ: 細かいノイズで刷りが抜け、紙が覗く
   float spk  = fc_vn(px*0.35) * 0.6 + fc_vn(px*0.09 + 13.0) * 0.4;
   float drop = smoothstep(0.86 - 0.08*worn, 0.90 - 0.08*worn, spk) * ink * clamp(worn, 0.0, 1.5);
-  col = mix(col, uPaperCol * 1.05, clamp(drop, 0.0, 1.0));
-  // スクラッチ: 細長い異方性ノイズ
+  drop = clamp(drop, 0.0, 1.0);
+  col = mix(col, uPaperCol * 1.05, drop);
+  pc  = mix(pc, uPaperCol * 1.05, drop);
+  wp  = mix(wp, 1.0, drop);
+  // スクラッチ: 細長い異方性ノイズ (紙が覗く扱い)
   float scr  = fc_vn(vec2(px.x*0.012 + px.y*0.004, px.y*0.45));
-  col = mix(col, vec3(0.93, 0.89, 0.80) * uCreamTint, smoothstep(0.965, 0.995, scr) * clamp(worn, 0.0, 1.5) * 0.7 * (uScratchAmt / 100.0));
+  float sk   = smoothstep(0.965, 0.995, scr) * clamp(worn, 0.0, 1.5) * 0.7 * (uScratchAmt / 100.0);
+  vec3  skC  = vec3(0.93, 0.89, 0.80) * uCreamTint;
+  col = mix(col, skC, sk);
+  pc  = mix(pc, skC, sk);
+  wp  = mix(wp, 1.0, sk);
   // 黒い粒
   float spec = fc_h2(floor(px*0.5) + floor(T*2.0)*0.0);
-  col *= 1.0 - step(0.9985 - 0.0010*worn, spec) * 0.6 * clamp(worn, 0.0, 1.5) * (uSpeckAmt / 100.0);
+  float bk   = step(0.9985 - 0.0010*worn, spec) * 0.6 * clamp(worn, 0.0, 1.5) * (uSpeckAmt / 100.0);
+  col *= 1.0 - bk;
+  pc  *= 1.0 - bk;
+  wp  *= 1.0 - bk;
   // 紙のグレイン (画素ノイズ + 繊維の低周波ムラ)
   float gr  = (fc_h2(px) - 0.5) * 0.10 + (fc_vn(px*0.03) - 0.5) * 0.08 * (uFiber / 100.0);
   col *= 1.0 + gr * uGrain * 0.01;
+  pc  *= 1.0 + gr * uGrain * 0.01;
 
-  if(uVignette != 0.0){ vec2 vv = (fc - 0.5 * resolution) / resolution.y; col *= max(1.0 - (uVignette / 100.0) * 0.6 * dot(vv, vv) * 2.0, 0.0); }
-  return clamp(col, 0.0, 1.0);
+  if(uVignette != 0.0){ vec2 vv = (fc - 0.5 * resolution) / resolution.y; float vg = max(1.0 - (uVignette / 100.0) * 0.6 * dot(vv, vv) * 2.0, 0.0); col *= vg; pc *= vg; }
+
+  // 透過: bgAlpha = 紙以外の割合 (Slot に関係なく実カバレッジ)。
+  //   Slot A: uBgColor が黒なら紙を敷いたまま (従来の絵)。uBgColor を入れると紙の代わりにその色が敷かれる
+  //   Slot B: 紙を透かす。合成 (sampleAB) は straight alpha なので、紙を除いた色を alpha で割って返す
+  float cov = clamp(1.0 - wp, 0.0, 1.0);
+  bgAlpha = cov;
+  vec3 inkP = col - pc;                                          // 紙を除いた色 (alpha 乗算済み)
+  if(uSlotIsA > 0.5){
+    float paperOn = step(max(uBgColor.r, max(uBgColor.g, uBgColor.b)), 0.004);
+    return clamp(paperOn > 0.5 ? col : inkP, 0.0, 1.0);
+  }
+  return clamp(inkP / max(cov, 1e-3), 0.0, 1.0);
 }
