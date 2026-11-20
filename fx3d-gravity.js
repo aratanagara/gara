@@ -116,7 +116,7 @@ uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
-  vec2 u = 1.0 - abs(1.0 - mod(vUv, 2.0));                     // 余白はミラー
+  vec2 u = fx3dSrc(vUv);                                         // 余白は素材の余白 (3D Overscan)、その外はミラー
   vec4 t0 = texture(uTex, u);
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
   vec3 col = fx3dLit(t0.rgb, vW, uEye, uShade);
@@ -199,6 +199,7 @@ function fieldParams(o){
 }
 
 Fx3d.EXTRA.gravity = {
+  ov: true,
   foldHook: true,
   spikes: true,
   FIELD,
@@ -253,6 +254,7 @@ Fx3d.EXTRA.gravity = {
       this.fieldUniforms(gl, pr, Object.assign({}, o, { spin }));
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'gravity');
+      Fx3d.ovUniforms(gl, pr, o);
       Fx3d.reliefUniforms(gl, pr);   // 立体シェーダの深度で面を持ち上げる
       Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };

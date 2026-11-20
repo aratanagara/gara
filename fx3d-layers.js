@@ -10,6 +10,7 @@ const PER = SUB * SUB * 6;                         // 板 1 枚あたりの頂�
 // 板 pl の面内座標 ab (0..1) → 位置。ctr = 板の中心
 const SURF = `
 uniform float uAsp, uK, uN, uBeat, uSize, uGap, uSpinY, uSpinX, uSpinW;
+uniform vec2 uOvS;   // 3D Overscan: 板に画面の外の絵まで載せたぶん板を縮める率 (Fx3d.ovShrink。余白なしなら 1)
 float h1(float p){ return fract(sin(p * 127.1 + 311.7) * 43758.5453); }
 float easeOut(float x){ float y = 1.0 - clamp(x, 0.0, 1.0); return 1.0 - y * y * y; }
 vec3 rotY(vec3 p, float a){ float c = cos(a), s = sin(a); return vec3(c * p.x + s * p.z, p.y, -s * p.x + c * p.z); }
@@ -18,7 +19,7 @@ vec3 rotZ(vec3 p, float a){ float c = cos(a), s = sin(a); return vec3(c * p.x - 
 vec3 layerSurf(int pl, vec2 ab, out vec3 ctr){
   float fi = float(pl), rel = fi / max(uN - 1.0, 1.0);
   float b = floor(uBeat), ph = fract(uBeat);
-  vec3 P = vec3((ab - 0.5) * 2.0 * vec2(uAsp, 1.0) * uSize, 0.0);
+  vec3 P = vec3((ab - 0.5) * 2.0 * vec2(uAsp, 1.0) * uSize * uOvS, 0.0);
   // 回転の波: 手前の板から 1 枚ずつ遅れて 1 周。軸と向きは拍ごと
   float ax = floor(h1(b * 3.1) * 3.0), sg = h1(b * 5.7) < 0.5 ? 1.0 : -1.0;
   float ang = sg * easeOut((ph - rel * 0.45) / 0.5) * 6.2831853 * uK;
@@ -34,7 +35,7 @@ vec3 layerSurf(int pl, vec2 ab, out vec3 ctr){
 const VS = `#version 300 es
 precision highp float;
 uniform mat4 uView, uProj;
-out vec2 vUv; out vec3 vW;
+out vec2 vUv; out vec2 vAb; out vec3 vW;
 ${SURF}
 void main(){
   int id = gl_VertexID, pl = id / ${PER}, q = id - pl * ${PER};
@@ -42,6 +43,8 @@ void main(){
   vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
   int cy = cell / ${SUB}, cx = cell - cy * ${SUB};
   ab = (vec2(float(cx), float(cy)) + ab) / float(${SUB});
+  vAb = ab;
+  ab = fx3dAB(ab);   // 3D Overscan: 板は画面の外 (素材の余白) まで載せる
   vec3 ctr, c2;
   vec3 P = layerSurf(pl, ab, ctr);
   {   // 立体シェーダの深度で板の面を持ち上げる (板の法線は差分で求める)
@@ -63,13 +66,15 @@ precision highp float;
 uniform mat4 uView, uProj;
 uniform vec2 uNvGrid;
 uniform float uNvSub;
-out vec2 vUv; out vec3 vW;
+out vec2 vUv; out vec2 vAb; out vec3 vW;
 ${SURF}
 void main(){
   int per = (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * int(uNvSub) * int(uNvSub);
   int pl = gl_VertexID / per, vid = gl_VertexID - pl * per;
   vec2 ab; float w; vec2 key;
   fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(float(pl) * 3.7 + 0.3, 6.1), ab, w, key);
+  vAb = ab;
+  ab = fx3dAB(ab);
   const float E = 1e-3;
   vec3 ctr, c2;
   vec3 P0 = layerSurf(pl, ab, ctr);
@@ -86,16 +91,16 @@ void main(){
 }`;
 const FS = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec3 vW;
+in vec2 vUv; in vec2 vAb; in vec3 vW;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uEdge;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
-  vec4 t0 = texture(uTex, clamp(vUv, 0.0, 1.0));
+  vec4 t0 = texture(uTex, fx3dSrcC(vUv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
   vec3 c = fx3dLit(t0.rgb, vW, uEye, uShade);
   if(uEdge > 0.001){   // 板の縁の線 (Layers Edge。太さは画面上でほぼ一定)
-    vec2 e = min(vUv, 1.0 - vUv) / max(fwidth(vUv), vec2(1e-5));
+    vec2 e = min(vAb, 1.0 - vAb) / max(fwidth(vAb), vec2(1e-5));
     c = mix(c, vec3(0.0), (1.0 - smoothstep(0.0, 1.0 + 3.0 * uEdge, min(e.x, e.y))) * uShade);
   }
   frag = vec4(fx3dFoldShade(c), 1.0);
@@ -104,6 +109,7 @@ const U = {};
 function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get(p); if(l === undefined){ l = gl.getUniformLocation(p, n); m.set(p, l); } return l; }
 
 Fx3d.EXTRA.layer = {
+  ov: true,
   foldHook: true,
   spikes: true,
   _spin: 0, _t: null,
@@ -147,6 +153,8 @@ Fx3d.EXTRA.layer = {
       gl.uniform1f(uloc(gl, pr, 'uN'), n);
       gl.uniform1f(uloc(gl, pr, 'uBeat'), beat);
       gl.uniform1f(uloc(gl, pr, 'uSize'), size);
+      gl.uniform2fv(uloc(gl, pr, 'uOvS'), Fx3d.ovShrink(o, k));
+      Fx3d.ovUniforms(gl, pr, o);
       gl.uniform1f(uloc(gl, pr, 'uGap'), gap);
       gl.uniform1f(uloc(gl, pr, 'uSpinY'), spinY);
       gl.uniform1f(uloc(gl, pr, 'uSpinX'), spinX);

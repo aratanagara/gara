@@ -10,6 +10,7 @@
 */
 
 const Shredder = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   gl:null, initialized:false,
   simProg:null, drawProg:null,
   simVAO:null, simVBO:null,
@@ -816,7 +817,7 @@ void main(){
       up = [up[0]*cs + cr[0]*sn + fw[0]*d, up[1]*cs + cr[1]*sn + fw[1]*d, up[2]*cs + cr[2]*sn + fw[2]*d];
     }
     const view = this.m4.lookAt(eye, tgt, up);
-    const proj = this.m4.persp(P.fov*Math.PI/180, w/Math.max(1,h), 0.05, dist*6);
+    const proj = (typeof GL !== 'undefined' && GL.osProj) ? GL.osProj(this.m4.persp(P.fov*Math.PI/180, w/Math.max(1,h), 0.05, dist*6)) : this.m4.persp(P.fov*Math.PI/180, w/Math.max(1,h), 0.05, dist*6);   // 3D Overscan: スロットに余白があれば画角を広げる
     this.depthInfo = { near:0.05, far:dist*6, cam:dist*0.875, R:dist*0.725 };   // 深度の範囲: カメラから dist*0.15 〜 dist*1.6
     const mvp = this.m4.mul(proj, view);
 

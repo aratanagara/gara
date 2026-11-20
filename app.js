@@ -380,7 +380,8 @@ const GL = {
     const VS_SRC = `#version 300 es
 layout(location=0) in vec2 a;
 out vec2 vUv;
-void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`;
+uniform vec2 uOvM;   // 3D Overscan: 合成を余白付き (_ovSrc) に描くときだけ uv を [-m, 1+m] へ広げる。既定 0 = 従来どおり
+void main(){ vUv = (a*0.5+0.5)*(1.0+2.0*uOvM)-uOvM; gl_Position = vec4(a,0.,1.); }`;
     this.vs = this._compile(gl.VERTEX_SHADER, VS_SRC);
     // 自己回復: 頂点シェーダ(自明に正当)が失敗したら、並列コンパイル拡張が
     //   同期コンパイルを壊している疑い(Windows/ANGLE)。拡張を無効化して再コンパイルする。
@@ -696,14 +697,17 @@ vec4 _slotVisMix(vec4 ca, vec4 cb, vec4 both, float showA, float showB){
 }
 // ズームアウト/パンで領域外に出た分は上下左右ミラーでタイル化 (映像がミラー状に繋がる)。範囲内(ズームイン/等倍)は恒等。
 vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
+// スロットの画面座標 → テクスチャ座標 (3D Overscan の余白 o = 全体 / 画面分 - 1 を中央へ切り戻す。余白の外はミラー)
+uniform vec2 uOsA, uOsB;
+vec2 fl_slotUv(vec2 s, vec2 o){ return (o.x == 0.0 && o.y == 0.0) ? fl_mirror(s) : fl_mirror((s - 0.5) / (1.0 + o) + 0.5); }
 // 深度で抜くスロットの物体の割合 (深度 > 0 = 1 / 背景 = 0)
 float matteObj(vec2 uv){
-  vec2 mu = uMatteSlot == 1 ? fl_mirror((uv - 0.5) / uZoomA + 0.5 - uPanA) : fl_mirror((uv - 0.5) / uZoomB + 0.5 - uPanB);
+  vec2 mu = uMatteSlot == 1 ? fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA) : fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB);
   return step(0.004, texture(uMatteD, mu).r);
 }
 vec4 sampleAB(vec2 uv){
-  vec4 ca = texture(uA, fl_mirror((uv - 0.5) / uZoomA + 0.5 - uPanA));   // mode エンジンの user zoom/pan (領域外はミラー)
-  vec4 cb = texture(uB, fl_mirror((uv - 0.5) / uZoomB + 0.5 - uPanB));
+  vec4 ca = texture(uA, fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA));   // mode エンジンの user zoom/pan (領域外はミラー)
+  vec4 cb = texture(uB, fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB));
   // 紙抜き: 映っているスロットの前乗算の色を戻して alpha ごと返す (紙 = alpha 0。紙の色は 3D 段の最後に敷く)
   if(uMatteDepth == 1 && uMatte > 0){
     vec4 c = uMatte == 1 ? ca : cb;
@@ -3254,13 +3258,14 @@ in vec2 vUv; in vec3 vWorld; in vec3 vNormal; out vec4 frag;
 uniform sampler2D uTex;
 uniform float uMode, uShade, uBgDark;
 uniform vec3 uEye;
+${this.ovGLSL()}
 void main(){
   if(uMode < 0.5){                   // 背景 = 黒 (低パラメータで速やかに黒へ / uBgDark)
-    vec4 bA = texture(uTex, vUv); vec3 b = bA.rgb;    // 3D FX が抜いた背景 (alpha 0) は抜けたまま
+    vec4 bA = texture(uTex, ovUvC(vUv)); vec3 b = bA.rgb;    // 3D FX が抜いた背景 (alpha 0) は抜けたまま
     frag = vec4(b * (1.0 - uBgDark), bA.a * (1.0 - uBgDark));   // 暗転しきった背景は alpha も 0 (Uzumaki が紙だけを渦に乗せられる)
     return;
   }
-  vec4 albA = texture(uTex, clamp(vUv, 0.0, 1.0));
+  vec4 albA = texture(uTex, ovUvC(vUv));   // 3D Overscan の余白があれば紙の外側も実際の絵
   if(albA.a < 0.5) discard;          // 3D FX が抜いた背景は紙に乗せない (3D の物体だけが折られる)
   vec3 alb = albA.rgb;              // 裏面も同じイメージ (裏から見るため左右反転に見える)
   vec3 N = normalize(vNormal);
@@ -3399,6 +3404,7 @@ uniform vec2 uUzCw;
 uniform vec2 uNvGrid;
 uniform float uNvSub, uNvMargin, uGravOn, uPaperM;
 uniform vec4 uNvMask;   // 映っているスロットの重み (A / B) と深度を出すか (z = A / w = B)。深度を出すスロットがあれば、針はその物体 (深度 > 0) の面にだけ生やす (深度を出さないスロットは全面が物体)
+uniform vec2 uOvGrow;   // 3D Overscan: 格子の紙を素材の余白の分だけ画面の外へ広げる (Uzumaki のカードは広げない = 0)
 ${this.reliefGLSL()}
 out vec2 vUv; out vec3 vWorld;
 ${this._foldPaperGLSL('u')}
@@ -3425,8 +3431,8 @@ void main(){
     uv = 0.5 + (uv - 0.5) * uNvMargin;   // Needle だけのときは紙を画面の外まで広げる (絵はミラー) = 紙の縁が見えない
     lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 * uNvMargin / uNvGrid.y);
     if(uNvMask.z + uNvMask.w > 0.0 && uNvMask.x + uNvMask.y > 0.0){   // 物体の外 (深度 0 = 背景) の面には針を生やさない
-      vec2 fm = 1.0 - abs(1.0 - mod(0.5 + (nvFaceA - 0.5) * uNvMargin, 2.0));
-      float on = uNvMask.x * (uNvMask.z > 0.5 ? step(0.004, vjDepthAt(uDepthA, fm)) : 1.0) + uNvMask.y * (uNvMask.w > 0.5 ? step(0.004, vjDepthAt(uDepthB, fm)) : 1.0);
+      vec2 fm = 0.5 + (nvFaceA - 0.5) * uNvMargin;
+      float on = uNvMask.x * (uNvMask.z > 0.5 ? step(0.004, vjDepthAt(uDepthA, vjDepthUv(fm, uDepthOs.xy))) : 1.0) + uNvMask.y * (uNvMask.w > 0.5 ? step(0.004, vjDepthAt(uDepthB, vjDepthUv(fm, uDepthOs.zw))) : 1.0);
       lift *= on / (uNvMask.x + uNvMask.y);
     }
   } else {
@@ -3435,6 +3441,7 @@ void main(){
     int cx = cell - (cell / GW) * GW, cy = cell / GW;
     vec2 co[6] = vec2[6](vec2(0.,0.), vec2(1.,0.), vec2(1.,1.), vec2(0.,0.), vec2(1.,1.), vec2(0.,1.));
     uv = (vec2(float(cx), float(cy)) + co[corner]) / uGrid;
+    uv = uv * (1.0 + 2.0 * uOvGrow) - uOvGrow;
   }
   vec2 q = (uv - 0.5) * 2.0 * vec2(asp, 1.0);
   // Roll だけのときは紙を巻く向きにだけ画面の外まで伸ばす (絵はミラー)。筒の軸の向きは伸ばさない = 渦巻きの端面が画面に入る
@@ -3469,14 +3476,15 @@ in vec2 vUv; in vec3 vWorld; out vec4 frag;
 uniform sampler2D uTex;
 uniform float uMode, uShade, uBgDark, uCrystal, uNeedleMix, uPaperFade;
 uniform vec3 uEye;
+${this.ovGLSL()}
 void main(){
   if(uMode < 0.5){
-    vec4 bA = texture(uTex, vUv); vec3 b = bA.rgb;    // 3D FX が抜いた背景 (alpha 0) は抜けたまま
+    vec4 bA = texture(uTex, ovUvC(vUv)); vec3 b = bA.rgb;    // 3D FX が抜いた背景 (alpha 0) は抜けたまま
     frag = vec4(b * (1.0 - uBgDark), bA.a * (1.0 - uBgDark));   // 暗転しきった背景は alpha も 0 (Uzumaki が紙だけを渦に乗せられる)
     return;
   }
-  vec2 uv = 1.0 - abs(1.0 - mod(vUv, 2.0));   // 0..1 の外 (Needle だけのときの余白) はミラー
-  vec4 albA = texture(uTex, uv);
+  vec2 uv = vUv;   // 0..1 の外 (Needle / Roll で広げた紙・3D Overscan の余白) は素材の余白、その外はミラー (ovUv)
+  vec4 albA = texture(uTex, ovUv(uv));
   if(albA.a < 0.5) discard;          // 3D FX が抜いた背景は紙に乗せない (3D の物体だけが折られる)
   vec3 alb = albA.rgb;
   vec3 N = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
@@ -3492,10 +3500,11 @@ void main(){
   float NoV = max(dot(N, V), 0.0);
   float namp = clamp(uCrystal, 0.0, 1.0);
   vec2 refrOff = N.xy * (0.0015 + 0.0095 * namp) * (0.35 + 0.65 * (1.0 - NoV));
-  vec3 frontSample = texture(uTex, clamp(uv + refrOff, 0.0, 1.0)).rgb;
-  vec3 innerSample = texture(uTex, clamp(uv - refrOff * 1.85, 0.0, 1.0)).rgb;
+  vec2 cu = (uOvM.x > 0.0 || uOvM.y > 0.0) ? uv : 1.0 - abs(1.0 - mod(uv, 2.0));   // 余白があれば屈折・反射も余白の絵を引く
+  vec3 frontSample = texture(uTex, ovUvC(cu + refrOff)).rgb;
+  vec3 innerSample = texture(uTex, ovUvC(cu - refrOff * 1.85)).rgb;
   vec3 R = reflect(-V, N);
-  vec3 reflSample = texture(uTex, clamp(uv + R.xy * (0.014 + 0.050 * namp), 0.0, 1.0)).rgb;
+  vec3 reflSample = texture(uTex, ovUvC(cu + R.xy * (0.014 + 0.050 * namp))).rgb;
   float fres = 0.055 + 0.945 * pow(1.0 - NoV, 5.0);
   vec3 crystal = mix(alb, frontSample, 0.14 * namp);
   crystal = mix(crystal, innerSample, 0.10 + 0.08 * namp);
@@ -4481,11 +4490,73 @@ void main(){
   _resizeSlotBuffers(s,resizeSnapshot){
     if(!s || !s.fbos) return;
     const scale=Math.max(0.25,Math.min(1,Number(s.renderScale)||1));
-    const w=Math.max(2,Math.round(this.FIXED_W*scale));
-    const h=Math.max(2,Math.round(this.FIXED_H*scale));
-    this._resizeFBO(s.fbos[0],w,h);
-    this._resizeFBO(s.fbos[1],w,h);
-    if(resizeSnapshot!==false && s._snap && (s._snap.w!==w || s._snap.h!==h)) this._resizeFBO(s._snap,w,h);
+    const bw=Math.max(2,Math.round(this.FIXED_W*scale));
+    const bh=Math.max(2,Math.round(this.FIXED_H*scale));
+    const px=Math.round(bw*(s.os||0)/8)*8, py=Math.round(bh*(s.os||0)/8)*8;   // 3D Overscan の余白 (片側 px。8 の倍数 = ディザ・セルの模様が画面の中でずれない)
+    const w=bw+2*px, h=bh+2*py;
+    for(const f of s.fbos){ this._resizeFBO(f,w,h); f.pad=[px,py]; f.bw=bw; f.bh=bh; }
+    if(s._snap && (s._snap.w!==w || s._snap.h!==h)){
+      if(resizeSnapshot===false || !s._snap.pad) this._resizeFBO(s._snap,w,h);
+      else this._osReframe(s, w, h, px, py, bw, bh);   // 切替中に余白が変わった: 退避した旧フレームの画面分を新しい枠の中央へ移す
+    }
+    if(s._snap){ s._snap.pad=[px,py]; s._snap.bw=bw; s._snap.bh=bh; }
+  },
+  // 退避フレーム (_snap) を新しい余白の枠へ移す (画面分は同じ画素のまま。余白は端の色で埋まる)
+  _osReframe(s, w, h, px, py, bw, bh){
+    const gl=this.gl, o=s._snap, n=this._mkFBO(w,h);
+    const op=o.pad||[0,0];
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, o.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, n.fbo);
+    gl.blitFramebuffer(op[0],op[1],op[0]+bw,op[1]+bh, px,py,px+bw,py+bh, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.deleteTexture(o.tex); gl.deleteFramebuffer(o.fbo);
+    s._snap=n;
+  },
+  // ── 3D Overscan ──
+  //   3D FX (3D 欄・折り系) が掛かっている間だけ、3D 対応のスロット (深度を出すシェーダ / overscan 対応の Code) を
+  //   画面より片側 os (画面に対する割合) だけ大きく描く。シェーダは gl_FragCoord を余白の分ずらし iResolution は画面のまま
+  //   (preprocess の _vjFC) = 画面の外まで同じ絵と深度が続く。Code は GL.osProj で投影を広げる。
+  //   読む側は slotOs(fbo) (= 全体 / 画面分 - 1。0 = 余白なし) で uv を中央へ切り戻す。3D 段の素材は _ovSrc (composite 参照)。
+  OS_FOLD: ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'],
+  // 3D 段より前で画面全体の見た目を変える段。これが掛かっているときは余白にその段が入らず継ぎ目になるので overscan しない
+  OS_PRE3D: ['sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','candy','novel'],
+  slotOs(f){ return (f && f.pad && f.bw) ? [(f.w / f.bw) - 1, (f.h / f.bh) - 1] : [0, 0]; },
+  // スロットの中身が overscan できるか (画面の外まで描ける 3D 対応の Visual で、自分や他のスロットの絵を読んでいない)
+  _osCapable(k){
+    const s = this.slots[k];
+    if(!s || !s.ready || s.kind === 'none') return false;
+    const other = this.slots[k === 'A' ? 'B' : 'A'];
+    if(other && Array.isArray(other.channels) && other.channels.includes(k === 'A' ? '__slotA__' : '__slotB__')) return false;
+    if(!s.kind || s.kind === 'shader'){
+      if(s._wdSrc !== s.src){ s._wdSrc = s.src; s.writesDepth = /\bvjDepth\s*=/.test(s.src || ''); }
+      if(!s.writesDepth || /\bbackbuffer\b/.test(s.src || '')) return false;
+      if(Array.isArray(s.channels) && s.channels.some(c=>c === '__feedback__' || c === '__slotA__' || c === '__slotB__')) return false;
+      const m = s.params && s.params.find(x=>x.name === 'u3DMode');
+      return !(m && !m.value);
+    }
+    const get = this.KIND_DEPTH[s.kind];
+    if(!get || App.code3D === false) return false;
+    const eng = get();
+    return !!(eng && eng.overscan && !(eng.P && !eng.P.depth3D));
+  },
+  _osUpdate(p){
+    const pct = App.fx3dOverscanPct(p);
+    const on = (k)=>(+(p && p[k]) || 0) > 0.001;
+    // 余白を素材に使う段があるときだけ (Kaiser 単体・Uzumaki 単体は画面を読む専用パスなので余白を使わない。どちらかと別の折りが一緒なら統合パスで使う)
+    const fx = !!p && !App.safeMode && (['origami','kaiser','fx3dRoll'].some(on) || (on('kaiserOld') && on('uzumaki'))
+      || (typeof Fx3d !== 'undefined' && Fx3d.ORDER.some(n=>on(Fx3d.KEY[n]) || Fx3d.effE[n] > 0.001)));
+    const live = pct > 0 && fx && !this.OS_PRE3D.some(on);
+    // 切り替えのたびに FBO を作り直さないよう、3D FX を切ってから 1 秒は余白を持ったまま (縮んで消える間も端が切れない)
+    if(live){ this._osHold = 60; this._osM = pct / 100; }
+    else if(this._osHold > 0){ this._osHold--; if(pct <= 0 || this.OS_PRE3D.some(on)) this._osHold = 0; }
+    if(!(this._osHold > 0)) this._osM = 0;
+    const m = this._osM || 0;
+    const only = (p && (p.fx3dSlot === 'A' || p.fx3dSlot === 'B')) ? p.fx3dSlot : null;
+    for(const k of ['A', 'B']){
+      const s = this.slots[k];
+      const want = (m > 0 && (!only || only === k) && this._osCapable(k)) ? m : 0;
+      if((s.os || 0) !== want){ s.os = want; this._resizeSlotBuffers(s); }
+    }
   },
 
   // 描画解像度の既定 (初回訪問時 = vj.res 未保存のときに使用。録画 / Projector 出力サイズの初期値)
@@ -4884,7 +4955,7 @@ vec3 f3Paper(vec2 q, float lift){
     for(const n of ['iResolution','iTime','iTimeDelta','iFrame','iMouse','iDate','iSampleRate',
                     'iChannel0','iChannel1','iChannel2','iChannel3',
                     'iBPM','iBeat','iBeatPhase','iEnergy','iAttack','iAttackEnv','iCrossfade','iBeatMode','iPan','iZoom',
-                    'time','mouse','resolution','backbuffer','beat','uCosGrad','uCosPalette','uFFT','uBsodText','uSlotIsA','uSlotIsAReal','uFx3dMatte','iAudio','iAudioSeed','uGradStops[0]','uGradPos[0]','uGradN']){
+                    'time','mouse','resolution','backbuffer','beat','uCosGrad','uCosPalette','uFFT','uBsodText','uSlotIsA','uSlotIsAReal','uFx3dMatte','iAudio','iAudioSeed','uGradStops[0]','uGradPos[0]','uGradN','uVjOs']){
       slot.uniforms[n] = U(n);
     }
     slot.uniforms.iChannelResolution = U('iChannelResolution[0]');
@@ -5000,7 +5071,10 @@ vec3 f3Paper(vec2 q, float lift){
       const s = Math.sin(blk*78.233 + 1.7) * 4373.7;
       t = this.clock + offSec + (s - Math.floor(s)) * 1000.0;   // 拍ごとに固定のランダムオフセット
     }
-    if(u.iResolution) gl.uniform3f(u.iResolution, target.w, target.h, 1);
+    // 3D Overscan: FBO は余白の分大きいが、シェーダには画面分の解像度を見せ、gl_FragCoord を余白の分ずらす (_vjFC)
+    const tw = target.bw || target.w, th = target.bh || target.h, tp = target.pad || [0, 0];
+    if(u.uVjOs) gl.uniform2f(u.uVjOs, tp[0], tp[1]);
+    if(u.iResolution) gl.uniform3f(u.iResolution, tw, th, 1);
     if(u.iTime) gl.uniform1f(u.iTime, t);
     if(u.iTimeDelta) gl.uniform1f(u.iTimeDelta, dt);
     if(u.iFrame) gl.uniform1i(u.iFrame, slotFrame);
@@ -5009,7 +5083,7 @@ vec3 f3Paper(vec2 q, float lift){
     if(App.mouseCapture && slotKey === App.activeSlot){ slot._mouse = { x: App.mouse.x, y: App.mouse.y, dx: App.mouse.dx, dy: App.mouse.dy }; }
     const m = slot._mouse || { x: 0, y: 0, dx: 0, dy: 0 };
     if(u.iMouse){
-      const sx=target.w/Math.max(1,this.FIXED_W), sy=target.h/Math.max(1,this.FIXED_H);
+      const sx=tw/Math.max(1,this.FIXED_W), sy=th/Math.max(1,this.FIXED_H);
       gl.uniform4f(u.iMouse,m.x*sx,m.y*sy,m.dx*sx,m.dy*sy);
     }
     if(u.iSampleRate) gl.uniform1f(u.iSampleRate, Audio.sampleRate || 44100);
@@ -5060,8 +5134,8 @@ vec3 f3Paper(vec2 q, float lift){
     // GLSL Sandbox aliases
     if(u.time) gl.uniform1f(u.time, t);
     slot._uT = t;
-    if(u.resolution) gl.uniform2f(u.resolution, target.w, target.h);
-    if(u.mouse) gl.uniform2f(u.mouse, m.x/Math.max(1,target.w), m.y/Math.max(1,target.h));
+    if(u.resolution) gl.uniform2f(u.resolution, tw, th);
+    if(u.mouse) gl.uniform2f(u.mouse, m.x/Math.max(1,tw), m.y/Math.max(1,th));
     if(u.backbuffer){
       // unit 4: previous frame of this slot
       gl.activeTexture(gl.TEXTURE0 + 4);
@@ -5087,7 +5161,7 @@ vec3 f3Paper(vec2 q, float lift){
       if(p.type==='color') gl.uniform3f(loc, p.value[0], p.value[1], p.value[2]);
       else gl.uniform1f(loc, App.deadParam ? App.deadParam(p.value) : p.value);
     }
-    if(slot.placedLocs && slot.placedLocs.n) App.uploadBalloonDrops(gl, slot, slotKey, target.w, target.h);
+    if(slot.placedLocs && slot.placedLocs.n) App.uploadBalloonDrops(gl, slot, slotKey, tw, th);
 
     // 深度 (vjDepth) を書くシェーダだけ 2 枚目の出力を付けて描く (他は 1 枚 = 従来どおり)。折り系がこの深度で紙を持ち上げる
     if(slot._wdSrc !== slot.src){ slot._wdSrc = slot.src; slot.writesDepth = /\bvjDepth\s*=/.test(slot.src || ''); }
@@ -5143,6 +5217,17 @@ vec3 f3Paper(vec2 q, float lift){
     aratanagara: ()=> (typeof Aratanagara !== 'undefined') ? Aratanagara : null,
     chrometype: ()=> (typeof ChromeType !== 'undefined') ? ChromeType : null,
     tower4149: ()=> (typeof Tower4149 !== 'undefined') ? Tower4149 : null,
+  },
+  // 3D Overscan (Code): 描いているスロットに余白があれば、投影行列 (列優先 4×4) の x / y を画面分 / 全体 に縮めて画角を広げる。
+  //   余白の中央 (画面分) は余白なしのときと同じ絵になり、その外に画面の外のジオメトリが描かれる。余白なし・スロット以外の描画では m をそのまま返す。
+  //   エンジンは overscan: true を立て、描画に使う最終の投影 (または VP) をこれに通す
+  osProj(m){
+    const t = this._osCur;
+    if(!m || !t || !t.pad || !(t.pad[0] || t.pad[1])) return m;
+    const kx = t.bw / t.w, ky = t.bh / t.h, r = Float32Array.from(m);
+    for(const i of [0, 4, 8, 12]) r[i] *= kx;
+    for(const i of [1, 5, 9, 13]) r[i] *= ky;
+    return r;
   },
   kindKeepsDepth(fbo){ return !!(this._kdCur && this._kdCur.target.fbo === fbo); },
   kindDepthTex(){ return this._kdCur ? this._kdCur.target.ztex : null; },   // マスク等の別 FBO にも同じ深度を付けるとき
@@ -5296,6 +5381,7 @@ void main(){
       gl.uniform1f(U('uZoomA'), za[0]); gl.uniform2f(U('uPanA'), za[1], za[2]);
       gl.uniform1f(U('uZoomB'), zb[0]); gl.uniform2f(U('uPanB'), zb[1], zb[2]);
     }
+    { const oa = this.slotOs(A), ob = this.slotOs(B); gl.uniform2f(U('uOsA'), oa[0], oa[1]); gl.uniform2f(U('uOsB'), ob[0], ob[1]); }
     gl.uniform1i(U('uBlendMode'), App.blendModeIdx());
     gl.uniform1i(U('uTransStyle'), App.transStyle || 0);
     gl.uniform1f(U('uTime'),      (this.postClock != null ? this.postClock : this.clock));   // Post FX は D フリーズ中も進む時計
@@ -5452,6 +5538,7 @@ void main(){
     gl.uniform1i(U('uCandyMode'), 0);   // Tunnel は 3D 段のあとの _applyAudioPatternPost で掛ける
     // 3D Native の切り替わり (0 < g < 1): 平面の絵 F を _finalFBO へ (以降は平面方式と同じ経路)、3D の絵 N を補助 FBO へ合成する
     const _fr3 = this._fx3dFrame, _fl3 = this._fx3dFlat;
+    this._ovFrame = null;
     const _blend = !!(_fr3 && _fr3.blend && _fl3 && _fl3.frame === _fr3.frame && _fl3.slot === _fr3.target);
     this._fx3dBlendNow = _blend;
     if(_blend){
@@ -5493,10 +5580,12 @@ void main(){
       gl.uniform1i(U('uMatteDepth'), M.depth ? 1 : (M.hidden ? 4 : 3));
       gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      this._ovDrawComposite(P);
       gl.uniform1i(U('uMatteDepth'), 0);
       gl.activeTexture(gl.TEXTURE0 + 13); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
     } else {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if(P === this.compositeProg) this._ovDrawComposite(P);
     }
     gl.bindVertexArray(null);
 
@@ -7101,6 +7190,72 @@ ${body}
   //   (_foldStackTookUzumaki) ため、ここは Uzumaki 単体のときだけ走る。
   // 3D FX (Fx3d.ORDER の各エンジン): 現在フレーム (_finalFBO) を素材に 3D シーンを描き、_finalFBO へ戻す。
   //   エンジンは透明背景で描き、元の画面を e に応じて暗くした上に重ねる (暗くするのは最初の 1 段だけ。量 0 → 元の画面と一致、k のクロスフェードは無い)。
+  // ── 3D Overscan: 3D 段の素材 _ovSrc ──
+  //   3D FX と折りは合成後の画面 (_finalFBO) を素材にする。余白を持つフレーム (GL._osM > 0) は、合成の直後に同じ合成をもう一度、
+  //   uv を [-m, 1+m] に広げて _ovSrc (画面 + 片側 m の余白) へ描く。中央は使う直前に _finalFBO から写す (_ovSync) ので、
+  //   Water〜IMAGON・前の 3D 段の結果は中央にだけ入る (余白は合成だけの絵。前の 3D 段が背景を抜いた分は _ovDim で余白も抜く)。
+  //   素材を読む側は ovGLSL の ovUv(画面 uv) で _ovSrc を引く (余白の外はミラー)。uOvM = [余白 px / 画面 px] (x, y)
+  ovGLSL(){
+    return `uniform vec2 uOvM;
+vec2 ovUv(vec2 uv){ return 1.0 - abs(1.0 - mod((uv + uOvM) / (1.0 + 2.0 * uOvM), 2.0)); }
+vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv, 0.0, 1.0); }
+`;
+  },
+  _ovDrawComposite(P){
+    const m = this._osM || 0;
+    if(!(m > 0) || !this._finalFBO) return;
+    if(!['A', 'B'].some(k=>(this.slots[k].os || 0) > 0)) return;   // 余白を持つスロットがない (2D の Visual だけ) = 素材は従来どおり _finalFBO
+    const gl = this.gl, fw = this._finalFBO.w, fh = this._finalFBO.h;
+    const pw = Math.round(fw * m), ph = Math.round(fh * m), w = fw + 2 * pw, h = fh + 2 * ph;
+    let O = this._ovSrc;
+    if(!O || O.w !== w || O.h !== h){
+      if(O){ gl.deleteTexture(O.tex); gl.deleteFramebuffer(O.fbo); }
+      O = this._ovSrc = this._mkRGBA8FBO(w, h);
+      gl.bindTexture(gl.TEXTURE_2D, O.tex);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    }
+    O.pad = [pw, ph]; O.m = [pw / fw, ph / fh]; O.fw = fw; O.fh = fh;
+    const loc = gl.getUniformLocation(P, 'uOvM');
+    gl.bindFramebuffer(gl.FRAMEBUFFER, O.fbo);
+    gl.viewport(0, 0, w, h);
+    gl.uniform2f(loc, O.m[0], O.m[1]);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.uniform2f(loc, 0, 0);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
+    gl.viewport(0, 0, fw, fh);
+    this._ovFrame = O;
+  },
+  // _ovSrc の中央 (画面分) をいまの _finalFBO で置き換える (3D の段・折りが素材を読む直前に呼ぶ)
+  _ovSync(){
+    const O = this._ovFrame, F = this._finalFBO;
+    if(!O || !F || O.fw !== F.w || O.fh !== F.h) return null;
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, F.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, O.fbo);
+    gl.blitFramebuffer(0, 0, F.w, F.h, O.pad[0], O.pad[1], O.pad[0] + F.w, O.pad[1] + F.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return O;
+  },
+  // 3D 段が元の画面を d だけ抜いた (暗くした) ときに、余白も同じだけ抜く (次の段が余白に元の絵を拾わないよう)
+  _ovDim(d){
+    const O = this._ovFrame;
+    if(!O || !(d > 0.0005) || !this._fx3dOverProgram()) return;
+    const gl = this.gl;
+    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, O.fbo);
+    gl.viewport(0, 0, O.w, O.h);
+    gl.useProgram(this._fx3dOverProg);
+    gl.bindVertexArray(this._emptyVAO);
+    gl.enable(gl.BLEND);
+    gl.blendColor(0, 0, 0, 1 - Math.min(1, d));
+    gl.blendFunc(gl.ZERO, gl.CONSTANT_ALPHA);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.disable(gl.BLEND);
+    gl.bindVertexArray(null);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
+  },
   _apply3dFx(p, safe){
     this._fx3dPostFold = null;
     this._fx3dNeedleTaken = false;
@@ -7165,7 +7320,9 @@ ${body}
       const folded = !!this._fx3dPostFold && name === lastName;
       Fx3d.foldFrame = folded ? this._fx3dPostFold : null;
       Fx3d.spikeFrame = name === lastName ? spikeF : null;
-      const ok = Fx3d.render(name, { srcTex:this._finalFBO.tex, fbo:T.fbo, w:tw, h:th, e, clock:this.postClock != null ? this.postClock : this.clock, beat });
+      // 3D Overscan: 余白に対応したエンジン (Fx3d.EXTRA[name].ov) には余白付きの素材 _ovSrc を渡す (ovM = 余白の割合)
+      const ovS = (Fx3d.EXTRA[name] && Fx3d.EXTRA[name].ov) ? this._ovSync() : null;
+      const ok = Fx3d.render(name, { srcTex: ovS ? ovS.tex : this._finalFBO.tex, ovM: ovS ? ovS.m : [0, 0], fbo:T.fbo, w:tw, h:th, e, clock:this.postClock != null ? this.postClock : this.clock, beat });
       Fx3d.foldFrame = null; Fx3d.spikeFrame = null;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
@@ -7186,7 +7343,8 @@ ${body}
       gl.activeTexture(gl.TEXTURE0);
       gl.bindTexture(gl.TEXTURE_2D, T.tex);
       gl.uniform1i(gl.getUniformLocation(this._fx3dOverProg, 'uTex'), 0);
-      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), folded ? 1 : Fx3d.bgDim(e) * Fx3d.popEnv(name));   // 折った段は紙まで T に入っている = 素材を全部置き換える / popEnv: ON で暗くなり始め、OFF で元の画面へ戻る
+      const dimNow = folded ? 1 : Fx3d.bgDim(e) * Fx3d.popEnv(name);
+      gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uDim'), dimNow);   // 折った段は紙まで T に入っている = 素材を全部置き換える / popEnv: ON で暗くなり始め、OFF で元の画面へ戻る
       gl.uniform1f(gl.getUniformLocation(this._fx3dOverProg, 'uAlphaOnly'), 0);
       // 3D Res < 100% のときは 3D 側が低解像度 (元の画面より柔らかい) ので、出始めだけ元の画面から短く混ぜて段差を消す
       const mx = Math.min(1, e / 0.12);
@@ -7203,6 +7361,7 @@ ${body}
       gl.disable(gl.BLEND);
       gl.bindVertexArray(null);
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      this._ovDim(dimNow);
     }
     if(!foldNext) this._fx3dBgUnder();   // 折り系が続くときは、折ったあと (Uzumaki の後) に敷く
   },
@@ -7743,12 +7902,13 @@ void main(){
     const gl = this.gl;
     const amt = Math.max(0, Math.min(1, App.deadParam(App.post && App.post.fx3dDepth != null ? +App.post.fx3dDepth : 0.5)));
     const U = (n)=>gl.getUniformLocation(P, n);
-    const rel = [0, 0], tex = [null, null];
+    const rel = [0, 0], tex = [null, null], dos = [0, 0, 0, 0];
     ['A', 'B'].forEach((k, j)=>{
       const s = this.slots[k], f = s && s.fbos && s.fbos[s.fbIdx ^ 1];   // いま描き終えたフレーム
       const off = this._matte && this._matte.only && this._matte.slot !== k;   // 3D Slot = A / B: 3D 段に乗らないスロットの深度は使わない
-      if(!off && f && f.depthValid && f.dtex && s.kind !== 'none' && App.slotVisibleAmount(k) > 0){ tex[j] = f.dtex; rel[j] = App.slotVisibleAmount(k); }
+      if(!off && f && f.depthValid && f.dtex && s.kind !== 'none' && App.slotVisibleAmount(k) > 0){ tex[j] = f.dtex; rel[j] = App.slotVisibleAmount(k); const o = this.slotOs(f); dos[j * 2] = o[0]; dos[j * 2 + 1] = o[1]; }
     });
+    gl.uniform4f(U('uDepthOs'), dos[0], dos[1], dos[2], dos[3]);
     // 両方が深度を出すときだけクロスフェードで分ける (片方だけならその深度を全量)
     if(rel[0] > 0 && rel[1] > 0){
       const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0));
@@ -7928,7 +8088,7 @@ void main(){
     gl.uniform2f(U('uRes'), w, h);
     gl.uniform2f(U('uGrid'), GRID[0], GRID[1]);
     gl.uniformMatrix4fv(U('uView'), false, F.view);
-    gl.uniformMatrix4fv(U('uProj'), false, F.proj);
+    gl.uniformMatrix4fv(U('uProj'), false, this.osProj(F.proj));
     gl.uniform1f(U('uShade'), F.shade);
     gl.uniform1f(U('uBgDark'), F.bgDark);
     gl.uniform1f(U('uNeedleMix'), F.aN / Math.max(F.aN + F.aO + F.aK, 1e-6));
@@ -8018,6 +8178,9 @@ vec4 fx3dApply(vec4 clip){
     return `uniform sampler2D uDepthA;
 uniform sampler2D uDepthB;
 uniform vec2 uRelief;
+uniform vec4 uDepthOs;   // 3D Overscan: 深度テクスチャの余白 (xy = Slot A / zw = Slot B。全体 / 画面分 - 1)
+// 画面座標 → 深度テクスチャ座標 (余白があれば画面の外も実際の深度。その外はミラー)
+vec2 vjDepthUv(vec2 uv, vec2 o){ return 1.0 - abs(1.0 - mod((o.x == 0.0 && o.y == 0.0) ? uv : (uv - 0.5) / (1.0 + o) + 0.5, 2.0)); }
 float vjDepthAt(sampler2D t, vec2 m){
   // 深度の段差 (輪郭) で面が壁のように裂けないよう、格子 1 つぶんほどの範囲を 5 点で均す
   vec2 o = vec2(0.006, 0.0107);
@@ -8025,8 +8188,8 @@ float vjDepthAt(sampler2D t, vec2 m){
         + texture(t, m + vec2(0.0, o.y)).r + texture(t, m - vec2(0.0, o.y)).r) / 6.0;
 }
 float vjRelief(vec2 uv){
-  vec2 m = 1.0 - abs(1.0 - mod(uv, 2.0));   // 紙を広げたときの余白はミラー
-  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, m) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, m) : 0.0);
+  // 紙を広げたときの画面の外は、スロットに余白 (3D Overscan) があればその深度、なければミラー
+  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, vjDepthUv(uv, uDepthOs.xy)) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, vjDepthUv(uv, uDepthOs.zw)) : 0.0);
 }
 float fx3dRelief(vec2 uv){ return (uRelief.x + uRelief.y > 0.0) ? vjRelief(uv) : 0.0; }
 `;
@@ -8155,7 +8318,7 @@ vec3 fx3dFoldShade(vec3 c){
     gl.uniform1f(U('uFx3dNear'), engineProj[14] / (engineProj[10] - 1));
     gl.uniformMatrix4fv(U('uFx3dInvProj'), false, this._mat4Inv(engineProj));
     gl.uniformMatrix4fv(U('uFx3dView'), false, fr.F.view);
-    gl.uniformMatrix4fv(U('uFx3dProj'), false, fr.F.proj);
+    gl.uniformMatrix4fv(U('uFx3dProj'), false, this.osProj(fr.F.proj));   // 3D Native (Code が折りのカメラで投影し直す) もスロットの余白の分だけ広げる
     gl.uniform3f(U('uFx3dEye'), fr.F.eye[0], fr.F.eye[1], fr.F.eye[2]);
     gl.uniform1f(U('uFx3dShade'), fr.F.shade);
     this._foldUpload(prog, 'uF3', fr.F);
@@ -8212,9 +8375,15 @@ vec3 fx3dFoldShade(vec3 c){
     gl.clearColor(0, 0, 0, uzOn ? 0 : 1); gl.clearDepth(1.0);   // Uzumaki 統合時は背景透過
     this._fx3dBgNeed = true;
     gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
     const U = (n)=>gl.getUniformLocation(P, n);
+    { // 3D Overscan: 余白付きの素材 (中央 = いまの画面) を紙に貼る。格子の紙も余白の分だけ広げる (Uzumaki のカードは広げない)
+      const ovS = this._ovSync();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this._foldStackTmp.fbo);
+      gl.uniform2f(U('uOvM'), ovS ? ovS.m[0] : 0, ovS ? ovS.m[1] : 0);
+      gl.uniform2f(U('uOvGrow'), ovS && !uzOn ? ovS.m[0] : 0, ovS && !uzOn ? ovS.m[1] : 0);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, ovS ? ovS.tex : this._finalFBO.tex);
+    }
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uRes'), w, h);
     gl.uniform2f(U('uGrid'), GRID[0], GRID[1]);
@@ -8533,8 +8702,11 @@ vec3 fx3dFoldShade(vec3 c){
                V[2]*ct + czv*st + D[2]*dp*(1-ct) ];
     };
     // 頂点ごとに q(紙座標) / p(3D) / n(法線) / lf(累積折り数=厚み) を持つ
-    let polys = [{ q: [[-asp,-1],[asp,-1],[asp,1],[-asp,1]],
-                   p: [[-asp,-1,0],[asp,-1,0],[asp,1,0],[-asp,1,0]],
+    // 3D Overscan: 素材に余白があれば紙をその分だけ画面の外へ広げる (uv は画面基準のまま 0..1 の外へ続く)
+    const ovS = this._ovSync();
+    const gx = asp * (1 + 2 * (ovS ? ovS.m[0] : 0)), gy = 1 + 2 * (ovS ? ovS.m[1] : 0);
+    let polys = [{ q: [[-gx,-gy],[gx,-gy],[gx,gy],[-gx,gy]],
+                   p: [[-gx,-gy,0],[gx,-gy,0],[gx,gy,0],[-gx,gy,0]],
                    n: [[0,0,1],[0,0,1],[0,0,1],[0,0,1]],
                    lf: [0,0,0,0] }];
     const EPS = 1e-6;
@@ -8681,12 +8853,15 @@ vec3 fx3dFoldShade(vec3 c){
     // 現フレームをミップマップ付きソースへコピー
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tmp.srcTex);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._finalFBO.fbo);
-    gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, w, h);
+    { const src = ovS || this._finalFBO, sw = src.w, sh = src.h;   // 3D Overscan: 余白付きの素材をそのまま写す
+      if((tmp.srcW || w) !== sw || (tmp.srcH || h) !== sh){ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA8, sw, sh, 0, gl.RGBA, gl.UNSIGNED_BYTE, null); tmp.srcW = sw; tmp.srcH = sh; }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src.fbo);
+      gl.copyTexSubImage2D(gl.TEXTURE_2D, 0, 0, 0, 0, 0, sw, sh); }
     gl.generateMipmap(gl.TEXTURE_2D);
     gl.bindFramebuffer(gl.FRAMEBUFFER, tmp.fbo);
     const U = (n)=>gl.getUniformLocation(P, n);
     gl.uniform1i(U('uTex'), 0);
+    gl.uniform2f(U('uOvM'), ovS ? ovS.m[0] : 0, ovS ? ovS.m[1] : 0);
     gl.uniformMatrix4fv(U('uView'), false, view);
     gl.uniformMatrix4fv(U('uProj'), false, proj);
     {
@@ -9140,6 +9315,7 @@ vec3 fx3dFoldShade(vec3 c){
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, src.tex);
     _applyMiniFxUniforms(gl, this.pipProg, p.w, p.h, true, {});
+    { const o = this.slotOs(src); gl.uniform2f(gl.getUniformLocation(this.pipProg, 'uCrop'), o[0], o[1]); }
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     // 非同期読み戻し: 数フレーム遅れてプレビューに反映される (同期ストールの主因だった)
@@ -9536,6 +9712,7 @@ vec3 fx3dFoldShade(vec3 c){
     } else {
       if(this._wasFrozen && !freezeRequested) this._resumeVideos();     // フリーズ解除で動画を再開
       this._matte = this._matteFrame(post);
+      this._osUpdate(post);
       this._renderVisibleSlot('A', dt, realDt);
       this._renderVisibleSlot('B', dt, realDt);
     }
@@ -9650,6 +9827,7 @@ vec3 fx3dFoldShade(vec3 c){
     const prevClock = this.clock;
     if(slot && typeof slot._clock === 'number') this.clock = slot._clock;
     this._kdBegin(slotKey, slot);
+    this._osCur = slot && slot.kind !== 'shader' && slot.fbos ? slot.fbos[slot.fbIdx] : null;   // Code の描画中のスロット (GL.osProj が余白を読む)
     try {
     if(slot.kind === 'none'){
       // 無選択: A の「なし」= 不透明な黒シェーダ(Post FX が乗る土台。gain 等で反応)。
@@ -10019,6 +10197,7 @@ vec3 fx3dFoldShade(vec3 c){
     this.renderSlot(slotKey);
     } finally {
       this.clock = prevClock;
+      this._osCur = null;
       this._kdEnd();
     }
   }
@@ -10146,6 +10325,11 @@ float vjDepth = 0.0;
     }
 
     const format = hasMainImage ? 'shadertoy' : (looksSandbox ? 'sandbox' : 'raw');
+    // 3D Overscan: 深度を出すシェーダは FBO が画面より大きくなることがある。gl_FragCoord を余白 (uVjOs px) の分ずらした _vjFC に置き換え、
+    //   iResolution は画面分のまま = 画面の外まで同じ座標系で描く (余白 0 なら従来と同じ)
+    const writes3D = /\bvjDepth\s*=/.test(body);
+    const fcSet = writes3D ? '  _vjFC = vec4(gl_FragCoord.xy - uVjOs, gl_FragCoord.zw);\n' : '';
+    if(writes3D){ body = body.replace(/\bgl_FragCoord\b/g, '_vjFC'); inject += 'uniform vec2 uVjOs;\nvec4 _vjFC;\n'; }
     if(bgWrap) inject += 'uniform float uSlotIsAReal;\nuniform vec3 uBgColor;\n';
     if(uses3D) inject += 'uniform float u3DMode;\n';
     // 背景色の敷き込み: alpha<1 の所に uBgColor を加算し、Slot A では不透明にする
@@ -10158,8 +10342,8 @@ float vjDepth = 0.0;
     if(hasMainImage){
       code = this.HEADER + inject + body + `
 void main(){
-  vec4 c;
-  mainImage(c, gl_FragCoord.xy);
+${fcSet}  vec4 c;
+  mainImage(c, ${writes3D ? '_vjFC.xy' : 'gl_FragCoord.xy'});
 ${bgOut}  _vjFragOut = c;
   _vjDepthOut = vec4(${depthExpr}, 0.0, 0.0, 1.0);
 }
@@ -10169,7 +10353,7 @@ ${bgOut}  _vjFragOut = c;
       const translated = body.replace(/gl_FragColor/g, '_vjCol').replace(/\bvoid\s+main\s*\(/, 'void _vjUserMain(');
       code = this.HEADER + inject + 'vec4 _vjCol = vec4(0.0);\n' + translated + `
 void main(){
-  _vjUserMain();
+${fcSet}  _vjUserMain();
   vec4 c = _vjCol;
 ${bgOut}  _vjFragOut = c;
   _vjDepthOut = vec4(${depthExpr}, 0.0, 0.0, 1.0);
@@ -10181,7 +10365,7 @@ ${bgOut}  _vjFragOut = c;
       code = /\bvoid\s+main\s*\(/.test(translated)
         ? this.HEADER + inject + translated.replace(/\bvoid\s+main\s*\(/, 'void _vjUserMain(') + `
 void main(){
-  _vjUserMain();
+${fcSet}  _vjUserMain();
   _vjDepthOut = vec4(${depthExpr}, 0.0, 0.0, 1.0);
 }
 `
@@ -11169,7 +11353,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -12317,11 +12501,13 @@ uniform vec3  uBgColA;
 uniform float uZoomA, uZoomB;
 uniform vec2  uPanA, uPanB;
 uniform int   uBlendMode;
+uniform vec2  uOsA, uOsB;   // 3D Overscan の余白 (本命 composite と同じ)
 vec2 _mir(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
 void main(){
   float za = (uZoomA==0.0)?1.0:uZoomA, zb = (uZoomB==0.0)?1.0:uZoomB;
-  vec4 ca = texture(uA, _mir((vUv-0.5)/za + 0.5 - uPanA));
-  vec4 cb = texture(uB, _mir((vUv-0.5)/zb + 0.5 - uPanB));
+  vec2 sa = (vUv-0.5)/za + 0.5 - uPanA, sb = (vUv-0.5)/zb + 0.5 - uPanB;
+  vec4 ca = texture(uA, _mir((uOsA.x == 0.0 && uOsA.y == 0.0) ? sa : (sa - 0.5) / (1.0 + uOsA) + 0.5));
+  vec4 cb = texture(uB, _mir((uOsB.x == 0.0 && uOsB.y == 0.0) ? sb : (sb - 0.5) / (1.0 + uOsB) + 0.5));
   ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);   // Slot A の背景色 (本命 composite と同じ)
   float a = clamp(uShowA, 0.0, 1.0), b = clamp(uShowB, 0.0, 1.0);
   vec4 both;
@@ -12398,7 +12584,8 @@ vec3 _hsl2rgb(vec3 hsl){
   float p = 2.0 * l - q;
   return vec3(_hue2rgb(p, q, h + 1.0/3.0), _hue2rgb(p, q, h), _hue2rgb(p, q, h - 1.0/3.0));
 }
-vec2 _uv(vec2 v){ return vec2(v.x, mix(v.y, 1.0 - v.y, uFlipY)); }
+uniform vec2 uCrop;   // 3D Overscan のスロットを読むときの余白 (全体 / 画面分 - 1)。中央の画面分だけを使う
+vec2 _uv(vec2 v){ vec2 f = vec2(v.x, mix(v.y, 1.0 - v.y, uFlipY)); return (uCrop.x == 0.0 && uCrop.y == 0.0) ? f : (f - 0.5) / (1.0 + uCrop) + 0.5; }
 vec3 sampleBlur(vec2 uv, float radPx){
   int N = int(min(16.0, 16.0 + uRes.x * 0.0));   // ループ展開抑止
   const float GA = 2.39996323;
@@ -12502,6 +12689,7 @@ function _applyMiniFxUniforms(gl, prog, W, H, flipY, postOverride){
   gl.uniform1i(U('uTex'), 0);
   gl.uniform2f(U('uRes'), W, H);
   gl.uniform1f(U('uFlipY'), flipY ? 1 : 0);
+  gl.uniform2f(U('uCrop'), 0, 0);
   const p = postOverride || ((typeof App !== 'undefined' && App.post) ? App.post : {});
   gl.uniform1f(U('uBri'),       dz(p.bri || 0));
   gl.uniform1f(U('uCon'),       dz(p.con != null ? p.con : 1));
@@ -13069,6 +13257,8 @@ const App = {
     const n = m ? parseInt(m[1], 16) : 0;
     return [((n>>16)&255)/255, ((n>>8)&255)/255, (n&255)/255];
   },
+  // 3D Overscan (片側 %)。0 / 5 / 10 / 15 / 20 のどれか
+  fx3dOverscanPct(p){ const r = (p || this.post || {}).fx3dOverscan; if(r == null) return 0; const v = Math.round(+r); return [0, 5, 10, 15, 20].includes(v) ? v : (v > 20 ? 20 : 0); },
   bgAColor(){   // 現在の Slot A 背景色 (パース結果はキャッシュ)
     const hex = this.slotABg || '#000000';
     if(!this._bgA || this._bgA.hex !== hex) this._bgA = { hex, rgb:this.parseHexRgb(hex) };
@@ -14091,7 +14281,7 @@ const App = {
     dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both',
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
     waveform:0.0,
@@ -14215,7 +14405,7 @@ const App = {
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','waveform','mosaic','shake','specWarp','zoomPump','shatter','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
     pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
-    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','fx3dDepth','uzumaki','river','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot'],
+    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','fx3dDepth','uzumaki','river','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dOverscan'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline','unsharp','unsharpRadius','sharpen','crisp','shock'],
     glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
@@ -14293,7 +14483,7 @@ const App = {
     dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both',
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
     waveform:0.0,
@@ -17010,7 +17200,7 @@ ${outBlock}
       if(!src || !src.fbo) return false;
       const dst = (dstSlot && dstSlot.fbos) ? dstSlot.fbos[dstSlot.fbIdx ^ 1] : null;
       // Slot A は RGBA16F(HALF_FLOAT)で UNSIGNED_BYTE/FLOAT 読み不可 → 小さな RGBA8 へ blit して読む
-      const tw = 128, th = Math.max(1, Math.round(128 * src.h / src.w)), fw = tw * 2;
+      const tw = 128, th = Math.max(1, Math.round(128 * (src.bh || src.h) / (src.bw || src.w))), fw = tw * 2;
       let d = this._palFBO;
       if(!d || d.w !== fw || d.h !== th){
         if(d){ gl.deleteFramebuffer(d.fbo); gl.deleteTexture(d.tex); }
@@ -17030,10 +17220,10 @@ ${outBlock}
       gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, d.fbo);
       gl.clearBufferfv(gl.COLOR, 0, [0, 0, 0, 0]);   // 適用先が無いときは右半分=黒(=統計なし)
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, src.fbo);
-      gl.blitFramebuffer(0, 0, src.w, src.h, 0, 0, tw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+      { const q = src.pad || [0, 0], bw = src.bw || src.w, bh = src.bh || src.h; gl.blitFramebuffer(q[0], q[1], q[0] + bw, q[1] + bh, 0, 0, tw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR); }   // 3D Overscan の余白は読まない
       if(dst && dst.fbo){
         gl.bindFramebuffer(gl.READ_FRAMEBUFFER, dst.fbo);
-        gl.blitFramebuffer(0, 0, dst.w, dst.h, tw, 0, fw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR);
+        { const q = dst.pad || [0, 0], bw = dst.bw || dst.w, bh = dst.bh || dst.h; gl.blitFramebuffer(q[0], q[1], q[0] + bw, q[1] + bh, tw, 0, fw, th, gl.COLOR_BUFFER_BIT, gl.LINEAR); }
       }
       gl.bindFramebuffer(gl.READ_FRAMEBUFFER, d.fbo);
       this._palPending = true;
@@ -20893,6 +21083,7 @@ void mainImage(out vec4 o, in vec2 f){
     { const sp = $('#pxFx3dPop'); if(sp){ sp.value = App.post.fx3dPop || 'back'; sp.addEventListener('change', ()=>{ App.post.fx3dPop = sp.value; }); } }
     { const ss = $('#pxFx3dSlot'); if(ss){ ss.value = ['A','B'].includes(App.post.fx3dSlot) ? App.post.fx3dSlot : 'both'; ss.addEventListener('change', ()=>{ App.post.fx3dSlot = ss.value; }); } }
     { const st = $('#pxFx3dTarget'); if(st){ st.value = App.post.fx3dTarget === 'all' ? 'all' : 'object'; st.addEventListener('change', ()=>{ App.post.fx3dTarget = st.value; }); } }
+    { const so = $('#pxFx3dOverscan'); if(so){ so.value = String(App.fx3dOverscanPct()); so.addEventListener('change', ()=>{ App.post.fx3dOverscan = +so.value; }); } }
     slid('pxShake','shake',f2);
     slid('pxMblur','mblur',f2);
     slid('pxGain', 'gain', f2);
@@ -21269,6 +21460,7 @@ void mainImage(out vec4 o, in vec2 f){
     if($('#pxFx3dPop')) $('#pxFx3dPop').value = ['back','elastic','bounce','out','off'].includes(p.fx3dPop) ? p.fx3dPop : 'back';
     if($('#pxFx3dSlot')) $('#pxFx3dSlot').value = ['A','B'].includes(p.fx3dSlot) ? p.fx3dSlot : 'both';
     if($('#pxFx3dTarget')) $('#pxFx3dTarget').value = p.fx3dTarget === 'all' ? 'all' : 'object';
+    if($('#pxFx3dOverscan')) $('#pxFx3dOverscan').value = String(App.fx3dOverscanPct(p));
     set('pxShake', p.shake, f2);
     set('pxMblur', p.mblur, f2);
     set('pxGain',  p.gain,  f2);

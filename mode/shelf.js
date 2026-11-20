@@ -7,6 +7,7 @@
 // =============================================================
 
 const Shelf = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   initialized:false, ok:false, gl:null,
   prog:null, buf:null, nVerts:0, locs:null,
   depthRBO:null, depthW:0, depthH:0,
@@ -376,6 +377,9 @@ void main(){
       const a=roll*Math.PI/180, c=Math.cos(a), sn=Math.sin(a), asp=w/h, R=new Float32Array(16);
       R[0]=c; R[1]=sn*asp; R[4]=-sn/asp; R[5]=c; R[10]=1; R[15]=1;
       mvp=this._mul(R, mvp);
+    }
+    if(typeof GL !== 'undefined' && GL.osProj){   // 3D Overscan: スロットに余白があれば画角を広げる
+      mvp=GL.osProj(mvp);
     }
 
     gl.useProgram(this.prog);

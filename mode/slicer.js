@@ -30,6 +30,7 @@ const SL_IMG_KEYS = ['depth3D','pieces','seed','sides','maxSides','explode','ben
           update(beat, dt, clock) の clock (数値) を時刻に使う。
           imgMode は 'fixed'、bgMode は 'color' 等に (random 切替・loadRandomImage を呼ばせない)。 */
 const Slicer = {
+  overscan: true,   // 3D Overscan に対応 (描画の投影を GL.osProj に通す)
   gl:null,
   initialized:false,
   prog:null,                 // メインシェーダ (断片描画)
@@ -1086,6 +1087,7 @@ void main(){
         ex *= w0; ey *= w0; ez = d0 + (ez - d0) * w0;
       }
       const view = this.m4.lookAt([ex, ey, ez], [dz(this.P.lookX) * 0.01 * this.imgAsp, dz(this.P.lookY) * 0.01, 0], [0,1,0]);
+      if(typeof GL !== 'undefined' && GL.osProj && GL._osCur){ const o = GL.osProj(proj); for(let i = 0; i < 16; i++) proj[i] = o[i]; }   // 3D Overscan: スロットに余白があれば画角を広げる (針・折りのフックも同じ投影)
       gl.uniformMatrix4fv(this.locs.u_proj, false, proj);
       gl.uniformMatrix4fv(this.locs.u_view, false, view);
       // 3D FX の最後の段のときだけ Fx3d.foldFrame が立つ (紙の距離 = w=0 の正面距離)。Code の Slicer は常に OFF
