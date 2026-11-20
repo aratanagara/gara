@@ -19693,6 +19693,9 @@ void mainImage(out vec4 o, in vec2 f){
         P.fluidHud   = ch(0.2) ? 0 : Math.round(R(50, 200)/5)*5;
         P.fluidBig   = ch(0.3) ? 0 : Math.round(R(50, 200)/5)*5;
         P.fluidSharp = ch(0.4) ? 0 : Math.round(R(20, 100)/5)*5;
+        P.fluidLayout = ch(0.5) ? 1 : 0;
+        P.fluidFont = ch(0.4) ? 0 : Math.floor(R(1, (NovelTerminal.FLUID_FONTS || [0]).length));
+        P.fluidAspect = ch(0.5) ? 100 : Math.round(R(50, 200)/5)*5;
         P.fluidBeats = [0, 4, 8, 8, 16][(Math.random()*5)|0];
         for(const k of ['fluidCircleMode','fluidTriMode','fluidRectMode']) P[k] = ch(0.5) ? 0 : 1 + ((Math.random()*3)|0);
         if(P.fluidCircleMode === 3 && P.fluidTriMode === 3 && P.fluidRectMode === 3) P.fluidTriMode = 0;
@@ -19734,6 +19737,8 @@ void mainImage(out vec4 o, in vec2 f){
       ['Morph',       'morph',      0,   3.0, 0.05, v=>v.toFixed(2), '旧シーン間の変形トランジション秒数 (0=カット)'],
     ];
     specs.forEach(mkSlider);
+    mkSelect(['Fluid Layout', 'fluidLayout', NovelTerminal.FLUID_LAYOUTS || [[0,'Classic']], 'Fluid: 構図 (Classic = 従来の場面ごとの配置 / Kandinsky = S126 の骨格: 斜めの主軸と対軸の交点が焦点、主軸の一端に大円、反対側から楔が大円を指し、四角は対軸の上に主軸と平行に座る)']);
+    mkSelect(['Fluid Font', 'fluidFont', (NovelTerminal.FLUID_FONTS || []).map((f, i)=>[i, f[0]]), 'Fluid: 書体 (Default = 従来のリュウミン + MS ゴシック)']);
     (NovelTerminal.FLUID_SPECS || []).forEach(mkSlider);
     for(const [label, key, specs2] of (NovelTerminal.FLUID_SHAPES || [])){
       mkSelect([label, key, NovelTerminal.FLUID_SHAPE_OPTS, `Fluid: ${label} の見せ方 (Auto = 場面で塗りと輪郭が入れ替わる / Off = 出さない)`]);
