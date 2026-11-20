@@ -39,7 +39,9 @@
 // @param uWBoom   0..100  = 40.0  @desc 太線の爆発形 (外向きの角 5〜7 本) の出やすさ
 // @param uWUni    0..100  = 50.0  @desc ウニフラ (芯の楕円の外へ細い放射線が密に生える) の出やすさ
 // @param uThick   4..100  = 40.0  @desc 線幅 (1080p で ×0.1 px)。爆発形は 2.2 倍の太線
-// @param uSpikes  6..64   = 26.0  @desc トゲ数。細かい叫びの本数の目安。粗い叫びは 0.4 倍、ウニフラの放射線は長い線 1.3 倍 + 中 3.4 倍 + 根元 7.5 倍
+// @param uSpikeN  4..80   = 18.0  @desc ギザギザ叫びのトゲの数 (細かい叫びの本数。粗い叫びは 0.45 倍)
+// @param uSpikeVar 0..100 = 40.0  @desc トゲの数のばらつき (%)。吹き出しごとに ±この割合でトゲの数を変える。0 で全部同じ数
+// @param uSpikes  6..64   = 26.0  @desc ウニフラの放射線の数の目安 (長い線 1.3 倍 + 中 3.4 倍 + 根元 7.5 倍)
 // @param uSharp   0..100  = 60.0  @desc トゲの鋭さ。大きいほどトゲが長く、辺が内側へ反って先が鋭くなる (叫び・爆発・ウニフラ)
 // @param uBumps   5..24   = 11.0  @desc もこもこ数。雲形のふくらみの数の目安 (整数に丸める)
 // @param uPeakMin 30..200 = 70.0  @desc 山谷の数の最小 (トゲ数・もこもこ数の目安に対する %)。吹き出しごとに最小〜最大の範囲で数を変える (雲・叫び・波打ち・爆発・ウニフラ)
@@ -94,6 +96,8 @@ uniform float uWWavy;
 uniform float uWBoom;
 uniform float uWUni;
 uniform float uThick;
+uniform float uSpikeN;
+uniform float uSpikeVar;
 uniform float uSpikes;
 uniform float uSharp;
 uniform float uBumps;
@@ -531,6 +535,8 @@ void uf_balloon(inout vec3 rgb, inout float a, vec2 p, vec2 c, vec2 rad, float s
   float s = h5 * 0.917 + h6 * 0.31;
   float cm = mix(cmLo, cmHi, uf_h(key + 1.45));
   float hn = uf_h(key + 1.57);
+  // 叫びのトゲの数: uSpikeN を吹き出しごとに ±uSpikeVar % で変える
+  float nShout = clamp(uSpikeN, 4.0, 80.0) * (1.0 + (uf_h(key + 2.29) - 0.5) * 2.0 * clamp(uSpikeVar, 0.0, 100.0) * 0.01);
   // 形ごとの山谷の数・トゲの長さ・反り
   float n = 7.0;
   float L0 = 0.0;
@@ -542,8 +548,8 @@ void uf_balloon(inout vec3 rgb, inout float a, vec2 p, vec2 c, vec2 rad, float s
   else if(shape == 7){ n = clamp(floor(mix(3.0, 8.999, hn)), 3.0, 8.0); ext = 0.35; }
   else if(shape == 8){ n = 4.0; ext = 0.5; rad *= 0.85; }
   else if(shape == 1){ n = max(5.0, floor(nBump * cm + 0.5)); ext = 0.55; }
-  else if(shape == 2){ n = max(8.0, floor(nSpk * cm + 0.5)); L0 = sz * mix(0.09, 0.2, sharp); ext = 0.3; }
-  else if(shape == 3){ n = max(5.0, floor(nSpk * 0.4 * cm + 0.5)); L0 = sz * mix(0.2, 0.42, sharp); ext = 0.55; rad *= 0.9; }
+  else if(shape == 2){ n = max(4.0, floor(nShout + 0.5)); L0 = sz * mix(0.09, 0.2, sharp); ext = 0.3; }
+  else if(shape == 3){ n = max(3.0, floor(nShout * 0.45 + 0.5)); L0 = sz * mix(0.2, 0.42, sharp); ext = 0.55; rad *= 0.9; }
   else if(shape == 4){ n = clamp(floor(mix(4.0, 7.0, hn) * cm + 0.5), 3.0, 12.0); amp = mix(0.14, 0.34, dv); dent = 0.35; }
   else if(shape == 5){ n = clamp(floor((5.0 + floor(hn * 2.999)) * cm + 0.5), 4.0, 11.0); L0 = sz * mix(0.45, 0.75, sharp); bend0 = min(bend0 * 1.35, 0.7); ext = 0.9; rad *= 0.75; }
   else { n = 9.0; amp = 0.1 + 0.08 * dv; ext = 1.3; }
