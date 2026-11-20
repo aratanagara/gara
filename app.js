@@ -4243,6 +4243,8 @@ void main(){
       this._ctxLost = true;
       // 描画ループを完全停止 → これ以上 GPU を叩かない (明滅ループを止める最優先策)
       if(typeof App !== 'undefined') App._halted = true;
+      // 自動復帰: 直前の正常な状態で再起動する (3 分以内に 3 回続いたら下の従来のセーフモード案内へ)
+      try{ if(typeof CrashGuard !== 'undefined' && CrashGuard.onContextLost()){ try{ Diag.log('webgl', 'context lost (frame='+this.frame+') -> auto recover'); }catch(_){} return; } }catch(_){}
       try{
         let n = (parseInt(localStorage.getItem('vj.ctxLoss') || '0', 10) || 0) + 1;
         localStorage.setItem('vj.ctxLoss', String(n));
@@ -4278,7 +4280,13 @@ void main(){
       }catch(_){}
       try{ Diag.log('webgl', 'context lost (frame='+this.frame+')'); }catch(_){}
     }, false);
-    this.canvas.addEventListener('webglcontextrestored', ()=>{ this._ctxLost = false; try{ Diag.log('webgl', 'context restored'); }catch(_){} }, false);
+    // 復元されたら再初期化 = 再読み込み (GL 資源を全部作り直すより確実)。自動復帰で再読み込み中なら何もしない
+    this.canvas.addEventListener('webglcontextrestored', ()=>{
+      this._ctxLost = false;
+      try{ Diag.log('webgl', 'context restored'); }catch(_){}
+      if(typeof CrashGuard !== 'undefined' && CrashGuard._reloading) return;
+      if(typeof CrashGuard !== 'undefined' && CrashGuard._log().filter(e => Date.now() - e.t < CrashGuard.WINDOW_MS).length < 3) location.reload();
+    }, false);
 
     this.audioTex = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.audioTex);
@@ -4795,7 +4803,7 @@ vec3 f3Paper(vec2 q, float lift){
     gl.attachShader(prog, this.vs);
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
-    const rec = { slotKey, src, pp, fs, prog, params: opts.params || null };
+    const rec = { slotKey, src, pp, fs, prog, params: opts.params || null, editor: !!opts.editor };
     // 並列コンパイル対応 & 同期強制でなければ、ステータス照会を tick へ遅延(UI を固めない)。
     //   旧 slot.prog はそのまま描画し続け、完了後に差し替える(黒フラッシュ無し)。
     if(this._parallelCompileExt && !opts.sync){
@@ -4841,8 +4849,9 @@ vec3 f3Paper(vec2 q, float lift){
       if(!gl.getShaderParameter(fs, gl.COMPILE_STATUS)) log = gl.getShaderInfoLog(fs);
       else log = gl.getProgramInfoLog(prog) || 'link error';
       try{ gl.deleteShader(fs); gl.deleteProgram(prog); }catch(e){}
-      slot.errors = Shader.remapErrors(log, pp.headerLines);
+      slot.errors = Shader.remapErrors(log || 'compile error', pp.headerLines);
       if(!slot.prog) slot.ready = false;   // 旧 prog があれば描画は継続(直近の正常シェーダを維持)
+      if(!slot.prog && !rec.editor && typeof CrashGuard !== 'undefined') CrashGuard.onCompileFail(slotKey);   // 描くものが無くなったスロット → 直前の正常な状態へ
       if(deferred && typeof UI !== 'undefined' && UI.showError) UI.showError(slot.errors);
       return false;
     }
@@ -14376,6 +14385,7 @@ const App = {
     setTimeout(()=>{ try{ window.__vjLoadDone && window.__vjLoadDone(); }catch(_){} }, 15000);
     this._shadersReadyPromise.then(async ()=>{
       this._flushPendingSlotRestores();   // 「なし」を入れる下の判定より先に、復元を待たせたスロットを戻す
+      if(typeof CrashGuard !== 'undefined' && CrashGuard.bootApply()){ MIDI.applyAll(); return; }   // クラッシュからの自動復帰 (startup より優先)
       LOAD('Applying startup preset…', 96);
       let dv = PRESETS.findIndex(p => p && /liquid/i.test(p.name || ''));
       if(dv < 0) dv = PRESETS.findIndex(p => p && /vangogh/i.test(p.name || ''));  // フォールバック
@@ -16232,6 +16242,10 @@ ${outBlock}
       }
       this._escArmedAt = 0;
     }
+    this._blankResetCore();
+  },
+  // Esc の全リセットの本体 (両スロットなし + パラメータ初期化)。クラッシュからの自動復帰 (CrashGuard) も使う
+  _blankResetCore(){
     // リセットは 3 秒後の autosave で vj.state に焼き付くため、直前状態を undo へ確定させる
     this._undoPushNow();
     this.gradAuto.mode = 0;
@@ -21622,7 +21636,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(!src.trim()){ toast('Editor is empty'); return; }
     // Editor からのコンパイルはシェーダモードへ切替。手動編集は即時エラー表示のため同期コンパイル。
     GL.slots[App.activeSlot].kind = 'shader';
-    const ok = GL.compileSlot(App.activeSlot, src, {sync:true});
+    const ok = GL.compileSlot(App.activeSlot, src, {sync:true, editor:true});
     if(ok) GL.slots[App.activeSlot].edited = true;   // 落ちた後の復元でプリセットのコードに戻さない
     if(ok){ this.hideError(); this.refreshParams(); this.updateGutter([]); this.refreshFmt(); this.refreshSlot(); toast('Compiled ('+GL.slots[App.activeSlot].format+')'); }
     else { this.showError(GL.slots[App.activeSlot].errors); this.updateGutter(Shader.errorLines(GL.slots[App.activeSlot].errors)); this.refreshFmt(); }
