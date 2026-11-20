@@ -45,13 +45,14 @@ const float RH_HUB   = 2.0/3.0;    // 白域スケール
 const float RH_HOLE  = 0.087;      // スピンドル穴
 #define RH_T (0.015 * (uStep / 100.0))      // 1枚の厚み(段の高さ=CD くらい薄く)
 const float RH_RDISC = 0.95;       // 円盤半径(ワールド)
+float rh_maxR = 1.0;               // いちばん大きい CD の外周 (正規化 0..1、フレーム毎に算出)
 float rh_R[RH_RINGS];              // 各 CD の外周(ワールド半径, フレーム毎に算出)
 float rh_H[RH_RINGS];              // 各 CD のスタック上面 z (= rank * RH_T)
 float rh_Rb[RH_RINGS];             // 裏面の CD の外周
 float rh_Hb[RH_RINGS];             // 裏面の CD の下面の深さ (z = -rh_Hb)
 
 // @param uStep    30..300 = 100.0 @desc 段の高さ。CD 1 枚の厚み
-// @param uMotion  0..300 = 100.0 @when uSizeLock < 0.5 @desc 各段の外周が伸び縮みする振幅。0 で動かない
+// @param uMotion  0..300 = 100.0 @when uSizeLock < 0.5 @desc 各段の外周が伸び縮みする振幅。0 で動かず、いちばん広がった大きさで止まる
 // @param uThick   20..300 = 100.0 @desc 段の縁の黒い線の太さ
 // @param uScale 50..150 = 100.0 @when uSizeLock < 0.5 @desc 物体全体の大きさ
 // @param uAngle -180..180 = 0.0 @desc 横回転の向き (度)
@@ -60,7 +61,7 @@ float rh_Hb[RH_RINGS];             // 裏面の CD の下面の深さ (z = -rh_H
 // @param uCdCount 1..32 = 8 @desc 積む CD の枚数 (整数に丸める)
 // @param uBackCount 0..32 = 0 @desc 裏面に重ねる CD の枚数。0 で平らな鏡面
 // @param uSizeOrder bool = true @desc ON で小さい CD ほど上に積む。OFF で乱数の順に積み、上が大きくなることもある
-// @param uSizeLock bool = false @desc ON で大きさを固定する。外周の伸び縮みを止め、全体の大きさを既定 (100) にする。音や Drive で Scale / Motion が動いても大きさは変わらない
+// @param uSizeLock bool = false @desc ON で大きさを固定する。外周の伸び縮みを止めていちばん広がった大きさにし (Motion 0 と同じ)、全体の大きさを既定 (100) にする。音や Drive で Scale / Motion が動いても大きさは変わらない
 // @param uProfile 30..300 = 100 @desc 山の断面の曲がり。100 で直線、小さいと下が急で上が平ら、大きいと逆
 // @param uSeed 0..99 = 0 @desc 各段の伸び縮みの乱数の種。変えると動きの組み合わせが変わる (整数に丸める)
 // @param uHoleSize 40..500 = 100 @desc 中心のスピンドル穴の大きさ
@@ -124,6 +125,10 @@ uniform vec3 uHighlightTint; // 鏡面ハイライトにかけるティント。
 uniform vec3 uGlassTint; // 中央のガラスの色にかけるティント。既定は白で変化なし
 
 float rh_scale(){ return uSizeLock > 0.5 ? 1.0 : uScale / 100.0; }   // 物体全体の大きさ (サイズ固定中は既定)
+// 穴と透明部 (穴 + 中央のガラスの帯) の半径 (正規化)。いちばん大きい CD を覆い切らないように上限を設ける
+//   (Hole Size を大きくし、CD が少ない・伸び縮みを止めた (Motion 0 / Size Lock) ときに、円盤が丸ごと透明になって何も見えなくなっていた)
+float rh_holeN(){ return min(RH_HOLE * RH_HUB * (uHoleSize / 100.0), 0.55 * rh_maxR); }
+float rh_dataN(){ return min(rh_holeN() + (0.34 - RH_HOLE) * RH_HUB * (uClearSize / 100.0), 0.8 * rh_maxR); }
 int rh_count(){ return int(clamp(uCdCount + 0.5, 1.0, float(RH_RINGS))); }
 int rh_countB(){ return int(clamp(uBackCount + 0.5, 0.0, float(RH_RINGS))); }
 
@@ -133,10 +138,14 @@ float rh_outer(int k, int n, float so){
   vec4 h = rh_hash4(fk + 5.0 + floor(uSeed + 0.5)*37.0 + so);
   float span    = 1.0 - 0.34*RH_HUB;
   float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/max(float(n), RH_BASE_N));
-  float amp     = (0.10 + 0.24*h.x) * span * (uSizeLock > 0.5 ? 0.0 : uMotion / 100.0);
+  // Motion 0 (とサイズ固定) は、Motion 100 で動いたときに届く最大の大きさで止める。0〜100 は止まる位置から伸び縮みへ連続でつなぎ、100 以上は従来どおり
+  float m       = uSizeLock > 0.5 ? 0.0 : uMotion / 100.0;
+  float amp1    = (0.10 + 0.24*h.x) * span;                    // Motion 100 の振幅
+  float amp     = amp1 * m;
+  float center  = baseOut + 1.5*amp1*max(0.0, 1.0 - m);        // 2 つの sin の和の最大 = 1.5 × 振幅
   float rate    = 0.15 + 0.75*h.y;
   float phase   = h.z * 6.2831;
-  float rOut = baseOut + amp*sin(time*rate + phase) + 0.5*amp*sin(time*rate*0.43 + phase*1.7);
+  float rOut = center + amp*sin(time*rate + phase) + 0.5*amp*sin(time*rate*0.43 + phase*1.7);
   return clamp(rOut, 0.30, 1.0);
 }
 
@@ -160,7 +169,7 @@ float rh_zig(vec3 p){
   int nb = rh_countB();            // 裏面の段: 表を z = 0 で裏返した向きに積む
   vec3 pb = vec3(p.xy, -p.z);
   for(int i = 0; i < nb; i++) d = min(d, rh_cyl(pb, rh_Rb[i], rh_Hb[i]));
-  float hole = length(p.xy) - RH_HOLE*RH_HUB*RH_RDISC*(uHoleSize / 100.0);   // 無限縦シリンダ
+  float hole = length(p.xy) - rh_holeN() * RH_RDISC;   // 無限縦シリンダ
   if(ky > 1.0){ return max(d, -hole) * sc / ky; }
   return max(d, -hole) * sc;                                   // 穴をくり抜く
 }
@@ -224,6 +233,9 @@ vec3 bg_romhack(vec2 fc){
   float nbf = float(nb);
   float tzb = RH_T * RH_BASE_N / max(nbf, RH_BASE_N);
   for(int i = 0; i < nb; i++) rh_Rb[i] = rh_outer(i, nb, 101.0) * RH_RDISC;
+  rh_maxR = 0.0;
+  for(int i = 0; i < ncd; i++) rh_maxR = max(rh_maxR, rh_R[i] / RH_RDISC);
+  for(int i = 0; i < nb; i++) rh_maxR = max(rh_maxR, rh_Rb[i] / RH_RDISC);
   for(int i = 0; i < nb; i++){
     float rank = 1.0;
     for(int j = 0; j < nb; j++){ if(uSizeOrder > 0.5 ? rh_Rb[j] > rh_Rb[i] : rh_ord(j, 101.0) > rh_ord(i, 101.0)) rank += 1.0; }
@@ -250,7 +262,7 @@ vec3 bg_romhack(vec2 fc){
   float rn  = r / RH_RDISC;
   float ang = atan(po.y, po.x);
   vec2  rdir = (r > 1e-4) ? po/r : vec2(1.0, 0.0);
-  float rData = RH_HOLE * RH_HUB * (uHoleSize / 100.0) + (0.34 - RH_HOLE) * RH_HUB * (uClearSize / 100.0);   // 透明部は穴の外側の帯 (穴を大きくしても残る。既定の穴では従来と同じ)
+  float rData = rh_dataN();   // 透明部は穴の外側の帯 (穴を大きくしても残る。既定の穴では従来と同じ)
 
   float topFace  = smoothstep(0.25, 0.75, nor.z);          // 上面(段の天面)
   float sideFace = smoothstep(0.5, 0.15, nor.z);           // 側面(段の厚み=縦壁)
@@ -348,7 +360,7 @@ vec3 bg_romhack(vec2 fc){
     float Fp = 0.06 + 0.94 * pow(1.0 - NdV, 5.0);                        // ポリカーボネートのフレネル (正面でも少し映る)
     float NdH = max(dot(nor, Hh), 0.0);
     float sp = pow(NdH, 220.0) * 3.0 + pow(NdH, 30.0) * 0.45 + pow(NdH, 6.0) * 0.12;   // 鋭いハイライト + 柔らかい艶 + 広い照り
-    float hole = RH_HOLE * RH_HUB * (uHoleSize / 100.0);
+    float hole = rh_holeN();
     float lit  = 0.35 + 0.65 * max(dot(rdir, normalize(Lw.xy + 1e-4)), 0.0);   // 光源側ほど縁が光る
     float aa   = 0.004 + 0.5 * fwidth(rn);
     float stackR = mix(hole, rData, 0.62);                               // スタッキングリング (盛り上がった細い輪)
