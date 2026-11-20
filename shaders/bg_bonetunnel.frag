@@ -378,7 +378,7 @@ vec3 bg_bonetunnel(vec2 fc){
     return vec3(0.22) * uVoidColor;
   }
   vec3 p = eye + dist * worldDir;
-  vjDepth = exp(-dist * 0.3);   // 深度 (トンネルの奥ほど 0。霞 1〜8 に合わせる)。折り系・3D FX が紙をこれで持ち上げる
+  vjDepth = exp(-dist * 6.0);   // 深度 (トンネルの奥ほど 0)。当たる距離はほぼ 0〜0.25 なので、その幅で 1 → 0.2 ほどに広げる。折り系・3D FX が紙をこれで持ち上げる
   vec3 ka;
   if(uTexScale != 100.0) ka = bt_surface_color(p * 1.48 * BT_ZOOM * (uTexScale / 100.0));
   else ka = bt_surface_color(p * 1.48 * BT_ZOOM);   // テクスチャ周波数も BT_ZOOM 連動
