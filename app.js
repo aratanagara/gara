@@ -5506,15 +5506,18 @@ void main(){
     //   0) 合成シェーダ: Auto Map・Tunnel・Rain・Mondrian/Rings・Voxel ほか (Grad Map は @gradmask シェーダだけここ)
     //   1) Water → Boltzmann
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
-    //   2.5) プリセット切替トランジション → IMAGON (Overlay の筆跡)
+    //   2.5) IMAGON (Overlay の筆跡)
     //   3.5) 3D FX: Photo → Slicer → Layers → Diorama → Points → Box → Blinds → Gravity → Globe
-    //   4) 3D 段 (折り紙系): Needle → Origami → Kaiser (+ Roll) → Flames → Uzumaki
+    //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Flames → Uzumaki → (Gravity) → Needle (最後)
+    //      Gravity は Origami / Kaiser / Roll / Uzumaki のどれかと一緒のときだけ、3D FX の段でなく統合パスで Uzumaki のあとに掛かる
+    //   4.5) Audio / Pattern → 4.6) Shards
     //   5) Glitch 段: Slit-scan → Waveform → Barcode → Datamosh → Pixelsort
     //   6) Lens 段: Mirror → Pixelate → Chroma Ab
     //   7) Twist → FB Add/Multiply
     //   8) FXAA → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
-    //  10) Color (最後): Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
+    //  10) Color: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
+    //  11) プリセット切替トランジション (最後): 旧の最終画面と新の最終画面を混ぜる
 
     // 1) Water (Ballpoint Sketch) / Boltzmann
     if(typeof SketchFX !== 'undefined' && p && (p.sketch || 0) > 0.001 && !(App.safeMode)){
@@ -5532,7 +5535,6 @@ void main(){
     this._applyGlossPost(p, _safe);
     this._applyNovelPost(p, _safe);   // 小説化 (3D FX の前 = 紙の柄として一緒に折れる)
 
-    this._applyPresetTrans();   // プリセット切替の全画面トランジション
     this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (以降の Post FX・最後の Color 段が筆跡にも掛かる)
 
     // 3.5) 3D FX (Photo → Slicer → Layers): 画面を切り抜いて 3D 空間に浮かせる。後段の Needle / Origami / Kaiser はその結果ごと折る
@@ -5608,9 +5610,13 @@ void main(){
       this._fbTrail = null;
     }
 
-    // 10) Color 段 (最後): Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma。
+    // 10) Color 段: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma。
     //     FB のトレイルは上で色を掛ける前の絵から採るので、残像にも Color が一度だけ掛かる
     this._applyFinalColorGrade();
+
+    // 11) プリセット切替トランジション (最後)。旧の画面 (snapFinal) は前のフレームの最終画面 = 3D FX も Color も掛け終わった絵なので、
+    //     新の最終画面とそのまま混ぜる (3D FX より前で混ぜると、切替中だけ旧の画面に 3D FX と Color が二重に掛かっていた)
+    this._applyPresetTrans();
 
     // _finalFBO → default FB に blit (toDefault=true のとき)
     if(toDefault){
@@ -5721,6 +5727,19 @@ void main(){
   },
 
   // スクリーンショット: 最終フレーム(_finalFBO)を PNG でダウンロード
+  // スクショの保存形式 (Prefs 'shotFormat')
+  SHOT_FORMATS: {
+    png:  { mime:'image/png',  ext:'png' },
+    jpeg: { mime:'image/jpeg', ext:'jpg',  q:0.92 },
+    webp: { mime:'image/webp', ext:'webp', q:0.92 },
+  },
+  // このブラウザが書き出せるスクショ形式 { png:true, jpeg:true, webp:bool }
+  shotFormatSupport(){
+    const c = document.createElement('canvas'); c.width = c.height = 1;
+    const ok = {};
+    for(const k of Object.keys(this.SHOT_FORMATS)) ok[k] = c.toDataURL(this.SHOT_FORMATS[k].mime).indexOf('data:' + this.SHOT_FORMATS[k].mime) === 0;
+    return ok;
+  },
   screenshot(){
     const gl = this.gl;
     this.render();                 // 最新フレームを確実に用意
@@ -5739,13 +5758,16 @@ void main(){
       img.data.set(px.subarray(srow, srow + w*4), drow);
     }
     ctx.putImageData(img, 0, 0);
-    const fname = 'gara_' + Date.now() + '.png';
+    // 保存形式は設定 (Settings → Screenshot)。ブラウザが書けない形式なら PNG で保存する
+    let fmt = GL.SHOT_FORMATS[Prefs.get('shotFormat', 'png')] || GL.SHOT_FORMATS.png;
     // dataURL → Blob(同期)。navigator.share は user gesture 内で同期的に呼ぶ必要があるため toBlob(非同期)は使わない
-    const dataUrl = c.toDataURL('image/png');
+    let dataUrl = c.toDataURL(fmt.mime, fmt.q);
+    if(dataUrl.indexOf('data:' + fmt.mime) !== 0){ fmt = GL.SHOT_FORMATS.png; dataUrl = c.toDataURL('image/png'); }
+    const fname = 'gara_' + Date.now() + '.' + fmt.ext;
     const bin = atob(dataUrl.split(',')[1]);
     const arr = new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
-    const blob = new Blob([arr], { type:'image/png' });
+    const blob = new Blob([arr], { type:fmt.mime });
     const doDownload = ()=>{
       const a = document.createElement('a');
       a.href = URL.createObjectURL(blob); a.download = fname;
@@ -5756,7 +5778,7 @@ void main(){
     // モバイル(タッチ)は Web Share API で共有シートを開く(「写真に保存」が選べる)
     const isMobile = (window.matchMedia && matchMedia('(pointer: coarse)').matches) || /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
     if(isMobile && navigator.canShare){
-      const file = new File([blob], fname, { type:'image/png' });
+      const file = new File([blob], fname, { type:fmt.mime });
       if(navigator.canShare({ files:[file] })){
         navigator.share({ files:[file], title:'GARA' })
           .then(()=>{ if(typeof toast === 'function') toast('共有シートから「写真に保存」を選べます'); })
@@ -11694,10 +11716,33 @@ const MIDI = {
 const Record = {
   mr:null, chunks:[], stream:null, canvasStream:null, audioIncluded:false,
   _mb:null,   // WebCodecs (Mediabunny) 録画セッション
+  // 録画の保存形式 (Prefs 'recFormat')。どれも WebCodecs + Mediabunny で書く (MediaRecorder の mp4 は切替で壊れるため使わない)
+  FORMATS: {
+    mov:  { out:'MovOutputFormat',  v:'avc', a:'aac',  ext:'mov',  mime:'video/quicktime' },
+    mp4:  { out:'Mp4OutputFormat',  v:'avc', a:'aac',  ext:'mp4',  mime:'video/mp4' },
+    webm: { out:'WebMOutputFormat', v:'vp9', a:'opus', ext:'webm', mime:'video/webm' },
+  },
+  _fmtOk: null,   // formatSupport() の結果 (キャッシュ)
+  // このブラウザで書ける録画形式 { mov:bool, mp4:bool, webm:bool }。映像のエンコーダがあれば可 (音声が無理なら映像だけで書く)
+  async formatSupport(){
+    if(this._fmtOk) return this._fmtOk;
+    const ok = {};
+    const mbOk = typeof Mediabunny !== 'undefined' && typeof VideoEncoder !== 'undefined' && Mediabunny.canEncodeVideo;
+    for(const k of Object.keys(this.FORMATS)){
+      try{ ok[k] = !!(mbOk && await Mediabunny.canEncodeVideo(this.FORMATS[k].v, { width:1920, height:1080, bitrate:20_000_000 })); }
+      catch(_){ ok[k] = false; }
+    }
+    return this._fmtOk = ok;
+  },
+  _format(){
+    const k = Prefs.get('recFormat', 'mov');
+    const f = this.FORMATS[k] && (!this._fmtOk || this._fmtOk[k]) ? this.FORMATS[k] : this.FORMATS.mov;   // 非対応なら既定の mov
+    return f;
+  },
 
   start(){
     if(this.mr || this._mb) return false;
-    // 既定: WebCodecs + Mediabunny で .mov (QuickTime) を書く。
+    // 既定: WebCodecs + Mediabunny で .mov (QuickTime) を書く (形式は Settings → Video で mp4 / webm も選べる)。
     // MediaRecorder の mp4 muxer はプリセット切替時に H.264 ストリームを壊すバグがあり
     // (フレームは存在するのに切替時点以降デコード不能になる。再現条件は特定できず)、
     // タイムスタンプと多重化をアプリ管理に置き換えて構造的に回避する。
@@ -11716,18 +11761,19 @@ const Record = {
     // ドライバの DART/IOMMU 違反 (= カーネルパニック 2026-08-12 実測) を誘発した。実効ビットレートは
     // 元々 ~18M 程度で頭打ちだったため、この水準でも画質は実質変わらない。
     const vbps = Math.min(45_000_000, Math.max(12_000_000, Math.round(canvas.width * canvas.height * 60 * 0.25)));
+    const fmt = this._format();
     const output = new Mediabunny.Output({
-      format: new Mediabunny.MovOutputFormat(),
+      format: new Mediabunny[fmt.out](),
       target: new Mediabunny.BufferTarget(),
     });
-    const videoSource = new Mediabunny.CanvasSource(canvas, { codec: 'avc', bitrate: vbps });
+    const videoSource = new Mediabunny.CanvasSource(canvas, { codec: fmt.v, bitrate: vbps });
     output.addVideoTrack(videoSource);
     let hasAudio = false;
     let audioSource = null;
     if(Prefs.on('recAudio', '1') && typeof Audio !== 'undefined' && Audio.mode === 'display' && Audio._stream){
       const at = Audio._stream.getAudioTracks().find(t => t && t.readyState === 'live' && t.enabled !== false);
       if(at){
-        audioSource = new Mediabunny.MediaStreamAudioTrackSource(at, { codec: 'aac', bitrate: 256_000 });
+        audioSource = new Mediabunny.MediaStreamAudioTrackSource(at, { codec: fmt.a, bitrate: 256_000 });
         output.addAudioTrack(audioSource);
         hasAudio = true;
         audioSource.errorPromise.catch(err => {
@@ -11738,13 +11784,13 @@ const Record = {
       }
     }
     const mb = this._mb = {
-      output, videoSource, audioSource,
+      output, videoSource, audioSource, fmt,
       t0: 0, raf: 0, lastFrame: -1, frames: 0,
       stopping: false, started: false,
     };
     this.audioIncluded = hasAudio;
-    this.ext = 'mov';
-    this.mime = 'video/quicktime';
+    this.ext = fmt.ext;
+    this.mime = fmt.mime;
     // フレームポンプ: GL.frame が進んだフレームだけを、開始からの実時間 (単調増加) で追加
     const pump = ()=>{
       if(this._mb !== mb || mb.stopping) return;
@@ -11775,8 +11821,8 @@ const Record = {
     });
     pump();
     this._watchStartMB(mb);
-    try{ Diag.log('record', 'start mov webcodecs avc vbps=' + Math.round(vbps/1e6) + 'M' + (hasAudio ? ' +aac' : '')); }catch(_){}
-    toast(`録画開始 (mov${hasAudio ? '+audio' : ''})`);
+    try{ Diag.log('record', 'start ' + fmt.ext + ' webcodecs ' + fmt.v + ' vbps=' + Math.round(vbps/1e6) + 'M' + (hasAudio ? ' +' + fmt.a : '')); }catch(_){}
+    toast(`録画開始 (${fmt.ext}${hasAudio ? '+audio' : ''})`);
     return true;
   },
 
@@ -11816,9 +11862,9 @@ const Record = {
       await mb.output.finalize();
       const buf = mb.output.target.buffer;
       if(!buf || !buf.byteLength) throw new Error('empty output');
-      const blob = new Blob([buf], { type: 'video/quicktime' });
+      const blob = new Blob([buf], { type: mb.fmt.mime });
       try{ Diag.log('record', 'stop bytes=' + blob.size + ' frames=' + mb.frames); }catch(_){}
-      this._saveBlob(blob, `vj-${Date.now()}.mov`);
+      this._saveBlob(blob, `vj-${Date.now()}.${mb.fmt.ext}`);
     }catch(err){
       console.warn('record finalize failed:', err);
       try{ Diag.log('record', 'finalize error: ' + (err && err.message || err)); }catch(_){}

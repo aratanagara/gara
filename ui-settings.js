@@ -219,6 +219,14 @@
       const hook = PREF_HOOKS[el.dataset.pref];
       if(hook) hook(v);
     }));
+    // 保存形式: このブラウザで書けない形式をグレーにする。保存値が書けない形式なら既定へ戻す
+    const markFormats = (sel, ok) => {
+      if(!sel) return;
+      [...sel.options].forEach(o => { o.disabled = !ok[o.value]; o.textContent = o.textContent.replace(/ \(非対応\)$/, '') + (ok[o.value] ? '' : ' (非対応)'); });
+      if(!ok[sel.value]){ sel.value = sel.dataset.def; Prefs.set(sel.dataset.pref, sel.dataset.def); }
+    };
+    if(typeof GL !== 'undefined' && GL.shotFormatSupport) markFormats($('#setShotFmt'), GL.shotFormatSupport());
+    if(typeof Record !== 'undefined' && Record.formatSupport) Record.formatSupport().then(ok => markFormats($('#setRecFmt'), ok));
     if(navigator.mediaDevices && navigator.mediaDevices.addEventListener) navigator.mediaDevices.addEventListener('devicechange', () => fillMicDevices(micSel));
     $('#transParamFadeScope').addEventListener('change', (e) => persistFadeScope(e.target.value));
 

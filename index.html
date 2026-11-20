@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795153658">
+<link rel="stylesheet" href="style.css?v=1795154039">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -1915,6 +1915,8 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </optgroup></select></div>
           <div class="row" title="描画フレームレートの上限 (fps)。上限に連動して負荷% の表示も変わる"><label for="setFps">FPS Cap</label><select id="setFps" data-pref="fpsCap" data-def="24"><option value="24">24</option><option value="30">30</option><option value="60">60</option><option value="0">Unlimited (無制限)</option></select></div>
           <div class="row" title="録画にシステム音声 (Audio = System のとき) を含める。OFF = 映像のみ"><label for="setRecAudio">Record Audio</label><input type="checkbox" id="setRecAudio" data-pref="recAudio" data-def="1"></div>
+          <div class="row" title="スクショ (Cmd/Ctrl+S) の保存形式。PNG = 劣化なし・大きい / JPEG = 小さい・透過なし / WebP = 小さい。このブラウザで書けない形式はグレー"><label for="setShotFmt">Screenshot</label><select id="setShotFmt" data-pref="shotFormat" data-def="png"><option value="png">PNG</option><option value="jpeg">JPEG</option><option value="webp">WebP</option></select></div>
+          <div class="row" title="録画 (Cmd/Ctrl+R) の保存形式。MOV / MP4 = H.264 (Mac・iPhone・編集ソフトで扱いやすい) / WebM = VP9 (ブラウザ向け)。このブラウザで書けない形式はグレー"><label for="setRecFmt">Video</label><select id="setRecFmt" data-pref="recFormat" data-def="mov"><option value="mov">MOV (H.264)</option><option value="mp4">MP4 (H.264)</option><option value="webm">WebM (VP9)</option></select></div>
         </div>
         <div class="section">
           <h3>Diagnostics <span class="pill" id="diagStat" style="font-size:9px">—</span></h3>
@@ -2045,59 +2047,59 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795153658"></script>
-<script src="mode/layer.js?v=1795153658"></script>
-<script src="vendor/iro.min.js?v=1795153658"></script>
-<script src="vendor/mediabunny.min.js?v=1795153658"></script>
-<script src="mode/textdeform.js?v=1795153658"></script>
-<script src="mode/textdeform-texts.js?v=1795153658"></script>
-<script src="mode/textdeform-upstream.js?v=1795153658"></script>
-<script src="mode/textdeform-comp.js?v=1795153658"></script>
-<script src="mode/textdeform-surface.js?v=1795153658"></script>
-<script src="mode/textdeform-combos.js?v=1795153658"></script>
-<script src="mode/ugomeki.js?v=1795153658"></script>
-<script src="mode/slicer.js?v=1795153658"></script>
-<script src="mode/video.js?v=1795153658"></script>
-<script src="mode/aratanagara.js?v=1795153658"></script>
-<script src="vendor/p5.min.js?v=1795153658"></script>
-<script src="mode/cyberui.js?v=1795153658"></script>
-<script src="mode/novel.js?v=1795153658"></script>
-<script src="shaders/inkelly.js?v=1795153658"></script>
-<script src="sketchfx.js?v=1795153658"></script>
-<script src="pixelsortfx.js?v=1795153658"></script>
-<script src="shaders/boltzmann.js?v=1795153658"></script>
-<script src="mode/pen.js?v=1795153658"></script>
-<script src="shaders/caverns.js?v=1795153658"></script>
-<script src="mode/shelf.js?v=1795153658"></script>
-<script src="shaders/ribbon.js?v=1795153658"></script>
-<script src="mode/photoplane.js?v=1795153658"></script>
-<script src="mode/shredder.js?v=1795153658"></script>
-<script src="mode/transflock.js?v=1795153658"></script>
-<script src="mode/liquidpeel.js?v=1795153658"></script>
-<script src="mode/windflock.js?v=1795153658"></script>
-<script src="mode/rhizome.js?v=1795153658"></script>
-<script src="mode/surrealfloat.js?v=1795153658"></script>
-<script src="mode/chrometype.js?v=1795153658"></script>
-<script src="mode/tower4149.js?v=1795153658"></script>
-<script src="mode/fude.js?v=1795153658"></script>
-<script src="mode/image.js?v=1795153658"></script>
-<script src="mode/spacetype.js?v=1795153658"></script>
-<script src="fx3d.js?v=1795153658"></script>
-<script src="fx3d-layers.js?v=1795153658"></script>
-<script src="fx3d-cubes.js?v=1795153658"></script>
-<script src="fx3d-blinds.js?v=1795153658"></script>
-<script src="fx3d-diorama.js?v=1795153658"></script>
-<script src="fx3d-points.js?v=1795153658"></script>
-<script src="fx3d-gravity.js?v=1795153658"></script>
-<script src="fx3d-globe.js?v=1795153658"></script>
-<script src="pollockfx.js?v=1795153658"></script>
-<script src="overlay.js?v=1795153658"></script>
-<script src="gif.js?v=1795153658"></script>
-  <script src="ui-icons.js?v=1795153658"></script>
-  <script src="app.js?v=1795153658"></script>
-  <script src="ui-scrollbar.js?v=1795153658"></script>
-  <script src="ui-settings.js?v=1795153658"></script>
-<script src="camroll.js?v=1795153658" defer></script>
-<script src="dbltap.js?v=1795153658" defer></script>
+<script src="presets.js?v=1795154039"></script>
+<script src="mode/layer.js?v=1795154039"></script>
+<script src="vendor/iro.min.js?v=1795154039"></script>
+<script src="vendor/mediabunny.min.js?v=1795154039"></script>
+<script src="mode/textdeform.js?v=1795154039"></script>
+<script src="mode/textdeform-texts.js?v=1795154039"></script>
+<script src="mode/textdeform-upstream.js?v=1795154039"></script>
+<script src="mode/textdeform-comp.js?v=1795154039"></script>
+<script src="mode/textdeform-surface.js?v=1795154039"></script>
+<script src="mode/textdeform-combos.js?v=1795154039"></script>
+<script src="mode/ugomeki.js?v=1795154039"></script>
+<script src="mode/slicer.js?v=1795154039"></script>
+<script src="mode/video.js?v=1795154039"></script>
+<script src="mode/aratanagara.js?v=1795154039"></script>
+<script src="vendor/p5.min.js?v=1795154039"></script>
+<script src="mode/cyberui.js?v=1795154039"></script>
+<script src="mode/novel.js?v=1795154039"></script>
+<script src="shaders/inkelly.js?v=1795154039"></script>
+<script src="sketchfx.js?v=1795154039"></script>
+<script src="pixelsortfx.js?v=1795154039"></script>
+<script src="shaders/boltzmann.js?v=1795154039"></script>
+<script src="mode/pen.js?v=1795154039"></script>
+<script src="shaders/caverns.js?v=1795154039"></script>
+<script src="mode/shelf.js?v=1795154039"></script>
+<script src="shaders/ribbon.js?v=1795154039"></script>
+<script src="mode/photoplane.js?v=1795154039"></script>
+<script src="mode/shredder.js?v=1795154039"></script>
+<script src="mode/transflock.js?v=1795154039"></script>
+<script src="mode/liquidpeel.js?v=1795154039"></script>
+<script src="mode/windflock.js?v=1795154039"></script>
+<script src="mode/rhizome.js?v=1795154039"></script>
+<script src="mode/surrealfloat.js?v=1795154039"></script>
+<script src="mode/chrometype.js?v=1795154039"></script>
+<script src="mode/tower4149.js?v=1795154039"></script>
+<script src="mode/fude.js?v=1795154039"></script>
+<script src="mode/image.js?v=1795154039"></script>
+<script src="mode/spacetype.js?v=1795154039"></script>
+<script src="fx3d.js?v=1795154039"></script>
+<script src="fx3d-layers.js?v=1795154039"></script>
+<script src="fx3d-cubes.js?v=1795154039"></script>
+<script src="fx3d-blinds.js?v=1795154039"></script>
+<script src="fx3d-diorama.js?v=1795154039"></script>
+<script src="fx3d-points.js?v=1795154039"></script>
+<script src="fx3d-gravity.js?v=1795154039"></script>
+<script src="fx3d-globe.js?v=1795154039"></script>
+<script src="pollockfx.js?v=1795154039"></script>
+<script src="overlay.js?v=1795154039"></script>
+<script src="gif.js?v=1795154039"></script>
+  <script src="ui-icons.js?v=1795154039"></script>
+  <script src="app.js?v=1795154039"></script>
+  <script src="ui-scrollbar.js?v=1795154039"></script>
+  <script src="ui-settings.js?v=1795154039"></script>
+<script src="camroll.js?v=1795154039" defer></script>
+<script src="dbltap.js?v=1795154039" defer></script>
 </body>
 </html>
