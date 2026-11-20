@@ -19785,6 +19785,7 @@ void mainImage(out vec4 o, in vec2 f){
         P.fluidLayout = ch(0.5) ? 1 : 0;
         P.fluidTriText = ch(0.4); P.fluidRectText = ch(0.4);
         P.fluidCircleEdge = ch(0.85); P.fluidTriEdge = ch(0.85); P.fluidRectEdge = ch(0.85);
+        P.fluidRunCaret = ch(0.25);
         P.fluidFont = ch(0.4) ? 0 : Math.floor(R(1, (NovelTerminal.FLUID_FONTS || [0]).length));
         P.fluidAspect = ch(0.5) ? 100 : Math.round(R(50, 200)/5)*5;
         P.fluidBeats = [0, 4, 8, 8, 16][(Math.random()*5)|0];
@@ -19860,7 +19861,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(sel);
     }
     // ── チェックボックス ──
-    mkToggles('Layers', [['vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー'], ['holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー'], ['cursor', 'カーソル', 'Fluid: 下部の走査カーソル'], ['clash', '重なり除去', 'Fluid: 横組みと重なる縦書きの字を抜く']]);
+    mkToggles('Layers', [['vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー'], ['holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー'], ['cursor', 'カーソル', 'Fluid: 下部の走査カーソル'], ['fluidRunCaret', '末尾キャレット', 'Fluid: 字のひと続きの末尾ごとにキャレット'], ['clash', '重なり除去', 'Fluid: 横組みと重なる縦書きの字を抜く']]);
     // グループに組む (見出しで畳む。開閉は端末ごとに覚える)。自動のカテゴリ折りたたみ (_initParamFold) からは外す
     root.classList.add('fold-skip');
     const rowOf = k => { const el = root.querySelector(`[data-pkey="${k}"]`); return el && el.closest('.row'); };
