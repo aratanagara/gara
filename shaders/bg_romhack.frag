@@ -51,15 +51,16 @@ float rh_Rb[RH_RINGS];             // 裏面の CD の外周
 float rh_Hb[RH_RINGS];             // 裏面の CD の下面の深さ (z = -rh_Hb)
 
 // @param uStep    30..300 = 100.0 @desc 段の高さ。CD 1 枚の厚み
-// @param uMotion  0..300 = 100.0 @desc 各段の外周が伸び縮みする振幅。0 で動かない
+// @param uMotion  0..300 = 100.0 @when uSizeLock < 0.5 @desc 各段の外周が伸び縮みする振幅。0 で動かない
 // @param uThick   20..300 = 100.0 @desc 段の縁の黒い線の太さ
-// @param uScale 50..150 = 100.0 @desc 物体全体の大きさ
+// @param uScale 50..150 = 100.0 @when uSizeLock < 0.5 @desc 物体全体の大きさ
 // @param uAngle -180..180 = 0.0 @desc 横回転の向き (度)
 // @param uTilt -90..90 = 0.0 @desc 縦の傾き・仰角 (度)
 // @param uSteps 30..64 = 64.0 @desc レイマーチのステップ数。下げると軽いが遠景や細部が欠ける
 // @param uCdCount 1..32 = 8 @desc 積む CD の枚数 (整数に丸める)
 // @param uBackCount 0..32 = 0 @desc 裏面に重ねる CD の枚数。0 で平らな鏡面
 // @param uSizeOrder bool = true @desc ON で小さい CD ほど上に積む。OFF で乱数の順に積み、上が大きくなることもある
+// @param uSizeLock bool = false @desc ON で大きさを固定する。外周の伸び縮みを止め、全体の大きさを既定 (100) にする。音や Drive で Scale / Motion が動いても大きさは変わらない
 // @param uProfile 30..300 = 100 @desc 山の断面の曲がり。100 で直線、小さいと下が急で上が平ら、大きいと逆
 // @param uSeed 0..99 = 0 @desc 各段の伸び縮みの乱数の種。変えると動きの組み合わせが変わる (整数に丸める)
 // @param uHoleSize 40..500 = 100 @desc 中心のスピンドル穴の大きさ
@@ -94,6 +95,7 @@ uniform float uTilt; // 縦の傾き・仰角 (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
 uniform float uCdCount; // 積む CD の枚数 (8 枚までは外周の大きいものから消える。9 枚以上は間隔と厚みを詰めて山の大きさを保つ)
 uniform float uBackCount; // 裏面に重ねる CD の枚数 (0 = 平らな鏡面。表と同じく 9 枚以上は間隔と厚みを詰める)
+uniform float uSizeLock; // ON = 大きさ固定 (伸び縮みなし・Scale は既定 100)
 uniform float uSizeOrder; // ON = 小さい CD ほど上 (上が下より大きくならない) / OFF = 番号順に積む (上が下より大きくなることもある)
 uniform float uProfile; // 山の断面の曲がり (%)。100 で直線、小さいと下が急で上が平ら、大きいと下が平らで上が急
 uniform float uSeed; // 各段の伸び縮みの乱数の種。値を変えると動きの組み合わせが変わる
@@ -121,6 +123,7 @@ uniform vec3 uBackTint; // 裏面のシルバーと虹の帯にかけるティ�
 uniform vec3 uHighlightTint; // 鏡面ハイライトにかけるティント。既定は白で変化なし
 uniform vec3 uGlassTint; // 中央のガラスの色にかけるティント。既定は白で変化なし
 
+float rh_scale(){ return uSizeLock > 0.5 ? 1.0 : uScale / 100.0; }   // 物体全体の大きさ (サイズ固定中は既定)
 int rh_count(){ return int(clamp(uCdCount + 0.5, 1.0, float(RH_RINGS))); }
 int rh_countB(){ return int(clamp(uBackCount + 0.5, 0.0, float(RH_RINGS))); }
 
@@ -130,7 +133,7 @@ float rh_outer(int k, int n, float so){
   vec4 h = rh_hash4(fk + 5.0 + floor(uSeed + 0.5)*37.0 + so);
   float span    = 1.0 - 0.34*RH_HUB;
   float baseOut = 0.34*RH_HUB + span * (0.20 + 0.80*(uTaper / 100.0)*(fk + 0.5)/max(float(n), RH_BASE_N));
-  float amp     = (0.10 + 0.24*h.x) * span * (uMotion / 100.0);
+  float amp     = (0.10 + 0.24*h.x) * span * (uSizeLock > 0.5 ? 0.0 : uMotion / 100.0);
   float rate    = 0.15 + 0.75*h.y;
   float phase   = h.z * 6.2831;
   float rOut = baseOut + amp*sin(time*rate + phase) + 0.5*amp*sin(time*rate*0.43 + phase*1.7);
@@ -147,7 +150,7 @@ float rh_cyl(vec3 p, float R, float Hc){
 }
 // ziggurat SDF: 半径違いの円柱(CD)を rank 高さで積む + 中心穴をくり抜く
 float rh_zig(vec3 p){
-  float sc = uScale / 100.0;
+  float sc = rh_scale();
   p /= sc;
   float ky = uOval / 100.0;
   if(ky != 1.0){ p.y *= ky; }
@@ -239,9 +242,9 @@ vec3 bg_romhack(vec2 fc){
   }
   if(!hit){ bgAlpha = 0.0; return vec3(0.0); }
 
-  { float rhR = 1.0 * (uScale / 100.0); vjDepth = clamp(1.0 - (t - (length(cro) - rhR)) / (2.0 * rhR), 0.0, 1.0); }   // 深度 (円盤の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
+  { float rhR = rh_scale(); vjDepth = clamp(1.0 - (t - (length(cro) - rhR)) / (2.0 * rhR), 0.0, 1.0); }   // 深度 (円盤の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
   vec3 nor = rh_zigN(p);
-  vec2  po  = p.xy / (uScale / 100.0);
+  vec2  po  = p.xy / rh_scale();
   if(uOval != 100.0){ po.y *= uOval / 100.0; }
   float r   = length(po);
   float rn  = r / RH_RDISC;
