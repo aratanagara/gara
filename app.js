@@ -3343,6 +3343,7 @@ uniform float uUzN, uUzTH, uUzSpin, uUzShr, uUzZStep, uUzCard, uUzOrbR;
 uniform vec2 uUzCw;
 uniform vec2 uNvGrid;
 uniform float uNvSub, uNvMargin, uGravOn, uPaperM;
+uniform vec4 uNvMask;   // 映っているスロットの重み (A / B) と深度を出すか (z = A / w = B)。深度を出すスロットがあれば、針はその物体 (深度 > 0) の面にだけ生やす (深度を出さないスロットは全面が物体)
 ${this.reliefGLSL()}
 out vec2 vUv; out vec3 vWorld;
 ${this._foldPaperGLSL('u')}
@@ -3368,6 +3369,11 @@ void main(){
     fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(0.0), uv, w, key);
     uv = 0.5 + (uv - 0.5) * uNvMargin;   // Needle だけのときは紙を画面の外まで広げる (絵はミラー) = 紙の縁が見えない
     lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 * uNvMargin / uNvGrid.y);
+    if(uNvMask.z + uNvMask.w > 0.0 && uNvMask.x + uNvMask.y > 0.0){   // 物体の外 (深度 0 = 背景) の面には針を生やさない
+      vec2 fm = 1.0 - abs(1.0 - mod(0.5 + (nvFaceA - 0.5) * uNvMargin, 2.0));
+      float on = uNvMask.x * (uNvMask.z > 0.5 ? step(0.004, vjDepthAt(uDepthA, fm)) : 1.0) + uNvMask.y * (uNvMask.w > 0.5 ? step(0.004, vjDepthAt(uDepthB, fm)) : 1.0);
+      lift *= on / (uNvMask.x + uNvMask.y);
+    }
   } else {
     int cell = vid / 6, corner = vid - cell * 6;
     int GW = int(uGrid.x);
@@ -7449,12 +7455,17 @@ void main(){
     const rel = [0, 0], tex = [null, null];
     ['A', 'B'].forEach((k, j)=>{
       const s = this.slots[k], f = s && s.fbos && s.fbos[s.fbIdx ^ 1];   // いま描き終えたフレーム
-      if(amt > 0 && f && f.depthValid && f.dtex && s.kind !== 'none' && App.slotVisibleAmount(k) > 0){ tex[j] = f.dtex; rel[j] = App.slotVisibleAmount(k); }
+      if(f && f.depthValid && f.dtex && s.kind !== 'none' && App.slotVisibleAmount(k) > 0){ tex[j] = f.dtex; rel[j] = App.slotVisibleAmount(k); }
     });
     // 両方が深度を出すときだけクロスフェードで分ける (片方だけならその深度を全量)
     if(rel[0] > 0 && rel[1] > 0){
       const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0));
       rel[0] *= 1 - cf; rel[1] *= cf;
+    }
+    { // Needle の針を物体にだけ生やす: 映っているスロットの重み (両方映るならクロスフェードで分ける) と、深度を出すか。3D Depth の量には依らない
+      const vis = ['A', 'B'].map(k=>{ const s = this.slots[k]; return (s && s.kind !== 'none') ? App.slotVisibleAmount(k) : 0; });
+      if(vis[0] > 0 && vis[1] > 0){ const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0)); vis[0] *= 1 - cf; vis[1] *= cf; }
+      gl.uniform4f(U('uNvMask'), vis[0], vis[1], tex[0] ? 1 : 0, tex[1] ? 1 : 0);
     }
     [0, 1].forEach(j=>{
       gl.activeTexture(gl.TEXTURE0 + 9 + j);
@@ -7747,6 +7758,7 @@ vec2 nvSeed(ivec2 c, vec2 salt){
   return vec2(c) + 0.5 + (vec2(spH(k + 0.5), spH(k + 9.6)) - 0.5) * (0.35 + 0.5 * uSpScat);   // Scatter: 種の揺らし幅
 }
 // 格子の四角形 q (左下の種の番号) の割り方: 0 = 四角形のまま (半分) / 1 = 対角線 左下-右上 / 2 = 右下-左上 で三角形 2 枚
+vec2 nvFaceA;   // fx3dNeedleVert が置く、いまの面の重心 (ab = 0..1)。面ごとに一定 = 面単位で針を出す / 出さないを決められる
 int nvSplit(ivec2 q, vec2 salt){ float h = spH(vec2(q) * vec2(2.71, 1.93) + salt + 17.3); return h < 0.5 ? 0 : (h < 0.75 ? 1 : 2); }
 void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out float w, out vec2 key){
   int n = int(sub), perFan = n * n * 3, gxs = int(grid.x) + 2;
@@ -7759,7 +7771,7 @@ void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out f
   // 面 (四角形 1 枚 か 三角形 2 枚) の重心の真上を頂点、面の辺を底にした角錐。扇 = (頂点, 辺の始点, 辺の終点)
   vec2 A, B, C; int face = 0;
   if(t == 0){
-    if(fan >= 4){ w = 0.0; ab = clamp(LL / grid, 0.0, 1.0); key = vec2(0.0); return; }   // 使わない扇は縮退
+    if(fan >= 4){ w = 0.0; ab = clamp(LL / grid, 0.0, 1.0); nvFaceA = ab; key = vec2(0.0); return; }   // 使わない扇は縮退
     A = (LL + LR + UR + UL) * 0.25;
     B = fan == 0 ? LL : fan == 1 ? LR : fan == 2 ? UR : UL;
     C = fan == 0 ? LR : fan == 1 ? UR : fan == 2 ? UL : LL;
@@ -7773,6 +7785,7 @@ void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out f
     C = e == 0 ? v1 : e == 1 ? v2 : v0;
   }
   key = vec2(c) * vec2(1.37, 2.11) + salt + 31.7 + float(face) * 5.13;
+  nvFaceA = clamp(A / grid, 0.0, 1.0);
   ivec2 p0 = ivec2(0), p1 = ivec2(0), p2 = ivec2(0);
   int k = 0;
   for(int i = 0; i < 4; i++){
@@ -13926,6 +13939,9 @@ const App = {
     const keys = this.POST_GROUPS[group]; if(!keys) return;
     const values = Object.assign({}, this.postGroupSaved(group));   // 他欄へ移したキーの旧保存値 (POST_KEY_FROM の引き継ぎ元) を消さない
     for(const k of keys) if(this.post[k] !== undefined) values[k] = this.post[k];
+    if(this._presetDefaults && this._presetDefaults.post){   // R / Esc / プリセット読込が戻す先 (起動時に取った値) も保存値へ
+      for(const k of keys) if(this.post[k] !== undefined) this._presetDefaults.post[k] = JSON.parse(JSON.stringify(this.post[k]));
+    }
     try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs(); toast('デフォルト保存: ' + group); }
     catch(e){ toast('保存失敗'); }
   },
@@ -15719,6 +15735,8 @@ ${outBlock}
   saveEngineDefault(kind){
     const P = this._engineP(kind);
     if(!P){ toast('保存対象がありません'); return; }
+    const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
+    if(pd) Object.assign(pd, JSON.parse(JSON.stringify(P)));   // プリセット読込で欠けた項目を埋める値 (起動時に取った値) も保存値へ
     try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(); toast('デフォルト保存: '+kind); }
     catch(e){ toast('保存失敗'); }
   },
