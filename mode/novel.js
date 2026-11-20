@@ -563,6 +563,8 @@ const NovelTerminal = {
     fluidCircleEdge:true, fluidTriEdge:true, fluidRectEdge:true,   // 図形の輪郭を描くか (OFF = 輪郭を描かない。Auto は塗りだけ、Edge は出さない)
     sceneVals:null,    // Scene ごとの保存値 { fluid:{...}, editorial:{...}, _common:{...} } (snapScene / applyScene)
     fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
+    fluidBigFont:0,    // Big Glyph の書体 (0 = Fluid Font と同じ / 1〜 = FLUID_FONTS の番号)
+    fluidBigAspect:100,   // Big Glyph の縦横比 % (100 = 正体 / 小さいほど長体 / 大きいほど平体)
     fluidFont:0,       // Fluid の書体 (FLUID_FONTS の番号。0 = 従来のリュウミン + MS ゴシック)
     fluidAspect:100,   // Fluid の字の縦横比 % (100 = 正体 / 小さいほど長体 = 幅を詰める / 大きいほど平体 = 高さを詰める)      // 図形の縁を切り立たせ、ざらつきを消し、三角を正三角形に
     fluidCircleMode:0, fluidTriMode:0, fluidRectMode:0,   // 0=Auto (塗りと輪郭が入れ替わる) | 1=Fill | 2=Edge | 3=Off
@@ -598,6 +600,7 @@ const NovelTerminal = {
     ['Crisp','fluidCrisp',0,150,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 縁のざらつきと散り字を抑える'],
     ['HUD','fluidHud',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 照準線・座標・ブラケットの濃さ'],
     ['Big Glyph','fluidBig',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 円の中心の大きな字の濃さ'],
+    ['Big Aspect','fluidBigAspect',40,250,5,v=>Math.round(v)===100?'100% (正体)':v<100?v.toFixed(0)+'% (長体)':v.toFixed(0)+'% (平体)','Fluid: 大きな字の縦横比'],
     ['Sharp','fluidSharp',0,100,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 図形の縁を切り立たせ、ざらつきを消す。三角は正三角形になる'],
     ['Char Aspect','fluidAspect',40,250,5,v=>Math.round(v)===100?'100% (正体)':v<100?v.toFixed(0)+'% (長体)':v.toFixed(0)+'% (平体)','Fluid: 字の縦横比 (100 = 正体 / 小さいほど長体 = 幅を詰める / 大きいほど平体 = 高さを詰める)。字の送りは変えない'],
     ['Fluid Beats','fluidBeats',0,64,1,v=>v<1?'Time':String(v|0),'Fluid: 構図を切り替える拍数 (Time = Fluid Cycle の時間で切替。drone は 120BPM 換算)'],
@@ -1489,8 +1492,11 @@ const NovelTerminal = {
         const bs = Math.max(fs*4, geoA.circleRadius*H*1.15) * (1 + geoA.jolt*0.35);
         const dc = p.drawingContext;
         dc.save();
-        dc.font = `${Math.round(bs)}px "${this.fR}","Unifont VJ",serif`;
+        const bfs = (this.P && (this.P.fluidBigFont|0) > 0) ? this._fluidFontSet(this.P.fluidBigFont|0) : null;   // 0 = Fluid Font と同じ
+        dc.font = `${Math.round(bs)}px "${bfs ? bfs[0] : this.fR}","Unifont VJ",serif`;
         dc.textAlign = 'center'; dc.textBaseline = 'middle';
+        const ba = this.P && typeof this.P.fluidBigAspect === 'number' ? this.P.fluidBigAspect/100 : 1;
+        if(Math.abs(ba - 1) >= 0.005){ dc.translate(bx, by); dc.scale(ba < 1 ? ba : 1, ba < 1 ? 1 : 1/ba); dc.translate(-bx, -by); }   // 長体・平体 (字の中心を基準に)
         dc.lineWidth = Math.max(1, M/700);
         dc.strokeStyle = `rgba(${accRGB[0]},${accRGB[1]},${accRGB[2]},${Math.min(1, 0.42*kBig)})`;
         dc.strokeText(ch, bx, by);
@@ -2089,7 +2095,7 @@ const NovelTerminal = {
     ['Layers', ['vertLayer','vertSize','vertGap','vertCut','cursorSize']],
     ['Motion', ['drift','rowWave','colWave','waveFreq','flicker','beatFlash','morph']],
     ['Color', ['inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
-    ['HUD', ['fluidHud','fluidBig']],
+    ['HUD', ['fluidHud','fluidBig','fluidBigFont','fluidBigAspect']],
     ['Editorial', ['edLayout','edSize','edLeading','edTracking','edMargin','edJump','edCols','edGrid','edReveal','edTurnBeats','edFolio','edInk','edAccent']],
     ['Meltdown', ['meltDepth','dripLen','meltFade','meltGhost','meltLeading','meltSize']],
     ['Columns', ['colCount','colGutter','colLeading','colMargin']],
@@ -2159,6 +2165,8 @@ const NovelTerminal = {
     flashColor:'拍頭に光る色 (全場面)',
     fluidHud:'照準線・座標・ブラケットの濃さ',
     fluidBig:'円の中心に出る大きな字の濃さ',
+    fluidBigFont:'大きな字の書体。Same as Fluid = Fluid Font と同じ。ほかは Fluid Font と同じ一覧',
+    fluidBigAspect:'大きな字の縦横比。100 = 正体 / 小さいほど長体 (幅を詰める) / 大きいほど平体 (高さを詰める)',
     edLayout:'版の型。Book = 縦組の見開き / Magazine = 横組の段組 / Single = 縦組の一頁',
     edSize:'本文の字の大きさ', edLeading:'行送り (100% = 1.75 字)', edTracking:'字送り (100% = ベタ組み)', edMargin:'天・地・ノド・小口の余白',
     edJump:'見出しの大きさ (本文比。10% 未満で見出しなし)', edCols:'Magazine の段数', edGrid:'版面の罫と行のガイドの濃さ', edReveal:'字が組み上がる速さ', edTurnBeats:'頁をめくる拍数',
@@ -2174,7 +2182,7 @@ const NovelTerminal = {
     fluid: ['alpha','colWave','cursorSize','density','drift','edgeNoise','flicker','fluidAccent','fluidAspect','fluidBeats','fluidBig',
       'fluidCircleMode','fluidCircleLine','fluidCircleSize','fluidTriMode','fluidTriLine','fluidTriSize','fluidTriSpin','fluidRectMode','fluidRectLine','fluidRectSize','fluidRectSpin',
       'fluidContrast','fluidCrisp','fluidFont','fluidHud','fluidLayout','fluidSharp','glitch','inkMode','leading','lineWidth','monoColor','rhythmAmt','rowWave',
-      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge'],
+      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect'],
     editorial: ['edAccent','edCols','edFolio','edGrid','edInk','edJump','edLayout','edLeading','edMargin','edMarks','edReveal','edSize','edTracking','edTurnBeats'],
     melt: ['dripLen','meltDepth','meltFade','meltGhost','meltLeading','meltSize'],
     columns: ['colCount','colGutter','colLeading','colMargin'],
@@ -2199,6 +2207,7 @@ const NovelTerminal = {
     if(edge && P[edge] === false) return false;
     if(['vertSize','vertGap','vertCut','clash'].includes(key) && P.vertLayer === false) return false;
     if(key === 'cursorSize' && P.cursor === false) return false;
+    if((key === 'fluidBigFont' || key === 'fluidBigAspect') && ((P.fluidBig || 0) < 10 || (P.fluidCircleMode|0) === 3)) return false;   // 大きな字が出ないとき (Big Glyph 0 か円が Off)
     return true;
   },
   _LEGACY: {melt:0, columns:1, vert:2, typer:3, render:4},

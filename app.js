@@ -19830,6 +19830,7 @@ void mainImage(out vec4 o, in vec2 f){
     specs.forEach(mkSlider);
     mkSelect(['Fluid Layout', 'fluidLayout', NovelTerminal.FLUID_LAYOUTS || [[0,'Classic']], 'Fluid: 構図 (Classic = 従来の場面ごとの配置 / Kandinsky = S126 の骨格: 斜めの主軸と対軸の交点が焦点、主軸の一端に大円、反対側から楔が大円を指し、四角は対軸の上に主軸と平行に座る)']);
     mkSelect(['Fluid Font', 'fluidFont', (NovelTerminal.FLUID_FONTS || []).map((f, i)=>[i, f[0]]), 'Fluid: 書体 (Default = 従来のリュウミン + MS ゴシック)']);
+    mkSelect(['Big Font', 'fluidBigFont', (NovelTerminal.FLUID_FONTS || []).map((f, i)=>[i, i ? f[0] : 'Same as Fluid']), 'Fluid: 大きな字の書体']);
     (NovelTerminal.FLUID_SPECS || []).forEach(mkSlider);
     for(const [label, key, specs2] of (NovelTerminal.FLUID_SHAPES || [])){
       mkSelect([label, key, NovelTerminal.FLUID_SHAPE_OPTS, `Fluid: ${label} の見せ方 (Auto = 場面で塗りと輪郭が入れ替わる / Off = 出さない)`]);
