@@ -19829,6 +19829,14 @@ void mainImage(out vec4 o, in vec2 f){
       ['Morph',       'morph',      0,   3.0, 0.05, v=>v.toFixed(2), '旧シーン間の変形トランジション秒数 (0=カット)'],
     ];
     specs.forEach(mkSlider);
+    {   // 背景 (文字列の値なので mkSelect とは別に作る。Option のスポイトは bgColor に色を入れ、bgMode を 'color' にする)
+      const row = mkRow('Background', 'bgMode');
+      const sel = document.createElement('select'); sel.style.flex = '1';
+      [['none','None (透明)'],['color','Color']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
+      sel.value = P.bgMode === 'color' ? 'color' : 'none';
+      sel.addEventListener('change', ()=>{ P.bgMode = sel.value; App._undoSchedule(); });
+      row.appendChild(sel);
+    }
     mkSelect(['Fluid Layout', 'fluidLayout', NovelTerminal.FLUID_LAYOUTS || [[0,'Classic']], 'Fluid: 構図 (Classic = 従来の場面ごとの配置 / Kandinsky = S126 の骨格: 斜めの主軸と対軸の交点が焦点、主軸の一端に大円、反対側から楔が大円を指し、四角は対軸の上に主軸と平行に座る)']);
     mkSelect(['Fluid Font', 'fluidFont', (NovelTerminal.FLUID_FONTS || []).map((f, i)=>[i, f[0]]), 'Fluid: 書体 (Default = 従来のリュウミン + MS ゴシック)']);
     mkSelect(['Big Font', 'fluidBigFont', (NovelTerminal.FLUID_FONTS || []).map((f, i)=>[i, i ? f[0] : 'Same as Fluid']), 'Fluid: 大きな字の書体']);
