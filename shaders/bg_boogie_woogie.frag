@@ -23,48 +23,48 @@
 // @mattepal uMbPal #120a24,#050507,#f0f0ee,#fbf6ef,#0d2a4a,#010a03
 // =====================================================
 
-// @param uMbDensity 2..24    = 4.0
-// @param uMbLines   20..100  = 85.0
-// @param uMbDyn     0..100   = 60.0
-// @param uMbFull    0..100   = 55.0
-// @param uMbFullH   0..100   = 70.0
-// @param uMbCut     0..100   = 50.0
-// @param uMbIrreg   0..100   = 80.0
-// @param uMbJump    0..100   = 0.0
-// @param uMbLine    20..300  = 100.0
-// @param uMbBlip    0..100   = 35.0
-// @param uMbBlipLen 50..300  = 100.0
-// @param uMbTraffic 0..300   = 100.0
-// @param uMbSignal  0..100   = 50.0
-// @param uMbJam     8..48    = 24.0
-// @param uMbInner   0..100   = 55.0
-// @param uMbMode    0..2     = 0.0
-// @param uMbChange  0..100   = 50.0
-// @param uMbMotion  0..100   = 70.0
-// @param uMbRedraw  0..16    = 0.0
-// @param uMbDrawIn  0..100   = 0.0
-// @param uMbSpeed   10..300  = 100.0
-// @param uMbKick    0..200   = 100.0
-// @param uMbScale   30..300  = 100.0
-// @param uMbTilt    -180..180 = 0.0
-// @param uMbSeed    0..100   = 0.0
-// @param uMbGrain   0..100   = 25.0
-// @param uMbClear   0..100   = 0.0
-// @param uMb3D      0..100   = 0.0
-// @param uMbPitch   0..80    = 45.0
-// @param uMbSpin    -100..100 = 20.0
-// @param uMbDist    60..400  = 100.0
-// @param uMbHeight  10..400  = 100.0
-// @param uMbHeightVar 0..100 = 0.0
-// @param uMbBuild   0..400   = 0.0
-// @param uMbBuildVar 0..100  = 65.0
-// @param uMbWallShade 0..100 = 55.0
-// @param uMbPal     0..6     = 0.0
-// @param uMbPaper   color = #f2f0e9
-// @param uMbRed     color = #cf1f18
-// @param uMbBlue    color = #1b2f96
-// @param uMbYellow  color = #f6cf16
-// @param uMbGray    color = #bdbcb6
+// @param uMbDensity 2..24    = 4.0 @desc 線の密度。大きいほど線が細かく並び、街区が小さくなる
+// @param uMbLines   20..100  = 85.0 @desc 線が立つ割合 (%)。下げると線が抜けて大きな面が増える
+// @param uMbDyn     0..100   = 60.0 @when Math.floor(App.deadParam(uMbMode)+0.5) < 1 @desc 線の本数の増減の深さ (%)。周期ごとに数本から全部のあいだで本数が変わる。0 で一定
+// @param uMbFull    0..100   = 55.0 @desc 垂直線が上下に貫く割合 (%)。貫く線が水平線の端の受け手になる
+// @param uMbFullH   0..100   = 70.0 @desc 水平線が左右に貫く割合 (%)。下げると垂直線のあいだで止まる線が増える
+// @param uMbCut     0..100   = 50.0 @desc 線が途中で途切れる量 (%)。0 で途切れず、上げると数区間だけ走って直交線で止まる
+// @param uMbIrreg   0..100   = 80.0 @desc 線の間隔のばらつき (%)。0 で等間隔の格子
+// @param uMbJump    0..100   = 0.0 @desc 区画の大きさのジャンプ率 (%)。上げると大きな街区と細い路地に分かれる
+// @param uMbLine    20..300  = 100.0 @desc 線の太さ (%)
+// @param uMbBlip    0..100   = 35.0 @desc 車の量 (%)。上げると信号待ちの列が伸びる
+// @param uMbBlipLen 50..300  = 100.0 @desc 車 (1 マス) の長さ (%)
+// @param uMbTraffic 0..300   = 100.0 @desc 車が進む速さ (%)。100 で 1 拍 1 マス、0 で止まる
+// @param uMbSignal  0..100   = 50.0 @desc 信号の赤の長さ (%)。上げると信号待ちの列が長くなる
+// @param uMbJam     8..48    = 24.0 @desc 遅れの上限 (マス)。これより長く待つ車は描かれない。大きいほど重い
+// @param uMbInner   0..100   = 55.0 @desc セルの中に入れ子の色ブロックが出る割合 (%)
+// @param uMbMode    0..2     = 0.0 @desc 動くもの。0 = 全部 / 1 = 車と建物 (道は固定) / 2 = 車だけ
+// @param uMbChange  0..100   = 50.0 @when Math.floor(App.deadParam(uMbMode)+0.5) < 2 @desc 構図の変化の頻度 (%)。線のスライド・出没・塗り替えの周期 (100 で毎拍)
+// @param uMbMotion  0..100   = 70.0 @when Math.floor(App.deadParam(uMbMode)+0.5) < 1 @desc 線がスライドする量 (%)。0 で線は動かず出没と塗り替えだけ
+// @param uMbRedraw  0..16    = 0.0 @desc N 拍ごとに構図を丸ごと描き直す。0 でしない、1 で毎拍
+// @param uMbDrawIn  0..100   = 0.0 @when Math.floor(App.deadParam(uMbMode)+0.5) < 2 @desc 描き直しのあと線から面の順に描かれていく時間 (周期に対する %)。0 で一瞬で出る
+// @param uMbSpeed   10..300  = 100.0 @desc 全体の速さ (%)。拍の進み方に掛かる
+// @param uMbKick    0..200   = 100.0 @desc 拍と音の効き (%)。線のスライドの押し出しと音での線の太り
+// @param uMbScale   30..300  = 100.0 @desc 構図の大きさ (%)
+// @param uMbTilt    -180..180 = 0.0 @desc 構図の回転 (度)。45 で菱形になる
+// @param uMbSeed    0..100   = 0.0 @desc 乱数の種。値を変えると別の構図になる
+// @param uMbGrain   0..100   = 25.0 @desc 絵具のムラ (%)
+// @param uMbClear   0..100   = 0.0 @desc 白地を透過する量 (%)。Slot B で下の絵に線と色面だけを重ねる
+// @param uMb3D      0..100   = 0.0 @desc 3D の量 (%)。0 で平面、上げると盤面が傾いて回り、線が厚みを持って立ち上がる
+// @param uMbPitch   0..80    = 45.0 @desc 3D のときの盤面の傾き (度)
+// @param uMbSpin    -100..100 = 20.0 @desc 3D のときの盤面の回転の速さ (%)。負で逆回転
+// @param uMbDist    60..400  = 100.0 @desc 3D のときのカメラの距離 (%)。上げると引いて俯瞰する
+// @param uMbHeight  10..400  = 100.0 @desc 3D のときの線の高さ (%)。100 で線の太さと同じ (断面が正方形)
+// @param uMbHeightVar 0..100 = 0.0 @desc 線の高さのばらつき (%)。0 で全部同じ、100 で線ごとに 0.1 から 1 倍
+// @param uMbBuild   0..400   = 0.0 @desc 色ブロックを建物として立ち上げる高さ (%)。0 で平ら
+// @param uMbBuildVar 0..100  = 65.0 @desc 建物の高さのばらつき (%)。0 で全部同じ、100 で 0 から最大高さまで
+// @param uMbWallShade 0..100 = 55.0 @desc 3D のときの線と建物の側面の陰の濃さ (%)
+// @param uMbPal     0..6     = 0.0 @desc 配色。0 = Classic (下の色 param) / 1 = Cyberpunk / 2 = Neon / 3 = Monochrome / 4 = Pastel / 5 = Blueprint / 6 = Matrix
+// @param uMbPaper   color = #f2f0e9 @when App.deadParam(uMbPal) < 0.5 @desc Classic 配色の白地の色
+// @param uMbRed     color = #cf1f18 @when App.deadParam(uMbPal) < 0.5 @desc Classic 配色の赤 (色ブロック)
+// @param uMbBlue    color = #1b2f96 @when App.deadParam(uMbPal) < 0.5 @desc Classic 配色の青 (色ブロック)
+// @param uMbYellow  color = #f6cf16 @when App.deadParam(uMbPal) < 0.5 @desc Classic 配色の黄 (線)
+// @param uMbGray    color = #bdbcb6 @when App.deadParam(uMbPal) < 0.5 @desc Classic 配色の灰 (車)
 uniform float uMbDensity; // 線の密度 (画面の高さあたりの本数 × 2.2)
 uniform float uMbMode;    // 動くもの: 0 = 全部 / 1 = 車と建物 (道は固定) / 2 = 車だけ (道も建物も固定)
 uniform float uMbLines;   // 線が立つ割合 (%)。下げると線が抜けて大きな面が増える

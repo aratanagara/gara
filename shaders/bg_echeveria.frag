@@ -29,14 +29,14 @@ mat2  ec_phyllotaxis;
 
 struct ec_Model { float d; vec3 p; vec2 uv; vec2 cell; float wedges; float slice; float len; };
 
-// @param uSize  50..110  = 100.0
-// @param uThick  30..250  = 100.0
-// @param uFrost  0..200   = 100.0
-// @param uTrail  0..96    = 85.0
-// @param uAngle -180..180 = 0.0
-// @param uTilt -45..90 = 0.0
-// @param uScale 50..120 = 100.0
-// @param uSteps 40..60 = 60.0
+// @param uSize  50..110  = 100.0 @desc 花びらの大きさ (%)。上げすぎると球の外で欠ける
+// @param uThick  30..250  = 100.0 @desc 花びらの厚み (%)
+// @param uFrost  0..200   = 100.0 @desc 磨りガラスの乳白色の濃さ (%)
+// @param uTrail  0..96    = 85.0 @desc 残像の残り具合 (%)。前フレームを残す割合
+// @param uAngle -180..180 = 0.0 @desc 花の向きのロール (度)
+// @param uTilt -45..90 = 0.0 @desc 花の傾き (度)
+// @param uScale 50..120 = 100.0 @desc 花全体の大きさ (%)。カメラは動かない
+// @param uSteps 40..60 = 60.0 @desc レイマーチのステップ数。下げると軽くなるが、尽きた光線は背景扱いで縁が欠ける
 uniform float uSize;     // 花びらの大きさ (%。上げすぎると球の外で欠ける)
 uniform float uThick;     // 花びらの厚み (%)
 uniform float uFrost;     // 磨りガラスの乳白色の濃さ (%)
@@ -45,34 +45,34 @@ uniform float uAngle; // 花の向き = ロール (度。固定角でずらす)
 uniform float uTilt; // 花の傾き (度。固定角)
 uniform float uScale; // 花全体の大きさ (%。カメラは動かない)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、尽きた光線は背景扱いで縁が欠ける)
-// @param uPetalCurl 30..200 = 100
-// @param uTipThin 30..250 = 100
-// @param uPetalRound 30..150 = 100
-// @param uSpiralA 3..8 = 5
-// @param uSpiralB 5..13 = 8
-// @param uCamHeight -100..100 = 0
-// @param uCamSide -100..100 = 0
-// @param uPerspective 95..200 = 100
-// @param uLightYaw -180..180 = 0
-// @param uEnvYaw -180..180 = 0
-// @param uGlossBroad 5..250 = 100
-// @param uGlossSharp 5..250 = 100
-// @param uSparkSharp 5..250 = 100
-// @param uRefractAmount 0..300 = 100
-// @param uReflectAmount 0..800 = 100
-// @param uRimPower 10..400 = 100
-// @param uRimStrength 0..800 = 100
-// @param uEdgeShadow 0..300 = 100
-// @param uEdgeShadowWidth 30..250 = 100
-// @param uBodyOpacity 30..250 = 100
-// @param uTrailSpread 0..400 = 100
-// @param uTrailDriftX -100..100 = 0
-// @param uTrailDriftY -100..100 = 0
-// @param uFrostColor color = #ffffff
-// @param uRefractColor color = #ffffff
-// @param uReflectColor color = #ffffff
-// @param uSparkleColor color = #ffffff
-// @param uTrailColor color = #ffffff
+// @param uPetalCurl 30..200 = 100 @desc 花びらの反り (%)
+// @param uTipThin 30..250 = 100 @desc 花びら先端の薄さ (%)。小さいほど先端が薄い
+// @param uPetalRound 30..150 = 100 @desc 花びら先端の丸み (%)。大きいほど丸く太い
+// @param uSpiralA 3..8 = 5 @desc 螺旋の一方の本数 (既定 5)。フィボナッチ数以外では並びが崩れる
+// @param uSpiralB 5..13 = 8 @desc 螺旋のもう一方の本数 (既定 8)
+// @param uCamHeight -100..100 = 0 @desc カメラの高さ (%)。見下ろし・見上げ
+// @param uCamSide -100..100 = 0 @desc カメラの左右の振り (%)
+// @param uPerspective 95..200 = 100 @desc パースの強さ (%)。上げるほど望遠で平ら
+// @param uLightYaw -180..180 = 0 @desc スペキュラ光源の水平回転 (度)
+// @param uEnvYaw -180..180 = 0 @desc 映り込み・屈折に映る環境の水平回転 (度)
+// @param uGlossBroad 5..250 = 100 @desc 広いグロスの絞り (%)。大きいほど小さく鋭い
+// @param uGlossSharp 5..250 = 100 @desc 鋭いハイライトの絞り (%)。大きいほど小さく鋭い
+// @param uSparkSharp 5..250 = 100 @desc ピンのきらめきの絞り (%)。大きいほど小さく鋭い
+// @param uRefractAmount 0..300 = 100 @desc 屈折で透ける環境の明るさ (%)
+// @param uReflectAmount 0..800 = 100 @desc 反射の強さ (%)
+// @param uRimPower 10..400 = 100 @desc 縁の反射 (フレネル) の絞り (%)。大きいほど縁に細く出る
+// @param uRimStrength 0..800 = 100 @desc 縁の反射 (フレネル) の強さ (%)
+// @param uEdgeShadow 0..300 = 100 @desc 花びらの境界の影の濃さ (%)
+// @param uEdgeShadowWidth 30..250 = 100 @desc 花びらの境界の影の幅 (%)
+// @param uBodyOpacity 30..250 = 100 @desc 花びらの不透明度の底 (%)
+// @param uTrailSpread 0..400 = 100 @desc 残像のにじみの広がり (%)
+// @param uTrailDriftX -100..100 = 0 @desc 残像を横へ流す量 (%)
+// @param uTrailDriftY -100..100 = 0 @desc 残像を縦へ流す量 (%)
+// @param uFrostColor color = #ffffff @desc 磨りガラスの乳白色の色味 (掛け算)
+// @param uRefractColor color = #ffffff @desc 屈折して透ける色の色味 (掛け算)
+// @param uReflectColor color = #ffffff @desc 反射色の色味 (掛け算)
+// @param uSparkleColor color = #ffffff @desc ハイライト・きらめきの色味 (掛け算)
+// @param uTrailColor color = #ffffff @desc 残像の色味。毎フレーム掛かるので尾の先ほど強く出る
 uniform float uPetalCurl; // 花びらの反り (%)
 uniform float uTipThin; // 花びら先端の薄さ (%)。小さいほど先端が薄い
 uniform float uPetalRound; // 花びら先端の丸み (%)。大きいほど丸く太い

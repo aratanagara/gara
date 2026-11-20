@@ -34,28 +34,28 @@ float ms_sdPoly(in vec2[MS_MAXN] v, int N, in vec2 p){
   return s*sqrt(d);
 }
 
-// @param uDetail 1..5 = 5.0
-// @param uThick 25..300 = 100.0
-// @param uReflect 0..200 = 100.0
-// @param uContrast 0..200 = 100.0
-// @param uAngle -180..180 = 0.0
+// @param uDetail 1..5 = 5.0 @desc 板を再分割する回数。下げると大きな面が増え、軽い
+// @param uThick 25..300 = 100.0 @desc 縁の線・光彩の太さ (%)。大きいほど太い
+// @param uReflect 0..200 = 100.0 @desc 環境反射の強さ (%)
+// @param uContrast 0..200 = 100.0 @desc 面内の明暗グラデの強さ (%)
+// @param uAngle -180..180 = 0.0 @desc 切り線の基準の向き (度)
 uniform float uDetail;   // 再分割の回数 (下げると大きな面が増え、軽い)
 uniform float uThick;   // 破片の縁の線・光彩の太さ (%)
 uniform float uReflect;   // 環境反射の強さ (%)
 uniform float uContrast;   // 面内の明暗グラデの強さ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
-// @param uBreakProb 0..180 = 100.0
-// @param uSplitJitter  0..180   = 0.0
-// @param uCutOffset 0..60 = 0.0
-// @param uBigThreshold 25..300  = 100.0
-// @param uToneSpread   0..200   = 100.0
-// @param uWindowFreq   40..250  = 100.0
-// @param uWindowWidth 20..200 = 100.0
-// @param uShadow       0..100   = 100.0
-// @param uShadowReach  20..300  = 100.0
-// @param uGlint        0..250   = 100.0
-// @param uWindowSecond 0..250   = 100.0
-// @param uFresnel      0..200   = 100.0
+// @param uBreakProb 0..180 = 100.0 @desc 分割を途中でやめる確率 (%)。大きいほど大きな板が残る
+// @param uSplitJitter  0..180   = 0.0 @desc 切り線の向きのばらつき (度)
+// @param uCutOffset 0..60 = 0.0 @desc 切り線を中心からずらす量 (%)。板の大きさが不ぞろいになる
+// @param uBigThreshold 25..300  = 100.0 @desc 大きな面とみなす面積の基準 (%)
+// @param uToneSpread   0..200   = 100.0 @desc 板ごとの明るさのばらつき (%)
+// @param uWindowFreq   40..250  = 100.0 @desc 映り込む窓の筋の細かさ (%)
+// @param uWindowWidth 20..200 = 100.0 @desc 窓の筋の太さ (%)
+// @param uShadow       0..100   = 100.0 @desc 上の辺が下の板に落とす影の濃さ (%)
+// @param uShadowReach  20..300  = 100.0 @desc 影の幅 (%)
+// @param uGlint        0..250   = 100.0 @desc 面内の鋭い鏡面グリントの強さ (%)
+// @param uWindowSecond 0..250   = 100.0 @desc 2 本目の細い窓の筋の濃さ (%)
+// @param uFresnel      0..200   = 100.0 @desc 縁の環境反射の強さ (%)
 uniform float uBreakProb; // 分割を途中でやめる確率 (%)。大きいほど大きな板が残る
 uniform float uSplitJitter; // 切り線の向きのばらつき (度)
 uniform float uCutOffset; // 切り線を中心からずらす量 (%)。板の大きさが不ぞろいになる
@@ -69,24 +69,24 @@ uniform float uGlint; // 面内の鋭い鏡面グリントの強さ (%)
 uniform float uWindowSecond; // 2 本目の細い窓の筋の濃さ (%)
 uniform float uFresnel; // 縁の環境反射の強さ (%)
 
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uMirrorX -100..100 = 0.0
-// @param uPixelate 0..100 = 0.0
-// @param uLightTurn -90..90 = 0.0
-// @param uSheenGain 0..250 = 100.0
-// @param uSheenSharp 40..250 = 100.0
-// @param uBigGlow 0..250 = 100.0
-// @param uRefractTint 0..300 = 100.0
-// @param uPlateHue 0..100 = 0.0
-// @param uGrooveDark 0..108 = 100.0
-// @param uOutlineGlow 0..150 = 100.0
-// @param uVignette 0..100 = 0.0
-// @param uGrain 0..100 = 0.0
-// @param uSilverTint color = #ffffff
-// @param uSkyTint color = #ffffff
-// @param uWindowTint color = #ffffff
-// @param uEdgeTint color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc 板の配置を横へずらす (%)
+// @param uCenterY -100..100 = 0.0 @desc 板の配置を縦へずらす (%)
+// @param uMirrorX -100..100 = 0.0 @desc 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+// @param uPixelate 0..100 = 0.0 @desc 座標のモザイク化 (%)。上げるほど板が階段状になる
+// @param uLightTurn -90..90 = 0.0 @desc 金属の指向光の向きを回す (度)
+// @param uSheenGain 0..250 = 100.0 @desc 明部の帯状ハイライトの強さ (%)
+// @param uSheenSharp 40..250 = 100.0 @desc 帯状ハイライトの鋭さ (%)。上げるほど細い帯
+// @param uBigGlow 0..250 = 100.0 @desc 大きな面だけに乗る強い光の強さ (%)
+// @param uRefractTint 0..300 = 100.0 @desc 窓の映り込みの色ずれ (%)
+// @param uPlateHue 0..100 = 0.0 @desc 板ごとの色づき (%)。板ごとに違う色相が乗る
+// @param uGrooveDark 0..108 = 100.0 @desc 縁の黒い溝線の濃さ (%)
+// @param uOutlineGlow 0..150 = 100.0 @desc 縁の白いぼかしの強さ (%)
+// @param uVignette 0..100 = 0.0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0.0 @desc 粒状ノイズの量 (%)
+// @param uSilverTint color = #ffffff @desc 板の銀色の色味 (掛け算のティント)
+// @param uSkyTint color = #ffffff @desc 映り込む空の色味 (掛け算のティント)
+// @param uWindowTint color = #ffffff @desc 窓の筋の色味 (掛け算のティント)
+// @param uEdgeTint color = #ffffff @desc 縁の白いぼかしの色味 (掛け算のティント)
 uniform float uCenterX; // 板の配置を横へずらす (%)
 uniform float uCenterY; // 板の配置を縦へずらす (%)
 uniform float uMirrorX; // 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効

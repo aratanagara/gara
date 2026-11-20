@@ -6,29 +6,29 @@
 //   iTime,iResolution → time,resolution / bgZoom・bgCamPx でズーム/パン。
 // =====================================================
 
-// @param uSteps 50..100 = 100.0
-// @param uDensity 25..400 = 100.0
-// @param uGlow 20..250 = 100.0
-// @param uSat 0..300 = 100.0
-// @param uSoft 10..300 = 100.0
-// @param uAngle -180..180 = 0.0
+// @param uSteps 50..100 = 100.0 @desc レイマーチの反復回数。下げると軽く、リボンが薄くなる
+// @param uDensity 25..400 = 100.0 @desc リボンの模様の密度 (%)
+// @param uGlow 20..250 = 100.0 @desc 発光の強さ (%)
+// @param uSat 0..300 = 100.0 @desc 色の彩度 (%)
+// @param uSoft 10..300 = 100.0 @desc リボン縁のぼかし幅 (%)
+// @param uAngle -180..180 = 0.0 @desc 全体の向き (度)。固定角で回す
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽く、リボンが薄くなる)
 uniform float uDensity;   // リボンの模様の密度 (%)
 uniform float uGlow;   // 発光の強さ (%)
 uniform float uSat;   // 色の彩度 (%)
 uniform float uSoft;   // リボン縁のぼかし幅 (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
-// @param uRibbonTwist 0..300 = 100.0
-// @param uWave 85..250 = 100.0
-// @param uRibbonWidth 50..170 = 100.0
-// @param uFlutter 25..250 = 100.0
-// @param uFlutterFreq 40..250 = 100.0
-// @param uRibbonGap 50..125 = 100.0
-// @param uHaloHeight 20..200 = 100.0
-// @param uHaloGlow 0..400 = 100.0
-// @param uSwirl -300..300 = 0.0
-// @param uMirror 0..100 = 0.0
-// @param uColorBands 20..300 = 100.0
+// @param uRibbonTwist 0..300 = 100.0 @desc リボンが奥行きに沿ってねじれる量 (%)
+// @param uWave 85..250 = 100.0 @desc リボンの大きなうねりの振れ幅 (%)
+// @param uRibbonWidth 50..170 = 100.0 @desc リボン 1 本の幅 (%)
+// @param uFlutter 25..250 = 100.0 @desc リボン面のはためき (細かい波) の振れ幅 (%)
+// @param uFlutterFreq 40..250 = 100.0 @desc はためきの細かさ (%)
+// @param uRibbonGap 50..125 = 100.0 @desc リボン同士の間隔 (%)。下げると詰まり、上げると疎になる
+// @param uHaloHeight 20..200 = 100.0 @desc 上方の光源の高さ (%)
+// @param uHaloGlow 0..400 = 100.0 @desc 上方の光源のにじみの強さ (%)
+// @param uSwirl -300..300 = 0.0 @desc 中心からの距離に比例したねじれ (%)。0 でなし、負で逆回り
+// @param uMirror 0..100 = 0.0 @desc 左右の鏡像対称 (%)。0 でなし、100 で完全な左右対称
+// @param uColorBands 20..300 = 100.0 @desc 奥行き方向の色帯の細かさ (%)
 uniform float uRibbonTwist; // リボンが奥行きに沿ってねじれる量 (%)
 uniform float uWave;        // リボンの大きなうねりの振れ幅 (%)
 uniform float uRibbonWidth; // リボン 1 本の幅 (%)
@@ -40,18 +40,18 @@ uniform float uHaloGlow;    // 上方の光源のにじみの強さ (%)
 uniform float uSwirl;       // 中心からの距離に比例したねじれ (%)。0 = なし / 負で逆回り
 uniform float uMirror;      // 左右の鏡像対称 (%)。0 = なし / 100 で完全な左右対称
 uniform float uColorBands;  // 奥行き方向の色帯の細かさ (%)
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uShear -100..100 = 0
-// @param uLens -60..100 = 0
-// @param uStretch 50..200 = 100
-// @param uPhase 0..100 = 0
-// @param uHaloX -150..150 = 0
-// @param uHaloFalloff 50..200 = 100
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uRibbonColor color = #ffffff
-// @param uHaloColor color = #ffffff
+// @param uCenterX -100..100 = 0 @desc 構図の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 構図の縦位置 (%)
+// @param uShear -100..100 = 0 @desc 横ずらしの傾き (%)。リボンが斜めに流れる
+// @param uLens -60..100 = 0 @desc 樽型・糸巻き型の歪み (%)。負で糸巻き
+// @param uStretch 50..200 = 100 @desc 横方向の伸縮 (%)。上げるとリボンが横に広がる
+// @param uPhase 0..100 = 0 @desc 模様の奥行き方向の位相のずらし。リボンの並びが変わる
+// @param uHaloX -150..150 = 0 @desc 上方の光源の横位置 (%)
+// @param uHaloFalloff 50..200 = 100 @desc 上方の光源の減衰の指数 (%)。上げると広がりが狭くなる
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0 @desc 粒状のざらつき (%)
+// @param uRibbonColor color = #ffffff @desc リボン本体の色のティント
+// @param uHaloColor color = #ffffff @desc 上方の光源のにじみの色のティント
 uniform float uCenterX;     // 構図の横位置 (%)
 uniform float uCenterY;     // 構図の縦位置 (%)
 uniform float uShear;       // 横ずらしの傾き (%)。リボンが斜めに流れる

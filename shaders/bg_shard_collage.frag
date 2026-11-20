@@ -26,45 +26,45 @@
 //   bgZoom / bgCamPx でズームとパン。
 // =====================================================
 
-// @param uSpeed   0..300  = 60.0
-// @param uDrift   0..200  = 60.0
-// @param uTurn    0..200  = 40.0
-// @param uMorph   0..200  = 100.0
-// @param uRegen   0..32   = 8.0
-// @param uVary    0..200  = 100.0
-// @param uZoomIn  0..200  = 100.0
-// @param uZoomOut 0..200  = 35.0
-// @param uAlign   0..100  = 85.0
-// @param uCluster 0..100  = 70.0
-// @param uDensity 20..100 = 78.0
-// @param uScale   40..200 = 100.0
-// @param uGap     0..200  = 0.0
-// @param uGrain   0..200  = 100.0
-// @param uGround  0..4    = 0.0
-// @param uSeed    0..100  = 0.0
-// @param uKick    0..200  = 45.0
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uRotate  -180..180 = 0.0
-// @param uMirrorX 0..100 = 0.0
-// @param uMirrorY 0..100 = 0.0
-// @param uBarrel  -100..100 = 0.0
-// @param uShardLong 40..200 = 100.0
-// @param uShardThin 30..250 = 100.0
-// @param uTriShare 0..250 = 100.0
-// @param uShearMul 0..300 = 100.0
-// @param uCellJitter 0..300 = 100.0
-// @param uHeroSize 20..250 = 100.0
-// @param uHeroThick 30..250 = 100.0
-// @param uHeroSpread 0..250 = 100.0
-// @param uMidDens 0..200 = 100.0
-// @param uSmallDens 0..200 = 100.0
-// @param uTexScale 40..250 = 100.0
-// @param uTexTurn -90..90 = 0.0
-// @param uPatternLock 0..7 = 0.0
-// @param uAccentShift 0..9 = 0.0
-// @param uShardSat -100..100 = 0.0
-// @param uShardTint color = #ffffff
+// @param uSpeed   0..300  = 60.0 @desc 破片の漂い・回転・大きさの呼吸の速さ (%)。0 で止まる
+// @param uDrift   0..200  = 60.0 @desc 位置の漂いの量 (%)。0 で位置が止まる
+// @param uTurn    0..200  = 40.0 @desc 破片の回転の量 (%)。0 で向きが止まる
+// @param uMorph   0..200  = 100.0 @desc 伸び縮み・角のずれ・剪断の揺れの量 (%)。0 で形が止まる
+// @param uRegen   0..32   = 8.0 @desc 配置と柄を作り直す間隔 (拍。拍が無ければ秒)。0 で固定
+// @param uVary    0..200  = 100.0 @desc 世代ごとに大きさ・密度・隙間・動きが変わる量 (%)。0 でスライダーの値のまま
+// @param uZoomIn  0..200  = 100.0 @desc 寄る量 (%)。大きさの呼吸と、世代ごとに大きくなる量
+// @param uZoomOut 0..200  = 35.0 @desc 引く量 (%)。大きさの呼吸と、世代ごとに小さくなる量
+// @param uAlign   0..100  = 85.0 @desc 破片の傾きを世代ごとの主方向にそろえる強さ (%)。0 でばらばら
+// @param uCluster 0..100  = 70.0 @desc 密集の偏り (%)。焦点の近くほど密に大きく、離れるほど抜ける。0 で一様
+// @param uDensity 20..100 = 78.0 @desc 升ごとに破片が置かれる割合 (%)
+// @param uScale   40..200 = 100.0 @desc 破片と升の大きさ (%)。上げると大きく少なくなる
+// @param uGap     0..200  = 0.0 @desc 破片の縁に出る地色の細い縁の幅 (%)。0 で枠線なし
+// @param uGrain   0..200  = 100.0 @desc 紙の目・粒の量 (%)
+// @param uGround  0..4    = 0.0 @desc 地色。0 = クリーム / 1 = セルリアン / 2 = クリムゾン / 3 = 深緑 / 4 = 世代ごとに選びなめらかに移る
+// @param uSeed    0..100  = 0.0 @desc 配置と柄の乱数の種。値を変えると別の構図になる
+// @param uKick    0..200  = 45.0 @desc 拍と音で漂いが増える量 (%)
+// @param uCenterX -100..100 = 0.0 @desc 構図の中心の左右位置 (%)
+// @param uCenterY -100..100 = 0.0 @desc 構図の中心の上下位置 (%)
+// @param uRotate  -180..180 = 0.0 @desc 構図全体の回転 (度)
+// @param uMirrorX 0..100 = 0.0 @desc 左右に折り返す量 (%)。100 で中心から鏡像
+// @param uMirrorY 0..100 = 0.0 @desc 上下に折り返す量 (%)。100 で中心から鏡像
+// @param uBarrel  -100..100 = 0.0 @desc 構図の樽型の歪み (%)。負で糸巻き型
+// @param uShardLong 40..200 = 100.0 @desc 破片の長辺の長さ (%)
+// @param uShardThin 30..250 = 100.0 @desc 破片の短辺の幅 (%)。下げると細い刃、上げると太い板
+// @param uTriShare 0..250 = 100.0 @desc 三角の破片の割合 (%)。0 で三角なし
+// @param uShearMul 0..300 = 100.0 @desc 四角の破片の剪断のゆがみ (%)
+// @param uCellJitter 0..300 = 100.0 @desc 破片の位置のばらつき (%)。0 で升の中央にそろう
+// @param uHeroSize 20..250 = 100.0 @desc 主役の大きな破片の長さ (%)
+// @param uHeroThick 30..250 = 100.0 @desc 主役の大きな破片の太さ (%)
+// @param uHeroSpread 0..250 = 100.0 @desc 主役の置き位置を中心から離す量 (%)
+// @param uMidDens 0..200 = 100.0 @desc 中の層の破片の出現率 (%)
+// @param uSmallDens 0..200 = 100.0 @desc 小の層の破片の出現率 (%)
+// @param uTexScale 40..250 = 100.0 @desc 柄の細かさ (%)。上げると縞や模様の間隔が詰まる
+// @param uTexTurn -90..90 = 0.0 @desc 柄を破片に対して回す角度 (度)
+// @param uPatternLock 0..7 = 0.0 @desc 柄を 1 種類に固定。0 = 自由 / 1 = ゼブラ / 2 = 等高線 / 3 = 放射 / 4 = インク / 5 = 紙 / 6 = 平塗り / 7 = モアレ
+// @param uAccentShift 0..9 = 0.0 @desc 差し色パレットを回す。値で色の組み合わせが変わる
+// @param uShardSat -100..100 = 0.0 @desc 破片の彩度 (%)。-100 で色が抜けて灰色、正で鮮やか
+// @param uShardTint color = #ffffff @desc 破片の色 (掛け算)
 uniform float uSpeed;   // 破片が漂う速さ (%)
 uniform float uDrift;   // 位置の漂いの量 (%)。0 で位置が止まる
 uniform float uTurn;    // 回転の量 (%)。0 で向きが止まる

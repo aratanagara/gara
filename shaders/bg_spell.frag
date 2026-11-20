@@ -38,14 +38,14 @@ float sp_smin(float a, float b, float r){
   return mix(b,a,h)-r*h*(1.-h);
 }
 
-// @param uThick   25..400 = 100.0
-// @param uDisk    25..400 = 100.0
-// @param uSpacing 50..200 = 100.0
-// @param uSpokes  3..16   = 8.0
-// @param uHole    0..150  = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uScale 50..150 = 100.0
-// @param uSteps 30..50 = 50.0
+// @param uThick   25..400 = 100.0 @desc チューブの太さ (%)
+// @param uDisk    25..400 = 100.0 @desc 円盤の厚み (%)
+// @param uSpacing 50..200 = 100.0 @desc 円盤の縦の間隔 (%)
+// @param uSpokes  3..16   = 8.0 @desc チューブの本数 (内側。外側はその 2 倍)
+// @param uHole    0..150  = 100.0 @desc 円盤の中央の穴の大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc カメラの公転角のオフセット (度。自動回転に足される)
+// @param uScale 50..150 = 100.0 @desc 魔法陣 (チューブと円盤) 全体の大きさ (%)。床・天井は動かない
+// @param uSteps 30..50 = 50.0 @desc ボリュームレイマーチのステップ数。下げると軽く、全体が暗くなる
 uniform float uThick;     // チューブの太さ (%)
 uniform float uDisk;      // 円盤の厚み (%)
 uniform float uSpacing;   // 円盤の縦の間隔 (%)
@@ -54,15 +54,15 @@ uniform float uHole;      // 円盤の中央の穴の大きさ (%)
 uniform float uAngle; // 全体の向き (度。固定角でずらす)
 uniform float uScale; // 魔法陣 (チューブと円盤) 全体の大きさ (%。床・天井は動かない)
 uniform float uSteps; // ボリュームレイマーチのステップ数 (下げると軽く、全体が暗くなる)
-// @param uTubeTwist 0..250 = 100
-// @param uTubeRing 60..140 = 100
-// @param uDiskRadius 50..150 = 100
-// @param uWobble 0..300 = 100
-// @param uWaves 1..12 = 6
-// @param uLobes 3..16 = 10
-// @param uLobeAmp 0..200 = 100
-// @param uCoil 0..300 = 100
-// @param uRoomHeight 60..150 = 100
+// @param uTubeTwist 0..250 = 100 @desc チューブのねじれ (%)
+// @param uTubeRing 60..140 = 100 @desc チューブの輪の半径 (%)
+// @param uDiskRadius 50..150 = 100 @desc 円盤の外半径 (%)
+// @param uWobble 0..300 = 100 @desc 円盤のうねりの深さ (%)
+// @param uWaves 1..12 = 6 @desc 円盤のうねりの山の数
+// @param uLobes 3..16 = 10 @desc 外側の波打ちの山の数
+// @param uLobeAmp 0..200 = 100 @desc 外側の波打ちの振れ幅 (%)
+// @param uCoil 0..300 = 100 @desc 全体の巻きつき (%)
+// @param uRoomHeight 60..150 = 100 @desc 床と天井の間隔 (%)
 uniform float uTubeTwist; // チューブのねじれ (%)
 uniform float uTubeRing;  // チューブの輪の半径 (%)
 uniform float uDiskRadius; // 円盤の外半径 (%)
@@ -72,21 +72,21 @@ uniform float uLobes;     // 外側の波打ちの山の数
 uniform float uLobeAmp;   // 外側の波打ちの振れ幅 (%)
 uniform float uCoil;      // 全体の巻きつき (%)
 uniform float uRoomHeight; // 床と天井の間隔 (%)
-// @param uCamHeight -80..80 = 0
-// @param uCamPitch -30..30 = 0
-// @param uCamRoll -180..180 = 0
-// @param uCamDistance 60..140 = 100
-// @param uCamFov 50..200 = 100
-// @param uShellRadius 70..130 = 100
-// @param uInnerShellRadius 70..130 = 100
-// @param uInnerLobeAmp 0..200 = 100
-// @param uInnerLobes 1..9 = 3
-// @param uFloorBump 0..300 = 100
-// @param uShellThick 20..300 = 100
-// @param uVolumeGrain 0..300 = 100
-// @param uDepthFade -50..100 = 0
-// @param uLightColor color = #ffffff
-// @param uVoidColor color = #000000
+// @param uCamHeight -80..80 = 0 @desc カメラの高さ (%)。部屋の中で上下する
+// @param uCamPitch -30..30 = 0 @desc カメラの俯仰 (度)
+// @param uCamRoll -180..180 = 0 @desc 画面の回転 (度)
+// @param uCamDistance 60..140 = 100 @desc カメラと魔法陣の距離 (%)
+// @param uCamFov 50..200 = 100 @desc 画角 (%)。大きいほど望遠で拡大
+// @param uShellRadius 70..130 = 100 @desc 手前の魔法陣の球の半径 (%)
+// @param uInnerShellRadius 70..130 = 100 @desc 奥の魔法陣の球の半径 (%)
+// @param uInnerLobeAmp 0..200 = 100 @desc 奥の魔法陣の波打ちの振れ幅 (%)
+// @param uInnerLobes 1..9 = 3 @desc 奥の魔法陣の波打ちの山の数
+// @param uFloorBump 0..300 = 100 @desc 床と天井の凹凸 (%)
+// @param uShellThick 20..300 = 100 @desc 光の殻の厚み (%)。大きいほど輪郭が太く光る
+// @param uVolumeGrain 0..300 = 100 @desc ボリュームのざらつき (%)
+// @param uDepthFade -50..100 = 0 @desc 奥ほど弱める量 (%)。負で奥を強める
+// @param uLightColor color = #ffffff @desc 光の色味
+// @param uVoidColor color = #000000 @desc 闇の色。暗い部分に足される
 uniform float uCamHeight; // カメラの高さ (%)。部屋の中で上下
 uniform float uCamPitch; // カメラの俯仰 (度)
 uniform float uCamRoll; // 画面の回転 (度)

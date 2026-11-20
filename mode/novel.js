@@ -559,6 +559,9 @@ const NovelTerminal = {
     // ── Fluid 第 4 弾: 図形ごとの操作・拍で切替・くっきり。既定値 = 従来の見た目 ──
     fluidBeats:0,      // 構図を切り替える拍数 (0 = 従来どおり Fluid Cycle の時間。drone は 120BPM 換算)
     fluidSharp:0,
+    fluidTriText:false, fluidRectText:false,   // 図形の中の字を図形の回転に合わせて回す (三角 / 矩形)
+    fluidCircleEdge:true, fluidTriEdge:true, fluidRectEdge:true,   // 図形の輪郭を描くか (OFF = 輪郭を描かない。Auto は塗りだけ、Edge は出さない)
+    sceneVals:null,    // Scene ごとの保存値 { fluid:{...}, editorial:{...}, _common:{...} } (snapScene / applyScene)
     fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
     fluidFont:0,       // Fluid の書体 (FLUID_FONTS の番号。0 = 従来のリュウミン + MS ゴシック)
     fluidAspect:100,   // Fluid の字の縦横比 % (100 = 正体 / 小さいほど長体 = 幅を詰める / 大きいほど平体 = 高さを詰める)      // 図形の縁を切り立たせ、ざらつきを消し、三角を正三角形に
@@ -1212,6 +1215,7 @@ const NovelTerminal = {
     p.noStroke();
 
     const kandinsky = this.P && (this.P.fluidLayout|0) === 1;
+    const eCircle = !(this.P && this.P.fluidCircleEdge === false), eTri = !(this.P && this.P.fluidTriEdge === false), eRect = !(this.P && this.P.fluidRectEdge === false);
     const fieldAt = (nx, ny, va, phase, wantGeo) => {
       const scene = (Math.floor(sceneClock + va + phase*0.33) % 6 + 6) % 6;
       const local = (sceneClock + phase*0.11) % 1;
@@ -1342,10 +1346,11 @@ const NovelTerminal = {
       const rhythm = (((gridX*2 + gridY + scene + va) % (3 + scene%2)) === 0 ? 0.13 : -0.10)*kRhythm;
       const voidShape = Math.max(0, 1 - Math.hypot(nx-voidX, ny-voidY) / (0.12+0.08*sweep));
       // 図形の見せ方: Auto = 場面で塗りと輪郭が入れ替わる / Fill / Edge / Off
-      const pickShape = (mode, auto, edge, fill) => mode === 3 ? -1 : mode === 1 ? fill : mode === 2 ? edge : (auto ? edge : fill);
-      const circleShape = pickShape(mCircle, (scene + va) % 2 === 0, circleRing, circleFill*0.86);
-      const triShape = pickShape(mTri, (scene + Math.floor(local*2)) % 2 === 0, triEdge*0.98, triFill*0.90);
-      const squareShape = pickShape(mRect, (scene + va + 1) % 2 === 0, squareEdge*0.96, squareFill*0.88);
+      //   輪郭 OFF (Line のトグル) のときは輪郭を描かない
+      const pickShape = (mode, auto, edge, fill, edgeOn) => mode === 3 ? -1 : mode === 1 ? fill : mode === 2 ? (edgeOn ? edge : -1) : (auto && edgeOn ? edge : fill);
+      const circleShape = pickShape(mCircle, (scene + va) % 2 === 0, circleRing, circleFill*0.86, eCircle);
+      const triShape = pickShape(mTri, (scene + Math.floor(local*2)) % 2 === 0, triEdge*0.98, triFill*0.90, eTri);
+      const squareShape = pickShape(mRect, (scene + va + 1) % 2 === 0, squareEdge*0.96, squareFill*0.88, eRect);
       const lineShape = Math.max(mainLine*0.86, subLineA*0.72, subLineB*0.66);
       const circleV = (scene + va) % 2 === 0;
       const triV = (scene + Math.floor(local*2) + 1) % 2 === 0;
@@ -1461,6 +1466,20 @@ const NovelTerminal = {
     };
     const geoA = fieldAt(0, 0, mu < 0.5 ? variant : nextVariant, mu < 0.5 ? 0.0 : 1.7, true).geo;
     const toPx = (gx, gy) => [((gx/aspect)+1)*0.5*W, (gy+1)*0.5*H];
+    // Text Spin: 三角・矩形の中の字を図形の向きに沿った格子で並べ直し、字も図形と同じ角度に回す (横組み・縦組みはその図形の中を空ける)
+    const turnShapes = [];
+    if(!ext && geoA){
+      const inRot = (nx, ny, cx, cy, a) => { const c = Math.cos(-a), s = Math.sin(-a), dx = nx - cx, dy = ny - cy; return [dx*c - dy*s, dx*s + dy*c]; };
+      if(this.P && this.P.fluidTriText === true && geoA.triOn){
+        const g = geoA, s = g.triSize;
+        turnShapes.push({ a:g.triAngle, c:toPx(g.triX, g.triY), R:s*1.3*H*0.5, inside:(nx, ny)=>{ const q = inRot(nx, ny, g.triX, g.triY, g.triAngle), px = Math.abs(q[0]), py = q[1] + s*0.34; return Math.max(py - s*0.58, py*0.86 + px*0.50 - s*0.58, -py - s*0.46) < 0; } });
+      }
+      if(this.P && this.P.fluidRectText === true && geoA.rectOn){
+        const g = geoA;
+        turnShapes.push({ a:g.rectAngle, c:toPx(g.rectX, g.rectY), R:Math.hypot(g.rectW, g.rectH)*0.5*H*0.5 + fs, inside:(nx, ny)=>{ const q = inRot(nx, ny, g.rectX, g.rectY, g.rectAngle); return Math.abs(q[0]) < g.rectW*0.5 && Math.abs(q[1]) < g.rectH*0.5; } });
+      }
+    }
+    const inTurn = turnShapes.length ? (nx, ny) => turnShapes.some(S => S.inside(nx, ny)) : null;
     // 大きな字: 円の中心に、半径いっぱいの輪郭線の漢字 (図形が切り替わるたびに字も替わる)
     if(kBig > 0 && !ext && geoA.circleOn){
       const kan = this._fluidKanji || (this._fluidKanji = src.filter(ch => { const c = ch.charCodeAt(0); return c >= 0x4E00 && c <= 0x9FFF; }));
@@ -1488,6 +1507,7 @@ const NovelTerminal = {
         const y = r*lh + driftY + Math.cos(t*0.16+c*0.09*kWF)*lh*0.35*kCW;
         const nx = ((x/W)*2-1)*aspect;
         const ny = (y/H)*2-1;
+        if(inTurn && inTurn(nx, ny)) continue;
         const f0 = composedField(nx, ny, variant, 0.0).h;
         const f1 = composedField(nx, ny, nextVariant, 1.7).h;
         const field = f0 + (f1-f0)*mu;
@@ -1531,6 +1551,7 @@ const NovelTerminal = {
         const y = r*chH;
         const nx = ((x/W)*2-1)*aspect;
         const ny = (y/H)*2-1;
+        if(inTurn && inTurn(nx, ny)) continue;
         const f0 = composedField(nx, ny, variant, 0.65).v;
         const f1 = composedField(nx, ny, nextVariant, 2.05).v;
         const field = f0 + (f1-f0)*mu;
@@ -1542,6 +1563,32 @@ const NovelTerminal = {
         const alpha = shade(54 + Math.max(0, Math.min(1, field))*132, field, vThr);
         drawGlyph(ch, vSrc[(idx-1+vSrc.length)%vSrc.length] || "", vSrc[(idx+1)%vSrc.length] || "", x, y, vfs, alpha, true);
         occupied.add(occKey(x, y));
+      }
+    }
+
+    for(let si = 0; si < turnShapes.length; si++){
+      const S = turnShapes[si], ca = Math.cos(S.a), sa = Math.sin(S.a);
+      const n = Math.ceil(S.R/adv), m = Math.ceil(S.R/lh);
+      const dens = Math.max(0.3, (this.P && typeof this.P.density === 'number') ? this.P.density : 1);
+      const thr = (0.48 + splitAmt*0.04) / dens, vOn = !(this.P && this.P.vertLayer === false);
+      for(let j = -m; j <= m; j++){
+        for(let i = -n; i <= n; i++){
+          const lx = i*adv, ly = j*lh;
+          const wx = S.c[0] + lx*ca - ly*sa, wy = S.c[1] + lx*sa + ly*ca;
+          const nx = ((wx/W)*2-1)*aspect, ny = (wy/H)*2-1;
+          if(!S.inside(nx, ny)) continue;
+          const c0 = composedField(nx, ny, variant, 0.0), c1 = composedField(nx, ny, nextVariant, 1.7);   // 横組みの場 (縦書きレイヤーが ON なら縦組みの場も)
+          const f0 = vOn ? Math.max(c0.h, c0.v) : c0.h, f1 = vOn ? Math.max(c1.h, c1.v) : c1.h;
+          const field = f0 + (f1-f0)*mu;
+          if(field < thr) continue;
+          const idx = (base + (j + m)*(2*n + 1) + (i + n) + si*997 + src.length*20) % src.length;
+          const ch = src[idx] || "　";
+          if(ch === "　" || ch === " ") continue;
+          const dc = p.drawingContext; dc.save(); dc.translate(wx, wy); dc.rotate(S.a);   // p5 の文字状態に触れない (横組みと同じ描き方)
+          drawGlyph(ch, src[(idx-1+src.length)%src.length] || "", src[(idx+1)%src.length] || "", -fs*0.5, -fs*0.5, fs, shade(58 + Math.max(0, Math.min(1.05, field))*170, field, thr), false);
+          dc.restore();
+          occupied.add(occKey(wx, wy));
+        }
       }
     }
 
@@ -2008,6 +2055,152 @@ const NovelTerminal = {
     this._lastFont = null;
   },
   SCENES: ['fluid','melt','columns','vert','typer','render','editorial'],
+  // Scene ごとの保存値: Save のとき今の Scene の値を sceneVals[scene] に控え、Scene が替わったらその Scene の値を戻す。
+  //   保存の無い Scene は共通の値 (sceneVals._common = Scene ごとに保存する前の共通の保存値) を使う
+  _SCENE_SKIP: ['scene', 'sceneVals', 'sceneBeats'],
+  _sceneSnap(src){ const o = {}; for(const k in src) if(!this._SCENE_SKIP.includes(k)) o[k] = JSON.parse(JSON.stringify(src[k])); return o; },
+  snapScene(){
+    const P = this.P; if(!P || !this.SCENES.includes(P.scene)) return null;
+    const sv = Object.assign({}, P.sceneVals);
+    if(!sv._common){
+      let base = null; try{ base = JSON.parse(localStorage.getItem('vj.def.novel') || 'null'); }catch(e){}
+      sv._common = this._sceneSnap(Object.assign({}, this._PDef, base || {}));
+    }
+    sv[P.scene] = this._sceneSnap(P);
+    P.sceneVals = sv; this._sceneApplied = P.scene;
+    return P.scene;
+  },
+  applyScene(scene){
+    const P = this.P, sv = P && P.sceneVals;
+    const src = sv && (sv[scene] || sv._common);
+    if(!src) return false;
+    for(const k in src) if(!this._SCENE_SKIP.includes(k)) P[k] = JSON.parse(JSON.stringify(src[k]));
+    this._paramUse = null;
+    if(typeof UI !== 'undefined' && UI.refreshNovelParams) setTimeout(()=>UI.refreshNovelParams(), 0);
+    return true;
+  },
+  // パネルのグループ (見出しで畳む)。ここに無い行 (Scene・Speed・Char Size・Randomize) は先頭に残る。toggle の行は最初のキーで探す
+  PARAM_GROUPS: [
+    ['Composition', ['fluidLayout','sceneSpeed','fluidBeats','shapeScale','split','fluidSharp','fluidCrisp','edgeNoise','rhythmAmt','lineWidth']],
+    ['Circle', ['fluidCircleMode','fluidCircleSize','fluidCircleEdge','fluidCircleLine']],
+    ['Triangle', ['fluidTriMode','fluidTriSize','fluidTriSpin','fluidTriEdge','fluidTriLine']],
+    ['Rect', ['fluidRectMode','fluidRectSize','fluidRectSpin','fluidRectEdge','fluidRectLine']],
+    ['Type', ['fluidFont','fluidAspect','density','leading','tracking','alpha','fluidContrast','glitch']],
+    ['Layers', ['vertLayer','vertSize','vertGap','vertCut','cursorSize']],
+    ['Motion', ['drift','rowWave','colWave','waveFreq','flicker','beatFlash','morph']],
+    ['Color', ['inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
+    ['HUD', ['fluidHud','fluidBig']],
+    ['Editorial', ['edLayout','edSize','edLeading','edTracking','edMargin','edJump','edCols','edGrid','edReveal','edTurnBeats','edFolio','edInk','edAccent']],
+    ['Meltdown', ['meltDepth','dripLen','meltFade','meltGhost','meltLeading','meltSize']],
+    ['Columns', ['colCount','colGutter','colLeading','colMargin']],
+    ['Vertical', ['vsGap','vsPitch']],
+    ['Typer', ['typerWidth','typerLeading']],
+    ['ASCII Render', ['palette','renderCell','renderCutoff','renderFreq']],
+  ],
+  // 表示名の付け替え (キーと保存値はそのまま)
+  PARAM_LABELS: { sceneSpeed:'Cycle Speed', fluidBeats:'Cycle Beats', split:'Panel Split', rhythmAmt:'Grid Rhythm', edgeNoise:'Edge Grain', lineWidth:'Axis Width',
+    fluidCircleLine:'Circle Outline', fluidTriLine:'Tri Outline', fluidRectLine:'Rect Outline', vertSize:'Vertical Size', vertGap:'Vertical Gap', vertCut:'Vertical Cut', tint:'Tint',
+    fluidCircleMode:'Circle Mode', fluidTriMode:'Tri Mode', fluidRectMode:'Rect Mode' },
+  // ホバーで出る説明 (何が・どちらへ変わるか)
+  PARAM_HELP: {
+    scene:'表示する場面。Random = Scene Beats 拍ごとに場面を引き直す (beat モードのみ)',
+    sceneBeats:'Scene = Random のとき、何拍ごとに場面を替えるか',
+    speed:'全体の時間の速さ。大きいほど字も図形も速く動く (全場面)',
+    charSize:'字の大きさ (全場面)',
+    fluidLayout:'図形の配置。Classic = 場面ごとの座標 / Kandinsky = 斜めの主軸に大円を置き、楔が大円を指す',
+    sceneSpeed:'構図が切り替わる速さ (Cycle Beats = Time のとき)',
+    fluidBeats:'何拍ごとに構図を切り替えるか。Time = Cycle Speed の時間で切り替える',
+    shapeScale:'円・三角・矩形をまとめた大きさ',
+    split:'画面を矩形に割る構図の強さ。0 で割らない',
+    fluidSharp:'図形の縁を切り立たせ、ざらつきを消す。三角は正三角形になる',
+    fluidCrisp:'図形の外に散る字を減らし、縁を整える',
+    edgeNoise:'図形の縁のざらつき。大きいほど縁が崩れる',
+    rhythmAmt:'格子状に字を濃く・薄くするリズムの強さ',
+    lineWidth:'構図を貫く直線 (主軸と副線) の太さ',
+    fluidCircleMode:'円の見せ方。Auto = 場面ごとに塗りと輪郭が入れ替わる / Fill / Edge / Off = 出さない',
+    fluidCircleSize:'円の大きさ (Shape Scale に掛かる)',
+    fluidCircleEdge:'円の輪郭を描く。OFF なら輪郭を描かず、Auto は塗りだけ・Edge は出さない',
+    fluidCircleLine:'円の輪郭の太さ',
+    fluidTriMode:'三角の見せ方。Auto = 場面ごとに塗りと輪郭が入れ替わる / Fill / Edge / Off = 出さない',
+    fluidTriSize:'三角の大きさ (Shape Scale に掛かる)',
+    fluidTriSpin:'三角の回る速さ。0 = 場面ごとの向きで止まる',
+    fluidTriEdge:'三角の輪郭を描く。OFF なら輪郭を描かず、Auto は塗りだけ・Edge は出さない', fluidTriText:'三角の中の字を三角の向きにそろえて回す',
+    fluidTriLine:'三角の輪郭の太さ',
+    fluidRectMode:'矩形の見せ方。Auto = 場面ごとに塗りと輪郭が入れ替わる / Fill / Edge / Off = 出さない',
+    fluidRectSize:'矩形の大きさ (Shape Scale に掛かる)',
+    fluidRectSpin:'矩形の回る速さ。0 = 場面ごとの向きで止まる',
+    fluidRectEdge:'矩形の輪郭を描く。OFF なら輪郭を描かず、Auto は塗りだけ・Edge は出さない', fluidRectText:'矩形の中の字を矩形の向きにそろえて回す',
+    fluidRectLine:'矩形の輪郭の太さ',
+    fluidFont:'書体。Default = リュウミン + MS ゴシック。ほかは設定画面の和文書体と同じ一覧',
+    fluidAspect:'字の縦横比。100 = 正体 / 小さいほど長体 (幅を詰める) / 大きいほど平体 (高さを詰める)',
+    density:'字の詰まり具合。大きいほど図形の外まで字が出る',
+    leading:'行の間隔',
+    tracking:'字の間隔',
+    alpha:'字の濃さ',
+    fluidContrast:'図形の芯の字を明るく、縁の字を暗くする濃淡',
+    glitch:'字が半角カナや記号に化ける頻度',
+    vertLayer:'右から左へ並ぶ縦書きの層を出す', holeLayer:'図形の中を黒い字で抜く層を出す', cursor:'下を走るカーソルを出す', clash:'横組みと重なる縦書きの字を抜く',
+    vertSize:'縦書きの層の字の大きさ',
+    vertGap:'縦書きの列の間隔',
+    vertCut:'縦書きの字が出るしきい値。大きいほど図形の芯にだけ残る',
+    cursorSize:'下を走るカーソルの大きさ',
+    drift:'字面全体がゆっくり流れる量',
+    rowWave:'行ごとに横へうねる幅',
+    colWave:'列ごとに縦へうねる幅',
+    waveFreq:'うねりの細かさ',
+    flicker:'行ごとの明滅の強さ',
+    beatFlash:'拍頭に画面が光る量 (全場面)',
+    morph:'Meltdown〜ASCII Render の場面が替わるとき、字が移動してつながる秒数 (0 = カット)',
+    inkMode:'字の色の決め方。Variant = 構図ごと / 品詞カラー = 字の種類ごと / Mono = Mono Ink / Terminal = 緑 / Duotone = 横組みは Mono Ink・縦書きは Fluid Accent',
+    tint:'Tint Color を字に混ぜる量',
+    tintColor:'Tint で混ぜる色',
+    monoColor:'Ink = Mono・Duotone のときの字の色',
+    fluidAccent:'差し色。Duotone の縦書き・HUD・大きな字に使う',
+    flashColor:'拍頭に光る色 (全場面)',
+    fluidHud:'照準線・座標・ブラケットの濃さ',
+    fluidBig:'円の中心に出る大きな字の濃さ',
+    edLayout:'版の型。Book = 縦組の見開き / Magazine = 横組の段組 / Single = 縦組の一頁',
+    edSize:'本文の字の大きさ', edLeading:'行送り (100% = 1.75 字)', edTracking:'字送り (100% = ベタ組み)', edMargin:'天・地・ノド・小口の余白',
+    edJump:'見出しの大きさ (本文比。10% 未満で見出しなし)', edCols:'Magazine の段数', edGrid:'版面の罫と行のガイドの濃さ', edReveal:'字が組み上がる速さ', edTurnBeats:'頁をめくる拍数',
+    edFolio:'柱 (ランニングヘッド) と頁番号を出す', edMarks:'版面の角のトンボと罫を出す', edInk:'本文の色', edAccent:'見出し番号とカーソルの色',
+    meltDepth:'溶け始める位置', dripLen:'字が垂れる長さ', meltFade:'溶けた字の暗さ', meltGhost:'溶けた残像の濃さ', meltLeading:'行の間隔', meltSize:'字の大きさ',
+    colCount:'段の数', colGutter:'段の間隔', colLeading:'行の間隔', colMargin:'外側の余白',
+    vsGap:'列の間隔', vsPitch:'字送り',
+    typerWidth:'1 行の幅', typerLeading:'行の間隔',
+    palette:'ASCII Render の配色', renderCell:'字の升目の大きさ', renderCutoff:'このしきい値より薄い所には字を描かない', renderFreq:'波の細かさ',
+  },
+  // パラメータを使う場面 (パネルのグレー表示用。UI.bindParamWhen に paramOn を渡す)。ここに無いキーは全場面で使う
+  PARAM_SCENES: {
+    fluid: ['alpha','colWave','cursorSize','density','drift','edgeNoise','flicker','fluidAccent','fluidAspect','fluidBeats','fluidBig',
+      'fluidCircleMode','fluidCircleLine','fluidCircleSize','fluidTriMode','fluidTriLine','fluidTriSize','fluidTriSpin','fluidRectMode','fluidRectLine','fluidRectSize','fluidRectSpin',
+      'fluidContrast','fluidCrisp','fluidFont','fluidHud','fluidLayout','fluidSharp','glitch','inkMode','leading','lineWidth','monoColor','rhythmAmt','rowWave',
+      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge'],
+    editorial: ['edAccent','edCols','edFolio','edGrid','edInk','edJump','edLayout','edLeading','edMargin','edMarks','edReveal','edSize','edTracking','edTurnBeats'],
+    melt: ['dripLen','meltDepth','meltFade','meltGhost','meltLeading','meltSize'],
+    columns: ['colCount','colGutter','colLeading','colMargin'],
+    vert: ['vsGap','vsPitch'],
+    typer: ['typerLeading','typerWidth'],
+    render: ['palette','renderCell','renderCutoff','renderFreq'],
+  },
+  // そのキーが今の Scene (Random なら全場面のどれか) で効くか。Fluid 内の条件 (図形 Off・縦書き Off・カーソル Off) も見る
+  paramOn(key){
+    const P = this.P || {};
+    const sc = P.scene === 'random' ? this.SCENES : [this.SCENES.includes(P.scene) ? P.scene : 'fluid'];
+    if(key.startsWith('group:')){ const g = this.PARAM_GROUPS.find(x => x[0] === key.slice(6)); return !g || g[1].some(k => this.paramOn(k)); }
+    if(key === 'sceneBeats') return P.scene === 'random';
+    if(key === 'morph') return sc.some(s => s in this._LEGACY);
+    const use = this._paramUse || (this._paramUse = Object.entries(this.PARAM_SCENES).reduce((m, [s, ks]) => { ks.forEach(k => (m[k] = m[k] || []).push(s)); return m; }, {}));
+    if(use[key] && !sc.some(s => use[key].includes(s))) return false;
+    const off = { fluidCircleSize:'fluidCircleMode', fluidCircleLine:'fluidCircleMode', fluidTriSize:'fluidTriMode', fluidTriSpin:'fluidTriMode', fluidTriLine:'fluidTriMode',
+      fluidRectSize:'fluidRectMode', fluidRectSpin:'fluidRectMode', fluidRectLine:'fluidRectMode', fluidTriText:'fluidTriMode', fluidRectText:'fluidRectMode',
+      fluidCircleEdge:'fluidCircleMode', fluidTriEdge:'fluidTriMode', fluidRectEdge:'fluidRectMode' }[key];
+    if(off && (P[off]|0) === 3) return false;
+    const edge = { fluidCircleLine:'fluidCircleEdge', fluidTriLine:'fluidTriEdge', fluidRectLine:'fluidRectEdge' }[key];
+    if(edge && P[edge] === false) return false;
+    if(['vertSize','vertGap','vertCut','clash'].includes(key) && P.vertLayer === false) return false;
+    if(key === 'cursorSize' && P.cursor === false) return false;
+    return true;
+  },
   _LEGACY: {melt:0, columns:1, vert:2, typer:3, render:4},
   // scene='random': beat モードでは sceneBeats 拍ごとに抽選 / drone では固定 (beat同期はbeatモードのみの方針)
   _pickScene(){
@@ -2036,8 +2229,9 @@ const NovelTerminal = {
     this._lastFont = null;                                               // resizeCanvas 後の font 状態ずれを無効化
     p.clear(); p.noStroke(); p.textSize(cell); p.textAlign(p.LEFT, p.TOP);
     this._emit = null;
+    let scene = this._pickScene();
+    if(scene !== this._sceneApplied){ this._sceneApplied = scene; this.applyScene(scene); }   // Scene が替わったらその Scene の保存値を戻す
     const t = this._now() * (P.speed || 1);
-    const scene = this._pickScene();
     if(scene === 'fluid'){
       this._dNovelFullText(p, t);
     } else if(scene === 'editorial'){

@@ -20,37 +20,37 @@
 //   bgZoom / bgCamPx でズームとパン (Slot A の絵は画面の位置のまま読む)。
 // =====================================================
 
-// @param uSpeed    0..300  = 100.0
-// @param uCells    0..100  = 100.0
-// @param uCellSize 30..300 = 100.0
-// @param uWarp     0..200  = 100.0
-// @param uDensity  0..100  = 70.0
-// @param uBig      0..100  = 45.0
-// @param uLife     1..32   = 12.0
-// @param uSize     30..300 = 100.0
-// @param uStroke   0..200  = 100.0
-// @param uDots     0..200  = 100.0
-// @param uRefract  0..300  = 100.0
-// @param uFrost    0..200  = 70.0
-// @param uGrain    0..200  = 100.0
-// @param uIris     0..200  = 100.0
-// @param uShadow   0..200  = 100.0
-// @param uWarm     0..200  = 100.0
-// @param uKick     0..200  = 60.0
-// @param uSeed     0..100  = 0.0
-// @param uBevel 25..300 = 100
-// @param uRimGlow 0..300 = 100
-// @param uRimWidth 40..300 = 100
-// @param uTexLight 0..300 = 100
-// @param uTexLightAngle -180..180 = 0
-// @param uStrokeLanes 40..300 = 100
-// @param uDotPitch 40..300 = 100
-// @param uVignette 0..100 = 0
-// @param uFilmGrain 0..100 = 0
-// @param uGlassColor color = #ffffff
-// @param uFrostColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uPaperTint color = #ffffff
+// @param uSpeed    0..300  = 100.0 @desc 輪郭のゆらぎ・セルの漂いの速さ (%)。0 で止まる
+// @param uCells    0..100  = 100.0 @desc 分割のレイヤー: 現れるセルの割合 (%)。0 でレイヤーごと消える
+// @param uCellSize 30..300 = 100.0 @desc 分割のレイヤー: セルの大きさ (%)
+// @param uWarp     0..200  = 100.0 @desc 分割のレイヤー: セルの境界の曲がり (%)
+// @param uDensity  0..100  = 70.0 @desc 重ねるレイヤー: 小と中の面が置かれる割合 (%)
+// @param uBig      0..100  = 45.0 @desc 重ねるレイヤー: 画面ほどの大きな面が置かれる割合 (%)。0 でなし
+// @param uLife     1..32   = 12.0 @desc 面とセルが現れ直す間隔。拍があれば拍、無ければ秒
+// @param uSize     30..300 = 100.0 @desc 重ねるレイヤーの面の大きさ (%)
+// @param uStroke   0..200  = 100.0 @desc ストロークの筋 (刷毛の跡) の強さ (%)
+// @param uDots     0..200  = 100.0 @desc 粒々 (盛り上がった小さな玉) の強さ (%)
+// @param uRefract  0..300  = 100.0 @desc 屈折の強さ (%)
+// @param uFrost    0..200  = 70.0 @desc すりガラスのぼけ・乳白の濃さ (%)
+// @param uGrain    0..200  = 100.0 @desc すりガラスの粒 (%)。砂を吹いた面の細かい凹凸とまだらな曇り
+// @param uIris     0..200  = 100.0 @desc 縁の虹色の強さ (%)
+// @param uShadow   0..200  = 100.0 @desc 重ねるレイヤーの面の下の影の濃さ (%)
+// @param uWarm     0..200  = 100.0 @desc Slot A のときの地の桃色の光 (%)
+// @param uKick     0..200  = 60.0 @desc 拍や音で屈折が強まる量 (%)
+// @param uSeed     0..100  = 0.0 @desc 配置のシード。値を変えると別の配置になる
+// @param uBevel 25..300 = 100 @desc 面の縁と表面の傾きの強さ (%)。屈折と光沢の両方に効く
+// @param uRimGlow 0..300 = 100 @desc 縁の白い光の強さ (%)
+// @param uRimWidth 40..300 = 100 @desc 縁の光の太さ (%)
+// @param uTexLight 0..300 = 100 @desc 筋と粒の光と陰のコントラスト (%)
+// @param uTexLightAngle -180..180 = 0 @desc 筋と粒に当たる光の向き (度)
+// @param uStrokeLanes 40..300 = 100 @desc ストロークの筋の細かさ (%)。大きいほど筋が細く密になる
+// @param uDotPitch 40..300 = 100 @desc 粒々の細かさ (%)。大きいほど粒が小さく密になる
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uFilmGrain 0..100 = 0 @desc 画面全体のざらつき (%)
+// @param uGlassColor color = #ffffff @desc ガラス越しの色味 (掛け算)
+// @param uFrostColor color = #ffffff @desc 乳白の色味 (掛け算)
+// @param uRimColor color = #ffffff @desc 縁の光の色味 (掛け算)
+// @param uPaperTint color = #ffffff @desc Slot A のときの地の色味 (掛け算)
 uniform float uSpeed;    // 輪郭のゆらぎ・セルの漂いの速さ (%)
 uniform float uCells;    // 分割のレイヤー: 現れるセルの割合 (%)。0 でレイヤーごと消える
 uniform float uCellSize; // 分割のレイヤー: セルの大きさ (%)

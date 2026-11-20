@@ -29,12 +29,12 @@ float lq_vnoise(vec2 x){
   float k0 = a, k1 = b - a, k2 = c - a, k3 = d - c + a - b;
   return k0 + k1*u.x + k2*u.y + k3*u.x*u.y;
 }
-// @param uLacunarity 85..125 = 100
-// @param uOctGain 60..160 = 100
-// @param uOctTwist 25..200 = 100
-// @param uBlotch 25..300 = 100
-// @param uBlotchScale 25..300 = 100
-// @param uCrease 30..300 = 100
+// @param uLacunarity 85..125 = 100 @desc オクターブごとの周波数の伸び (%)。大きいほど細部が急に細かくなる
+// @param uOctGain 60..160 = 100 @desc オクターブごとの振幅の残り方 (%)。大きいほど細部が強く残る
+// @param uOctTwist 25..200 = 100 @desc オクターブごとの回転量 (%)
+// @param uBlotch 25..300 = 100 @desc まだら (反転する斑) の出方 (%)
+// @param uBlotchScale 25..300 = 100 @desc まだらの細かさ (%)。大きいほど細かい
+// @param uCrease 30..300 = 100 @desc 起伏の折れ目の鋭さ (%)
 uniform float uLacunarity; // オクターブごとの周波数の伸び (%)
 uniform float uOctGain;    // オクターブごとの振幅の残り方 (%)
 uniform float uOctTwist;   // オクターブごとの回転量 (%)
@@ -53,31 +53,31 @@ float lq_fbm(vec2 p, int oct){
   }
   return mix((h/d), -0.5*(h/d), pow(lq_vnoise(0.9*(uBlotchScale / 100.0)*op), 0.25*(uBlotch / 100.0)));
 }
-// @param uDetail  2..7 = 7.0
-// @param uWarp    0..300 = 100.0
-// @param uRelief  20..300 = 100.0
-// @param uDensity 25..300 = 100.0
-// @param uGlow    0..300 = 100
-// @param uRimWidth 25..300 = 100
-// @param uRimReach 25..300 = 100
-// @param uLightSpread 40..200 = 100.0
-// @param uRotate -180..180 = 0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uMirror -100..100 = 0
-// @param uStretchX 40..250 = 100
-// @param uLightHeight 25..300 = 100
-// @param uLightDepth -100..100 = 0
-// @param uKeyLight 30..300 = 100
-// @param uFillLight 0..400 = 100
-// @param uDiffSharp 25..200 = 100
-// @param uNormalReach 30..400 = 100
-// @param uContour 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uFilmGrain 0..100 = 0
-// @param uKeyColor color = #ffffff
-// @param uFillColor color = #ffffff
-// @param uRimColor color = #ffffff
+// @param uDetail  2..7 = 7.0 @desc ワープ層のオクターブ数 (四捨五入で整数)。下げると軽く、模様が粗くなる
+// @param uWarp    0..300 = 100.0 @desc 模様の歪みの強さ (%)
+// @param uRelief  20..300 = 100.0 @desc 表面の起伏の深さ (%)
+// @param uDensity 25..300 = 100.0 @desc 模様の細かさ (%)。大きいほど細かい
+// @param uGlow    0..300 = 100 @desc 縁のハイライトの強さ (%)
+// @param uRimWidth 25..300 = 100 @desc 縁のハイライトの幅 (%)
+// @param uRimReach 25..300 = 100 @desc 縁のハイライトが光源側へ伸びる距離 (%)
+// @param uLightSpread 40..200 = 100.0 @desc 左右の光源の開き (%)
+// @param uRotate -180..180 = 0 @desc 絵全体 (光源ごと) の回転角 (度)
+// @param uCenterX -100..100 = 0 @desc 模様の中心を横へずらす (%)
+// @param uCenterY -100..100 = 0 @desc 模様の中心を縦へずらす (%)
+// @param uMirror -100..100 = 0 @desc 左右対称の折り返し位置 (%)。正で左側を、負で右側を折り返す。0 で無効
+// @param uStretchX 40..250 = 100 @desc 模様の横の伸び縮み (%)
+// @param uLightHeight 25..300 = 100 @desc 光源の面からの高さ (%)。小さいと寝かせて当てる
+// @param uLightDepth -100..100 = 0 @desc 光源の奥行き位置 (%)
+// @param uKeyLight 30..300 = 100 @desc 右の光源 (メイン) の強さ (%)
+// @param uFillLight 0..400 = 100 @desc 左の光源 (補助) の強さ (%)
+// @param uDiffSharp 25..200 = 100 @desc 光の当たり方の締まり (%)。大きいと光の面が狭い
+// @param uNormalReach 30..400 = 100 @desc 凹凸の読み取り幅 (%)。大きいと細かい起伏がならされる
+// @param uContour 0..100 = 0 @desc 等高線の濃さ (%)
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uFilmGrain 0..100 = 0 @desc フィルムのざらつき (%)
+// @param uKeyColor color = #ffffff @desc 右の光源の色味。掛け算のティント
+// @param uFillColor color = #ffffff @desc 左の光源の色味。掛け算のティント
+// @param uRimColor color = #ffffff @desc 縁のハイライトの色味。掛け算のティント
 uniform float uDetail; // ワープ層のオクターブ数 (下げると軽く、模様が粗くなる)
 uniform float uWarp; // 歪みの強さ (%)
 uniform float uRelief; // 表面の起伏の深さ (%)

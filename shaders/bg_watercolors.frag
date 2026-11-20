@@ -19,35 +19,35 @@ vec2 wc_cosine(in vec2 p,in float s){ return vec2(wc_cosine(p.x,s), wc_cosine(p.
 vec3 wc_cosine(in vec3 p,in float s){ return vec3(wc_cosine(p.xy,s), wc_cosine(p.z,s)); }
 float wc_scale(in float x,in float a,in float b,in float c,in float d){ return (x-a)/(b-a)*(d-c)+c; }
 vec3 wc_gradient(in float t,in vec3 a,in vec3 b,in vec3 c,in vec3 d){ return a+b*cos(WC_TWO_PI*(c*t+d)); }
-// @param uDetail 4..8 = 8.0
-// @param uWarp 0..200 = 100.0
-// @param uDensity 25..400 = 100.0
-// @param uContrast 20..400 = 100.0
-// @param uBands 20..300 = 100.0
-// @param uFoldScale 50..200 = 100
-// @param uFoldLow 20..90 = 50
-// @param uFoldHigh 50..100 = 75
-// @param uLayerRatio 115..170 = 130
-// @param uZoomStep 70..150 = 100
-// @param uStartAngle -40..40 = 0
-// @param uTurnRate 0..1000 = 100
-// @param uAccum 25..160 = 100
-// @param uLayerHue 25..300 = 100
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRotate -180..180 = 0
-// @param uStretchX 40..250 = 100
-// @param uMirror -100..100 = 0
-// @param uTwirl -100..100 = 0
-// @param uPaletteShift -50..50 = 0
-// @param uPaletteBody 25..250 = 100
-// @param uChannelSplit 0..100 = 0
-// @param uLayerTilt -80..80 = 0
-// @param uPosterize 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uFilmGrain 0..100 = 0
-// @param uWashColor color = #ffffff
-// @param uDeepColor color = #ffffff
+// @param uDetail 4..8 = 8.0 @desc 折り重ねの回数。下げると模様が単純になり軽くなる
+// @param uWarp 0..200 = 100.0 @desc 回転のゆらぎ (歪み) の強さ (%)
+// @param uDensity 25..400 = 100.0 @desc 模様の密度 (%)。上げると模様が細かくなる
+// @param uContrast 20..400 = 100.0 @desc 色の段の締まり (%)
+// @param uBands 20..300 = 100.0 @desc パレットの色の巡り (%)。上げると色が速く巡る
+// @param uFoldScale 50..200 = 100 @desc 折り返しの細かさ (%)
+// @param uFoldLow 20..90 = 50 @desc 折り返しの混ざり方の下限 (%)
+// @param uFoldHigh 50..100 = 75 @desc 折り返しの混ざり方の上限 (%)
+// @param uLayerRatio 115..170 = 130 @desc 層ごとの縮み率 (%)。大きいと奥の層が急に細かくなる
+// @param uZoomStep 70..150 = 100 @desc 層ごとの拡大の刻み (%)
+// @param uStartAngle -40..40 = 0 @desc 回転の初期角。値 100 で 1 ラジアン
+// @param uTurnRate 0..1000 = 100 @desc 回転のゆらぎの細かさ (%)
+// @param uAccum 25..160 = 100 @desc 層の積み重なりが回転に戻る量 (%)
+// @param uLayerHue 25..300 = 100 @desc 層ごとの色の進み (%)
+// @param uCenterX -100..100 = 0 @desc 模様の中心の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 模様の中心の縦位置 (%)
+// @param uRotate -180..180 = 0 @desc 模様全体の回転角 (度)
+// @param uStretchX 40..250 = 100 @desc 模様の横方向の倍率 (%)。上げると横に詰まって細かく、下げると横に伸びる
+// @param uMirror -100..100 = 0 @desc 左右対称の折り返し位置 (%)。正で左側を、負で右側を折り返す。0 で無効
+// @param uTwirl -100..100 = 0 @desc 中心から外へ向かうねじれ (%)。負で逆向き
+// @param uPaletteShift -50..50 = 0 @desc パレットの位相のずれ (%)。色の組み合わせが変わる
+// @param uPaletteBody 25..250 = 100 @desc パレットの振れ幅 (%)。色の濃淡の差
+// @param uChannelSplit 0..100 = 0 @desc RGB ごとの色の巡りのずれ (%)。色が分離して虹がかる
+// @param uLayerTilt -80..80 = 0 @desc 浅い層と深い層の重み配分 (%)。正で深い層、負で浅い層が強い
+// @param uPosterize 0..100 = 0 @desc 色の段階を粗くする (%)。100 でほぼ数色
+// @param uVignette 0..100 = 0 @desc 周辺の暗がり (%)
+// @param uFilmGrain 0..100 = 0 @desc 紙のようなざらつき (%)
+// @param uWashColor color = #ffffff @desc 全体にかける色味 (掛け算)
+// @param uDeepColor color = #ffffff @desc 深い層ほど強くかかる色味 (掛け算)
 uniform float uDetail;   // 折り重ねの回数 (下げると模様が単純になる)
 uniform float uWarp;   // 回転のゆらぎ (歪み) の強さ (%)
 uniform float uDensity;   // 模様の密度 (%)

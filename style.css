@@ -215,6 +215,13 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 .fxjump button{flex:0 0 auto;height:var(--ctl-h);padding:0 8px;white-space:nowrap}
 @media (max-height:500px) and (orientation:landscape){ .fxjump{padding:3px 10px} }
 .row.sep-top{margin-top:8px;padding-top:8px;border-top:1px solid var(--line2)}
+/* 今のモードでは使わないパラメータ (UI.bindParamWhen)。値は保持し、操作もできる */
+.param-off{opacity:.32;transition:opacity .15s}
+.param-off:hover{opacity:.6}
+/* 説明のあるパラメータの見出し (UI.bindParamHelp)。ホバーで説明が出る */
+.param-help{cursor:help;text-decoration:underline dotted;text-decoration-color:var(--line2);text-underline-offset:3px}
+.param-tip{position:fixed;z-index:10000;max-width:300px;padding:6px 8px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:4px;font-size:var(--fs-sm);line-height:1.5;pointer-events:none;opacity:0;transition:opacity .12s;box-shadow:0 4px 14px rgba(0,0,0,.35)}
+.param-tip.show{opacity:1}
 .visGrid{--vis-cols:var(--thumb-cols);display:grid;grid-template-columns:repeat(var(--vis-cols),1fr);gap:6px;margin-top:6px;container-type:inline-size}
 .thumb-tile{position:relative;cursor:pointer;border:2px solid var(--line);border-radius:4px;overflow:hidden;background:#000;aspect-ratio:4/3;transition:border-color .12s, transform .12s}
 @media (hover:hover){ .thumb-tile:hover{border-color:var(--acc2);transform:scale(1.02);z-index:1} }

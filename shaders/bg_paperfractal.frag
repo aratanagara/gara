@@ -18,36 +18,36 @@ void pf_mo(inout vec2 p, vec2 d){
 
 float pf_plane(vec3 p, vec3 n){ return dot(p, normalize(n)); }
 
-// @param uDetail 3..5    = 5.0
-// @param uFolds  50..200 = 100.0
-// @param uScale  50..150 = 100.0
-// @param uAngle  -180..180 = 0.0
-// @param uGlow   0..300  = 100.0
-// @param uSphere 0..200  = 100.0
-// @param uSteps  32..64 = 64.0
-// @param uFoldX 70..140 = 100
-// @param uFoldY 70..140 = 100
-// @param uFoldZ 40..200 = 100
-// @param uPlaneTilt 60..150 = 100
-// @param uNestStep 85..120 = 100
-// @param uCamWide 60..160 = 100
-// @param uBlob 0..300 = 100
-// @param uCamX -100..100 = 0
-// @param uCamY -100..100 = 0
-// @param uOrbitYaw -60..60 = 0
-// @param uOrbitPitch -60..60 = 0
-// @param uCamRoll -180..180 = 0
-// @param uMirrorAxis -100..100 = 0
-// @param uViewSwirl -100..100 = 0
-// @param uShadeFloor 0..60 = 10
-// @param uShadeCurve 40..250 = 100
-// @param uShadeBands 0..6 = 0
-// @param uDepthFade 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uSurfaceColor color = #ffffff
-// @param uShadowColor color = #ffffff
-// @param uGlowColor color = #ffffff
+// @param uDetail 3..5    = 5.0 @desc 入れ子にする折り紙の数 (3〜5)。下げると軽く、構造が単純になる
+// @param uFolds  50..200 = 100.0 @desc 折り目の深さ (%)。0 で折りなしの平面
+// @param uScale  50..150 = 100.0 @desc 物体全体の大きさ (%)
+// @param uAngle  -180..180 = 0.0 @desc フラクタル全体の向き (度)。固定角で回す
+// @param uGlow   0..300  = 100.0 @desc 発光スフィアの光り方 (%)
+// @param uSphere 0..200  = 100.0 @desc 発光スフィアの大きさ (%)
+// @param uSteps  32..64 = 64.0 @desc レイマーチの最大ステップ数。下げると軽いが、遠景や縁が欠ける
+// @param uFoldX 70..140 = 100 @desc 折り目 1 (縦横) の深さ (%)
+// @param uFoldY 70..140 = 100 @desc 折り目 2 (奥行き方向) の深さ (%)
+// @param uFoldZ 40..200 = 100 @desc 折り目 3 (細かい折れ) の深さ (%)
+// @param uPlaneTilt 60..150 = 100 @desc 切り口の平面の傾き = 紙の厚み (%)
+// @param uNestStep 85..120 = 100 @desc 入れ子ごとの縮み幅 (%)
+// @param uCamWide 60..160 = 100 @desc 画角の広さ (%)。大きいほど物体が小さく見える
+// @param uBlob 0..300 = 100 @desc 発光スフィアの形のゆらぎ (%)
+// @param uCamX -100..100 = 0 @desc カメラの横位置 (%)。視点が変わり見える面が変わる
+// @param uCamY -100..100 = 0 @desc カメラの縦位置 (%)
+// @param uOrbitYaw -60..60 = 0 @desc カメラを物体の周りで左右に回す角度 (度)
+// @param uOrbitPitch -60..60 = 0 @desc カメラを物体の周りで上下に回す角度 (度)
+// @param uCamRoll -180..180 = 0 @desc カメラのロール (度)
+// @param uMirrorAxis -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし
+// @param uViewSwirl -100..100 = 0 @desc 画面中心からの距離に応じた渦のねじれ (%)。負で逆向き
+// @param uShadeFloor 0..60 = 10 @desc 最も奥の面の明るさ (%)。上げると奥が浮く
+// @param uShadeCurve 40..250 = 100 @desc 手前から奥への陰影の落ち方 (%)。大きいほど奥が急に暗い
+// @param uShadeBands 0..6 = 0 @desc 陰影を段に割る数。0 でなし。紙を重ねた等高線状になる
+// @param uDepthFade 0..100 = 0 @desc 遠い面を黒へ溶かす量 (%)
+// @param uGrain 0..100 = 0 @desc 粒状ノイズの量 (%)
+// @param uVignette 0..100 = 0 @desc 周辺を暗くする量 (%)
+// @param uSurfaceColor color = #ffffff @desc 手前の面の色の掛け合わせ
+// @param uShadowColor color = #ffffff @desc 奥の面の色の掛け合わせ
+// @param uGlowColor color = #ffffff @desc 発光スフィアの光の色の掛け合わせ
 uniform float uDetail;   // 入れ子にする折り紙の数 (下げると軽く、構造が単純になる)
 uniform float uScale;    // 物体全体の大きさ (%)
 uniform float uAngle;    // フラクタル全体の向き (度)

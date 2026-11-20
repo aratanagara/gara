@@ -25,14 +25,14 @@ vec3 kk_tex3D(vec3 p, vec3 n){
   return kk_tex2(p.yz)*n.x + kk_tex2(p.zx)*n.y + kk_tex2(p.xy)*n.z;
 }
 
-// @param uBeads  1..8 = 3.16
-// @param uThick  25..200 = 100.0
-// @param uMotion 0..400 = 100.0
-// @param uBump   0..400 = 100.0
-// @param uGlow   0..300 = 100.0
-// @param uSize 40..250 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 50..80 = 80.0
+// @param uBeads  1..8 = 3.16 @desc 球のらせん 1 周あたりの球の数
+// @param uThick  25..200 = 100.0 @desc らせんの管の太さ (%)
+// @param uMotion 0..400 = 100.0 @desc らせんのうねりの振幅 (%)
+// @param uBump   0..400 = 100.0 @desc 表面の凹凸の強さ (%)
+// @param uGlow   0..300 = 100.0 @desc 鏡面ハイライトと縁の光の強さ (%)
+// @param uSize 40..250 = 100.0 @desc 球ひとつの大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 管と球のらせんを軸まわりに回す角度 (度)
+// @param uSteps 50..80 = 80.0 @desc レイマーチのステップ数。下げると軽くなるが遠景や細部が欠ける
 uniform float uBeads; // 球のらせん 1 周あたりの球の数
 uniform float uThick; // らせんの管の太さ (%)
 uniform float uMotion; // らせんのうねりの振幅 (%)
@@ -41,37 +41,37 @@ uniform float uGlow; // ハイライト・縁の光 (%)
 uniform float uSize; // 球ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
-// @param uTubeRadius 80..120 = 100.0
-// @param uBeadOrbit  70..140  = 100.0
-// @param uPitch 40..220 = 100.0
-// @param uStrands 100..300 = 100.0
-// @param uTubeAspect 60..200 = 100.0
-// @param uBeadGap    50..200  = 100.0
-// @param uBlendTube 25..220 = 100.0
-// @param uCellSize 80..130 = 100.0
-// @param uCrossOffset 0..300  = 100.0
-// @param uShine      25..400  = 100.0
-// @param uCamShiftX -80..80 = 0.0
-// @param uCamShiftY -30..30 = 0.0
-// @param uFocal 50..200 = 100
-// @param uCamRoll -180..180 = 0
-// @param uCamYaw -30..30 = 0
-// @param uCamPitch -30..30 = 0
-// @param uFogDensity 0..400 = 100
-// @param uVignetteReach 40..300 = 100
-// @param uLightHeight 20..300 = 100
-// @param uLightSide -100..100 = 0
-// @param uLightLead -100..100 = 0
-// @param uShadowFill 0..80 = 30
-// @param uSurfaceWarmth 0..100 = 0
-// @param uRimPower 40..300 = 100
-// @param uBumpScale 40..160 = 100
-// @param uFilmGrain 0..100 = 0
-// @param uFogColor color = #000000
-// @param uBeadColor color = #ffffff
-// @param uTubeColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uRimColor color = #ffffff
+// @param uTubeRadius 80..120 = 100.0 @desc らせん管の輪の半径 (%)
+// @param uBeadOrbit  70..140  = 100.0 @desc 球のらせんの輪の半径 (%)
+// @param uPitch 40..220 = 100.0 @desc らせんのねじれの粗さ (%)。0 でまっすぐな輪
+// @param uStrands 100..300 = 100.0 @desc 輪あたりのらせんの本数。100 で 1 本、200 で 2 本
+// @param uTubeAspect 60..200 = 100.0 @desc 管の断面の縦横比 (%)
+// @param uBeadGap    50..200  = 100.0 @desc 球どうしの間隔 (%)
+// @param uBlendTube 25..220 = 100.0 @desc 2 本の管がつながる滑らかさ (%)
+// @param uCellSize 80..130 = 100.0 @desc らせんを並べる升目の大きさ (%)
+// @param uCrossOffset 0..300  = 100.0 @desc 2 本目の管の位置ずれ (%)
+// @param uShine      25..400  = 100.0 @desc 鏡面ハイライトの鋭さ (%)。大きいほど小さく鋭い
+// @param uCamShiftX -80..80 = 0.0 @desc カメラの横ずれ (%)
+// @param uCamShiftY -30..30 = 0.0 @desc カメラの縦ずれ (%)
+// @param uFocal 50..200 = 100 @desc 画角 (%)。大きいと望遠で遠近感が弱まり、小さいと広角
+// @param uCamRoll -180..180 = 0 @desc カメラの傾き (度)
+// @param uCamYaw -30..30 = 0 @desc カメラの左右の振り (度)
+// @param uCamPitch -30..30 = 0 @desc カメラの上下の振り (度)
+// @param uFogDensity 0..400 = 100 @desc 霧の濃さ (%)。大きいと遠景が早く霧に沈む
+// @param uVignetteReach 40..300 = 100 @desc 周辺減光の届く範囲 (%)
+// @param uLightHeight 20..300 = 100 @desc 光源の高さ (%)
+// @param uLightSide -100..100 = 0 @desc 光源の横位置のずれ (%)
+// @param uLightLead -100..100 = 0 @desc 光源の前後位置のずれ (%)
+// @param uShadowFill 0..80 = 30 @desc 影側に残る明るさ (%)。小さいと陰影が深い
+// @param uSurfaceWarmth 0..100 = 0 @desc 表面の緑に混ぜる赤み (%)
+// @param uRimPower 40..300 = 100 @desc 縁の光の広がり (%)。小さいと縁が広く光る
+// @param uBumpScale 40..160 = 100 @desc 表面の凹凸の細かさ (%)
+// @param uFilmGrain 0..100 = 0 @desc 画面全体のざらつき (%)
+// @param uFogColor color = #000000 @desc 霧の色。遠景がこの色へ沈む
+// @param uBeadColor color = #ffffff @desc 球の色味 (掛け算)。白で変化なし
+// @param uTubeColor color = #ffffff @desc 管の色味 (掛け算)。白で変化なし
+// @param uSpecColor color = #ffffff @desc 鏡面ハイライトの色味 (掛け算)
+// @param uRimColor color = #ffffff @desc 縁の光の色味 (掛け算)
 uniform float uTubeRadius; // らせん管の輪の半径 (%)
 uniform float uBeadOrbit; // 球のらせんの輪の半径 (%)
 uniform float uPitch; // らせんのねじれの粗さ (%)。0 でまっすぐな輪

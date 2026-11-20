@@ -21,16 +21,16 @@ float vm_ofs = .0001;
 #define vm_hash44(p) fract(18.5453 * sin(p * mat4(127.1,311.7,269.5,183.3, 421.1,547.6,231.3,298.4, 87.6,123.4,356.1,654.3, 765.1,876.4,132.5,234.8)))
 #define vm_disp(p) ( -vm_ofs + (1.0 + 2.0*vm_ofs) * vm_hash44(p) )
 
-// @param uCellX      50..200 = 100.0
-// @param uCellY      50..200 = 100.0
-// @param uCellZ      50..200 = 100.0
-// @param uNoiseScale 50..200 = 100.0
-// @param uProfile    80..150 = 100.0
-// @param uLineStart  0..10 = 0.0
-// @param uLayerFade  50..200 = 100.0
-// @param uLayerZoom  60..150 = 100.0
-// @param uLayerTurn  -180..180 = 0.0
-// @param uCellJitter 25..100 = 100.0
+// @param uCellX      50..200 = 100.0 @desc セルの X 方向の伸縮 (%)
+// @param uCellY      50..200 = 100.0 @desc セルの Y 方向の伸縮 (%)
+// @param uCellZ      50..200 = 100.0 @desc セルの Z 方向の伸縮 (%)
+// @param uNoiseScale 50..200 = 100.0 @desc 歪みノイズの波長 (%)。下げると細かくうねる
+// @param uProfile    80..150 = 100.0 @desc 線の断面の指数 (%)。下げると鋭く細い線、上げると太く丸い線
+// @param uLineStart  0..10 = 0.0 @desc 線の芯を太らせる距離 (0..10 で 0〜0.1)。上げると線が太くなる
+// @param uLayerFade  50..200 = 100.0 @when Math.floor(uLayers + 0.5) >= 2 @desc 重ねた層の減衰の速さ (%)。大きいほど後ろの層が薄い
+// @param uLayerZoom  60..150 = 100.0 @when Math.floor(uLayers + 0.5) >= 2 @desc 層ごとの細かさの倍率 (%)。大きいほど後ろの層が細かい
+// @param uLayerTurn  -180..180 = 0.0 @when Math.floor(uLayers + 0.5) >= 2 @desc 層ごとの追加回転 (度)
+// @param uCellJitter 25..100 = 100.0 @desc セルの点のばらつき (%)。下げると規則的な格子状
 uniform float uCellX; // セルの X 方向の伸縮 (%)
 uniform float uCellY; // セルの Y 方向の伸縮 (%)
 uniform float uCellZ; // セルの Z 方向の伸縮 (%)
@@ -41,21 +41,21 @@ uniform float uLayerFade; // 重ねた層の減衰の速さ (%)
 uniform float uLayerZoom; // 層ごとの細かさの倍率 (%)
 uniform float uLayerTurn; // 層ごとの追加回転 (度)
 uniform float uCellJitter; // セルの点のばらつき (%)。下げると規則的な格子状
-// @param uSeedShift -200..200 = 0
-// @param uTiltX -80..80 = 0
-// @param uTiltY -80..80 = 0
-// @param uMirror 0..2 = 0
-// @param uFlowDir -180..180 = 0
-// @param uLayerShift -100..100 = 0
-// @param uLineAmount 20..200 = 100
-// @param uWarpTwist -180..180 = 0
-// @param uWarpRough 60..135 = 100
-// @param uWarpLacun 60..140 = 100
-// @param uInvert 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uEdgeColor color = #ffffff
-// @param uCoreColor color = #ffffff
+// @param uSeedShift -200..200 = 0 @desc 模様のシード。値を変えると別のセル配置になる
+// @param uTiltX -80..80 = 0 @desc 球面の X 軸まわりの傾き (度)。模様を別の面から見る
+// @param uTiltY -80..80 = 0 @desc 球面の Y 軸まわりの傾き (度)
+// @param uMirror 0..2 = 0 @desc 鏡像。0 = なし / 1 = 左右対称 / 2 = 上下左右対称
+// @param uFlowDir -180..180 = 0 @desc セルが流れる向き (度)
+// @param uLayerShift -100..100 = 0 @when Math.floor(uLayers + 0.5) >= 2 @desc 層ごとのずらし (%)。層が重なる位置が変わる
+// @param uLineAmount 20..200 = 100 @desc 線の濃さ (%)。下げると薄く、上げると太く黒く
+// @param uWarpTwist -180..180 = 0 @desc 歪みの向きの回転 (度)。うねりの流れ方が変わる
+// @param uWarpRough 60..135 = 100 @when Math.floor(uDetail + 0.5) >= 2 @desc 歪みの粗さ (%)。上げると細かいうねりが強く残る
+// @param uWarpLacun 60..140 = 100 @when Math.floor(uDetail + 0.5) >= 2 @desc 歪みノイズの周波数の増え方 (%)
+// @param uInvert 0..100 = 0 @desc 白黒の反転。50 以上で黒地に白線
+// @param uGrain 0..100 = 0 @desc 粒状のざらつき (%)
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uEdgeColor color = #ffffff @desc 線の周りの階調に掛ける色味 (ティント)
+// @param uCoreColor color = #ffffff @desc セルの中心の明るい部分に掛ける色味 (ティント)
 uniform float uSeedShift; // 模様のシード。値を変えると別のセル配置になる
 uniform float uTiltX; // 球面の X 軸まわりの傾き (度)。模様を別の面から見る
 uniform float uTiltY; // 球面の Y 軸まわりの傾き (度)
@@ -116,12 +116,12 @@ float vm_noise3(vec3 p){
                      : 1.0 - abs(2.0*v - 1.0);
 }
 #define vm_noise33(p) vec3(vm_noise3(p), vm_noise3(p + vec3(17.7)), vm_noise3(p + vec3(34.1)))
-// @param uDetail  1..6    = 6.0
-// @param uLayers  1..4    = 3.0
-// @param uAngle   -180..180 = 0.0
-// @param uWarp    0..300  = 100.0
-// @param uThick   25..400 = 100.0
-// @param uSize    40..400 = 100.0
+// @param uDetail  1..6    = 6.0 @desc 歪みノイズのオクターブ数。下げると軽く、うねりが単純になる
+// @param uLayers  1..4    = 3.0 @desc 重ねる層の数。増やすと重くなる
+// @param uAngle   -180..180 = 0.0 @desc セル模様の向き (度)
+// @param uWarp    0..300  = 100.0 @desc 模様の歪みの強さ (%)
+// @param uThick   25..400 = 100.0 @desc 線の太さ (%)
+// @param uSize    40..400 = 100.0 @desc セルひとつの大きさ (%)
 uniform float uDetail;    // 歪みノイズのオクターブ数 (下げると軽く、うねりが単純になる)
 uniform float uAngle;    // セル模様の向き (度)
 uniform float uLayers;    // 重ねる層の数 (増やすと重くなる)

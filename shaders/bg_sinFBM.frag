@@ -2,24 +2,24 @@
 // 4用) bg_sinFBM  ★流体版★
 //    curl noise 近似でUVを歪め、流体のような渦巻き動作
 // =====================================================
-// @param uWarp  0..300 = 100.0
-// @param uTurb  0..150 = 100.0
-// @param uSheen 0..300 = 100.0
-// @param uGlow  0..300 = 100.0
+// @param uWarp  0..300 = 100.0 @desc 流体の大きな渦の歪み (%)
+// @param uTurb  0..150 = 100.0 @desc 細かい乱流のうねり (%)
+// @param uSheen 0..300 = 100.0 @desc 水銀の反射が表面の傾きで曲がる量 (%)
+// @param uGlow  0..300 = 100.0 @desc 水平線のグリント (鋭い光の筋) の強さ (%)
 uniform float uWarp;    // 流体の大きな渦の歪み (%)
 uniform float uTurb;    // 細かい乱流のうねり (%)
 uniform float uSheen;   // 水銀の反射が傾きで曲がる量 (%)
 uniform float uGlow;    // 水平線のグリントの強さ (%)
-// @param uFlowScale 50..160 = 100.0
-// @param uFlowCouple  0..250   = 100.0
-// @param uStretch 60..160 = 100.0
-// @param uBandFreq 40..200 = 100.0
-// @param uHorizon     25..75   = 50.0
-// @param uHorizonSoft 40..200 = 100.0
-// @param uGlintSharp 10..200 = 100.0
-// @param uBulge       0..300   = 100.0
-// @param uSheenCross  -200..300 = 100.0
-// @param uSkyLight    25..200  = 100.0
+// @param uFlowScale 50..160 = 100.0 @desc 大きな渦の細かさ (%)。大きいほど渦が小さく密になる
+// @param uFlowCouple  0..250   = 100.0 @desc 渦同士が巻き込み合う強さ (%)
+// @param uStretch 60..160 = 100.0 @desc 縦方向の倍率 (%)。下げると縦に潰れた流れになる
+// @param uBandFreq 40..200 = 100.0 @desc 色の帯 (縞) の細かさ (%)
+// @param uHorizon     25..75   = 50.0 @desc 反射の水平線の高さ (%)
+// @param uHorizonSoft 40..200 = 100.0 @desc 水平線の立ち上がりのなだらかさ (%)
+// @param uGlintSharp 10..200 = 100.0 @desc 水平線グリントの鋭さ (%)。上げると細く締まる
+// @param uBulge       0..300   = 100.0 @desc 塊の高さが反射を押し上げる量 (%)
+// @param uSheenCross  -200..300 = 100.0 @desc 傾きの横成分が反射を曲げる量 (%)。負で逆向き
+// @param uSkyLight    25..200  = 100.0 @desc 上側 (空) の反射の明るさ (%)
 uniform float uFlowScale; // 大きな渦の細かさ (%)。大きいほど渦が小さく密になる
 uniform float uFlowCouple; // 渦同士が巻き込み合う強さ (%)
 uniform float uStretch; // 縦方向の引き伸ばし (%)。下げると縦に潰れた流れになる
@@ -30,28 +30,28 @@ uniform float uGlintSharp; // 水平線グリントの鋭さ (%)
 uniform float uBulge; // 塊の高さが反射を押し上げる量 (%)
 uniform float uSheenCross; // 傾きの横成分が反射を曲げる量 (%)。負で逆向き
 uniform float uSkyLight; // 上側 (空) の反射の明るさ (%)
-// @param uViewRotate  -180..180 = 0
-// @param uFlowShiftX  -300..300 = 0
-// @param uFlowShiftY  -300..300 = 0
-// @param uSwirlTwist  -100..100 = 0
-// @param uMirrorSplit -100..100 = 0
-// @param uWarpXPart   0..200 = 100
-// @param uWarpYPart   0..200 = 100
-// @param uTurbFreq    50..115 = 100
-// @param uBroadBands  10..200 = 100
-// @param uMidBands    10..200 = 100
-// @param uFineBands   10..200 = 100
-// @param uBandSpread  0..300 = 100
-// @param uBandShift   -300..300 = 0
-// @param uBlobCurve   40..250 = 100
-// @param uGlintReach  25..300 = 100
-// @param uGlintShift  -30..30 = 0
-// @param uGrainAmount 0..100 = 0
-// @param uEdgeDarken  0..100 = 0
-// @param uGroundColor color = #ffffff
-// @param uHorizonColor color = #ffffff
-// @param uSkyColor color = #ffffff
-// @param uGlintColor color = #ffffff
+// @param uViewRotate  -180..180 = 0 @desc 流れ全体の回転 (度)
+// @param uFlowShiftX  -300..300 = 0 @desc 流れの模様を左右へずらす (%)
+// @param uFlowShiftY  -300..300 = 0 @desc 流れの模様を上下へずらす (%)
+// @param uSwirlTwist  -100..100 = 0 @desc 中心から外へ向かう渦のねじれ (%)。負で逆回り
+// @param uMirrorSplit -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 で無効、正で右寄り、負で左寄り
+// @param uWarpXPart   0..200 = 100 @desc 大きな渦の歪みの横成分 (%)
+// @param uWarpYPart   0..200 = 100 @desc 大きな渦の歪みの縦成分 (%)
+// @param uTurbFreq    50..115 = 100 @desc 細かい乱流の周波数 (%)
+// @param uBroadBands  10..200 = 100 @desc 1 段目 (最も粗い) の色帯の重み (%)
+// @param uMidBands    10..200 = 100 @desc 2 段目の色帯の重み (%)
+// @param uFineBands   10..200 = 100 @desc 3 段目 (最も細かい) の色帯の重み (%)
+// @param uBandSpread  0..300 = 100 @desc 色帯の RGB のずれ幅 (%)。上げると色が分かれて虹がかる
+// @param uBandShift   -300..300 = 0 @desc 色帯の位相ずらし (%)
+// @param uBlobCurve   40..250 = 100 @desc 塊の高さ分布のガンマ (%)。下げると膨らみ、上げると締まる
+// @param uGlintReach  25..300 = 100 @desc 水平線グリントの届く幅 (%)
+// @param uGlintShift  -30..30 = 0 @desc グリントを水平線から上下へずらす (%)
+// @param uGrainAmount 0..100 = 0 @desc 画面のざらつき (%)
+// @param uEdgeDarken  0..100 = 0 @desc 四隅の減光 (%)
+// @param uGroundColor color = #ffffff @desc 下側 (地面) の反射の色味 (掛け算)
+// @param uHorizonColor color = #ffffff @desc 水平線の白の色味 (掛け算)
+// @param uSkyColor color = #ffffff @desc 上側 (空) の反射の色味 (掛け算)
+// @param uGlintColor color = #ffffff @desc 水平線グリントの色味
 uniform float uViewRotate; // 流れ全体の回転 (度)
 uniform float uFlowShiftX; // 流れの模様を左右へずらす (%)
 uniform float uFlowShiftY; // 流れの模様を上下へずらす (%)

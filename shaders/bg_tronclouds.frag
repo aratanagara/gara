@@ -35,33 +35,33 @@ float hc_fbm(vec3 p, float lac){
 #define HC_FBM_FREQ   2.76434
 #define HC_STEPS      22
 
-// @param uCover 0..200   = 100.0
-// @param uGrid  25..400  = 100.0
-// @param uThick 25..400  = 100.0
-// @param uGlow  0..250   = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 10..22 = 22.0
+// @param uCover 0..200   = 100.0 @desc 雲の量。大きいほど空を覆う
+// @param uGrid  25..400  = 100.0 @desc 床グリッドの細かさ。大きいほど升目が細かい
+// @param uThick 25..400  = 100.0 @desc 床グリッド線の太さ
+// @param uGlow  0..250   = 100.0 @desc 床グリッド線の明るさ
+// @param uAngle -180..180 = 0.0 @desc 床グリッドの向き (度)
+// @param uSteps 10..22 = 22.0 @desc 雲の積算ステップ数。下げると軽くなり、雲が薄く粗くなる
 uniform float uCover;     // 雲の量 (%)
 uniform float uGrid;      // 床グリッドの細かさ (%)
 uniform float uThick;     // 床グリッド線の太さ (%)
 uniform float uGlow;      // 床グリッド線の明るさ (%)
 uniform float uAngle; // 床グリッドの向き (度。固定角でずらす)
 uniform float uSteps; // 雲の積算ステップ数 (下げると軽く、雲が薄く粗くなる)
-// @param uMtnHeight  40..200  = 100.0
-// @param uMtnJag     0..250   = 100.0
-// @param uMtnPeaks   2..12    = 6.0
-// @param uMtnPeaks2  1..8     = 3.0
-// @param uMtnAudio   0..250   = 100.0
-// @param uHazeBand   40..200  = 100.0
-// @param uFloorDepth 40..200  = 100.0
-// @param uFloorFog   50..300  = 100.0
-// @param uMtnEdge    50..1500 = 100.0
-// @param uFloorRamp  40..250  = 100.0
-// @param uCloudLac   85..125  = 100.0
-// @param uCloudScale 50..200  = 100.0
-// @param uCloudThick 60..140  = 100.0
-// @param uCloudSoft  20..500  = 100.0
-// @param uCamPitch   30..170  = 100.0
+// @param uMtnHeight  40..200  = 100.0 @desc 地平線の山の高さ
+// @param uMtnJag     0..250   = 100.0 @desc 山の稜線のうねりの振れ幅
+// @param uMtnPeaks   2..12    = 6.0 @desc 山並みの大きな起伏の数 (整数に丸める)
+// @param uMtnPeaks2  1..8     = 3.0 @desc 山並みの緩やかな起伏の数 (整数に丸める)
+// @param uMtnAudio   0..250   = 100.0 @desc 音声が山を持ち上げる量
+// @param uHazeBand   40..200  = 100.0 @desc 山の奥のマゼンタの靄の高さ
+// @param uFloorDepth 40..200  = 100.0 @desc 床の低さ。上げると地面が遠く、グリッドが詰まる
+// @param uFloorFog   50..300  = 100.0 @desc グリッドが遠方で消える速さ
+// @param uMtnEdge    50..1500 = 100.0 @desc 山の稜線のにじみ。上げると稜線がぼやける
+// @param uFloorRamp  40..250  = 100.0 @desc 床の色が手前から奥へ変わる度合い。上げると奥に寄る
+// @param uCloudLac   85..125  = 100.0 @desc 雲の細部の周波数の倍率
+// @param uCloudScale 50..200  = 100.0 @desc 雲の塊の大きさ。上げると小さな雲が多数になる
+// @param uCloudThick 60..140  = 100.0 @desc 雲の層の厚み
+// @param uCloudSoft  20..500  = 100.0 @desc 雲の縁のやわらかさ
+// @param uCamPitch   30..170  = 100.0 @desc カメラの仰角。地平線の位置が変わる
 uniform float uMtnHeight; // 地平線の山の高さ (%)
 uniform float uMtnJag; // 山の稜線のうねりの振れ幅 (%)
 uniform float uMtnPeaks; // 山並みの大きな起伏の数
@@ -77,23 +77,23 @@ uniform float uCloudScale; // 雲の塊の大きさ (%)。上げると小さな�
 uniform float uCloudThick; // 雲の層の厚み (%)
 uniform float uCloudSoft; // 雲の縁のやわらかさ (%)
 uniform float uCamPitch; // カメラの仰角 (%)。地平線の位置が変わる
-// @param uCamYaw     -180..180 = 0
-// @param uCamRoll    -45..45   = 0
-// @param uFov        60..200   = 100
-// @param uMtnShift   0..100    = 0
-// @param uMtnRamp    40..250   = 100
-// @param uCloudLift  0..300    = 0
-// @param uCloudBright 30..160  = 100
-// @param uTextAmt    0..150    = 100
-// @param uStars      0..100    = 0
-// @param uGridStretch 60..200  = 100
-// @param uVignette   0..100    = 0
-// @param uSkyTint    color = #ffffff
-// @param uCloudTint  color = #ffffff
-// @param uHazeTint   color = #ffffff
-// @param uMtnTint    color = #ffffff
-// @param uFloorTint  color = #ffffff
-// @param uGridTint   color = #ffffff
+// @param uCamYaw     -180..180 = 0 @desc カメラの向きの初期角 (度)。公転の開始位置を変える
+// @param uCamRoll    -45..45   = 0 @desc カメラのロール (度)
+// @param uFov        60..200   = 100 @desc 画角。大きいほど広角
+// @param uMtnShift   0..100    = 0 @desc 山並みの位置を横へずらす
+// @param uMtnRamp    40..250   = 100 @desc 山の色の変わり方。大きいと稜線だけ明るい
+// @param uCloudLift  0..300    = 0 @desc 雲が出始める高さ。上げると地平線付近が晴れる
+// @param uCloudBright 30..160  = 100 @desc 雲の明るさ
+// @param uTextAmt    0..150    = 100 @desc 空の BSOD 文字の濃さ
+// @param uStars      0..100    = 0 @desc 空の星の量。0 で星なし。雲に隠れる
+// @param uGridStretch 60..200  = 100 @desc 床グリッドの横方向の間隔
+// @param uVignette   0..100    = 0 @desc 周辺の暗さ。0 でなし
+// @param uSkyTint    color = #ffffff @desc 空の青に掛ける色
+// @param uCloudTint  color = #ffffff @desc 雲の色に掛ける色
+// @param uHazeTint   color = #ffffff @desc 山の奥の靄の色に掛ける色
+// @param uMtnTint    color = #ffffff @desc 山の色に掛ける色
+// @param uFloorTint  color = #ffffff @desc 床のマゼンタに掛ける色
+// @param uGridTint   color = #ffffff @desc グリッド線の色に掛ける色
 uniform float uCamYaw;     // カメラの向きの初期角 (度)。0 = 既定。公転の開始位置を変える
 uniform float uCamRoll;    // カメラのロール (度)。0 = なし
 uniform float uFov;        // 画角 (%)。大きいほど広角

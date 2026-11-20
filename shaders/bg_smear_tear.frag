@@ -13,21 +13,21 @@
 //     iAudio で櫛が伸びる
 // =====================================================
 
-// @param uSpeed   0..300    = 100.0
-// @param uScale   30..300   = 100.0
-// @param uRotate  0..360    = 0.0
-// @param uCurl    0..200    = 100.0
-// @param uSwirl   0..300    = 100.0
-// @param uLines   0..300    = 100.0
-// @param uFill    0..200    = 100.0
-// @param uComb    0..300    = 100.0
-// @param uRows    0..200    = 100.0
-// @param uChrome  0..200    = 100.0
-// @param uPixel   1..8      = 2.0
-// @param uKick    0..200    = 100.0
-// @param uPalette 0..100    = 100.0
-// @param uPalTime 1..60     = 10.0
-// @param uPalFade 0..100    = 40.0
+// @param uSpeed   0..300    = 100.0 @desc 流れの速さ。0 で流れが止まる (行ずれ・縞の漂いも止まる)
+// @param uScale   30..300   = 100.0 @desc 全体の大きさ (%)。大きいほど模様が拡大する
+// @param uRotate  0..360    = 0.0 @desc 色の帯の並びをずらす位相 (度)
+// @param uCurl    0..200    = 100.0 @desc 流れのうねりの強さ。大きいほど川筋が蛇行する
+// @param uSwirl   0..300    = 100.0 @desc レンズが流れを曲げる強さ。0 で曲がらない
+// @param uLines   0..300    = 100.0 @desc 紙の上の等高線の密度。0 で線が消える
+// @param uFill    0..200    = 100.0 @desc 塗り面の広さ。大きいほど面が画面を覆う
+// @param uComb    0..300    = 100.0 @desc 流れ方向に歯状に裂ける量。0 で裂けない
+// @param uRows    0..200    = 100.0 @desc 行ベタ塗りの縞の広さ。0 で縞が出ない
+// @param uChrome  0..200    = 100.0 @desc 青いクロームの帯の広さ
+// @param uPixel   1..8      = 2.0 @desc 画素の粗さ (px)。大きいほど粗いモザイクになる
+// @param uKick    0..200    = 100.0 @desc 拍・音に反応する強さ。0 で拍に反応しない
+// @param uPalette 0..100    = 100.0 @desc 配色の変化の強さ。0 で元の配色のまま
+// @param uPalTime 1..60     = 10.0 @desc パレットを切り替える間隔 (秒)
+// @param uPalFade 0..100    = 40.0 @desc 切替の間隔のうちクロスフェードに使う割合。0 で瞬時に切替
 uniform float uSpeed;   // 流れの速さ (%)
 uniform float uScale;   // 全体の大きさ (%)
 uniform float uRotate;  // 帯の並びをずらす (deg)
@@ -43,42 +43,42 @@ uniform float uKick;    // 拍 / 音での変化 (%)
 uniform float uPalette; // パレット変化の強さ (% 0 で元の配色のまま)
 uniform float uPalTime; // パレットを替える間隔 (秒)
 uniform float uPalFade; // 間隔のうちフェードに使う割合 (% 0 で瞬時に切替)
-// @param uCellsA 3..14 = 7.0
-// @param uCellsB 3..10 = 5.0
-// @param uEdgeWidth 0..250 = 100.0
-// @param uLineWidth 30..300 = 100.0
-// @param uLineBunch 20..80 = 50.0
-// @param uDashGap 0..60 = 20.0
-// @param uContourWidth 20..300 = 100.0
-// @param uChromeFreq 40..250 = 100.0
-// @param uToothFine 30..250 = 100.0
-// @param uTearAmount 0..300 = 100.0
-// @param uInkBars 0..300 = 100.0
-// @param uInkBarLen 30..300 = 100.0
-// @param uWedgeWidth 30..200 = 100.0
-// @param uLavWidth 30..200 = 100.0
-// @param uPeriWidth 30..200 = 100.0
-// @param uStrokeWidth 30..200 = 100.0
-// @param uCoralWidth 30..200 = 100.0
-// @param uOliveWidth 30..200 = 100.0
-// @param uLensX -100..100 = 0.0
-// @param uLensY -100..100 = 0.0
-// @param uLensSize 30..300 = 100.0
-// @param uFlowTurn -180..180 = 0.0
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uMirror 0..100 = 0.0
-// @param uPaperGrain 0..100 = 0.0
-// @param uWarmTint color = #ffffff
-// @param uInkTint color = #ffffff
-// @param uChromeTint color = #ffffff
-// @param uLavTint color = #ffffff
-// @param uPeriTint color = #ffffff
-// @param uCoralTint color = #ffffff
-// @param uOliveTint color = #ffffff
-// @param uNeonTint color = #ffffff
-// @param uSoftRowTint color = #ffffff
-// @param uPaperTint color = #ffffff
+// @param uCellsA 3..14 = 7.0 @desc 塗り面の分割数 A。大きいほど面が細かくなる
+// @param uCellsB 3..10 = 5.0 @desc 塗り面の分割数 B。大きいほど面が細かくなる
+// @param uEdgeWidth 0..250 = 100.0 @desc 塗り面の輪郭線の太さ
+// @param uLineWidth 30..300 = 100.0 @desc 紙の上の線の太さ
+// @param uLineBunch 20..80 = 50.0 @desc 線が束になる範囲。小さいほど線が多く出る
+// @param uDashGap 0..60 = 20.0 @desc 線の途切れの割合。大きいほど点線になる
+// @param uContourWidth 20..300 = 100.0 @desc 地形図のような細い線の太さ
+// @param uChromeFreq 40..250 = 100.0 @desc クロームの光の縞の細かさ
+// @param uToothFine 30..250 = 100.0 @desc 櫛歯の細かさ。大きいほど細かい歯になる
+// @param uTearAmount 0..300 = 100.0 @desc 行ずれで横に裂ける量
+// @param uInkBars 0..300 = 100.0 @desc 墨の横長の筋の量
+// @param uInkBarLen 30..300 = 100.0 @desc 墨の筋の長さ
+// @param uWedgeWidth 30..200 = 100.0 @desc 暖色の楔の帯の幅
+// @param uLavWidth 30..200 = 100.0 @desc 紫・テラコッタの面の帯の幅
+// @param uPeriWidth 30..200 = 100.0 @desc 淡い青の面の帯の幅
+// @param uStrokeWidth 30..200 = 100.0 @desc 黒の筆致の帯の幅
+// @param uCoralWidth 30..200 = 100.0 @desc 珊瑚の迷路の帯の幅
+// @param uOliveWidth 30..200 = 100.0 @desc オリーブの帯の幅
+// @param uLensX -100..100 = 0.0 @desc レンズの位置の左右
+// @param uLensY -100..100 = 0.0 @desc レンズの位置の上下
+// @param uLensSize 30..300 = 100.0 @desc レンズの広がり。大きいほど広い範囲の流れが曲がる
+// @param uFlowTurn -180..180 = 0.0 @desc 流れの向きの回転 (度)
+// @param uCenterX -100..100 = 0.0 @desc 画面の中心を左右へずらす
+// @param uCenterY -100..100 = 0.0 @desc 画面の中心を上下へずらす
+// @param uMirror 0..100 = 0.0 @desc 左右の鏡像の折り返し位置。0 で鏡像なし
+// @param uPaperGrain 0..100 = 0.0 @desc 紙のざらつきの強さ
+// @param uWarmTint color = #ffffff @desc 暖色の楔の色に掛ける色
+// @param uInkTint color = #ffffff @desc 紙の上の線の色に掛ける色
+// @param uChromeTint color = #ffffff @desc 青いクロームの色に掛ける色
+// @param uLavTint color = #ffffff @desc 紫・テラコッタの面の色に掛ける色
+// @param uPeriTint color = #ffffff @desc 淡い青の面の色に掛ける色
+// @param uCoralTint color = #ffffff @desc 珊瑚の迷路の色に掛ける色
+// @param uOliveTint color = #ffffff @desc オリーブの帯の色に掛ける色
+// @param uNeonTint color = #ffffff @desc 蛍光の縞の色に掛ける色
+// @param uSoftRowTint color = #ffffff @desc 淡色の縞の色に掛ける色
+// @param uPaperTint color = #ffffff @desc 紙の色に掛ける色
 uniform float uCellsA; // 塗り面の分割数 A (多いほど細かい面)
 uniform float uCellsB; // 塗り面の分割数 B (多いほど細かい面)
 uniform float uEdgeWidth; // 塗り面の輪郭線の太さ (%)

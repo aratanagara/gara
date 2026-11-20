@@ -12,23 +12,23 @@ vec2 wk_rot(vec2 p, float a){
   float s = sin(a*15.83);
   return p * mat2(s, c, c, -s);
 }
-// @param uDetail   8..30   = 30.0
-// @param uDensity  25..400  = 100.0
-// @param uWarp     0..300   = 100.0
-// @param uGlow     0..300   = 100.0
-// @param uContrast 25..300  = 100.0
-// @param uStreakX 40..200 = 100
-// @param uStreakY 40..200 = 100
-// @param uSlant 0..300 = 100
-// @param uLayerGrowth 0..400 = 100
-// @param uWarpRamp 0..400 = 100
-// @param uZigzag 0..300 = 100
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uCornerSpread 75..130 = 100
-// @param uCausticFreq 40..250 = 100
-// @param uSparkleLevel 40..95 = 70
-// @param uDepthFade 0..100 = 0
+// @param uDetail   8..30   = 30.0 @desc 水の層の数。下げると軽く、うねりが単純になる
+// @param uDensity  25..400  = 100.0 @desc 模様の細かさ (%)。大きいほど細かい
+// @param uWarp     0..300   = 100.0 @desc 層どうしの絡み・歪みの強さ (%)
+// @param uGlow     0..300   = 100.0 @desc コースティクス (明るい筋) の明るさ (%)
+// @param uContrast 25..300  = 100.0 @desc きらめきの鋭さ (%)
+// @param uStreakX 40..200 = 100 @desc 横方向の縞の細かさ (%)
+// @param uStreakY 40..200 = 100 @desc 縦方向の縞の細かさ (%)
+// @param uSlant 0..300 = 100 @desc 層ごとの斜めの縞の細かさ (%)
+// @param uLayerGrowth 0..400 = 100 @desc 奥の層ほど縞が細かくなる度合い (%)
+// @param uWarpRamp 0..400 = 100 @desc 奥の層ほど歪みが強くなる度合い (%)
+// @param uZigzag 0..300 = 100 @desc 斜め縞の層ごとの振り分け (%)
+// @param uCenterX -100..100 = 0 @desc 水面の模様の中心の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 水面の模様の中心の縦位置 (%)
+// @param uCornerSpread 75..130 = 100 @desc 3 つの角から広がる色の種の広がり (%)
+// @param uCausticFreq 40..250 = 100 @desc コースティクスの筋の細かさ (%)
+// @param uSparkleLevel 40..95 = 70 @desc きらめきが出始める明るさ (%)
+// @param uDepthFade 0..100 = 0 @desc 奥の層ほど寄与を弱める度合い (%)。0 でなし
 uniform float uDetail;     // 水の層の数 (下げると軽く、うねりが単純になる)
 uniform float uDensity;    // 模様の細かさ (%)
 uniform float uWarp;       // 層どうしの絡み・歪みの強さ (%)
@@ -46,20 +46,20 @@ uniform float uCornerSpread; // 3 つの角から広がる色の種の広がり 
 uniform float uCausticFreq; // コースティクスの筋の細かさ (%)
 uniform float uSparkleLevel; // きらめきが出始める明るさ (%)
 uniform float uDepthFade;  // 奥の層ほど寄与を弱める度合い (%)。0 = なし
-// @param uTurn -180..180 = 0
-// @param uSwirl -150..150 = 0
-// @param uShear -100..100 = 0
-// @param uMirror 0..100 = 0
-// @param uSeedShift -25..25 = 0
-// @param uBaseLevel 10..50 = 40
-// @param uCausticSharp 2..12 = 5
-// @param uGrain 0..60 = 0
-// @param uToneKnee 55..150 = 85
-// @param uLowCut 0..50 = 0
-// @param uRampGain 20..75 = 60
-// @param uWaterTint color = #ffffff
-// @param uCausticColor color = #ffffff
-// @param uGlintColor color = #ffffff
+// @param uTurn -180..180 = 0 @desc 水面の模様の回転 (度)
+// @param uSwirl -150..150 = 0 @desc 中心からの渦のねじれ (%)
+// @param uShear -100..100 = 0 @desc 模様の斜めの流し (%)
+// @param uMirror 0..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 で折り返しなし
+// @param uSeedShift -25..25 = 0 @desc 色の種のずらし (%)。模様の入り方が変わる
+// @param uBaseLevel 10..50 = 40 @desc 水面の下地の明るさ (%)
+// @param uCausticSharp 2..12 = 5 @desc コースティクスの筋の締まり。大きいほど細く出る
+// @param uGrain 0..60 = 0 @desc 粒状のざらつき (%)
+// @param uToneKnee 55..150 = 85 @desc 明るさが頭打ちになる位置 (%)
+// @param uLowCut 0..50 = 0 @desc 暗部を沈める位置 (%)
+// @param uRampGain 20..75 = 60 @desc 明暗の振れ幅 (%)
+// @param uWaterTint color = #ffffff @desc 水面全体の色味
+// @param uCausticColor color = #ffffff @desc コースティクスの筋の色味
+// @param uGlintColor color = #ffffff @desc きらめきの色味
 uniform float uTurn;       // 水面の模様の回転 (度)
 uniform float uSwirl;      // 中心からの渦のねじれ (%)
 uniform float uShear;      // 模様の斜めの流し (%)

@@ -1,39 +1,39 @@
 // Source : https://www.shadertoy.com/view/7sSGWD
 // License: Shadertoy default (CC BY-NC-SA 3.0) unless noted by the author
 // 4) 7sSGWD
-// @param uDetail 2..6 = 6.0
-// @param uDensity 25..400 = 100.0
-// @param uSize 20..150 = 100.0
-// @param uSoft 10..300 = 100.0
-// @param uContrast 0..800 = 100.0
-// @param uTileSpan 94..108 = 100
-// @param uSkewBias 70..160 = 100
-// @param uCrossDiv 80..140 = 100
-// @param uCrossPull 60..160 = 100
-// @param uFlipAmt 30..250 = 100
-// @param uCarry 70..150 = 100
-// @param uRingWidth 0..100 = 0
-// @param uCellShear -100..100 = 0
-// @param uRowStagger 0..100 = 0
-// @param uCellSquare 0..100 = 0
-// @param uCellJitter 0..100 = 0
-// @param uGridShiftX -100..100 = 0
-// @param uGridShiftY -100..100 = 0
-// @param uGridRotate -90..90 = 0
-// @param uCellVoid 0..90 = 0
-// @param uSizeScatter 0..100 = 0
-// @param uPhaseSync 0..100 = 0
-// @param uRimGlow 0..100 = 0
-// @param uChanOffsetG -50..50 = 0
-// @param uChanOffsetB -50..50 = 0
-// @param uSolarize 0..100 = 0
-// @param uPosterize 0..8 = 0
-// @param uHighTint color = #ffffff
-// @param uShadowTint color = #ffffff
-// @param uGrain 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uDiscTint color = #ffffff
-// @param uBackTint color = #ffffff
+// @param uDetail 2..6 = 6.0 @desc 折り畳みの反復回数。下げると模様が粗くなり軽くなる
+// @param uDensity 25..400 = 100.0 @desc マス目の密度 (%)。上げると円が小さく多くなる
+// @param uSize 20..150 = 100.0 @desc 円が広がる最大の大きさ (%)
+// @param uSoft 10..300 = 100.0 @desc 円の縁のぼかし幅 (%)
+// @param uContrast 0..800 = 100.0 @desc 円の内側と外側の明暗差 (%)
+// @param uTileSpan 94..108 = 100 @desc 折り返しタイルの周期 (%)
+// @param uSkewBias 70..160 = 100 @desc 斜め方向の折り返しの偏り (%)。下げると偏りが強まる
+// @param uCrossDiv 80..140 = 100 @desc 交差項の分母 (%)。下げると交差が強まる
+// @param uCrossPull 60..160 = 100 @desc 交差項を引き戻す強さ (%)
+// @param uFlipAmt 30..250 = 100 @desc 左右反転に混ぜる前の色の量 (%)
+// @param uCarry 70..150 = 100 @desc 前の色を座標へ持ち越す量 (%)
+// @param uRingWidth 0..100 = 0 @desc 円を輪にくり抜く幅 (%)。0 で円盤のまま
+// @param uCellShear -100..100 = 0 @desc マス目の斜め傾き (%)。0 で正方格子
+// @param uRowStagger 0..100 = 0 @desc 1 行おきの横ずれ (%)。0 で揃う
+// @param uCellSquare 0..100 = 0 @desc 円を角丸の四角へ寄せる量 (%)。0 で円
+// @param uCellJitter 0..100 = 0 @desc マスごとの円の中心のばらつき (%)
+// @param uGridShiftX -100..100 = 0 @desc マス目を横へずらす量 (%)。構図が変わる
+// @param uGridShiftY -100..100 = 0 @desc マス目を縦へずらす量 (%)
+// @param uGridRotate -90..90 = 0 @desc マス目全体の回転角 (度)
+// @param uCellVoid 0..90 = 0 @desc 円が出ない空きマスの割合 (%)
+// @param uSizeScatter 0..100 = 0 @desc マスごとの円の大きさのばらつき (%)
+// @param uPhaseSync 0..100 = 0 @desc マスごとの開き方のタイミングを揃える量 (%)。100 で一斉に開く
+// @param uRimGlow 0..100 = 0 @desc 円の縁に出る光の輪の強さ (%)
+// @param uChanOffsetG -50..50 = 0 @desc 緑チャンネルの値をずらす量 (%)。色の配置が変わる
+// @param uChanOffsetB -50..50 = 0 @desc 青チャンネルの値をずらす量 (%)
+// @param uSolarize 0..100 = 0 @desc 明暗を折り返して反転させる量 (%)
+// @param uPosterize 0..8 = 0 @desc 色の段数。0 で連続、2 以上で段階化 (1 は 2 段扱い)
+// @param uHighTint color = #ffffff @desc 明るい部分に掛ける色
+// @param uShadowTint color = #ffffff @desc 暗い部分に掛ける色
+// @param uGrain 0..100 = 0 @desc 画面のざらつき (%)
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uDiscTint color = #ffffff @desc 円の内側に掛ける色
+// @param uBackTint color = #ffffff @desc 円の外側に掛ける色
 uniform float uDetail;   // 反復回数 (下げると模様が粗くなる)
 uniform float uDensity;   // マス目の密度 (%)
 uniform float uSize;   // 円が広がる大きさ (%)

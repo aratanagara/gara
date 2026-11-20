@@ -24,39 +24,39 @@ vec3 lq_slerp(vec3 a, vec3 b, float t){
   return a*cos(theta) + rel*sin(theta);
 }
 
-// @param uDetail   4..16   = 16.0
-// @param uDensity  25..300 = 100.0
-// @param uWarp     0..300  = 100.0
-// @param uContrast 25..300 = 100.0
-// @param uStepLen   50..200 = 100.0
-// @param uFieldBias -40..40 = 0.0
-// @param uFieldX    50..200 = 100.0
-// @param uFieldY    50..200 = 100.0
-// @param uFieldZ    50..200 = 100.0
-// @param uLensDepth 25..300 = 100.0
-// @param uFocal     50..200 = 100.0
-// @param uSwirlStep -100..100 = 0.0
-// @param uStepRamp  -100..100 = 0.0
-// @param uTailFade  0..200 = 0.0
-// @param uCenterX   -100..100 = 0.0
-// @param uCenterY   -100..100 = 0.0
-// @param uRollAngle -180..180 = 0.0
-// @param uBarrel    -100..100 = 0.0
-// @param uTunnelTwist -100..100 = 0.0
-// @param uMirrorX   0..100 = 0.0
-// @param uMirrorY   0..100 = 0.0
-// @param uFieldShiftX -100..100 = 0.0
-// @param uFieldShiftZ -100..100 = 0.0
-// @param uFieldTurb 0..100 = 0.0
-// @param uFieldRotate -180..180 = 0.0
-// @param uChromaPhase -180..180 = 0.0
-// @param uContour   0..100 = 0.0
-// @param uSolarize 0..100 = 0.0
-// @param uVignette  -100..100 = 0.0
-// @param uFilmGrain 0..100 = 0.0
-// @param uPosterize 0..12 = 0.0
-// @param uLightTint color = #ffffff
-// @param uShadowTint color = #ffffff
+// @param uDetail   4..16   = 16.0 @desc 視線を流す反復回数。下げると軽く、流れが短くなる (整数に丸める)
+// @param uDensity  25..300 = 100.0 @desc ノイズ場の細かさ。大きいほど細かい模様
+// @param uWarp     0..300  = 100.0 @desc 視線の曲げ具合。大きいほど流れが曲がる
+// @param uContrast 25..300 = 100.0 @desc コントラスト。大きいほど白黒がはっきりする
+// @param uStepLen   50..200 = 100.0 @desc 1 ステップで流れる距離。下げると流れが短く密、上げると長く伸びる
+// @param uFieldBias -40..40 = 0.0 @desc ノイズ場の奥行き方向の偏り。流れが手前か奥へ寄る
+// @param uFieldX    50..200 = 100.0 @desc ノイズ場の X 方向の細かさ
+// @param uFieldY    50..200 = 100.0 @desc ノイズ場の Y 方向の細かさ
+// @param uFieldZ    50..200 = 100.0 @desc ノイズ場の奥行き方向の細かさ
+// @param uLensDepth 25..300 = 100.0 @desc 視点から場に入る初期オフセット
+// @param uFocal     50..200 = 100.0 @desc 画角の焦点距離。下げると広角で歪む
+// @param uSwirlStep -100..100 = 0.0 @desc ステップごとの視線のねじれ。負で逆回り
+// @param uStepRamp  -100..100 = 0.0 @desc 後のステップほど歩幅を変える量
+// @param uTailFade  0..200 = 0.0 @desc 後のステップの寄与を弱める量。流れの尾が薄くなる
+// @param uCenterX   -100..100 = 0.0 @desc 流れの中心を左右へずらす
+// @param uCenterY   -100..100 = 0.0 @desc 流れの中心を上下へずらす
+// @param uRollAngle -180..180 = 0.0 @desc 画面全体の回転 (度)
+// @param uBarrel    -100..100 = 0.0 @desc 視野の樽型・糸巻き型の歪み。負で糸巻き
+// @param uTunnelTwist -100..100 = 0.0 @desc 中心から外へ向かうねじれ。負で逆回り
+// @param uMirrorX   0..100 = 0.0 @desc 左右対称に折り返す量。0 で折り返しなし、100 で中心から完全な鏡像
+// @param uMirrorY   0..100 = 0.0 @desc 上下対称に折り返す量。0 で折り返しなし、100 で中心から完全な鏡像
+// @param uFieldShiftX -100..100 = 0.0 @desc ノイズ場の位置を横へずらす。別の模様になる
+// @param uFieldShiftZ -100..100 = 0.0 @desc ノイズ場の位置を奥行きへずらす。別の模様になる
+// @param uFieldTurb 0..100 = 0.0 @desc ノイズ場の座標を波打たせる量
+// @param uFieldRotate -180..180 = 0.0 @desc ノイズ場を回す角度 (度)
+// @param uChromaPhase -180..180 = 0.0 @desc 色チャンネルの回転の位相 (度)。色の組み合わせが変わる
+// @param uContour   0..100 = 0.0 @desc 明暗を等高線の縞にする量
+// @param uSolarize 0..100 = 0.0 @desc 明暗を折り返して反転させる量
+// @param uVignette  -100..100 = 0.0 @desc 周辺の減光。負で周辺が明るくなる
+// @param uFilmGrain 0..100 = 0.0 @desc フィルムの粒の強さ
+// @param uPosterize 0..12 = 0.0 @desc 明暗の段数。0 で滑らか、2 以上で階調を落とす
+// @param uLightTint color = #ffffff @desc 明るい部分の色に掛ける色
+// @param uShadowTint color = #ffffff @desc 暗い部分の色に掛ける色
 uniform float uDetail;    // 視線を流す反復回数 (下げると軽く、流れが短くなる)
 uniform float uDensity;   // ノイズ場の細かさ (%)
 uniform float uWarp;      // 視線の曲げ具合 (%)

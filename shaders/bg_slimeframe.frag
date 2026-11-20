@@ -12,13 +12,13 @@ float sf_smin(float d1, float d2, float k){
   float h = clamp(0.5 + 0.5*(d2-d1)/k, 0.0, 1.0);
   return mix(d2, d1, h) - k*h*(1.0-h);
 }
-// @param uDetail  2..5 = 5.0
-// @param uThick   25..500 = 100.0
-// @param uWarp    0..300 = 100.0
-// @param uSoft    10..300 = 100.0
-// @param uDensity 25..200 = 100.0
-// @param uSize 50..115 = 100.0
-// @param uAngle -180..180 = 0.0
+// @param uDetail  2..5 = 5.0 @desc カレイドスコープの反復回数。下げると軽くなり、円が減る
+// @param uThick   25..500 = 100.0 @desc 線の太さ (%)。大きいほど太い
+// @param uWarp    0..300 = 100.0 @desc 円のゆがみ・ふくらみの強さ (%)。0 で整った同心円
+// @param uSoft    10..300 = 100.0 @desc 円同士がつながる柔らかさ (%)。大きいほど滑らかに融合
+// @param uDensity 25..200 = 100.0 @desc 円の密度 (%)。大きいほど円が細かく多くなる
+// @param uSize 50..115 = 100.0 @desc 円ひとつの大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 円群の向き (度)。固定角で回す
 uniform float uDetail; // カレイドスコープの反復回数 (下げると軽く、円が少なくなる)
 uniform float uThick; // 線の太さ (%)
 uniform float uWarp; // 円のゆがみ (%)
@@ -26,20 +26,20 @@ uniform float uSoft; // 円同士のつながりの柔らかさ (%)
 uniform float uDensity; // 円の密度 (%)
 uniform float uSize; // 円ひとつの大きさ (%)
 uniform float uAngle; // 向き (度。固定角でずらす)
-// @param uFoldOffset 85..140 = 100.0
-// @param uRingDecay 80..140 = 100.0
-// @param uOffCenter 0..250 = 100.0
-// @param uRingStretch -40..50 = 0.0
-// @param uSquare 0..100 = 0.0
-// @param uWobbleFreq 30..250 = 100.0
-// @param uBulgeFreq 30..250 = 100.0
-// @param uFrameWidth 20..300 = 100.0
-// @param uFrameBlend 10..300 = 100.0
-// @param uFrameInset 60..120 = 100.0
-// @param uChromeBands 1..6 = 2.0
-// @param uHighlightSharp 4..80 = 30.0
-// @param uFresnelGain 0..300 = 100.0
-// @param uBevel 20..400 = 100.0
+// @param uFoldOffset 85..140 = 100.0 @desc 折り返しで円の中心をずらす距離 (%)。大きいと円が離れ、小さいと重なる
+// @param uRingDecay 80..140 = 100.0 @desc 反復ごとに円が小さくなる割合 (%)。上げると奥の円が急に小さくなる
+// @param uOffCenter 0..250 = 100.0 @desc 円群の中心のずれ (%)。0 で左右上下対称
+// @param uRingStretch -40..50 = 0.0 @desc 円の横方向の伸び (%)。正で横長、負で縦長
+// @param uSquare 0..100 = 0.0 @desc 円を四角に近づける量 (%)。0 = 円 / 100 = 正方形の輪
+// @param uWobbleFreq 30..250 = 100.0 @desc 円のねじれゆがみの細かさ (%)
+// @param uBulgeFreq 30..250 = 100.0 @desc 円のふくらみの波の細かさ (%)
+// @param uFrameWidth 20..300 = 100.0 @desc 外枠の太さ (%)
+// @param uFrameBlend 10..300 = 100.0 @desc 外枠と円のつながりの柔らかさ (%)
+// @param uFrameInset 60..120 = 100.0 @desc 外枠の位置 (%)。下げると内側へ寄る
+// @param uChromeBands 1..6 = 2.0 @desc クロームの映り込み帯の本数
+// @param uHighlightSharp 4..80 = 30.0 @desc ハイライトの鋭さ。大きいほど細く鋭い
+// @param uFresnelGain 0..300 = 100.0 @desc 縁のフレネル反射の強さ (%)
+// @param uBevel 20..400 = 100.0 @desc 縁の丸み (%)。上げると反射が柔らかくなる
 uniform float uFoldOffset; // 折り返しで円の中心をずらす距離 (%)。大きいと円が離れ、小さいと重なる
 uniform float uRingDecay; // 反復ごとに円が小さくなる割合 (%)。上げると奥の円が急に小さくなる
 uniform float uOffCenter; // 円群の中心のずれ (%)。0 で左右上下対称
@@ -54,25 +54,25 @@ uniform float uChromeBands; // クロームの映り込み帯の本数
 uniform float uHighlightSharp; // ハイライトの鋭さ (大きいほど細く鋭い)
 uniform float uFresnelGain; // 縁のフレネル反射の強さ (%)
 uniform float uBevel; // 縁の丸み (%)。上げると法線がなだらかになり反射が柔らかい
-// @param uFoldTurn -90..90 = 0
-// @param uPatX -100..100 = 0
-// @param uPatY -100..100 = 0
-// @param uFrameRound 0..100 = 0
-// @param uFrameWide 40..160 = 100
-// @param uFrameTall 40..160 = 100
-// @param uRoll -180..180 = 0
-// @param uMirror 0..100 = 0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uLightYaw -180..180 = 0
-// @param uSpecGain 0..1500 = 100
-// @param uSkyPow 30..400 = 100
-// @param uBandDepth 0..200 = 100
-// @param uBandPhase 0..360 = 0
-// @param uFresnelPow 30..300 = 100
-// @param uEnvColor color = #ffffff
-// @param uSpecColor color = #ffffff
-// @param uFresnelColor color = #ffffff
+// @param uFoldTurn -90..90 = 0 @desc 反復ごとの追加の回転 (度)。円群のねじれ方が変わる
+// @param uPatX -100..100 = 0 @desc 円群の横位置 (%)。外枠は動かない
+// @param uPatY -100..100 = 0 @desc 円群の縦位置 (%)。外枠は動かない
+// @param uFrameRound 0..100 = 0 @desc 外枠の角の丸み (%)
+// @param uFrameWide 40..160 = 100 @desc 外枠の横幅 (%)
+// @param uFrameTall 40..160 = 100 @desc 外枠の高さ (%)
+// @param uRoll -180..180 = 0 @desc 画面全体の回転 (度)
+// @param uMirror 0..100 = 0 @desc 左右の鏡像。50 以上で完全な左右対称
+// @param uCenterX -100..100 = 0 @desc 全体の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 全体の縦位置 (%)
+// @param uLightYaw -180..180 = 0 @desc ハイライトの光源の向き (度)
+// @param uSpecGain 0..1500 = 100 @desc ハイライトの強さ (%)
+// @param uSkyPow 30..400 = 100 @desc 上方の銀の空の広がり (%)。上げると狭く上端だけ明るい
+// @param uBandDepth 0..200 = 100 @desc 映り込み帯の明暗差 (%)
+// @param uBandPhase 0..360 = 0 @desc 映り込み帯の位相 (度)
+// @param uFresnelPow 30..300 = 100 @desc フレネルの絞り (%)。上げると縁の光が細くなる
+// @param uEnvColor color = #ffffff @desc 映り込みの地色のティント
+// @param uSpecColor color = #ffffff @desc ハイライトの色のティント
+// @param uFresnelColor color = #ffffff @desc 縁のフレネル反射の色のティント
 uniform float uFoldTurn; // 反復ごとの追加の回転 (度)。円群のねじれ方が変わる
 uniform float uPatX; // 円群の横位置 (%)。外枠は動かない
 uniform float uPatY; // 円群の縦位置 (%)

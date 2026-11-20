@@ -16,14 +16,14 @@ mat3 fr_rotmat(vec3 v, float angle){
     (1.0-c)*v.x*v.z - s*v.y,    (1.0-c)*v.y*v.z + s*v.x,   c + (1.0-c)*v.z*v.z);
 }
 
-// @param uThick 40..250 = 100.0
-// @param uTwist 0..250 = 100.0
-// @param uWarp 0..180 = 100.0
-// @param uGlow 0..300 = 100.0
-// @param uShine 0..300 = 100.0
-// @param uScale 50..160 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 24..56 = 56.0
+// @param uThick 40..250 = 100.0 @desc チューブの太さ (%)
+// @param uTwist 0..250 = 100.0 @desc チューブ全体のねじれの強さ (%)
+// @param uWarp 0..180 = 100.0 @desc ループのうねり (歪み) の大きさ (%)。半径の揺れに掛かる
+// @param uGlow 0..300 = 100.0 @desc 内側の発光の強さ (%)
+// @param uShine 0..300 = 100.0 @desc 鏡面ハイライトの強さ (%)
+// @param uScale 50..160 = 100.0 @desc 物体全体の大きさ (%)
+// @param uAngle -180..180 = 0.0 @desc 物体の向きを固定角でずらす (度)
+// @param uSteps 24..56 = 56.0 @desc レイマーチの反復回数。下げると軽いが遠景や細部が欠ける
 uniform float uThick;   // チューブの太さ (%)
 uniform float uTwist;   // ねじれの強さ (%)
 uniform float uWarp;   // ループのうねり (歪み) の大きさ (%)
@@ -32,19 +32,19 @@ uniform float uShine;   // 鏡面ハイライトの強さ (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
-// @param uLoopRadius 70..125  = 100.0
-// @param uWhipAmp    0..200   = 100.0
-// @param uWhip3      0..200   = 100.0
-// @param uWhipLobes  1..4     = 3.0
-// @param uLift       0..160   = 100.0
-// @param uLiftLobes  1..3     = 2.0
-// @param uLift3      0..130   = 100.0
-// @param uGlowReach  40..180  = 100.0
-// @param uSquash     75..125  = 100.0
-// @param uCamElev    70..200   = 100.0
-// @param uRefract    93..108  = 100.0
-// @param uGlassFade  50..140  = 100.0
-// @param uShinePow   30..300  = 100.0
+// @param uLoopRadius 70..125  = 100.0 @desc ループの半径 (%)
+// @param uWhipAmp    0..200   = 100.0 @desc 大きな 1 周期のうねりの振れ幅 (%)
+// @param uWhip3      0..200   = 100.0 @desc 細かいローブのうねりの振れ幅 (%)
+// @param uWhipLobes  1..4     = 3.0 @desc 細かいうねりのローブ数 (四捨五入で整数)
+// @param uLift       0..160   = 100.0 @desc 上下の波打ちの高さ (%)
+// @param uLiftLobes  1..3     = 2.0 @desc 上下の波の山の数 (四捨五入で整数)
+// @param uLift3      0..130   = 100.0 @desc 細かい上下の波の高さ (%)
+// @param uGlowReach  40..180  = 100.0 @desc 表面の発光のにじみの幅 (%)
+// @param uSquash     75..125  = 100.0 @desc チューブ断面の縦横比 (%)。下げると平たいリボン、上げると縦長
+// @param uCamElev    70..200   = 100.0 @desc カメラの上下の振れ幅 (%)
+// @param uRefract    93..108  = 100.0 @desc ガラスの屈折率の差 (%)。上げるほど屈折が弱い
+// @param uGlassFade  50..140  = 100.0 @desc ガラスを通るごとの減衰 (%)。上げると奥まで見える
+// @param uShinePow   30..300  = 100.0 @desc ハイライトの鋭さ (%)。大きいほど小さく鋭い
 uniform float uLoopRadius; // ループの半径 (%)
 uniform float uWhipAmp;    // 大きな 1 周期のうねりの振れ幅 (%)
 uniform float uWhip3;      // 細かいローブのうねりの振れ幅 (%)
@@ -59,24 +59,24 @@ uniform float uRefract;    // ガラスの屈折率の差 (%)。上げるほど�
 uniform float uGlassFade;  // ガラスを通るごとの減衰 (%)。上げると奥まで見える
 uniform float uShinePow;   // ハイライトの鋭さ (%)
 
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uMirrorX -100..100 = 0.0
-// @param uRoll -180..180 = 0.0
-// @param uCamDist 70..140 = 100.0
-// @param uCamLift -100..100 = 0.0
-// @param uFov 60..160 = 100.0
-// @param uLightLift -100..100 = 0.0
-// @param uLightSep -100..100 = 0.0
-// @param uLight1Gain 0..250 = 100.0
-// @param uGlassMilk 0..300 = 100.0
-// @param uFarClip 60..100 = 100.0
-// @param uVignette 0..100 = 0.0
-// @param uGrain 0..100 = 0.0
-// @param uVolTint color = #ffffff
-// @param uGlassTint color = #ffffff
-// @param uLight1Tint color = #ffffff
-// @param uLight2Tint color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc 物体の位置を横へずらす (%)
+// @param uCenterY -100..100 = 0.0 @desc 物体の位置を縦へずらす (%)
+// @param uMirrorX -100..100 = 0.0 @desc 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効
+// @param uRoll -180..180 = 0.0 @desc カメラのロール (度)。画面が傾く
+// @param uCamDist 70..140 = 100.0 @desc カメラの距離 (%)。大きいほど引く
+// @param uCamLift -100..100 = 0.0 @desc カメラの高さの底上げ (%)。負で見上げ、正で見下ろす
+// @param uFov 60..160 = 100.0 @desc 画角 (%)。上げると広角、下げると望遠
+// @param uLightLift -100..100 = 0.0 @desc 2 つの光源の高さ (%)。負で低く、正で高く
+// @param uLightSep -100..100 = 0.0 @desc 2 つの光源の方位の開き (%)
+// @param uLight1Gain 0..250 = 100.0 @desc 暖色の光源の強さ (%)
+// @param uGlassMilk 0..300 = 100.0 @desc ガラスの白い厚みの濃さ (%)
+// @param uFarClip 60..100 = 100.0 @desc 奥行きの打ち切り距離 (%)。下げると奥が早く消える
+// @param uVignette 0..100 = 0.0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0.0 @desc 粒状ノイズの量 (%)
+// @param uVolTint color = #ffffff @desc 内側の発光の色味。掛け算のティント
+// @param uGlassTint color = #ffffff @desc ガラスの白い厚みの色味。掛け算のティント
+// @param uLight1Tint color = #ffffff @desc 暖色の光源の色味。掛け算のティント
+// @param uLight2Tint color = #ffffff @desc 寒色の光源の色味。掛け算のティント
 uniform float uCenterX; // 物体の位置を横へずらす (%)
 uniform float uCenterY; // 物体の位置を縦へずらす (%)
 uniform float uMirrorX; // 左右の鏡像 (%)。正負で写す側が入れ替わり、大きさで軸が動く。0 で無効

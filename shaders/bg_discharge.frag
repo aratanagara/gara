@@ -8,25 +8,25 @@
 // =====================================================
 
 vec3  dc_mix(vec3 x, vec3 y){ return abs(x - y); }
-// @param uDetail   20..200 = 200.0
-// @param uSize     50..320 = 100.0
-// @param uContrast 25..400 = 100.0
-// @param uSpread   30..300 = 100.0
-// @param uAngle    -180..180 = 0.0
+// @param uDetail   20..200 = 200.0 @desc 電撃の点の数。下げると軽く、まばらになる
+// @param uSize     50..320 = 100.0 @desc 電撃の点ひとつの大きさ (%)
+// @param uContrast 25..400 = 100.0 @desc 着色の鋭さ (%)。pow の指数に掛かり、上げるほど細く尖る
+// @param uSpread   30..300 = 100.0 @desc 点の散らばり方 (%)。軌跡の位相の進みに掛かる
+// @param uAngle    -180..180 = 0.0 @desc 全体の向き (度)
 uniform float uDetail;     // 電撃の点の数 (下げると軽く、まばらになる)
 uniform float uSize;       // 電撃の点ひとつの大きさ (%)
 uniform float uContrast;   // 着色の鋭さ = pow の指数 (%)
 uniform float uAngle;      // 全体の向き (度)
 uniform float uSpread;     // 点の散らばり方 (%)
-// @param uSpanX 20..150 = 100
-// @param uSpanY 20..150 = 100
-// @param uDiscR 0..60 = 0
-// @param uSquash -80..80 = 0
-// @param uPhaseRatioX 50..200 = 100
-// @param uPhaseRatio 50..200 = 100
-// @param uEdge -60..150 = 0
-// @param uPowRed 40..250 = 100
-// @param uPowBlue 40..250 = 100
+// @param uSpanX 20..150 = 100 @desc 点が動き回る横幅 (%)
+// @param uSpanY 20..150 = 100 @desc 点が動き回る縦幅 (%)
+// @param uDiscR 0..60 = 0 @desc 点を塗りつぶす円の半径 (px 相当)。0 で点のまま
+// @param uSquash -80..80 = 0 @desc 点の縦横比のつぶし (%)。0 で円、負で縦長
+// @param uPhaseRatioX 50..200 = 100 @desc 横方向の位相の進み方 (%)。縦との比で軌跡の形が変わる
+// @param uPhaseRatio 50..200 = 100 @desc 縦方向の位相の進み方 (%)。横との比で軌跡の形が変わる
+// @param uEdge -60..150 = 0 @desc 点の縁の硬さ (%)。0 で標準、上げるとシャープ
+// @param uPowRed 40..250 = 100 @desc 赤チャンネルの鋭さ (%)
+// @param uPowBlue 40..250 = 100 @desc 青チャンネルの鋭さ (%)
 uniform float uSpanX;      // 点が動き回る横幅 (%)
 uniform float uSpanY;      // 点が動き回る縦幅 (%)
 uniform float uDiscR;      // 点を塗りつぶす円の半径 (px 相当)。0 = 点のまま
@@ -36,18 +36,18 @@ uniform float uPhaseRatio; // 縦方向の位相の進み方 (%)。横との比�
 uniform float uEdge;       // 点の縁の硬さ (%)。0 = 従来 / 上げるとシャープ
 uniform float uPowRed;     // 赤チャンネルの鋭さ (%)
 uniform float uPowBlue;    // 青チャンネルの鋭さ (%)
-// @param uPowGreen 40..250 = 100
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uShear -100..100 = 0
-// @param uRipple 0..100 = 0
-// @param uSizeTaper -25..60 = 0
-// @param uDiscScatter 0..60 = 0
-// @param uDropout 0..80 = 0
-// @param uVignette 0..100 = 0
-// @param uGrainAmount 0..100 = 0
-// @param uBoltColor color = #ffffff
-// @param uVoidColor color = #000000
+// @param uPowGreen 40..250 = 100 @desc 緑チャンネルの鋭さ (%)
+// @param uCenterX -100..100 = 0 @desc 点が動き回る中心の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 点が動き回る中心の縦位置 (%)
+// @param uShear -100..100 = 0 @desc 画面の横ずれ (斜めに流す) (%)
+// @param uRipple 0..100 = 0 @desc 画面を波打たせる振れ幅 (%)
+// @param uSizeTaper -25..60 = 0 @desc 点の大きさの勾配 (%)。正で後ろの点ほど小さく、負で逆
+// @param uDiscScatter 0..60 = 0 @desc 点ごとに塗りつぶし円の半径をばらつかせる量 (px 相当)
+// @param uDropout 0..80 = 0 @desc 点を間引く割合 (%)
+// @param uVignette 0..100 = 0 @desc 四隅の減光 (%)
+// @param uGrainAmount 0..100 = 0 @desc 画面のざらつき (%)
+// @param uBoltColor color = #ffffff @desc 電撃のティント
+// @param uVoidColor color = #000000 @desc 闇の色 (暗い部分に足す)
 uniform float uPowGreen;   // 緑チャンネルの鋭さ (%)
 uniform float uCenterX;    // 点が動き回る中心の横位置 (%)
 uniform float uCenterY;    // 点が動き回る中心の縦位置 (%)

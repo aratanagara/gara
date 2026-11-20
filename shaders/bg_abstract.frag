@@ -25,7 +25,7 @@ vec3 aa_aces(vec3 color){
   return M2 * (a / b);
 }
 
-// @param uPhi 94..110 = 100.0
+// @param uPhi 94..110 = 100.0 @desc 場の模様の比率 (%)。模様の並びが変わる
 uniform float uPhi; // 場の模様の比率 (%)。模様の並びが変わる
 
 // Dot Noise (XorDev) — golden-ratio 回転による gyroid 風 irrational 場 [-3,+3]
@@ -46,40 +46,40 @@ mat2 aa_rot(float a){
               s,  c);
 }
 
-// @param uGlow    10..300 = 100.0
-// @param uDensity 40..300 = 100.0
-// @param uWarp    0..500 = 100.0
-// @param uOrb     0..300 = 100.0
-// @param uSteps 50..150 = 150.0
-// @param uOrbSweep 0..200 = 100.0
-// @param uOrbBob 0..300 = 100.0
-// @param uBandFreq 50..200 = 100.0
-// @param uMinStep 50..200 = 100.0
-// @param uStepGain 50..200 = 100.0
-// @param uGround 0..250 = 100.0
-// @param uFieldFlat 50..200 = 100.0
-// @param uCamHeight -100..100 = 0.0
-// @param uCamSway 0..200 = 0.0
-// @param uRoll -90..90 = 0.0
-// @param uFocal 60..160 = 100.0
-// @param uOrbX -100..100 = 0.0
-// @param uOrbY -100..100 = 0.0
-// @param uOrbPulse 0..250 = 100.0
-// @param uOrbColor color = #ffffff
-// @param uBandShift -100..100 = 0.0
-// @param uBandHue -100..100 = 0.0
-// @param uCamX -100..100 = 0.0
-// @param uCamBob 0..200 = 0.0
-// @param uCamYaw -45..45 = 0.0
-// @param uCamPitch -45..45 = 0.0
-// @param uBarrel -100..100 = 0.0
-// @param uSqueezeX 50..200 = 100.0
-// @param uMirrorX 0..100 = 0.0
-// @param uMirrorY 0..100 = 0.0
-// @param uVignette -100..100 = 0.0
-// @param uFilmGrain 0..100 = 0.0
-// @param uLightTint color = #ffffff
-// @param uShadowTint color = #ffffff
+// @param uGlow    10..300 = 100.0 @desc 全体の明るさ (%)
+// @param uDensity 40..300 = 100.0 @desc 場の模様の細かさ (%)
+// @param uWarp    0..500 = 100.0 @desc 奥行きに沿ったねじれ (%)
+// @param uOrb     0..300 = 100.0 @desc 移動オーブの明るさ (%)
+// @param uSteps 50..150 = 150.0 @desc レイマーチのステップ数。下げると軽いが、遠景や細部が欠ける
+// @param uOrbSweep 0..200 = 100.0 @desc オーブが左右へ動く幅 (%)。0 で動かない
+// @param uOrbBob 0..300 = 100.0 @desc オーブの上下の揺れ (%)
+// @param uBandFreq 50..200 = 100.0 @desc 奥行き方向の色の帯の細かさ (%)
+// @param uMinStep 50..200 = 100.0 @desc 1 ステップの最小の進み (%)。上げると遠くまで届く
+// @param uStepGain 50..200 = 100.0 @desc 場の距離に応じた進みの係数 (%)
+// @param uGround 0..250 = 100.0 @desc 地面の傾きの強さ (%)。0 で地面のない塊
+// @param uFieldFlat 50..200 = 100.0 @desc 場の縦方向の細かさ (%)
+// @param uCamHeight -100..100 = 0.0 @desc カメラの高さ。正で場の上へ
+// @param uCamSway 0..200 = 0.0 @desc カメラの左右の揺れ (%)。0 で揺れない
+// @param uRoll -90..90 = 0.0 @desc 画面の傾き (度)
+// @param uFocal 60..160 = 100.0 @desc 画角の広さ (%)。上げると広角
+// @param uOrbX -100..100 = 0.0 @desc オーブの中心の左右位置 (%)
+// @param uOrbY -100..100 = 0.0 @desc オーブの中心の上下位置 (%)
+// @param uOrbPulse 0..250 = 100.0 @desc オーブの明滅の振れ幅 (%)
+// @param uOrbColor color = #ffffff @desc オーブの色 (掛け算)
+// @param uBandShift -100..100 = 0.0 @desc 色の帯を奥行き方向へずらす (%)
+// @param uBandHue -100..100 = 0.0 @desc 色の帯の R/G/B の位相差 (%)。帯の色合いが変わる
+// @param uCamX -100..100 = 0.0 @desc カメラの左右位置 (%)
+// @param uCamBob 0..200 = 0.0 @desc カメラの上下の揺れ (%)。0 で揺れない
+// @param uCamYaw -45..45 = 0.0 @desc カメラの左右の向き (度)
+// @param uCamPitch -45..45 = 0.0 @desc カメラの上下の向き (度)
+// @param uBarrel -100..100 = 0.0 @desc 視野の樽型・糸巻き型の歪み (%)。負で糸巻き
+// @param uSqueezeX 50..200 = 100.0 @desc 画の横の伸縮 (%)
+// @param uMirrorX 0..100 = 0.0 @desc 左右に折り返す量 (%)。100 で中心から鏡像
+// @param uMirrorY 0..100 = 0.0 @desc 上下に折り返す量 (%)。100 で中心から鏡像
+// @param uVignette -100..100 = 0.0 @desc 周辺の減光 (%)。負で周辺が明るくなる
+// @param uFilmGrain 0..100 = 0.0 @desc フィルムの粒の量 (%)
+// @param uLightTint color = #ffffff @desc 明るい部分の色 (掛け算)
+// @param uShadowTint color = #ffffff @desc 暗い部分の色 (掛け算)
 uniform float uGlow; // 全体の明るさ (%)
 uniform float uDensity; // 場の模様の細かさ (%)
 uniform float uWarp; // 奥行きに沿ったねじれ (%)

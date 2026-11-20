@@ -12,34 +12,34 @@ mat2  cn_rotate(float a){ float s=sin(a), c=cos(a); return mat2(c,-s,s,c); }
 float cn_vmax(vec3 v){ return max(max(v.x, v.y), v.z); }
 float cn_fbox(vec3 p, vec3 b){ return cn_vmax(abs(p) - b); }
 
-// @param uDetail  1..3     = 3.0
-// @param uTwist   0..250   = 100.0
-// @param uFold    0..200   = 100.0
-// @param uStretch 20..200  = 100.0
-// @param uGlow    25..300  = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uScale 50..150 = 100.0
-// @param uSteps 20..52 = 52.0
-// @param uArmCount 80..130 = 100
-// @param uRingCount 80..130 = 100
-// @param uPhiWobble 0..250 = 100
-// @param uTheWobble 0..250 = 100
-// @param uThirdTwist 0..300 = 100
-// @param uMeltMix 0..250 = 100
-// @param uShatterAmp 0..250 = 100
-// @param uShatterFreq 60..160 = 100
-// @param uFacetColor 40..250 = 100
-// @param uTwistRadial 0..300 = 100
-// @param uSecondTwist 0..250 = 100
-// @param uShellThick 30..300 = 100
-// @param uChanMix 0..100 = 0
-// @param uSolarize 0..100 = 0
-// @param uPosterize 0..8 = 0
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uCrystalTint color = #ffffff
-// @param uHighTint color = #ffffff
-// @param uShadowTint color = #ffffff
+// @param uDetail  1..3     = 3.0 @desc 内側の sin を重ねる回数。下げると軽く、形が単純になる
+// @param uTwist   0..250   = 100.0 @desc ねじれ量
+// @param uFold    0..200   = 100.0 @desc 破片フォールドの距離。大きいほど破片が離れる
+// @param uStretch 20..200  = 100.0 @desc 縦方向の伸び
+// @param uGlow    25..300  = 100.0 @desc 発光の強さ
+// @param uAngle -180..180 = 0.0 @desc 形全体の向き (度)
+// @param uScale 50..150 = 100.0 @desc 結晶全体の大きさ。カメラは動かない
+// @param uSteps 20..52 = 52.0 @desc レイマーチのステップ数。下げると軽く、光の積算が減って暗くなる
+// @param uArmCount 80..130 = 100 @desc 星形の腕 (経度方向の折り返し) の数
+// @param uRingCount 80..130 = 100 @desc 緯度方向の輪の数
+// @param uPhiWobble 0..250 = 100 @desc 腕の崩れ (非対称なゆがみ) の量
+// @param uTheWobble 0..250 = 100 @desc 輪の崩れ (緯度方向のゆがみ) の量
+// @param uThirdTwist 0..300 = 100 @desc 折り返し後の YZ 面のねじれ
+// @param uMeltMix 0..250 = 100 @desc 入れ子 sin による溶け込みの量
+// @param uShatterAmp 0..250 = 100 @desc 破片を増やす乱流の振れ幅
+// @param uShatterFreq 60..160 = 100 @desc 破片の細かさ
+// @param uFacetColor 40..250 = 100 @desc 面ごとの色の変わる細かさ
+// @param uTwistRadial 0..300 = 100 @desc 半径に沿ったねじれ
+// @param uSecondTwist 0..250 = 100 @desc 折り返し後の 2 回目のねじれ
+// @param uShellThick 30..300 = 100 @desc 結晶の殻の厚み
+// @param uChanMix 0..100 = 0 @desc 色チャンネルの入れ替えを混ぜる量。色の配置が変わる
+// @param uSolarize 0..100 = 0 @desc 明暗を折り返して反転させる量
+// @param uPosterize 0..8 = 0 @desc 色の段数。0 で連続、2 以上で階調を落とす
+// @param uVignette 0..100 = 0 @desc 周辺減光の強さ
+// @param uGrain 0..100 = 0 @desc 画面のざらつき
+// @param uCrystalTint color = #ffffff @desc 結晶の光に掛ける色
+// @param uHighTint color = #ffffff @desc 明るい部分に掛ける色
+// @param uShadowTint color = #ffffff @desc 暗い部分に掛ける色
 uniform float uDetail;    // 内側の sin 重ね回数 (下げると軽く、形が単純になる)
 uniform float uTwist;     // ねじれ量 (%)
 uniform float uFold;      // 破片フォールドの距離 (%)

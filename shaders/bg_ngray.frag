@@ -15,23 +15,23 @@ float ng_smin(float a, float b, float k){
 float ng_sphere(vec3 p, float s){ return length(p) - s; }
 float ng_box(vec3 p, float s){ return length(max(abs(p) - vec3(s), 0.0)); }
 
-// @param uDetail   1..10   = 10.0
-// @param uSoft     25..200 = 100.0
-// @param uSpread   0..200  = 100.0
-// @param uContrast 25..300 = 100.0
-// @param uAngle    -180..180 = 0.0
-// @param uScale    50..200 = 100.0
-// @param uSteps  18..30 = 30.0
-// @param uCoreSize 40..250 = 100
-// @param uBoxSize 40..250 = 100
-// @param uBoxRound 0..100 = 0
-// @param uSpreadY 0..300 = 100
-// @param uSkew 50..200 = 100
-// @param uPulse 0..200 = 100
-// @param uCamDist 60..140 = 100
-// @param uCamHeight 0..250 = 100
-// @param uBoxStretch 40..250 = 100
-// @param uRim 0..300 = 100
+// @param uDetail   1..10   = 10.0 @desc 合体させる box の数。下げると軽く、塊が単純になる (整数に丸める)
+// @param uSoft     25..200 = 100.0 @desc 合体の滑らかさ (smin の半径)。大きいほど溶け合う
+// @param uSpread   0..200  = 100.0 @desc box の散らばる範囲。0 で中心に固まる
+// @param uContrast 25..300 = 100.0 @desc ガンマの強さ。大きいほど暗部が沈む
+// @param uAngle    -180..180 = 0.0 @desc box それぞれの向きのオフセット (度)
+// @param uScale    50..200 = 100.0 @desc 物体全体の大きさ
+// @param uSteps  18..30 = 30.0 @desc レイマーチの最大ステップ数。下げると軽いが遠景や縁が欠ける
+// @param uCoreSize 40..250 = 100 @desc 中心の球の大きさ
+// @param uBoxSize 40..250 = 100 @desc box 1 個の大きさ
+// @param uBoxRound 0..100 = 0 @desc box の角の丸み。0 で角ばったまま
+// @param uSpreadY 0..300 = 100 @desc box の上下の散らばり
+// @param uSkew 50..200 = 100 @desc box のせん断のかかり方。大きいほど歪んだ形になる
+// @param uPulse 0..200 = 100 @desc 塊全体の脈動の振れ幅
+// @param uCamDist 60..140 = 100 @desc カメラの距離。小さいと寄る
+// @param uCamHeight 0..250 = 100 @desc カメラの高さ。0 で真横から、大きいと見下ろす
+// @param uBoxStretch 40..250 = 100 @desc box の奥行き方向の伸び。小さいと平たい板、大きいと棒
+// @param uRim 0..300 = 100 @desc 輪郭の縁取りの強さ
 uniform float uDetail;     // 合体させる box の数 (下げると軽く、塊が単純になる)
 uniform float uSoft;       // 合体の滑らかさ = smin の半径 (%)
 uniform float uSpread;     // box の散らばる範囲 (%) (0 = 中心に固まる)
@@ -49,20 +49,20 @@ uniform float uCamDist;    // カメラの距離 (%)
 uniform float uCamHeight;  // カメラの高さ (%)。0 で真横から、大きいと見下ろし
 uniform float uBoxStretch; // box の奥行き方向の伸び (%)。小さいと平たい板、大きいと棒
 uniform float uRim;        // 輪郭の縁取りの強さ (%)
-// @param uTwist -100..100 = 0
-// @param uFoldX 0..100 = 0
-// @param uSquashY 40..250 = 100
-// @param uCamRoll -90..90 = 0
-// @param uFocal 60..200 = 100
-// @param uLookX -60..60 = 0
-// @param uLookY -60..60 = 0
-// @param uOrbitStart -180..180 = 0
-// @param uLightAz -180..180 = 0
-// @param uLightEl -100..100 = 0
-// @param uDiffAmt 0..300 = 100
-// @param uAmbAmt 0..300 = 100
-// @param uVigAmt 0..300 = 100
-// @param uBodyTint color = #ffffff
+// @param uTwist -100..100 = 0 @desc 塊の縦軸まわりのねじれ。負で逆回り
+// @param uFoldX 0..100 = 0 @desc 左右の鏡像。0 でなし、100 で完全な左右対称
+// @param uSquashY 40..250 = 100 @desc 塊の縦の伸び縮み。小さいと平たく、大きいと縦長
+// @param uCamRoll -90..90 = 0 @desc カメラのロール (度)
+// @param uFocal 60..200 = 100 @desc 画角。大きいほど望遠
+// @param uLookX -60..60 = 0 @desc 注視点の横ずれ。塊を画面の横へ寄せる
+// @param uLookY -60..60 = 0 @desc 注視点の縦ずれ。塊を画面の縦へ寄せる
+// @param uOrbitStart -180..180 = 0 @desc カメラの周回の開始角 (度)。見る方向が変わる
+// @param uLightAz -180..180 = 0 @desc 光源の方位 (度)
+// @param uLightEl -100..100 = 0 @desc 光源の高さ
+// @param uDiffAmt 0..300 = 100 @desc 光源から受ける陰影 (拡散光) の強さ。下げると灰色の立体感が出る
+// @param uAmbAmt 0..300 = 100 @desc 環境光 (下面の明るさ) の量
+// @param uVigAmt 0..300 = 100 @desc 周辺減光の強さ
+// @param uBodyTint color = #ffffff @desc 塊全体の色に掛ける色
 uniform float uTwist;      // 塊の縦軸まわりのねじれ (%)。0 = なし / 負で逆回り
 uniform float uFoldX;      // 左右の鏡像 (%)。0 = なし / 100 で完全な左右対称
 uniform float uSquashY;    // 塊の縦の伸び縮み (%)。小さいと平たく、大きいと縦長

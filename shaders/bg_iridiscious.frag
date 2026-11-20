@@ -6,20 +6,20 @@
 //   vj ツールの bg 形式に適合 (mainImage → bg 関数 / iTime,iResolution → time,resolution
 //   / bgZoom・bgCamPx でズーム/パン対応)。
 // =====================================================
-// @param uDetail   7..11   = 11.0
-// @param uDensity  60..200  = 100.0
-// @param uWarp     0..300   = 100.0
-// @param uContrast 25..250  = 100.0
-// @param uBandSplit 50..200 = 100.0
-// @param uCoreGain 20..300 = 100.0
-// @param uCoreFloor 30..400 = 100.0
-// @param uCoreSharp 50..200 = 100.0
-// @param uCarry 60..200 = 100.0
-// @param uBandFreq 40..250 = 100.0
-// @param uStretchX 50..200 = 100.0
-// @param uShear -100..100 = 0.0
-// @param uLens -100..100 = 0.0
-// @param uCrossWarp -100..100 = 0.0
+// @param uDetail   7..11   = 11.0 @desc 重ねる層の数。下げると軽く、模様が単純になる (整数に丸める)
+// @param uDensity  60..200  = 100.0 @desc 模様の細かさ
+// @param uWarp     0..300   = 100.0 @desc 層ごとの歪みの強さ
+// @param uContrast 25..250  = 100.0 @desc 明暗の強さ
+// @param uBandSplit 50..200 = 100.0 @desc 赤の帯だけを細かく・粗くする。帯の色のずれ方が変わる
+// @param uCoreGain 20..300 = 100.0 @desc 光の核の強さ
+// @param uCoreFloor 30..400 = 100.0 @desc 光の核の飽和点。下げると核が鋭く尖る
+// @param uCoreSharp 50..200 = 100.0 @desc 光の核の絞り込み
+// @param uCarry 60..200 = 100.0 @desc 層から層へ持ち越す光の量の逆数。下げると前の層の光が強く残る
+// @param uBandFreq 40..250 = 100.0 @desc 虹色の帯の細かさ
+// @param uStretchX 50..200 = 100.0 @desc 横方向の伸縮
+// @param uShear -100..100 = 0.0 @desc 縦位置に応じた横ずれ
+// @param uLens -100..100 = 0.0 @desc 画面端の膨らみ・つぼみ。正で端が引き伸ばされる
+// @param uCrossWarp -100..100 = 0.0 @desc 歪みの縦横の絡め方。0 でそのまま、負で逆回り
 uniform float uDetail;     // 重ねる層の数 (下げると軽く、模様が単純になる)
 uniform float uDensity;    // 模様の細かさ (%)
 uniform float uWarp;       // 層ごとの歪みの強さ (%)
@@ -35,22 +35,22 @@ uniform float uShear; // 縦位置に応じた横ずれ (%)
 uniform float uLens; // 画面端の膨らみ・つぼみ (%)。正で端が引き伸ばされる
 uniform float uCrossWarp; // 歪みの縦横の絡め方 (%)。0 = そのまま / 負で逆回り
 
-// @param uCenterX -100..100 = 0.0
-// @param uCenterY -100..100 = 0.0
-// @param uRoll -180..180 = 0.0
-// @param uMirrorX -100..100 = 0.0
-// @param uPixelate 0..100 = 0.0
-// @param uWarpPhase -180..180 = 0.0
-// @param uLayerDecay 98..102 = 100.0
-// @param uLayerPhase 80..130 = 100.0
-// @param uSteelAmount 0..150 = 100.0
-// @param uBlueAmount 0..150 = 100.0
-// @param uAsagiAmount 0..150 = 100.0
-// @param uVignette 0..100 = 0.0
-// @param uGrain 0..100 = 0.0
-// @param uSteelTint color = #ffffff
-// @param uBlueTint color = #ffffff
-// @param uAsagiTint color = #ffffff
+// @param uCenterX -100..100 = 0.0 @desc 模様の中心を横へずらす
+// @param uCenterY -100..100 = 0.0 @desc 模様の中心を縦へずらす
+// @param uRoll -180..180 = 0.0 @desc 模様全体の回転 (度)
+// @param uMirrorX -100..100 = 0.0 @desc 左右の鏡像。正負で写す側が入れ替わり、大きさで軸が動く。0 でなし
+// @param uPixelate 0..100 = 0.0 @desc 座標のモザイク化。上げるほど粗いブロックになる
+// @param uWarpPhase -180..180 = 0.0 @desc 歪みの位相のずれ (度)。うねり方の形が変わる
+// @param uLayerDecay 98..102 = 100.0 @desc 層ごとの細かさの縮み方。下げるほど奥の層が細かくなる
+// @param uLayerPhase 80..130 = 100.0 @desc 層ごとの色の位相の進み。層ごとの色のずれ方が変わる
+// @param uSteelAmount 0..150 = 100.0 @desc クリーム色をガンメタに置き換える量
+// @param uBlueAmount 0..150 = 100.0 @desc 黄土色を青に置き換える量
+// @param uAsagiAmount 0..150 = 100.0 @desc 水色を浅葱色に置き換える量
+// @param uVignette 0..100 = 0.0 @desc 周辺減光の強さ
+// @param uGrain 0..100 = 0.0 @desc 粒状ノイズの量
+// @param uSteelTint color = #ffffff @desc ガンメタ部分の色に掛ける色
+// @param uBlueTint color = #ffffff @desc 青部分の色に掛ける色
+// @param uAsagiTint color = #ffffff @desc 浅葱部分の色に掛ける色
 uniform float uCenterX; // 模様の中心を横へずらす (%)
 uniform float uCenterY; // 模様の中心を縦へずらす (%)
 uniform float uRoll; // 模様全体の回転 (度)

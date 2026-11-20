@@ -50,14 +50,14 @@ vec3 st_GetSunColorSmall(vec3 rayDir, vec3 sunDir){
   return st_sunCol * si * 0.025;
 }
 
-// @param uDetail 1..5 = 5.0
-// @param uWarp 0..130 = 100.0
-// @param uTwist 0..200 = 100.0
-// @param uDensity 50..200 = 100.0
-// @param uGlow 30..250 = 100.0
-// @param uScale 50..120 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 50..124 = 124.0
+// @param uDetail 1..5 = 5.0 @desc 変形の細かさ。折り重ねる回数 (整数に丸める)
+// @param uWarp 0..130 = 100.0 @desc 変形の激しさ。大きいほど球が歪む
+// @param uTwist 0..200 = 100.0 @desc 渦のねじれの強さ。物体を縦軸まわりにひねる
+// @param uDensity 50..200 = 100.0 @desc 変形のうねりの細かさ。大きいほど細かい起伏
+// @param uGlow 30..250 = 100.0 @desc 全体の明るさ
+// @param uScale 50..120 = 100.0 @desc 物体全体の大きさ
+// @param uAngle -180..180 = 0.0 @desc 物体の向き (度)。縦軸まわりの回転
+// @param uSteps 50..124 = 124.0 @desc レイマーチの反復回数。下げると軽いが遠景や細部が欠ける
 uniform float uDetail;   // 変形の細かさ (折り重ね回数)
 uniform float uWarp;   // 変形の激しさ (歪み) (%)
 uniform float uTwist;   // 渦のねじれの強さ (%)
@@ -66,15 +66,15 @@ uniform float uGlow;   // 全体の明るさ (%)
 uniform float uScale;   // 物体全体の大きさ (%)
 uniform float uAngle;   // 向き (度。固定角でずらす)
 uniform float uSteps;   // レイマーチの反復回数 (下げると軽いが、遠景や細部が欠ける)
-// @param uCoreRadius 70..120 = 100
-// @param uTwistA -250..250 = 0
-// @param uTwistB -250..250 = 0
-// @param uTwistC -250..250 = 0
-// @param uOctaveRatio 80..130 = 100
-// @param uBulgeBase 40..170 = 100
-// @param uWeightY 0..250 = 100
-// @param uRedBand 0..300 = 100
-// @param uRockGrain 40..250 = 100
+// @param uCoreRadius 70..120 = 100 @desc 球の芯の半径
+// @param uTwistA -250..250 = 0 @desc 1 軸目のうねりの追加の捻れ。負で逆向き
+// @param uTwistB -250..250 = 0 @desc 2 軸目のうねりの追加の捻れ。負で逆向き
+// @param uTwistC -250..250 = 0 @desc 3 軸目のうねりの追加の捻れ。負で逆向き
+// @param uOctaveRatio 80..130 = 100 @desc 折り重ねごとの細かさの倍率
+// @param uBulgeBase 40..170 = 100 @desc 変形の常時ぶんの膨らみ。時間で増減する分とは別
+// @param uWeightY 0..250 = 100 @desc 2 軸目の変形の効き
+// @param uRedBand 0..300 = 100 @desc 膨らんだ部分の赤い色づき
+// @param uRockGrain 40..250 = 100 @desc 岩肌の模様の細かさ
 uniform float uCoreRadius; // 球の芯の半径 (%)
 uniform float uTwistA;   // 1 軸目のうねりの追加の捻れ (%)。0 = なし / 負で逆
 uniform float uTwistB;   // 2 軸目のうねりの追加の捻れ (%)。0 = なし / 負で逆
@@ -84,25 +84,25 @@ uniform float uBulgeBase; // 変形の常時ぶんの膨らみ (%)。時間で�
 uniform float uWeightY;  // 2 軸目の変形の効き (%)
 uniform float uRedBand;  // 膨らんだ部分の赤い色づき (%)
 uniform float uRockGrain; // 岩肌の模様の細かさ (%)
-// @param uSunAzim -180..180 = 0
-// @param uSunElev -50..50 = 0
-// @param uSunGain 0..300 = 100
-// @param uSkyLight 0..400 = 100
-// @param uBounce 0..500 = 100
-// @param uShadowSoft 20..200 = 100
-// @param uFogAmount 0..400 = 100
-// @param uSunReflect 0..400 = 100
-// @param uCamPitch -40..40 = 0
-// @param uOrbit -180..180 = 0
-// @param uOffX -60..60 = 0
-// @param uOffY -60..60 = 0
-// @param uRimGain 0..300 = 0
-// @param uGloss 0..300 = 0
-// @param uSunColor color = #ffffff
-// @param uRimColor color = #ffffff
-// @param uSkyColor color = #ffffff
-// @param uRockColor color = #ffffff
-// @param uFogColor color = #ffffff
+// @param uSunAzim -180..180 = 0 @desc 太陽の方位 (度)
+// @param uSunElev -50..50 = 0 @desc 太陽の仰角の傾け (度)
+// @param uSunGain 0..300 = 100 @desc 太陽光の強さ
+// @param uSkyLight 0..400 = 100 @desc 上からの青い環境光の強さ
+// @param uBounce 0..500 = 100 @desc 下からの白い照り返しの強さ
+// @param uShadowSoft 20..200 = 100 @desc 影の柔らかさ。下げると硬く、上げると淡く広がる
+// @param uFogAmount 0..400 = 100 @desc 遠くが霞む濃さ
+// @param uSunReflect 0..400 = 100 @desc 太陽の映り込みの強さ
+// @param uCamPitch -40..40 = 0 @desc カメラの俯仰の傾け (度)
+// @param uOrbit -180..180 = 0 @desc カメラ周回の開始角 (度)
+// @param uOffX -60..60 = 0 @desc 物体の横位置
+// @param uOffY -60..60 = 0 @desc 物体の縦位置
+// @param uRimGain 0..300 = 0 @desc 縁の青白い照り返しの強さ。0 でなし
+// @param uGloss 0..300 = 0 @desc 太陽のつやのハイライトの強さ。0 でなし
+// @param uSunColor color = #ffffff @desc 太陽光の色に掛ける色
+// @param uRimColor color = #ffffff @desc 縁の照り返しの色に掛ける色
+// @param uSkyColor color = #ffffff @desc 環境光の色に掛ける色
+// @param uRockColor color = #ffffff @desc 岩肌の地色に掛ける色
+// @param uFogColor color = #ffffff @desc 霞の色に掛ける色
 uniform float uSunAzim; // 太陽の方位 (度)
 uniform float uSunElev; // 太陽の仰角の傾け (度)
 uniform float uSunGain; // 太陽光の強さ (%)

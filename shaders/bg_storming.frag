@@ -24,38 +24,38 @@ vec3  st_look(vec3 eye, vec3 target, vec2 anchor, float fov){
   return normalize(fwd*fov + right*anchor.x + up*anchor.y);
 }
 
-// @param uDetail 2..6    = 6.0
-// @param uSpread 50..200  = 100.0
-// @param uSize  25..250  = 100.0
-// @param uSoft   20..300  = 100.0
-// @param uWarp   0..250   = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uScale 50..200 = 100.0
-// @param uSteps 16..30 = 30.0
-// @param uFoldTwist 50..150 = 100.0
-// @param uFalloff 80..130 = 100.0
-// @param uLevelLift -100..100 = 0.0
-// @param uBeatEase 30..300 = 100.0
-// @param uBlobFlat 60..160 = 100.0
-// @param uEyeHeight 50..150 = 100.0
-// @param uFocal 60..160 = 100.0
-// @param uWarmHalo 0..250 = 100.0
-// @param uHaloReach 40..200 = 100.0
-// @param uSkyReach 50..200 = 100.0
-// @param uScreenWave 0..250 = 100.0
-// @param uBreath 0..300 = 100.0
-// @param uEyeOrbit -180..180 = 0.0
-// @param uLookShift -100..100 = 0.0
-// @param uRoll -180..180 = 0.0
-// @param uSwirl 0..250 = 100.0
-// @param uBlobTint color = #ffffff
-// @param uHaloTint color = #ffffff
-// @param uSkyTint color = #ffffff
-// @param uDustAmt 0..300 = 100.0
-// @param uHitEps 50..400 = 100.0
-// @param uShadeCurve 50..200 = 100.0
-// @param uSilhouette 30..300 = 100.0
-// @param uVignette 0..200 = 0.0
+// @param uDetail 2..6    = 6.0 @desc 折り畳みの反復回数 (2〜6)。下げると軽く、構造が単純になる
+// @param uSpread 50..200  = 100.0 @desc 折り畳みの広がり (%)
+// @param uSize  25..250  = 100.0 @desc 球塊の大きさ (%)
+// @param uSoft   20..300  = 100.0 @desc 球塊どうしの融合の柔らかさ (%)
+// @param uWarp   0..250   = 100.0 @desc 構造のうねり (ドメインワープ) の強さ (%)
+// @param uAngle -180..180 = 0.0 @desc 折り畳みごとの向き (度)。固定角でずらす
+// @param uScale 50..200 = 100.0 @desc 物体全体の大きさ (%)。画面・カメラは動かない
+// @param uSteps 16..30 = 30.0 @desc レイマーチのステップ数。下げると軽いが、遠方が欠ける
+// @param uFoldTwist 50..150 = 100.0 @desc 折り畳みごとの回転の振れ幅 (%)
+// @param uFalloff 80..130 = 100.0 @desc 段ごとの縮み方 (%)。上げると小さい球が増える
+// @param uLevelLift -100..100 = 0.0 @desc 段ごとの縦のずれ (%)。0 で水平に折り畳む
+// @param uBeatEase 30..300 = 100.0 @desc 拍ごとの動きの急さ (%)。下げると急に動く
+// @param uBlobFlat 60..160 = 100.0 @desc 球塊の縦横比 (%)。上げると平たく、下げると縦長
+// @param uEyeHeight 50..150 = 100.0 @desc カメラの高さ (%)
+// @param uFocal 60..160 = 100.0 @desc 画角の狭さ (%)。上げると望遠
+// @param uWarmHalo 0..250 = 100.0 @desc 手前の暖色のにじみの強さ (%)
+// @param uHaloReach 40..200 = 100.0 @desc 暖色のにじみの届く距離 (%)
+// @param uSkyReach 50..200 = 100.0 @desc 背景の光の広がり (%)
+// @param uScreenWave 0..250 = 100.0 @desc 画面のうねりの振れ幅 (%)
+// @param uBreath 0..300 = 100.0 @desc 放射状の脈動の振れ幅 (%)
+// @param uEyeOrbit -180..180 = 0.0 @desc カメラを物体の周りに回す角度 (度)
+// @param uLookShift -100..100 = 0.0 @desc 視線の上下のずらし (%)
+// @param uRoll -180..180 = 0.0 @desc 画面の傾き (度)
+// @param uSwirl 0..250 = 100.0 @desc 画面中心からの渦巻きの強さ (%)。100 で標準、上げるほど強く巻く
+// @param uBlobTint color = #ffffff @desc 球塊のティント色
+// @param uHaloTint color = #ffffff @desc 暖色のにじみのティント色
+// @param uSkyTint color = #ffffff @desc 背景の光のティント色
+// @param uDustAmt 0..300 = 100.0 @desc 表面の粉状の粒立ち (%)
+// @param uHitEps 50..400 = 100.0 @desc 表面とみなす距離のしきい値 (%)。大きいほど輪郭がふくらむ
+// @param uShadeCurve 50..200 = 100.0 @desc 奥行きの陰影の曲線 (%)。上げると暗部が沈む
+// @param uSilhouette 30..300 = 100.0 @desc 球塊と背景の境目の鋭さ (%)。下げると背景が染み込む
+// @param uVignette 0..200 = 0.0 @desc 周辺減光 (%)
 uniform float uDetail;    // 折り畳みの反復回数 (下げると軽く、構造が単純になる)
 uniform float uSpread;    // 折り畳みの広がり (%)
 uniform float uSize;     // 球塊の大きさ (%)

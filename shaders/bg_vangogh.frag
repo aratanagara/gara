@@ -8,32 +8,32 @@ vec3 vg_cosineGradient(float tt, vec3 a, vec3 b, vec3 c, vec3 d){
 }
 
 // 0) VanGogh
-// @param uDetail 1..4 = 4.0
-// @param uWarp 0..200 = 100.0
-// @param uDensity 25..400 = 100.0
-// @param uSat 0..250 = 100.0
-// @param uBandW 25..400 = 100.0
-// @param uCenterX -100..100 = 0
-// @param uCenterY -100..100 = 0
-// @param uRingAspect 40..250 = 100
-// @param uRingStep 1..8 = 3
-// @param uDriftAmp 0..300 = 100
-// @param uCrinkle 0..300 = 100
-// @param uWarpSkew 30..300 = 100
-// @param uSpokes 0..12 = 0
-// @param uBandEdge 5..90 = 30
-// @param uRotate -180..180 = 0
-// @param uMirror -100..100 = 0
-// @param uTwist -300..300 = 0
-// @param uPulse 0..300 = 100
-// @param uColorSpread 20..300 = 100
-// @param uColorRadial 0..400 = 100
-// @param uPalettePhase -100..100 = 0
-// @param uBandLine 0..100 = 0
-// @param uVignette 0..150 = 0
-// @param uGrain 0..100 = 0
-// @param uOddBandTint color = #ffffff
-// @param uShadowTint color = #ffffff
+// @param uDetail 1..4 = 4.0 @desc 渦を歪ませる反復回数。下げると模様が単純になる
+// @param uWarp 0..200 = 100.0 @desc 渦の歪みの強さ (%)
+// @param uDensity 25..400 = 100.0 @desc 同心の帯の密度 (%)
+// @param uSat 0..250 = 100.0 @desc 色の彩度 (%)
+// @param uBandW 25..400 = 100.0 @desc 色の段の幅 (%)
+// @param uCenterX -100..100 = 0 @desc 渦の中心の横位置 (%)
+// @param uCenterY -100..100 = 0 @desc 渦の中心の縦位置 (%)
+// @param uRingAspect 40..250 = 100 @desc 同心の帯の縦横比 (%)。小さいほど縦長の楕円
+// @param uRingStep 1..8 = 3 @desc 帯ごとに歪みの位相を刻む段の割り。小さいと段差が荒く、大きいと細かい
+// @param uDriftAmp 0..300 = 100 @desc 渦全体が流れる振れ幅 (%)
+// @param uCrinkle 0..300 = 100 @desc 渦の縁のうねりの深さ (%)
+// @param uWarpSkew 30..300 = 100 @desc 縦方向の歪みの強さ (%)。横に対する比
+// @param uSpokes 0..12 = 0 @desc 放射状の羽根の本数。0 でなし
+// @param uBandEdge 5..90 = 30 @desc 色の段のなだらかな立ち上がり位置 (%)。小さいほど段が丸い
+// @param uRotate -180..180 = 0 @desc 渦の模様全体の回転 (度)
+// @param uMirror -100..100 = 0 @desc 左右の鏡像の折り返し位置 (%)。0 でなし、正で右寄り・負で左寄りに折る
+// @param uTwist -300..300 = 0 @desc 中心からの距離に比例したねじれ (%)。負で逆回り
+// @param uPulse 0..300 = 100 @desc 帯が呼吸する脈動の振れ幅 (%)
+// @param uColorSpread 20..300 = 100 @desc 色が空間で移り変わる傾きの強さ (%)。上げると色の縞が細かくなる
+// @param uColorRadial 0..400 = 100 @desc 中心から外へ向かう色の変化 (%)。同心の色の輪の細かさ
+// @param uPalettePhase -100..100 = 0 @desc パレット上の色の位置のずれ (%)
+// @param uBandLine 0..100 = 0 @desc 色の段の境目に引く暗い線の濃さ (%)
+// @param uVignette 0..150 = 0 @desc 画面の周辺を暗くする量 (%)
+// @param uGrain 0..100 = 0 @desc フィルムのような粒状ノイズの量 (%)
+// @param uOddBandTint color = #ffffff @desc 1 段おきの色の段に掛ける色。白で変化なし
+// @param uShadowTint color = #ffffff @desc 暗い部分に掛ける色。白で変化なし
 uniform float uDetail;   // 歪ませる反復回数 (下げると模様が単純になる)
 uniform float uWarp;   // 渦の歪みの強さ (%)
 uniform float uDensity;   // 同心の帯の密度 (%)

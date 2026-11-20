@@ -11,13 +11,13 @@
                       tanh(cos((z) * .4) * .3) * (16. * (uSwayY / 100.)), (z)))
 #define CP_rot(a) mat2(cos(a + vec4(0, 33, 11, 0)))
 
-// @param uDetail   2..6 = 6.0
-// @param uMotion   0..300 = 100.0
-// @param uPuff     40..150 = 100.0
-// @param uFog      20..400 = 100.0
-// @param uContrast 40..250 = 100.0
-// @param uAngle -180..180 = 0.0
-// @param uSteps 30..90 = 90.0
+// @param uDetail   2..6 = 6.0 @desc フラクタルの反復回数。下げると軽くなるが形が粗くなる
+// @param uMotion   0..300 = 100.0 @desc 路面のうねりの振幅 (%)
+// @param uPuff     40..150 = 100.0 @desc もこもこの形の強さ (%)
+// @param uFog      20..400 = 100.0 @desc 奥の霞の届く距離 (%)
+// @param uContrast 40..250 = 100.0 @desc コントラスト (%)。大きいほど暗く締まる
+// @param uAngle -180..180 = 0.0 @desc 画面のロール (度)。視線まわりの回転
+// @param uSteps 30..90 = 90.0 @desc レイマーチのステップ数。下げると軽くなるが遠景や細部が欠ける
 uniform float uDetail; // フラクタルの反復回数 (下げると軽く、形が粗くなる)
 uniform float uMotion; // 路面のうねりの振幅 (%)
 uniform float uPuff; // もこもこの形の強さ (%)
@@ -25,32 +25,32 @@ uniform float uFog; // 奥の霞の届く距離 (%)
 uniform float uContrast; // コントラスト (%。大きいほど暗く締まる)
 uniform float uAngle; // 向き (度。固定角でずらす)
 uniform float uSteps; // レイマーチのステップ数 (下げると軽く、遠景や細部が欠ける)
-// @param uSwayX 40..150 = 100
-// @param uSwayY 40..150 = 100
-// @param uTunnelWidth 70..140 = 100
-// @param uRoadHeight 60..140 = 100
-// @param uRoadWave 25..250 = 100
-// @param uFoldLimit 88..115 = 100
-// @param uFoldScale 92..108 = 100
-// @param uFoldOffset 94..110 = 100
-// @param uInflate 90..115 = 100
-// @param uGrainDepth 40..200 = 100
-// @param uCamYaw -45..45 = 0
-// @param uCamPitch -35..35 = 0
-// @param uCamShiftX -100..100 = 0
-// @param uCamShiftY -100..100 = 0
-// @param uLensFov 50..200 = 100
-// @param uLensBarrel -100..100 = 0
-// @param uRollSway 0..300 = 100
-// @param uLookAhead 40..200 = 100
-// @param uVolAmt 0..300 = 100
-// @param uSurfAmt 0..300 = 100
-// @param uHazeStart 0..100 = 0
-// @param uVignette 0..100 = 0
-// @param uGrain 0..100 = 0
-// @param uVolTint color = #ffffff
-// @param uSurfTint color = #ffffff
-// @param uFogTint color = #ffffff
+// @param uSwayX 40..150 = 100 @desc 道の左右の蛇行の振れ幅 (%)
+// @param uSwayY 40..150 = 100 @desc 道の上下の蛇行の振れ幅 (%)
+// @param uTunnelWidth 70..140 = 100 @desc 道まわりの模様の拡縮 (%)。大きいほど模様が細かくなる
+// @param uRoadHeight 60..140 = 100 @desc 路面の高さ (%)
+// @param uRoadWave 25..250 = 100 @desc 路面のうねりの細かさ (%)
+// @param uFoldLimit 88..115 = 100 @desc 折り畳みの境界の広さ (%)
+// @param uFoldScale 92..108 = 100 @desc 折り畳みの拡大率 (%)
+// @param uFoldOffset 94..110 = 100 @desc 折り畳みの引き込み量 (%)
+// @param uInflate 90..115 = 100 @desc 球状の膨らみ (%)
+// @param uGrainDepth 40..200 = 100 @desc 表面の細かい凹凸の深さ (%)
+// @param uCamYaw -45..45 = 0 @desc カメラを左右へ振る量 (度)
+// @param uCamPitch -35..35 = 0 @desc カメラを上下へ振る量 (度)
+// @param uCamShiftX -100..100 = 0 @desc カメラ位置の横ずれ (%)
+// @param uCamShiftY -100..100 = 0 @desc カメラ位置の縦ずれ (%)
+// @param uLensFov 50..200 = 100 @desc 画角 (%)。大きいほど広角
+// @param uLensBarrel -100..100 = 0 @desc レンズの樽型歪み (%)。負で糸巻き型
+// @param uRollSway 0..300 = 100 @desc 機体のロールの揺れ幅 (%)
+// @param uLookAhead 40..200 = 100 @desc 進行方向を見る先の距離 (%)。大きいほど曲がり角を先読みする
+// @param uVolAmt 0..300 = 100 @desc 光路に溜まる靄 (体積光) の量 (%)
+// @param uSurfAmt 0..300 = 100 @desc 表面に当たった光の量 (%)
+// @param uHazeStart 0..100 = 0 @desc 霞が始まる距離 (%)。0 で手前から
+// @param uVignette 0..100 = 0 @desc 周辺減光 (%)
+// @param uGrain 0..100 = 0 @desc 画面のざらつき (%)
+// @param uVolTint color = #ffffff @desc 体積光に掛ける色
+// @param uSurfTint color = #ffffff @desc 表面光に掛ける色
+// @param uFogTint color = #ffffff @desc 奥へ向かう霞の吸収色
 uniform float uSwayX; // 道の左右の蛇行の振れ幅 (%)
 uniform float uSwayY; // 道の上下の蛇行の振れ幅 (%)
 uniform float uTunnelWidth; // 道まわりの空間の広さ (%)
