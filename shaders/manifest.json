@@ -360,6 +360,26 @@
      "file": "bg_kandinsky.frag",
      "func": "bg_kandinsky",
      "name": "Kandinsky"
+    },
+    {
+     "file": "bg_inkfilm.frag",
+     "func": "bg_inkfilm",
+     "name": "Ink Film"
+    },
+    {
+     "file": "bg_uniflash.frag",
+     "func": "bg_uniflash",
+     "name": "Uni Flash"
+    },
+    {
+     "file": "bg_linetone.frag",
+     "func": "bg_linetone",
+     "name": "Line Tone"
+    },
+    {
+     "file": "bg_kakeami.frag",
+     "func": "bg_kakeami",
+     "name": "Kakeami"
     }
    ],
    "exclude": [
