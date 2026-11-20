@@ -558,7 +558,10 @@ const NovelTerminal = {
     fluidAccent:[1,74/255,46/255],
     // ── Fluid 第 4 弾: 図形ごとの操作・拍で切替・くっきり。既定値 = 従来の見た目 ──
     fluidBeats:0,      // 構図を切り替える拍数 (0 = 従来どおり Fluid Cycle の時間。drone は 120BPM 換算)
-    fluidSharp:0,      // 図形の縁を切り立たせ、ざらつきを消し、三角を正三角形に
+    fluidSharp:0,
+    fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
+    fluidFont:0,       // Fluid の書体 (FLUID_FONTS の番号。0 = 従来のリュウミン + MS ゴシック)
+    fluidAspect:100,   // Fluid の字の縦横比 % (100 = 正体 / 小さいほど長体 = 幅を詰める / 大きいほど平体 = 高さを詰める)      // 図形の縁を切り立たせ、ざらつきを消し、三角を正三角形に
     fluidCircleMode:0, fluidTriMode:0, fluidRectMode:0,   // 0=Auto (塗りと輪郭が入れ替わる) | 1=Fill | 2=Edge | 3=Off
     fluidCircleSize:100, fluidTriSize:100, fluidRectSize:100,
     fluidTriSpin:100, fluidRectSpin:100,
@@ -593,8 +596,41 @@ const NovelTerminal = {
     ['HUD','fluidHud',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 照準線・座標・ブラケットの濃さ'],
     ['Big Glyph','fluidBig',0,250,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 円の中心の大きな字の濃さ'],
     ['Sharp','fluidSharp',0,100,5,v=>v<10?'0% ('+v.toFixed(0)+')':v.toFixed(0)+'%','Fluid: 図形の縁を切り立たせ、ざらつきを消す。三角は正三角形になる'],
+    ['Char Aspect','fluidAspect',40,250,5,v=>Math.round(v)===100?'100% (正体)':v<100?v.toFixed(0)+'% (長体)':v.toFixed(0)+'% (平体)','Fluid: 字の縦横比 (100 = 正体 / 小さいほど長体 = 幅を詰める / 大きいほど平体 = 高さを詰める)。字の送りは変えない'],
     ['Fluid Beats','fluidBeats',0,64,1,v=>v<1?'Time':String(v|0),'Fluid: 構図を切り替える拍数 (Time = Fluid Cycle の時間で切替。drone は 120BPM 換算)'],
   ],
+  // Fluid の書体 [表示名, 漢字ほか, かな, 欧文・半角] (各リストの先頭から使えるものを選ぶ)。0 = 既定は fR / fM / fG をそのまま使う。
+  //   設定画面の和文書体 (VJUI.jpFonts) を共通で使い、そのあとに Fluid だけの書体を足す
+  FLUID_FONTS:(()=>{
+    const one = fam => [fam, fam, fam];
+    const ui = ((typeof window !== 'undefined' && window.VJUI && window.VJUI.jpFonts) || []).map(f => [f.label, ...one(f.family + ',sans-serif')]);
+    return [
+      ['Default (リュウミン)', null, null, null],
+      ...ui,
+      ['MS ゴシック (等幅)', ...one("'MS Gothic','ＭＳ ゴシック','Osaka-Mono',monospace")],
+      ['Unifont (ピクセル)', ...one("'Unifont VJ',monospace")],
+    ];
+  })(),
+  // 書体の解決 (使えるものを選ぶ)。Web フォントは読み込みを頼み、先頭の書体が使えるまで 1 秒ごとに選び直す (10 秒まで)
+  _fluidFontSet(i){
+    const F = this.FLUID_FONTS[i];
+    if(!F || !F[1]) return null;
+    const c = this._ffCache || (this._ffCache = {}), now = performance.now(), e = c[i];
+    if(e && (e.ok || now - e.at < 1000)) return e.set;
+    // document.fonts.check は端末に無い書体名にも true を返すので、字を描いて既定の書体 (serif / monospace) と見比べる
+    const tc = this._ffCanvas || (this._ffCanvas = document.createElement('canvas')), x = tc.getContext('2d', { willReadFrequently:true });
+    tc.width = 160; tc.height = 48;
+    const sig = font => { x.clearRect(0, 0, 160, 48); x.font = font; x.fillText('永あAg', 0, 38); const d = x.getImageData(0, 0, 160, 48).data; let h = 0; for(let k = 3; k < d.length; k += 8) h = (h*31 + d[k]) >>> 0; return h; };
+    const has = f => sig('36px '+f+',serif') !== sig('36px serif') || sig('36px '+f+',monospace') !== sig('36px monospace');
+    const pick = (str)=>{ const cands = str.split(',').map(s=>s.trim());
+      for(const f of cands.slice(0, -1)){ try{ document.fonts.load('16px '+f); if(has(f)) return [f.replace(/^['"]|['"]$/g,''), f === cands[0]]; }catch(err){} }
+      return [cands[cands.length-1].replace(/^['"]|['"]$/g,''), false]; };
+    const r = [pick(F[1]), pick(F[2]), pick(F[3])];
+    const first = e ? e.first : now;   // Web フォントの読み込みを待って選び直すのは 10 秒まで
+    c[i] = { set:r.map(x=>x[0]), ok:r.every(x=>x[1]) || now - first > 10000, at:now, first };
+    return c[i].set;
+  },
+  FLUID_LAYOUTS:[[0,'Classic'],[1,'Kandinsky (S126)']],
   FLUID_SHAPE_OPTS:[[0,'Auto'],[1,'Fill'],[2,'Edge'],[3,'Off']],
   // 図形ごとの UI [見出し, 表示のキー, [label,key,min,max,step,fmt,title]...]。refreshNovelParams が FLUID_SPECS の後ろに並べる
   FLUID_SHAPES:[
@@ -687,6 +723,12 @@ const NovelTerminal = {
     const half = c < 0x80 || (c >= 0xFF61 && c <= 0xFF9F);  // 欧文/記号/半角カナ → MS ゴシック
     const kana = (c >= 0x3041 && c <= 0x30FF);              // 全角かな/カナ → リュウミン M
     this._setFont(p, half ? this.fG : kana ? this.fM : this.fR);  // 漢字ほか → リュウミン R
+    const ga = this._glyAspect;
+    if(ga){   // 長体・平体: 字の枠の中心を基準に横か縦を詰める
+      const dc = p.drawingContext; dc.save(); dc.translate(x + cs*0.5, y + cs*0.5); dc.scale(ga[0], ga[1]);
+      this._glyAspect = null; this._gly(p, ch, -cs*0.5, -cs*0.5, cs); this._glyAspect = ga;
+      dc.restore(); return;
+    }
     if(kana){ const s=cs*this.KANA, o=(cs-s)*0.5; p.textSize(s); p.text(ch, x+o, y+o); p.textSize(cs); }
     else p.text(ch, x, y);
   },
@@ -1135,6 +1177,10 @@ const NovelTerminal = {
     const muRaw = vf - variant;
     const mu = muRaw*muRaw*(3-2*muRaw);
     p.clear();
+    const fontSave = [this.fR, this.fM, this.fG], fset = this._fluidFontSet(this.P ? this.P.fluidFont|0 : 0);
+    if(fset){ this.fR = fset[0]; this.fM = fset[1]; this.fG = fset[2]; }
+    const asp = this.P && typeof this.P.fluidAspect === 'number' ? this.P.fluidAspect/100 : 1;
+    this._glyAspect = Math.abs(asp - 1) < 0.005 ? null : asp < 1 ? [asp, 1] : [1, 1/asp];
     const src = this._novelStream();
     const vSrc = src.filter(ch => ch !== this.INDENT && ch !== " " && ch !== "　");
     const fs = Math.max(9, Math.round(M/62 * (this.P ? this.P.charSize : 1)));
@@ -1165,6 +1211,7 @@ const NovelTerminal = {
     if(p.drawingContext) p.drawingContext.letterSpacing = "0px";
     p.noStroke();
 
+    const kandinsky = this.P && (this.P.fluidLayout|0) === 1;
     const fieldAt = (nx, ny, va, phase, wantGeo) => {
       const scene = (Math.floor(sceneClock + va + phase*0.33) % 6 + 6) % 6;
       const local = (sceneClock + phase*0.11) % 1;
@@ -1227,17 +1274,57 @@ const NovelTerminal = {
       ][scene];
       const jumpX = jolt*Math.sin(scene*2.37+phase);
       const jumpY = jolt*Math.cos(scene*1.91+phase);
-      const circleX = cfg[0] + (cfg[2]-cfg[0])*travel + jumpX*0.28;
-      const circleY = cfg[1] + (cfg[3]-cfg[1])*travel - jumpY*0.24;
-      const triX = cfg[4] + 0.30*Math.sin(local*5.1 + scene);
-      const triY = cfg[5] + 0.22*Math.cos(local*4.3 + phase);
-      const rectX = cfg[6] + (cfg[8]-cfg[6])*sweep + jumpY*0.12;
-      const rectY = cfg[7] + (cfg[9]-cfg[7])*sweep + jumpX*0.10;
-      const circleRadius = (0.26 + 0.20*sweep)*kShape*kCS;
+      let circleX = cfg[0] + (cfg[2]-cfg[0])*travel + jumpX*0.28;
+      let circleY = cfg[1] + (cfg[3]-cfg[1])*travel - jumpY*0.24;
+      let triX = cfg[4] + 0.30*Math.sin(local*5.1 + scene);
+      let triY = cfg[5] + 0.22*Math.cos(local*4.3 + phase);
+      let rectX = cfg[6] + (cfg[8]-cfg[6])*sweep + jumpY*0.12;
+      let rectY = cfg[7] + (cfg[9]-cfg[7])*sweep + jumpX*0.10;
+      let circleRadius = (0.26 + 0.20*sweep)*kShape*kCS;
+      let triSize = (0.58 + 0.30*Math.abs(swing))*kShape*kTS;
+      let triAngle = scene*0.50 + local*2.45*kTSpin;
+      let rectW = (0.42 + 0.44*(1-sweep))*kShape*kRS;
+      let rectH = (0.34 + 0.26*sweep)*kShape*kRS;
+      let rectAngle = scene*0.38 + local*1.70*kRSpin;
+      let mainA = -1.20 + scene*0.42 + local*1.35, mainD = -0.52 + scene*0.18 - local*0.55 + jumpX*0.15;
+      let subAA = 0.34 + scene*0.21 - local*0.90, subAD = 0.36 - scene*0.09 + jumpY*0.10;
+      let subBA = 1.38 - scene*0.19 + local*0.62, subBD = -0.24 + scene*0.07 - jumpX*0.12;
+      let voidX = 0.22*Math.sin(local*6.283+scene), voidY = 0.18*Math.cos(local*5.1+phase);
+      if(kandinsky){
+        // Kandinsky (S126 の骨格): 画面を斜めに貫く主軸と、それに交わる対軸。交点が焦点。
+        //   主軸の一端に大円、反対側から大円を指す楔、対軸の上に主軸と平行な四角。線は主軸・対軸・主軸に平行な束。
+        //   骨格は場面ごとに回り (積み重なる回転)、焦点から遠い要素ほど遅れて向きを追う (群れのしなり)。軸から外れた側が余白
+        const sr = Math.floor(sceneClock + va + phase*0.33), rr = k => this._rng(sr*131 + k*17 + 7);
+        const lagE = d => { const u = Math.max(0, Math.min(1, (local - d)/(1 - d))); return u*u*(3-2*u); };
+        const base = (rr(1) < 0.5 ? -1 : 1)*(0.42 + 0.42*rr(2)) + sr*0.62;
+        const thAt = d => base + (lagE(d) - 0.5)*0.30;
+        const th = thAt(0);
+        const fx = (rr(3) - 0.5)*0.70*aspect + jumpX*0.20, fy = (rr(4) - 0.5)*0.60 - jumpY*0.18;
+        const phi = th + (rr(5) < 0.5 ? 1 : -1)*(1.15 + 0.35*rr(6));
+        const flow = (travel - 0.5)*0.12;   // 群れの流れ: 主軸の向きへ滑る
+        const thC = thAt(0.20), L1 = 0.50 + 0.25*rr(7);
+        circleX = fx + Math.cos(thC)*(L1 + flow); circleY = fy + Math.sin(thC)*(L1 + flow);
+        circleRadius = (0.24 + 0.10*rr(8) + 0.05*sweep)*kShape*kCS;
+        const thW = thAt(0.32), L2 = 0.42 + 0.20*rr(9);
+        triX = fx - Math.cos(thW)*(L2 - flow); triY = fy - Math.sin(thW)*(L2 - flow);
+        triAngle = Math.atan2(circleY - triY, circleX - triX) - Math.PI/2 + Math.sin(local*6.283)*0.12*kTSpin;   // 楔は大円を指す
+        triSize = (0.50 + 0.18*rr(10) + 0.10*Math.abs(swing))*kShape*kTS;
+        const thR = thAt(0.45), phR = phi + (thR - th), L3 = (rr(11) < 0.5 ? -1 : 1)*(0.38 + 0.25*rr(11));
+        rectX = fx + Math.cos(phR)*L3 + Math.cos(thR)*flow; rectY = fy + Math.sin(phR)*L3 + Math.sin(thR)*flow;
+        rectAngle = thR + (local - 0.5)*0.40*kRSpin;   // 主軸に平行
+        rectW = (0.30 + 0.18*rr(12))*kShape*kRS; rectH = (0.16 + 0.10*rr(13))*kShape*kRS;
+        mainA = th + Math.PI/2; mainD = fx*Math.cos(mainA) + fy*Math.sin(mainA);
+        subAA = phi + Math.PI/2; subAD = fx*Math.cos(subAA) + fy*Math.sin(subAA);
+        subBA = mainA; subBD = mainD + (rr(14) < 0.5 ? -1 : 1)*(0.16 + 0.10*rr(15));
+        const inX = v => Math.max(-aspect*0.78, Math.min(aspect*0.78, v)), inY = v => Math.max(-0.72, Math.min(0.72, v));   // 要素の中心は画面の内側に収める
+        circleX = inX(circleX); circleY = inY(circleY); rectX = inX(rectX); rectY = inY(rectY);
+        triX = inX(triX); triY = inY(triY);
+        triAngle = Math.atan2(circleY - triY, circleX - triX) - Math.PI/2 + Math.sin(local*6.283)*0.12*kTSpin;
+        const side = (rr(16) < 0.5 ? -1 : 1)*0.62;   // 余白: 軸から外れた側
+        voidX = fx + Math.cos(mainA)*side; voidY = fy + Math.sin(mainA)*side;
+      }
       const circleRing = 1 - Math.abs(Math.hypot(nx-circleX, ny-circleY) - circleRadius) / (0.070*kCL);
       const circleFill = 1 - Math.hypot(nx-circleX, ny-circleY) / circleRadius;
-      const triSize = (0.58 + 0.30*Math.abs(swing))*kShape*kTS;
-      const triAngle = scene*0.50 + local*2.45*kTSpin;
       let triFill = tri(nx, ny, triX, triY, triSize, triAngle);
       let triEdge = triOutline(nx, ny, triX, triY, triSize, triAngle);
       if(kSharp > 0){
@@ -1245,18 +1332,15 @@ const NovelTerminal = {
         triFill += (1 - d/0.10 - triFill)*w;
         triEdge += (1 - Math.abs(d)/(0.050*kTL) - triEdge)*w;
       }
-      const rectW = (0.42 + 0.44*(1-sweep))*kShape*kRS;
-      const rectH = (0.34 + 0.26*sweep)*kShape*kRS;
-      const rectAngle = scene*0.38 + local*1.70*kRSpin;
       const squareFill = rect(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
       const squareEdge = rectOutline(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
-      const mainLine = line(nx, ny, -1.20 + scene*0.42 + local*1.35, -0.52 + scene*0.18 - local*0.55 + jumpX*0.15, 0.060*kLine);
-      const subLineA = line(nx, ny, 0.34 + scene*0.21 - local*0.90, 0.36 - scene*0.09 + jumpY*0.10, 0.044*kLine);
-      const subLineB = line(nx, ny, 1.38 - scene*0.19 + local*0.62, -0.24 + scene*0.07 - jumpX*0.12, 0.038*kLine);
+      const mainLine = line(nx, ny, mainA, mainD, 0.060*kLine);
+      const subLineA = line(nx, ny, subAA, subAD, 0.044*kLine);
+      const subLineB = line(nx, ny, subBA, subBD, 0.038*kLine);
       const gridX = Math.floor((nx+1.14)*(5 + (scene%3)*2) + Math.floor(local*4));
       const gridY = Math.floor((ny+1.06)*(4 + (scene%2)*3) - Math.floor(local*5));
       const rhythm = (((gridX*2 + gridY + scene + va) % (3 + scene%2)) === 0 ? 0.13 : -0.10)*kRhythm;
-      const voidShape = Math.max(0, 1 - Math.hypot(nx-(0.22*Math.sin(local*6.283+scene)), ny-(0.18*Math.cos(local*5.1+phase))) / (0.12+0.08*sweep));
+      const voidShape = Math.max(0, 1 - Math.hypot(nx-voidX, ny-voidY) / (0.12+0.08*sweep));
       // 図形の見せ方: Auto = 場面で塗りと輪郭が入れ替わる / Fill / Edge / Off
       const pickShape = (mode, auto, edge, fill) => mode === 3 ? -1 : mode === 1 ? fill : mode === 2 ? edge : (auto ? edge : fill);
       const circleShape = pickShape(mCircle, (scene + va) % 2 === 0, circleRing, circleFill*0.86);
@@ -1490,6 +1574,7 @@ const NovelTerminal = {
       p.rect(cursorX, cursorY, adv*1.2*kCur, lh*0.92*kCur);
     }
 
+    this.fR = fontSave[0]; this.fM = fontSave[1]; this.fG = fontSave[2]; this._glyAspect = null;
     this._lastFont = null;
   },
   // Fluid の HUD: 円の中心を通る照準線と座標、矩形の角のブラケット、三角の頂点の目盛り、画面の四隅の情報
