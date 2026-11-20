@@ -28,6 +28,7 @@
 // @param uSizeHi  6..80   = 19.0  @desc 大きさの最大 (画面高に対する %)
 // @param uAspLo   20..500 = 40.0  @desc 縦横比の最小 (横 / 縦 × 100。100 = 正円、小さいほど縦長)
 // @param uAspHi   20..500 = 220.0 @desc 縦横比の最大 (横 / 縦 × 100。大きいほど横長)
+// @param uSpread  20..200 = 115.0 @desc 吹き出しの出る範囲の広さ (画面に対する %)。100 で中心が画面いっぱい、100 を超えると画面の外にはみ出す吹き出しが増える
 // @param uTiltVar 0..45   = 0.0   @desc 傾きのばらつき (度)。吹き出しごとに ±この角度までランダムに傾ける。0 で傾けない (既定)
 // @param uWEllipse 0..100 = 50.0  @desc 丸い吹き出しの出やすさ (形ごとの比率。全部 0 なら丸だけ)
 // @param uWBox    0..100  = 30.0  @desc 四角い吹き出し (ナレーション枠のような正確な長方形) の出やすさ。傾けない。角にたまりが付く
@@ -85,6 +86,7 @@ uniform float uSizeLo;
 uniform float uSizeHi;
 uniform float uAspLo;
 uniform float uAspHi;
+uniform float uSpread;
 uniform float uTiltVar;
 uniform float uWEllipse;
 uniform float uWPoly;
@@ -727,7 +729,7 @@ vec3 bg_uniflash(vec2 fc){
       float sz = mix(lo, hi, h3) * (shape == 6 ? 1.2 : 1.0);
       float asp = exp(mix(aLo, aHi, h4));
       vec2 rad = sz * vec2(sqrt(asp), 1.0 / sqrt(asp));
-      vec2 c = (vec2(h1, h2) - 0.5) * vec2(aspect * 0.82, 0.78);
+      vec2 c = (vec2(h1, h2) - 0.5) * vec2(aspect, 1.0) * clamp(uSpread, 20.0, 200.0) * 0.01;
       float tilt = (h5 - 0.5) * 2.0 * radians(clamp(uTiltVar, 0.0, 45.0));
       uf_balloon(rgb, a, p, c, rad, sz, tilt, shape, pop.x, pop.y, key, h5, h6, inkCol, fillCol, zoomPx);
      }
