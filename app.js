@@ -11957,7 +11957,7 @@ const MIDI = {
     const n = Object.keys(diff).length;
     if(typeof App !== 'undefined' && App._storeWritable && !App._storeWritable()){ toast('この公開版ではサーバー共有はできません'); return; }
     try{
-      const r = await fetch(this._mapUrl() + '&force=1', {method:'POST', headers:{'Content-Type':'application/json'},
+      const r = await fetch(this._mapUrl() + '&force=1', {method:'POST', headers:App._storeHeaders(),
                                                           body: JSON.stringify(diff)});
       if(!r.ok) throw new Error('HTTP ' + r.status);
       toast('MIDI マップを共有しました (' + n + ' 件)');
@@ -12008,7 +12008,7 @@ const MIDI = {
       if(typeof App !== 'undefined' && App._storeWritable && !App._storeWritable()) return;
       // force=1: learn で割当を外すとキーが減る。store.php の縮小ガードに弾かれると
       // 以後の同期が固定化するため、意図した縮小として通す。
-      fetch(this._mapUrl() + '&force=1', {method:'POST', headers:{'Content-Type':'application/json'},
+      fetch(this._mapUrl() + '&force=1', {method:'POST', headers:App._storeHeaders(),
                                           body: JSON.stringify(diff || {})}).catch(()=>{});
     }catch(e){}
   },
@@ -17250,6 +17250,10 @@ ${outBlock}
     return 'presets/store.php';
   },
   _presetApiUrl(){ return this._storeBase(); },
+  // 共有ストアへ書くときのヘッダ。この端末に書き込み鍵 (localStorage gara.storeToken) があれば付ける
+  //   (公開版 gara の共有ストアは鍵を持つ端末だけが書ける。鍵の値はサーバーの store.php とその端末にだけ置く)
+  _storeToken(){ try{ return localStorage.getItem('gara.storeToken') || ''; }catch(e){ return ''; } },
+  _storeHeaders(){ const h = {'Content-Type':'application/json'}, t = this._storeToken(); if(t) h['X-Store-Token'] = t; return h; },
   // 手元キャッシュ (IndexedDB) へ保存。thumb ごと残す (localStorage のような容量の取り合いはない)。
   //   読み終える前に保存すると、読み込み中の空の一覧でキャッシュを上書きするので、読み終えてから書く
   _savePresetLocal(){
@@ -17319,7 +17323,7 @@ ${outBlock}
     this._presetPendingJson = json;
     let f;
     try{
-      f = fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body:json, keepalive: json.length < 60000});
+      f = fetch(url, {method:'POST', headers:App._storeHeaders(), body:json, keepalive: json.length < 60000});
     }catch(e){ this._presetSaveFailed('例外: ' + e); return; }
     f.then(res => {
       if(!res.ok){ this._presetSaveFailed('HTTP ' + res.status); return; }
@@ -17422,7 +17426,7 @@ ${outBlock}
       if(mutate) merged = mutate(merged) || merged;
       this._saveTombsLocal(merged);
       try{ if(this._storeWritable && !this._storeWritable()) throw 0; fetch(this._presetApiUrl() + '?name=presetTombstones',
-                 {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(merged)}); }catch(e){}
+                 {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(merged)}); }catch(e){}
     };
     fetch(this._presetApiUrl() + '?name=presetTombstones', {cache:'no-store'})
       .then(r => r.ok ? r.json() : [])
@@ -17737,7 +17741,7 @@ ${outBlock}
       cur[slug] = dataUrl;
       if(typeof UI !== 'undefined') UI._modeGifMap = cur;
       if(this._storeWritable && !this._storeWritable()) return;
-      await fetch(this._storeBase() + '?name=modegifs', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(cur)});
+      await fetch(this._storeBase() + '?name=modegifs', {method:'POST', headers:App._storeHeaders(), body:JSON.stringify(cur)});
     }catch(e){}
   },
   // Visual の Mode タイル用 GIF サムネ。Mode はオフスクリーン描画不可のため、一時的にその
@@ -18361,7 +18365,7 @@ ${outBlock}
     if(!server) return;
     for(const k of changed){ try{ server[k] = JSON.parse(local[k]); }catch(e){} }
     for(const k of removed) delete server[k];
-    const r = await fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)});
+    const r = await fetch(this._defsUrl(), {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(server)});
     if(r.ok) this._applyServerDefs(server);
   },
   // S 番号の登録簿 shaders/sids.json ("S001" → プリセット名) を 名前 → 番号 にして持つ。
@@ -18403,7 +18407,7 @@ ${outBlock}
           if(server && typeof server === 'object' && !Array.isArray(server)){
             for(const k of Object.keys(server)) if(this._isVisualDefKey(k)) delete server[k];
             Object.assign(server, base);
-            await fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)});
+            await fetch(this._defsUrl(), {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(server)});
           }
         }catch(e){ toast('サーバーへの反映に失敗 (この端末だけ戻しました)'); }
       }
@@ -21189,7 +21193,7 @@ void mainImage(out vec4 o, in vec2 f){
         // サーバーを上書きしない(失敗のたびに保存済みグラデが builtins で潰れる事故を防ぐ)。
         if(!this.list.length){ this.list = BUILTIN_GRADS.map(g=>{ if(g.stops) return {name:g.name, stops:g.stops.map(s=>({t:s.t, rgb:s.rgb.slice()}))}; const a=g.hex.split(',').map(s=>s.trim()).filter(Boolean); return {name:g.name, stops:a.map((h,i)=>({t:i/Math.max(a.length-1,1), rgb:hexToRGB(h)}))}; }); if(fetchedOk) this.save(); }
         UI._refreshGradList && UI._refreshGradList(); },
-      save(){ if(Net.offline()) return; try{ if(App._storeWritable && !App._storeWritable()) return; fetch(this.url(), {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(this.list)}).catch(()=>{}); }catch(e){} },
+      save(){ if(Net.offline()) return; try{ if(App._storeWritable && !App._storeWritable()) return; fetch(this.url(), {method:'POST', headers:App._storeHeaders(), body:JSON.stringify(this.list)}).catch(()=>{}); }catch(e){} },
       add(name, stops){ this.list.push({name, stops}); this.save(); UI._refreshGradList && UI._refreshGradList(); },
       remove(i){ this.list.splice(i,1); this.save(); UI._refreshGradList && UI._refreshGradList(); },
       update(i, stops){ if(this.list[i]){ this.list[i].stops = stops; this.save(); UI._refreshGradList && UI._refreshGradList(); } },
@@ -21987,7 +21991,7 @@ void mainImage(out vec4 o, in vec2 f){
   _visualNames(){ try{ return JSON.parse(localStorage.getItem('vj.visualNames')||'{}'); }catch(e){ return {}; } },
   _visualNamesUrl(){ return App._storeBase() + '?name=visualnames'; },
   _saveVisualNamesServer(m){ m = m || this._visualNames();
-    try{ fetch(this._visualNamesUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(m)}).catch(()=>{}); }catch(e){} },
+    try{ fetch(this._visualNamesUrl(), {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(m)}).catch(()=>{}); }catch(e){} },
   _saveVisualName(key, name){ const m=this._visualNames(); const v=(name||'').trim(); if(v) m[key]=v; else delete m[key];
     try{ localStorage.setItem('vj.visualNames', JSON.stringify(m)); }catch(e){}
     this._saveVisualNamesServer(m); },

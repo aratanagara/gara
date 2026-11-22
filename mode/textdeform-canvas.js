@@ -258,7 +258,7 @@ const TDCanvas = {
   _saveMain(){
     const P = TD.P, style = {};
     for(const k of TD_LOOK_KEYS) style[k] = clone(P[k]);
-    return { style, text: P.text, look: P.look, surf: TDSurf.snapshot(), layers: TDSurf.layers, twKey: TD._twKey, twStart: TD._twStart };
+    return { style, text: P.text, look: P.look, surf: TDSurf.snapshot(), layers: TDSurf.layers, twKey: TD._twKey, twStart: TD._twStart, twShown: TD._twShown };
   },
   _restoreMain(s){
     const P = TD.P;
@@ -269,7 +269,7 @@ const TDCanvas = {
     TDSurf.apply(s.surf);
     for(const L of baked) if(!s.layers.includes(L)) TDSurf._giveCanvas(L.canvas);   // 焼き付けで作った効果の絵は使い回す
     TDSurf.layers = s.layers; TDSurf._fresh = false;   // 主役がすぐ元の絵を出せるよう、前の効果の絵を戻す
-    TD._twKey = s.twKey; TD._twStart = s.twStart;   // 一文字ずつ入力の進み具合も本体のものに戻す
+    TD._twKey = s.twKey; TD._twStart = s.twStart; TD._twShown = s.twShown;   // 一文字ずつ入力の進み具合も本体のものに戻す
     this._heroHoldUntil = performance.now() + 1500;
   },
   // 本体にスタンプの Look を当てる (分身の値 = Look + ばらつき、文字、Surface)
@@ -293,7 +293,7 @@ const TDCanvas = {
       d.rX = s.rX; d.rY = s.rY; d.geo = s.geo; d.op = s.op; d.opStatic = s.opStatic;
       TD._applyStretch(d);
     }
-    TD._twKey = inst._twKey; TD._twStart = inst._twStart;   // 一文字ずつ入力の進み具合もスタンプのものにする (本体の文字を替えると数え直していた)
+    TD._twKey = inst._twKey; TD._twStart = inst._twStart; TD._twShown = inst._twShown;   // 一文字ずつ入力の進み具合もスタンプのものにする (本体の文字を替えると数え直していた)
   },
   // 1 フレームぶん焼き付けを進める (TDCanvas.draw の先頭から)
   _stepBake(now){

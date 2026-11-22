@@ -1115,9 +1115,9 @@ void main(){
     this._beatNow = beat || 0;
     const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat');
     const bi = Math.floor(beat || 0);
-    // Text: Random は P.textEvery 拍ごと (1/4〜16 拍。拍の端数で数える) に次の文字列へ (Look はそのまま)
+    // Text: Random は P.textEvery 拍ごと (1/16〜16 拍。拍の端数で数える) に次の文字列へ (Look はそのまま)
     if(P.textMode === 'random'){
-      const every = Math.max(0.25, +P.textEvery || 4), b = (beat || 0) / every;
+      const every = Math.max(0.0625, +P.textEvery || 4), b = (beat || 0) / every;
       const slot = Math.floor(b + 1e-6);
       if(this._textSlot == null || slot < this._textSlot) this._textSlot = slot;
       else if(slot !== this._textSlot){ this._textSlot = slot; this.nextRandomText(); }
@@ -1360,11 +1360,16 @@ void main(){
     const P = this.P;
     if(P.typeOn !== 'on') return n;
     const beat = this._beatNow || 0, key = n + '|' + P.text;
-    if(this._twKey !== key || beat < this._twStart){ this._twKey = key; this._twStart = beat; }
+    if(this._twKey !== key || beat < this._twStart){ this._twKey = key; this._twStart = beat; this._twShown = 0; }
     const cpb = Math.max(0.25, +P.typeSpeed || 2), hold = Math.max(0, +P.typeHold || 0);
     let ph = beat - this._twStart;
     if(hold > 0){ const cyc = n/cpb + hold; if(ph >= cyc){ this._twStart += Math.floor(ph/cyc)*cyc; ph = beat - this._twStart; } }
-    return Math.min(n, Math.floor(ph*cpb) + 1);
+    const want = Math.min(n, Math.floor(ph*cpb) + 1);
+    // 速い設定 (16 / 32 per beat) でも 1 フレームに増やすのは 1 文字まで (同時に何文字も出さず、1 文字ずつ打っているように見せる)
+    const frame = (typeof GL !== 'undefined' && GL.frame != null) ? GL.frame : 0, prev = this._twShown || 0;
+    if(want <= prev || this._twFrame === frame) return this._twShown = Math.min(want, Math.max(prev, 1));
+    this._twFrame = frame;
+    return this._twShown = prev + 1;
   },
   _snapshotGlyphs(fx){
     const P = this.P, ms = this._metrics || [], out = [];
