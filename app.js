@@ -18333,6 +18333,9 @@ ${outBlock}
     }
     if(base) for(const k in base) if(!(k in server) && local[k] === base[k]){ try{ localStorage.removeItem('vj.def.' + k); }catch(e){} }
     this._defsBase = next;
+    // 再読み込みしても「この端末で Save したキー」を見分けられるよう控えを残す
+    //   (残さないと起動時にサーバーの値で上書きし、公開版の訪問者のように送れない端末の Save がリロードで消えていた)
+    try{ localStorage.setItem('vj.defsBase', JSON.stringify(next)); }catch(e){}
   },
   _defsRun(fn){ return (this._defsQ = (this._defsQ || Promise.resolve()).then(fn).catch(()=>{})); },
   async _loadServerDefs(){
@@ -18341,6 +18344,7 @@ ${outBlock}
       let server = null;
       try{ server = await this._fetchServerDefs(); }catch(e){}
       if(!server) return;
+      if(!this._defsBase){ try{ const b = JSON.parse(localStorage.getItem('vj.defsBase') || 'null'); if(b && typeof b === 'object' && !Array.isArray(b)) this._defsBase = b; }catch(e){} }
       this._applyServerDefs(server);
       // この端末にしか無いキーはサーバーへ追加する (既存キーの値は変えない)
       const local = this._localDefs();
@@ -18384,6 +18388,103 @@ ${outBlock}
   },
   uploadDefs(){
     if(this._defsOn()) this._defsRun(()=>this._pushDefs());
+  },
+  // ─── 保存デフォルトの JSON 書き出し / 読み込み ──────────────────
+  _isDefaultsFileKey(k){
+    if(this._defsSyncSkip.includes(k) || k === 'image' || k.startsWith('image.') || k === 'slicerImg' || k === 'video' || (/Md$/.test(k) && !k.startsWith('sparam.'))) return false;
+    return (this._isVisualDefKey(k) && k !== 'sparam.')
+        || (k.startsWith('post.') && Object.prototype.hasOwnProperty.call(this.POST_GROUPS, k.slice(5)))
+        || (k.startsWith('overlay.') && k.length > 8)
+        || ['mix', 'transition', 'motion', 'audioDetect', 'audioTransport', 'inkBleed'].includes(k);
+  },
+  _currentDefaultKey(){
+    const slot = GL.slots[this.activeSlot];
+    if(!slot) return null;
+    const k = (!slot.kind || slot.kind === 'shader') ? (slot._presetName ? 'sparam.' + slot._presetName : null) : slot.kind;
+    return k && this._isDefaultsFileKey(k) ? k : null;
+  },
+  _validateDefaultsFile(data){
+    const object = v => v && typeof v === 'object' && !Array.isArray(v);
+    if(!object(data) || data.format !== 'gara-defaults' || data.version !== 1 || !object(data.defs)) throw new Error('Defaults JSON の形式またはバージョンが不正です');
+    const entries = Object.entries(data.defs);
+    for(const [k, v] of entries){
+      if(!this._isDefaultsFileKey(k)) throw new Error('対象外のキーです: ' + k);
+      if(!object(v)) throw new Error('保存値はオブジェクトで指定してください: ' + k);
+    }
+    // エンジンの P に代入する前に、入れ子も含めて不正なキー・数値を弾く。
+    const pending = entries.map(([, v]) => v);
+    while(pending.length){
+      const v = pending.pop();
+      if(typeof v === 'number' && !Number.isFinite(v)) throw new Error('保存値に不正な数値があります');
+      if(!v || typeof v !== 'object') continue;
+      for(const [k, value] of Object.entries(v)){
+        if(['__proto__', 'prototype', 'constructor'].includes(k)) throw new Error('保存値に不正なキーがあります');
+        pending.push(value);
+      }
+    }
+    return entries;
+  },
+  exportDefaults(currentOnly){
+    try{
+      const local = this._localDefs(), defs = Object.create(null);
+      const keys = currentOnly ? [this._currentDefaultKey()] : Object.keys(local);
+      for(const k of keys) if(k && this._isDefaultsFileKey(k) && Object.prototype.hasOwnProperty.call(local, k)) defs[k] = JSON.parse(local[k]);
+      const date = new Date(), data = {format:'gara-defaults', version:1, exportedAt:date.toISOString(), defs};
+      const count = this._validateDefaultsFile(data).length;
+      if(!count){ toast(currentOnly ? 'このビジュアルの Save 値がありません' : '書き出せる Save 値がありません'); return; }
+      const pad = n => String(n).padStart(2, '0');
+      const stamp = date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) + '-' + pad(date.getHours()) + pad(date.getMinutes());
+      const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
+      const a = document.createElement('a');
+      a.href = url; a.download = 'gara-defaults-' + stamp + '.json';
+      document.body.appendChild(a); a.click();
+      setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
+      toast('Save 値を書き出しました (' + count + ' 件)');
+    }catch(e){ toast('書き出し失敗: ' + e.message); }
+  },
+  async importDefaults(file){
+    if(!file) return;
+    let entries;
+    try{ entries = this._validateDefaultsFile(JSON.parse(await file.text())); }
+    catch(e){ toast('読み込み失敗: ' + e.message); return; }
+    if(!entries.length){ toast('読み込める Save 値がありません'); return; }
+    this._confirm('Save 値 ' + entries.length + ' 件を上書きしますか？ ファイルにないキーは残ります。共有が ON の場合は他の端末にも同期します。', ()=>{
+      const previous = new Map(), written = [];
+      try{
+        for(const [k] of entries) previous.set(k, localStorage.getItem('vj.def.' + k));
+        for(const [k, v] of entries){ localStorage.setItem('vj.def.' + k, JSON.stringify(v)); written.push(k); }
+      }catch(e){
+        let restored = true;
+        for(const k of written){
+          try{ const v = previous.get(k); if(v === null) localStorage.removeItem('vj.def.' + k); else localStorage.setItem('vj.def.' + k, v); }
+          catch(_){ restored = false; }
+        }
+        toast(restored ? '読み込み失敗: 保存できませんでした (変更は戻しました)' : '読み込み失敗: 一部の Save 値だけ更新されています');
+        return;
+      }
+      try{
+        this.uploadDefs();
+        // Save と同じく、プリセットや R が使う控えの値も読み込み内容へ揃える。
+        for(const [k, v] of entries){
+          const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[k];
+          if(pd) Object.assign(pd, JSON.parse(JSON.stringify(v)));
+        }
+        if(this._presetDefaults && this._presetDefaults.post && entries.some(([k]) => k.startsWith('post.') || k === 'inkBleed')){
+          const defaults = this.postDefaults();
+          for(const [k] of entries){
+            const keys = k === 'inkBleed' ? this.INK_BLEED_KEYS : (k.startsWith('post.') ? this.POST_GROUPS[k.slice(5)] : []);
+            for(const key of keys) this._presetDefaults.post[key] = defaults[key];
+          }
+        }
+        const current = this._currentDefaultKey();
+        if(entries.some(([k]) => k === current)){
+          if(current.startsWith('sparam.')) this.applyShaderParamDefaults(GL.slots[this.activeSlot]);
+          else this.applyEngineDefault(current);
+        }
+        if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
+        toast('この端末へ Save 値を読み込みました (' + entries.length + ' 件)');
+      }catch(e){ toast('Save 値は保存しましたが、画面への反映に失敗しました。再読み込みしてください'); }
+    });
   },
   // Visual ごとのデフォルト (Params のエンジン別パラメータ・Shader Params) を defaults_visual.json の基準値へ戻す。
   //   基準に無い Visual キーは削除 (= 工場出荷値)。Mix / Transition / Post / Audio / 並び順などは触らない。
@@ -19407,6 +19508,14 @@ void mainImage(out vec4 o, in vec2 f){
     { const b = $('#btnDiagDownload'); if(b) b.addEventListener('click',()=>{ Diag.download(); toast('診断ログを保存しました'); }); }
     { const b = $('#btnDiagShow');     if(b) b.addEventListener('click',()=>{ Diag.dump(); toast('コンソールに表示 (F12)'); }); }
     { const b = $('#btnDiagClear');    if(b) b.addEventListener('click',()=>{ Diag.clear(); toast('診断ログをクリア'); }); }
+    { const b = $('#btnDefaultsExport');  if(b) b.addEventListener('click',()=>App.exportDefaults(false)); }
+    { const b = $('#btnDefaultsCurrent'); if(b) b.addEventListener('click',()=>App.exportDefaults(true)); }
+    { const input = $('#defaultsFile'), b = $('#btnDefaultsImport');
+      if(b && input){
+        b.addEventListener('click',()=>input.click());
+        input.addEventListener('change',()=>{ const file = input.files[0]; input.value = ''; App.importDefaults(file); });
+      }
+    }
     // ツール一式ダウンロード (export.php)。Content-Disposition: attachment なのでページ遷移せず保存される
     const _dl = url=>{ const a=document.createElement('a'); a.href=url; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove(); };
     { const b = $('#btnExportTool');    if(b) b.addEventListener('click',()=>{ _dl('export.php');       toast('ツール一式をダウンロード中…'); }); }

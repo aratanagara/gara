@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795325152">
+<link rel="stylesheet" href="style.css?v=1795326220">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -2176,6 +2176,15 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
           <div class="help" style="margin-top:6px;font-size:10px">エラー・WebGLコンテキストロスト・メモリ/FPSを記録（リロード後も保持）。落ちた後にここから保存して原因を確認できます。</div>
         </div>
+        <div class="section">
+          <h3>Defaults <span class="default-actions" data-no-rand>
+            <button id="btnDefaultsExport" title="すべての Save 値を JSON で書き出す">Export</button>
+            <button id="btnDefaultsCurrent" title="アクティブスロットのビジュアルの Save 値だけを書き出す">Current</button>
+            <button id="btnDefaultsImport" title="JSON の Save 値を確認して読み込む">Import</button>
+          </span></h3>
+          <input type="file" id="defaultsFile" accept=".json,application/json" hidden>
+          <div class="help" style="margin-top:6px;font-size:10px">Save したパラメータを JSON で保存・復元します。画像・動画・プリセット一覧・端末固有の設定は対象外です。Import はファイル内のキーだけを上書きし、現在のビジュアルが含まれていれば保存値を反映します。</div>
+        </div>
       </div>
       <!-- HELP (トップバーの Help で右パネルを切替)。ショートカットは CLAUDE.md のホットキー節が正。変更したらここも合わせて更新する -->
       <div class="pane" data-pane="help" id="helpPane">
@@ -2290,63 +2299,63 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795325152"></script>
-<script src="mode/layer.js?v=1795325152"></script>
-<script src="vendor/iro.min.js?v=1795325152"></script>
-<script src="vendor/mediabunny.min.js?v=1795325152"></script>
-<script src="mode/textdeform.js?v=1795325152"></script>
-<script src="mode/textdeform-texts.js?v=1795325152"></script>
-<script src="mode/textdeform-upstream.js?v=1795325152"></script>
-<script src="mode/textdeform-comp.js?v=1795325152"></script>
-<script src="mode/textdeform-surface.js?v=1795325152"></script>
-<script src="mode/textdeform-looks.js?v=1795325152"></script>
-<script src="mode/textdeform-vector.js?v=1795325152"></script>
-<script src="mode/textdeform-canvas.js?v=1795325152"></script>
-<script src="mode/ugomeki.js?v=1795325152"></script>
-<script src="mode/slicer.js?v=1795325152"></script>
-<script src="mode/video.js?v=1795325152"></script>
-<script src="mode/aratanagara.js?v=1795325152"></script>
-<script src="vendor/p5.min.js?v=1795325152"></script>
-<script src="mode/cyberui.js?v=1795325152"></script>
-<script src="mode/novel.js?v=1795325152"></script>
-<script src="shaders/inkelly.js?v=1795325152"></script>
-<script src="sketchfx.js?v=1795325152"></script>
-<script src="pixelsortfx.js?v=1795325152"></script>
-<script src="shaders/boltzmann.js?v=1795325152"></script>
-<script src="mode/pen.js?v=1795325152"></script>
-<script src="shaders/caverns.js?v=1795325152"></script>
-<script src="mode/shelf.js?v=1795325152"></script>
-<script src="shaders/ribbon.js?v=1795325152"></script>
-<script src="mode/photoplane.js?v=1795325152"></script>
-<script src="mode/shredder.js?v=1795325152"></script>
-<script src="mode/transflock.js?v=1795325152"></script>
-<script src="mode/liquidpeel.js?v=1795325152"></script>
-<script src="mode/windflock.js?v=1795325152"></script>
-<script src="mode/rhizome.js?v=1795325152"></script>
-<script src="mode/surrealfloat.js?v=1795325152"></script>
-<script src="mode/chrometype.js?v=1795325152"></script>
-<script src="mode/tower4149.js?v=1795325152"></script>
-<script src="mode/fude.js?v=1795325152"></script>
-<script src="mode/image.js?v=1795325152"></script>
-<script src="mode/spacetype.js?v=1795325152"></script>
-<script src="fx3d.js?v=1795325152"></script>
-<script src="fx3d-layers.js?v=1795325152"></script>
-<script src="fx3d-cubes.js?v=1795325152"></script>
-<script src="fx3d-blinds.js?v=1795325152"></script>
-<script src="fx3d-diorama.js?v=1795325152"></script>
-<script src="fx3d-points.js?v=1795325152"></script>
-<script src="fx3d-gravity.js?v=1795325152"></script>
-<script src="fx3d-globe.js?v=1795325152"></script>
-<script src="pollockfx.js?v=1795325152"></script>
-<script src="overlay.js?v=1795325152"></script>
-<script src="gif.js?v=1795325152"></script>
-  <script src="ui-icons.js?v=1795325152"></script>
-  <script src="app.js?v=1795325152"></script>
-  <script src="autopilot.js?v=1795325152"></script>
-  <script src="crash-guard.js?v=1795325152"></script>
-  <script src="ui-scrollbar.js?v=1795325152"></script>
-  <script src="ui-settings.js?v=1795325152"></script>
-<script src="camroll.js?v=1795325152" defer></script>
-<script src="dbltap.js?v=1795325152" defer></script>
+<script src="presets.js?v=1795326220"></script>
+<script src="mode/layer.js?v=1795326220"></script>
+<script src="vendor/iro.min.js?v=1795326220"></script>
+<script src="vendor/mediabunny.min.js?v=1795326220"></script>
+<script src="mode/textdeform.js?v=1795326220"></script>
+<script src="mode/textdeform-texts.js?v=1795326220"></script>
+<script src="mode/textdeform-upstream.js?v=1795326220"></script>
+<script src="mode/textdeform-comp.js?v=1795326220"></script>
+<script src="mode/textdeform-surface.js?v=1795326220"></script>
+<script src="mode/textdeform-looks.js?v=1795326220"></script>
+<script src="mode/textdeform-vector.js?v=1795326220"></script>
+<script src="mode/textdeform-canvas.js?v=1795326220"></script>
+<script src="mode/ugomeki.js?v=1795326220"></script>
+<script src="mode/slicer.js?v=1795326220"></script>
+<script src="mode/video.js?v=1795326220"></script>
+<script src="mode/aratanagara.js?v=1795326220"></script>
+<script src="vendor/p5.min.js?v=1795326220"></script>
+<script src="mode/cyberui.js?v=1795326220"></script>
+<script src="mode/novel.js?v=1795326220"></script>
+<script src="shaders/inkelly.js?v=1795326220"></script>
+<script src="sketchfx.js?v=1795326220"></script>
+<script src="pixelsortfx.js?v=1795326220"></script>
+<script src="shaders/boltzmann.js?v=1795326220"></script>
+<script src="mode/pen.js?v=1795326220"></script>
+<script src="shaders/caverns.js?v=1795326220"></script>
+<script src="mode/shelf.js?v=1795326220"></script>
+<script src="shaders/ribbon.js?v=1795326220"></script>
+<script src="mode/photoplane.js?v=1795326220"></script>
+<script src="mode/shredder.js?v=1795326220"></script>
+<script src="mode/transflock.js?v=1795326220"></script>
+<script src="mode/liquidpeel.js?v=1795326220"></script>
+<script src="mode/windflock.js?v=1795326220"></script>
+<script src="mode/rhizome.js?v=1795326220"></script>
+<script src="mode/surrealfloat.js?v=1795326220"></script>
+<script src="mode/chrometype.js?v=1795326220"></script>
+<script src="mode/tower4149.js?v=1795326220"></script>
+<script src="mode/fude.js?v=1795326220"></script>
+<script src="mode/image.js?v=1795326220"></script>
+<script src="mode/spacetype.js?v=1795326220"></script>
+<script src="fx3d.js?v=1795326220"></script>
+<script src="fx3d-layers.js?v=1795326220"></script>
+<script src="fx3d-cubes.js?v=1795326220"></script>
+<script src="fx3d-blinds.js?v=1795326220"></script>
+<script src="fx3d-diorama.js?v=1795326220"></script>
+<script src="fx3d-points.js?v=1795326220"></script>
+<script src="fx3d-gravity.js?v=1795326220"></script>
+<script src="fx3d-globe.js?v=1795326220"></script>
+<script src="pollockfx.js?v=1795326220"></script>
+<script src="overlay.js?v=1795326220"></script>
+<script src="gif.js?v=1795326220"></script>
+  <script src="ui-icons.js?v=1795326220"></script>
+  <script src="app.js?v=1795326220"></script>
+  <script src="autopilot.js?v=1795326220"></script>
+  <script src="crash-guard.js?v=1795326220"></script>
+  <script src="ui-scrollbar.js?v=1795326220"></script>
+  <script src="ui-settings.js?v=1795326220"></script>
+<script src="camroll.js?v=1795326220" defer></script>
+<script src="dbltap.js?v=1795326220" defer></script>
 </body>
 </html>
