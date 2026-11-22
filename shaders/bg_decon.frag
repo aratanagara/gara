@@ -125,6 +125,7 @@ vec3 bg_decon(vec2 fc){
   }
   vec3 col = (col1 + col2) * nzm;
   bgAlpha = clamp(dot(col, vec3(0.299, 0.587, 0.114)) * 1.5, 0.0, 1.0);  // 文字=不透明 / 隙間=透明
+  vjDepth = clamp(max(dot(col1 * nzm, vec3(0.299, 0.587, 0.114)), 0.5 * dot(col2 * nzm, vec3(0.299, 0.587, 0.114))) * 1.5, 0.0, 1.0);   // 深度 (手前の帯=1 / 奥の帯=0.5 / 隙間 0)
   float lum = dot(col, vec3(0.299, 0.587, 0.114));
   col = vec3(lum);                                                       // グレースケール
   if(uLayer2Color != vec3(1.0)){

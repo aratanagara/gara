@@ -606,3 +606,33 @@ void main(){
   },
 };
 Boltzmann.PDefaults = JSON.parse(JSON.stringify(Boltzmann.P));   // 既定値はスクリプト読込時に確定 (state 復元より先)
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Boltzmann.PARAM_HELP = {
+  force:'流れを押す力の強さ',
+  swirl:'中心まわりの渦の強さ',
+  centerSpread:'渦の中心が画面中央からずれる幅',
+  swell:'大きなうねりの強さ',
+  swellSize:'うねりの大きさ。上げると大きくゆったりした波に',
+  radial:'膨張⇔収縮の放射の強さ',
+  viscosity:'粘り。流れのなめらかさ',
+  smear:'色の境界のにじみ',
+  crisp:'引き伸ばされた模様をどこまでシャープに保つか',
+  relief:'色の凹凸。陰影の深さ',
+  sharpen:'まとまった輪郭のシャープさ',
+  bloom:'明るい所のにじみ光',
+  drift:'一方向へ流す力',
+  driftAngle:'流す向き',
+  ripple:'細かい波の揺らぎ。流れの筋が細かく波打つ',
+  imgZoom:'溶かす元画像の拡大率',
+  imgRot:'元画像の回転',
+  chroma:'色のずれ。周辺ほど RGB がずれる',
+  bloomCut:'にじみ光が出る明るさのしきい値。下げると暗い所も光る',
+  lightAngle:'光の向きの回し。Side Light の向きが変わる',
+  sideLight:'光の向きから当たる陰影',
+  inkEdge:'色の境目の暗い縁取り',
+  vignette:'周辺減光',
+  grain:'フィルムのざらつき',
+  posterize:'色の階調数 (0 で滑らか)',
+};
+Boltzmann.PARAM_NEEDS = {driftAngle:'drift', lightAngle:'sideLight', bloomCut:'bloom'};

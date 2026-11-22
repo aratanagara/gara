@@ -128,6 +128,7 @@ vec3 bg_water(vec2 fc){
   g += sp * 0.6;  // 鋭いきらめき
   if(uGrain != 0.0){ g += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * uGrain * 0.004; }
   bgAlpha = clamp(g * 0.8, 0.0, 0.78);                     // 半透明の水(暗い谷ほど透ける)
+  vjDepth = bgAlpha;                                       // 深度 (水の濃さ=明るい山ほど手前)
   vec3 wcol = vec3(clamp(g, 0.0, 1.0));
   if(uCausticColor != vec3(1.0)){ wcol *= mix(vec3(1.0), uCausticColor, clamp(pow(clamp(L, 0.0, 1.0), uCausticSharp), 0.0, 1.0)); }
   if(uGlintColor != vec3(1.0)){ wcol *= mix(vec3(1.0), uGlintColor, sp); }

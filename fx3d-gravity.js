@@ -131,29 +131,38 @@ const easeOut = (x)=>{ const y = 1 - Math.max(0, Math.min(1, x)); return 1 - y *
 // 喉の数 (1〜4)。拍が変わった所で切り替える (拍の間に変わると配置が 1 フレームで飛ぶため。前の拍の配置から Ease で移る)
 const gst = { n: null, cur: 2, prev: 2 };
 
-// 拍 m の配置: 主の井戸 (喉) P 個を画面に散らす (P=1 は中ほど / 2 = 乱数の軸の両側 / 3・4 = 三角・四角 + 拍ごとの揺らぎ)。
+// 喉の軌道: 4 拍ごとにくじを引き、直線 (往復) / 円 / 曲線 (8 の字) のどれかの上を動く。切り替えは前の軌道から Ease で混ぜる (位置は時間の連続関数 = 瞬間移動しない)。
+//   全体の広がり (spread) がゆっくり呼吸し、喉どうしが近づいては離れる。座標は半幅・半高に対する割合
+const sstep = (x)=>{ x = Math.max(0, Math.min(1, x)); return x * x * (3 - 2 * x); };
+function trackPos(j, P, sg, s){
+  const a0 = h1(sg, 3.1) * 6.2832, rad = P === 1 ? 0 : P === 2 ? 0.45 : P === 3 ? 0.5 : 0.55;
+  const aa = a0 + (P === 2 ? Math.PI * j : 6.2832 * j / P);
+  const ax = Math.cos(aa) * rad, ay = Math.sin(aa) * rad;
+  const sp = 0.42 + 0.58 * (0.5 + 0.5 * Math.sin(6.2832 * s / 9 + h1(sg, 1.7) * 6.2832));   // 広がり 0.42〜1
+  const ty = Math.floor(h1(sg, 20 + j * 3.7) * 3), w = (0.45 + 0.5 * h1(sg, 30 + j)) * (h1(sg, 40 + j) < 0.5 ? 1 : -1), ph = h1(sg, 50 + j) * 6.2832, ang = h1(sg, 60 + j) * 3.1416;
+  const A = 0.3 + 0.3 * h1(sg, 70 + j);
+  let dx, dy;
+  if(ty === 0){ const v = Math.sin(w * s + ph) * A * 1.4; dx = Math.cos(ang) * v; dy = Math.sin(ang) * v; }
+  else if(ty === 1){ dx = Math.cos(w * s + ph) * A; dy = Math.sin(w * s + ph) * A; }
+  else { const u = Math.sin(w * s + ph) * A * 1.3, v = Math.sin(2 * w * s + ph) * A * 0.6; dx = Math.cos(ang) * u - Math.sin(ang) * v; dy = Math.sin(ang) * u + Math.cos(ang) * v; }
+  return [ax * sp + dx, ay * sp + dy];
+}
+function throatPos(j, P, s, hx, hy){
+  const seg = Math.floor(s / 4), e = sstep((s / 4 - seg) / 0.5);
+  const p0 = trackPos(j, P, seg - 1, s), p1 = trackPos(j, P, seg, s);
+  return [Math.max(-0.85, Math.min(0.85, p0[0] + (p1[0] - p0[0]) * e)) * hx, Math.max(-0.85, Math.min(0.85, p0[1] + (p1[1] - p0[1]) * e)) * hy];
+}
+
+// 拍 m の配置: 主の井戸 (喉) P 個は軌道の上を動く (時間 s = 拍)。
 //   残りは最寄りの喉 (順番に割り当て) の周りを公転する (t で回り続ける。外ほどゆっくり)。喉は P>1 のとき少し浅く・狭くして間の布も読めるようにする
-function layout(m, asp, t, P){
+function layout(m, asp, t, P, s){
   const land = asp >= 1, Lh = land ? asp : 1, Sh = land ? 1 : asp;
   const hx = asp, hy = 1;   // 紙の座標での半幅・半高
   const C = [], M = [];
   const W = [], R = [];
   const SW = [-1.6, -1.2, 1.1, -0.9, 0.8], SR = [0.28, 0.24, 0.30, 0.22, 0.26];
   const tw = P > 1 ? -5.2 * 0.85 : -5.2, tr = P > 1 ? 0.5 : 0.55;
-  if(P === 1){
-    C.push([(h1(m, 3.1) * 2 - 1) * 0.35 * Lh, (h1(m, 5.9) * 2 - 1) * 0.25 * Sh]);
-  } else if(P === 2){
-    const a = h1(m, 3.1) * Math.PI, d = 0.45 * Lh;
-    const x = Math.min(Math.abs(Math.cos(a)) * d, 0.8 * hx) * Math.sign(Math.cos(a) || 1), y = Math.min(Math.abs(Math.sin(a)) * d, 0.8 * hy) * Math.sign(Math.sin(a) || 1);
-    C.push([x, y], [-x, -y]);
-  } else {
-    const a0 = h1(m, 3.1) * 6.2832, rad = P === 3 ? 0.5 : 0.55;
-    for(let j = 0; j < P; j++){
-      const a = a0 + 6.2832 * j / P + (h1(m, 9.1 + j) * 2 - 1) * 0.25;
-      const rj = rad * (0.85 + 0.3 * h1(m, 5.9 + j));
-      C.push([Math.cos(a) * hx * rj, Math.sin(a) * hy * rj]);
-    }
-  }
+  for(let j = 0; j < P; j++) C.push(throatPos(j, P, s, hx, hy));
   for(let j = 0; j < P; j++){ W.push(tw); R.push(tr); M.push(1); }
   const dir = h1(m, 8.8) < 0.5 ? 1 : -1, sc = P > 1 ? 0.75 : 1;
   for(let i = P; i < NW; i++){
@@ -175,7 +184,8 @@ function fieldParams(o){
   const P = Math.max(1, Math.min(4, Math.round(+((o.post || {}).fx3dGravityPoints != null ? o.post.fx3dGravityPoints : 2)) || 2));
   if(gst.n === null){ gst.cur = gst.prev = P; gst.n = n; }
   else if(gst.n !== n){ gst.prev = gst.cur; gst.cur = P; gst.n = n; }
-  const A = layout(n - 1, asp, t, gst.prev), B = layout(n, asp, t, gst.cur);
+  const sm = o.beatMode ? b : t * 0.5;   // 軌道の時間 (拍)
+  const A = layout(n - 1, asp, t, gst.prev, sm), B = layout(n, asp, t, gst.cur, sm);
   const C = [], W = [], R = [], M = [];
   for(let i = 0; i < NW; i++){
     C.push(A.C[i][0] + (B.C[i][0] - A.C[i][0]) * e, A.C[i][1] + (B.C[i][1] - A.C[i][1]) * e);
@@ -261,7 +271,7 @@ Fx3d.EXTRA.gravity = {
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'gravityNeedle', NV_VS, FS) : null;
     if(nvp){
       // Needle: 布を針の面で覆う (重ねたときの紙と同じ間隔 = 画面の高さを 14 分割。布は余白ぶん大きい)
-      const m = Fx3d.foldFrame ? 1 : MARGIN, gy = Math.round(14 * m), gx = Math.round(14 * m * asp);
+      const m = Fx3d.foldFrame ? 1 : MARGIN, gy = Math.round(Fx3d.nvScale(14 * m)), gx = Math.round(Fx3d.nvScale(14 * m * asp));
       setU(nvp);
       gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);
       gl.uniform1f(uloc(gl, nvp, 'uNvSub'), 1);

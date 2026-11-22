@@ -8,15 +8,40 @@
  * ==================================================================== */
 // 末尾の "Unifont VJ" は全 Unicode をカバーする最終フォールバック (style.css の @font-face)。
 // これがあるため、どの書体を選んでも .notdef(豆腐) は出ない。
-const TD_UNICODE_FALLBACK = '"Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol","Unifont VJ"';
+const TD_UNICODE_FALLBACK = '"Lucida Sans Unicode VJ","Lucida Sans Unicode","Apple Symbols","Noto Sans Symbols 2","Noto Sans Symbols","Segoe UI Symbol","system-ui","Unifont VJ"';
 const TD_FONT_UNICODE = TD_UNICODE_FALLBACK + ',sans-serif';
 const TD_FONT_ORIGINAL = '"Zen Old Mincho","Hiragino Mincho ProN","Yu Mincho",' + TD_UNICODE_FALLBACK + ',serif';
-const TD_FONT_MINCHO = '"yu-mincho-pr6n","dnp-shuei-nmincho-std","Zen Old Mincho","Hiragino Mincho ProN",' + TD_UNICODE_FALLBACK + ',serif';
+// 基本の書体 (Adobe Fonts の kit wvw5vyd + 同梱)。欧文 → 和文 → 記号のフォールバック (Unifont VJ まで落ちるので豆腐にならない)
+//   明朝 = Garamond (Adobe Garamond Pro → 同梱の EB Garamond) + にじみ明朝 (kit に無ければリュウミン → 游明朝)
+//   ゴシック = Aratana (欧文) + 秀英角ゴ銀 (和文)
+const TD_GARAMOND = '"adobe-garamond-pro","Adobe Garamond Pro","EB Garamond","Garamond Premier Pro","Garamond"';
+const TD_JP_MINCHO = '"nijimi-mincho","にじみ明朝","a-otf-ryumin-pr6n","A-OTF Ryumin Pr6N","Ryumin Pr6N","yu-mincho-pr6n","YuMincho","Yu Mincho","游明朝","Hiragino Mincho ProN"';
+const TD_JP_GOTHIC = '"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Hiragino Sans","Noto Sans JP"';
+const TD_BASE_MINCHO = TD_GARAMOND + ',' + TD_JP_MINCHO + ',' + TD_UNICODE_FALLBACK + ',serif';
+const TD_BASE_GOTHIC = '"Aratana",' + TD_JP_GOTHIC + ',' + TD_UNICODE_FALLBACK + ',sans-serif';
+const TD_FONT_MINCHO = TD_BASE_MINCHO;
 const TD_FONT_GOTHIC = '"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Zen Kaku Gothic New","Noto Sans JP",' + TD_UNICODE_FALLBACK + ',sans-serif';
+// 優先する書体 (Look の書体スタックが基本の書体で始まっていないとき、前に足す。無ければ続く元のスタックに落ちる)。Arial は使わない
+const TD_PREF_MINCHO = TD_GARAMOND + ',' + TD_JP_MINCHO;
+const TD_PREF_SANS = '"Aratana",' + TD_JP_GOTHIC;
+// 共通フォント (全 Look 共通の上書き。P.fontOver)。w = 太さも決めるもの
+const TD_FONT_OVER = {
+  aratana:   { f: TD_BASE_GOTHIC },
+  mincho:    { f: TD_BASE_MINCHO },
+  nijimi:    { f: '"nijimi-mincho","にじみ明朝",' + TD_JP_MINCHO + ',serif' },
+  yumin:     { f: '"YuMincho","Yu Mincho","游明朝","yu-mincho-pr6n","Hiragino Mincho ProN",serif' },
+  ryumin:    { f: '"a-otf-ryumin-pr6n","A-OTF Ryumin Pr6N","Ryumin Pr6N","YuMincho","Yu Mincho","游明朝",serif' },
+  shuei:     { f: '"dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std","Hiragino Sans",sans-serif' },
+  helvetica: { f: '"Helvetica Neue","Helvetica","dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std",sans-serif', w: 400 },
+  helveticaBold: { f: '"Helvetica Neue","Helvetica","dnp-shuei-gothic-gin-std","DNP Shuei Gothic Gin Std",sans-serif', w: 700 },
+  garamond:  { f: TD_GARAMOND + ',' + TD_JP_MINCHO + ',serif' },
+  ebgaramond: { f: '"EB Garamond",' + TD_JP_MINCHO + ',serif' }
+};
 const TD_FONT_MONO = '"dnp-shuei-gothic-gin-std","Space Mono",' + TD_UNICODE_FALLBACK + ',"Noto Sans JP",monospace';
-const TD_MD_STYLE_KEYS = ['paper','ink','accent','accentRatio','fontFamily','fontSize','lineHeight','letterSpacing','vertical','stageW','marginPct','fitMode','zoom','panX','panY','randomLaw','rotation','randomness','geoRatio','stretchX','stretchY','flipRate',
-  'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap','comp','surf',
-  'showPct','sizeVar','scatter','tremor','waveAmp','waveLen','lineStagger','slant','swirl','bulge','viewAngle','pivotX','pivotY','stepSize','misregAlpha','misregRatio','trailPct','accentOnMove','rainbow','rainbowSpan','vignette','vignetteColor','grain','grainSize','compAudio'];
+// Look が持つキー (色・書体・組版・変形)。版面の位置・倍率 (stageW / marginPct / fitMode / zoom / panX / panY) と文字は持たない
+const TD_LOOK_KEYS = ['paper','ink','accent','accentRatio','fontFamily','fontWeight','fontSize','lineHeight','letterSpacing','vertical','randomLaw','rotation','randomness','geoRatio','stretchX','stretchY','flipRate',
+  'rotateAngle','skewX','skewY','baselineShift','mirrorX','mirrorY','misregX','misregY','misregColorA','misregColorB','confuseDepth','opChance','gridEnabled','gridCols','gridCell','gridGap',
+  'showPct','sizeVar','scatter','tremor','waveAmp','waveLen','lineStagger','slant','swirl','bulge','viewAngle','pivotX','pivotY','stepSize','misregAlpha','misregRatio','trailPct','accentOnMove','rainbow','rainbowSpan','vignette','vignetteColor','grain','grainSize'];
 
 /* ---- Confuse operator: 類字置換の Core 辞書 (元アプリの graded lookalike dictionary 移植) ----
  * Tier 1: 同一文字の形態バリエーション (全角・濁点・小書き・旧字体)
@@ -86,21 +111,6 @@ function tdConfusePairLookup(packed, ch){
   }
   return out;
 }
-const TD_PASTE_PARAMS = {
-  fontFamily: TD_FONT_ORIGINAL,
-  fontSize: 52, lineHeight: 1.1, letterSpacing: -0.03,
-  paper: '#f4f3ef', ink: '#17140f', accent: '#c41f1f', accentRatio: 0,
-  stretchX: 1, stretchY: 1, radius: 45, ease: 0.08, geoRatio: 0.32,
-  randomness: 1, rotation: 0, randomLaw: 'paste',
-  marginPct: 6, stageW: 960, fitMode: 'fit', zoom: 1, panX: 0, panY: 0, flipRate: 0, bloomChance: 0
-};
-const TD_COLLAGE_PARAMS = Object.assign({}, TD_PASTE_PARAMS, {
-  fontSize: 84, lineHeight: 0.92, letterSpacing: -0.12,
-  randomLaw: 'collage', randomness: 1.65, rotation: 22, geoRatio: 0.82,
-  stretchX: 2.65, stretchY: 2.9, ease: 0.22,
-  marginPct: 0, stageW: 1680, fitMode: 'crop', zoom: 1.45,
-  flipRate: 0, bloomChance: 0
-});
 
 const TextDeform = {
   initialized: false,
@@ -158,49 +168,51 @@ const TextDeform = {
     flipMin: 0.05,       // 各文字が次に動き出すまでの最短秒
     flipRange: 0.9,      // その揺らぎ幅(各文字が独立ランダムに on/off)
     flipRate: 1.4,       // 全体の動き出し頻度(大きいほど頻繁)
-    beatPulse: 0.5,      // ビートで半径を脈動させる量
+    beatPulse: 0.6,      // 拍で脈動させる量 (Rhythm。beat モード、または rhythmBpm で無音のとき)
+    typeOn: 'off', typeSpeed: 2, typeHold: 4,   // 一文字ずつ入力 (全 Look 共通): off / on、1 拍あたりの文字数、全文を見せたまま待つ拍数 (0 = そのまま)
+    rhythmMotion: 1,     // Rhythm: 動きの量 (全 Look 共通の倍率。Look の値ではない)
+    rhythmAudio: 0.6,    // Rhythm: 音の立ち上がりで脈動させる量
+    rhythmBpm: true,     // Rhythm: 無音 (音声入力 Off を含む) でも BPM の拍で脈動させる (drone モードでも)
+    palOn: false,        // false / true (3 色固定) / 'paper' (背景だけ固定)        // 共通パレット (全 Look 共通): On なら紙・インク・アクセントを下の色で上書きする (Look の色は書き換えない)
+    palPaper: '#f2efe8', palInk: '#111111', palAccent: '#ff3b1f',
+    fontOver: '',        // 共通フォント (全 Look 共通): '' = Off (各 Look の書体) / TD_FONT_OVER のキー
+    comScaleX: 1, comScaleY: 1,   // 共通の文字の縦横比: 出来上がった版面を横 / 縦に伸ばす倍率 (1 = 等倍)
+    comTrack: 0,         // 共通の字間の加算 (em。各 Look の字間に足す)
+    comLeading: 1,       // 共通の行送りの倍率 (各 Look の行送りに掛ける)
+    canvasOn: false,     // Canvas (全 Look 共通): Look をスタンプのように複数置く。mode/textdeform-canvas.js
+    canvasStamps: [],    // [{ look, text, x, y, s, rot, z, seed }] (x, y = 画面の 0..1)
+    canvasSource: 'current',   // 押す Look: current = いまの Look / random = Look Pool からランダム
+    canvasMax: 12,
+    canvasAutoAdd: 0, canvasAutoSwap: 4, canvasAutoClear: 0,   // Canvas の拍の自動 (拍ごと。0 = Off): 自動で押す / Look を差し替える / 一掃
+    canvasAutoLayout: 16,   // Canvas: この拍数ごとに別のレイアウトへ組み替える (0 = Off)
+    canvasLayout: 'hero',
+    // Canvas のスタンプごとのばらつき (var。0 = そろえる。スタンプの seed から決まるので、同じスタンプはいつも同じ向きにばらける)
+    cvSize: 0, cvRot: 0, cvPos: 0, cvStretch: 0, cvOpacity: 0, cvHue: 0, cvDrift: 0, cvSpeed: 0, cvAspect: 0, cvTrack: 0, cvLeading: 0, cvReact: 0,   // Canvas のレイアウト: hero / grid / diagonal / frame / cascade / scatter
+    canvasPlate: 'auto',
+    canvasMainFx: false,    // Canvas の間も本体の Look の周辺減光・グレインを画面全体に掛けるか (既定 Off)
+    canvasMove: 'glide',    // Canvas のスタンプの動き: glide = 新しい位置へなめらかに移り、漂う / jump = 瞬間的に置き直す (漂わない)
+    canvasJumpEvery: 0,     // この拍数ごとに全スタンプをランダムな位置へ置き直す (0 = Off。大きさ・角度はそのまま)
+    canvasTiming: 'sync',   // Canvas のスタンプの出かた: sync = まとめて / gun = 拍の刻みごとに 1 枚ずつ (Manga のマシンガン)
+    canvasGunDiv: 4,        // gun: 1 拍に何枚撃つか (1 / 2 / 4 / 8)
+    canvasGunOrder: 'layout',   // gun の順番: layout = 大きい順 / random / sweep = 左から
+    canvasFull: 'live',     // Canvas の Look の完全再現: live = 置いたとき焼き付け + 順番に描き直す / bake = 置いたときだけ / off = 分身のまま
+    canvasFullEvery: 300,   // live の描き直しの間隔 (ms。1 枚ずつ順番に。fps が 45 を切ったら間引く)    // Canvas の文字の見えにくさ対策: auto / paper / shadow / off       // 置ける数 (超えたら古いものから消える。最大 24)
+    vecMode: 'off',      // Vector 3D (全 Look 共通・試作): off / fill / wire / points / wirepts。mode/textdeform-vector.js
+    vecSpin: 25, vecTilt: 15, vecWave: 0.4, vecAudio: 0.6, vecDepth: 0.5, vecDetail: 3, vecLine: 1.2,
+    compRandEvery: 0,    // Comp Random (全 Look 共通): この間隔ごとに Composition をランダムに切り替える (0 = Off)
+    compRandUnit: 'beat',   // その単位: beat = 拍 / sec = 秒
     bloomChance: 0.10,   // リターゲット時に構成的な一斉スイープ(bloom)を発動する確率
-    beatReload: true,    // beatモード時、拍ごとにランダム md を読み直す
-    mdMode: 'random',    // random | fixed
-    mdIndex: -1,         // fixed 時に表示する md プリセット
+    // Look (mode/textdeform-looks.js)。look = 'f:<上流プリセット id>' / 's:<保存 Look の名前>' / '' (未選択)
+    look: '',
+    lookEvery: 0,        // Look Auto: この拍数ごとに Look を引き直す (0 = Off)
+    lookPool: 'all',     // Look の一覧・Random・Auto の対象: all / recommended (オススメ) / presets (全プリセット) / saved / 上流の family id
+    lookRand: 'recommended',   // ランダム (🎲・Look Auto・Canvas のスタンプ選び) でプリセットから選ぶ範囲: off = ランダムを切る / recommended = オススメだけ / all = 全プリセット
+    // 文字の出どころ: look = Look の文字 / random = テキストプリセットから textEvery 拍ごと / custom = textCustom
+    textMode: 'look', textPool: 'all', textEvery: 4, textCustom: '',
     stageW: 960,         // 隠しステージの CSS 幅(組版の折返し基準)
-    text: 'type deformer'
+    text: 'FORM'
   },
   PDefaults: null,
-  _mdStyleStoreKey: 'vj.textdeform.mdStyles',
-  _mdStyleVersionKey: 'vj.textdeform.mdStyles.version',
-  _mdStyleVersion: '20260718-collage-md-01-04',
-  _mdBaseStyles: null,
-
-  // ---- 10 プリセット ----
-  presets: [
-    { name: 'Emoji Parade', p: { seed: 3, fontFamily: '"Noto Sans JP", sans-serif', accentRatio: 0.08 },
-      text: '🌕　🌖　🌗　🌘　🌑\n👁️  見る　👁️  見られる\n🫧🫧　ことば　🫧🫧\n🌀 回る　ほどける　戻る 🌀\n🐛→🦋　　🌱→🌿→🌳\n⚡️電光　💧水滴　🔥火花　🌬️吐息\n📡 ・・・受信中・・・ 📡\n🫀 DOKI　🫀 DOKI　🫀 DOKI\n🌈🟥🟧🟨🟩🟦🟪🌈\n👋　また、別の文字で。' },
-    { name: 'Ihatovo Night', p: { seed: 7, fontFamily: TD_FONT_MINCHO, paper: '#0d1020', ink: '#e8ecff', accent: '#7fb0ff', accentRatio: 0.05 },
-      text: 'イーハトーヴォの夜は、青い硝子の底にある。\n野原の電柱は、遠い星から届く音を聴いている。\n汽車は銀河の外れを、しずかな火花をこぼして走る。\n\nきら、きら、きら。\n名もない草の葉に、小さな天文学がひらく。\n\n「ここはどこですか」\n「まだ地図になっていない場所です」' },
-    { name: 'Vertical Rain', p: { seed: 12, vertical: true, fontFamily: TD_FONT_MINCHO, fontSize: 64 },
-      text: '雨\nの\n糸\nが\n\n窓\nと\n夜\nを\n\n縫\nい\n合\nわ\nせ\nる\n\n一滴\n二滴\n無数滴' },
-    { name: 'Katakana Machine', p: { seed: 4, fontFamily: TD_FONT_GOTHIC, fontWeight: 700, geoRatio: 0.7, accent: '#c41f1f', accentRatio: 0.1 },
-      text: 'テクスト・デフォーマー\nキドウ　ヘンケイ　レンダリング\nTYPE／SHIFT／ROTATE／REPEAT\n\nユガムユガムユガム\nノビルノビルノビル\nチヂムチヂムチヂム\n\nSYSTEM 00\nGLYPH 01\nNOISE 10\nERROR 404' },
-    { name: 'Punctuation Storm', p: { seed: 5, fontFamily: '"Space Mono", monospace', geoRatio: 0.5 },
-      text: '「ことば」は、どこから（どこまで）？\n……まだ。／もう。／また。\n\n［　開く　］　｛　閉じる　｝\n〈〈〈　接近　〉〉〉\n！！！　？？？　！？！？\n\n・—・—・—・—・\n○●○●○●○●○\n△▽△▽△▽△▽△' },
-    { name: 'Bilingual Signal', p: { seed: 6, fontFamily: '"EB Garamond", serif', fontSize: 56, accentRatio: 0.07 },
-      text: 'THIS TEXT IS A SIGNAL.\nこの文字列は、信号です。\n\nREAD / 読む\nLOOK / 見る\nTOUCH / 触れる\nDEFORM / 変形する\n\nletters become images\n文字は像になる\nCAN YOU HEAR THE SHAPE?\nかたちの音が、聞こえますか。' },
-    { name: 'Numbers Calendar', p: { seed: 8, fontFamily: '"Space Mono", monospace', geoRatio: 0.6 },
-      text: '2026 / 07 / 14\n16 : 35 : 11\n\n0 1 2 3 4 5 6 7 8 9\n00 11 22 33 44 55 66 77 88 99\n10101010 / 01010101\n\n35.6812° N\n139.7671° E\nALT 0 → 1000 → ∞\n\n3、2、1、0。' },
-    { name: 'Whisper Echo', p: { seed: 9, fontFamily: TD_FONT_MINCHO, randomness: 1.0, rotation: 4 },
-      text: 'ここにいる\n　ここにいる\n　　ここにいる\n　　　ここに\n　　　　ここ\n　　　　　こ\n\n聞こえる\n　聞こえる\n　　聞こえ\n　　　声\n　　　　・\n\n消えたあとにも、形だけが反響している。' },
-    { name: 'Dense City', p: { seed: 2, fontFamily: TD_FONT_GOTHIC, fontSize: 48, stageW: 1100 },
-      text: '交差点を渡る群衆の肩に、広告の光が降り積もる。\n地下鉄、改札、階段、出口、工事中、迂回路。\n窓という窓が別々の夜を映し、信号は無言で色を変える。\n\n東東東西南北\n上上下下左右左右\n入口出口非常口\n\n雑踏雑音残像速度\n都市都市都市都市都市' },
-    { name: 'Minimal Space', p: { seed: 11, fontFamily: TD_FONT_MINCHO, fontSize: 96, rotation: 6, accentRatio: 0.12 },
-      text: '点\n\n\n線\n\n\n\n面\n\n\n\n\n空白\n\n\n\n\nひとつの文字が\n広い場所を\nつくる' },
-
-    // ── 「Error / 崩壊する物語」を分割したフラグメント群 ──
-    { name: 'ERR 00 夕日', p: { seed: 21, fontFamily: TD_FONT_MINCHO, paper:'#0d0d10', ink:'#e8e8ec', accent:'#c41f1f', accentRatio:0.06, fontSize:56 }, text: String.raw`Error
-
-
-　夕日がゆっく` }
-  ],
 
   // ================= GL =================
   VS: `#version 300 es
@@ -208,13 +220,17 @@ in vec2 a_pos; out vec2 v_uv;
 void main(){ v_uv = vec2(a_pos.x*0.5+0.5, 0.5 - a_pos.y*0.5); gl_Position = vec4(a_pos,0.0,1.0); }`,
   FS: `#version 300 es
 precision highp float;
-in vec2 v_uv; out vec4 frag; uniform sampler2D u_tex;
-void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
+in vec2 v_uv; out vec4 frag; uniform sampler2D u_tex; uniform vec2 u_sc;
+// u_sc = 共通の文字の縦横比 (comScaleX / Y)。版面の中心から伸ばし、はみ出した外側は隅の色 (紙 / 透明) で埋める
+void main(){
+  vec2 uv = (v_uv - 0.5) / u_sc + 0.5;
+  if(any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) uv = vec2(0.001);
+  frag = texture(u_tex, uv);
+}`,
 
   init(gl){
     if(this.initialized) return true;
     this.gl = gl;
-    this.PDefaults = JSON.parse(JSON.stringify(this.P));
 
     const vs = gl.createShader(gl.VERTEX_SHADER);
     gl.shaderSource(vs, this.VS); gl.compileShader(vs);
@@ -255,9 +271,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     this._ensureFonts();
     this._t = 0;
     this._pointer = { x: 0, y: 0 };
-    this._captureMdBaseStyles();
-    this._loadStoredMdStyles();
-    this.loadSelected();
+    this._createSpans(this.P.text);
 
     this.initialized = true;
     return true;
@@ -303,40 +317,12 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     }catch(e){}
   },
 
+  // Adobe Fonts は index.html の kit (wvw5vyd) が読み込む。書体が届いたら豆腐判定 (描けない字の置き換え) をやり直す
   _ensureAdobeFonts(){
-    if(document.getElementById('td-typekit')) return;
-    try{
-      const kitId = 'tnn5mhx';
-      const config = { kitId, scriptTimeout: 3000, async: true };
-      const h = document.documentElement;
-      const tk = document.createElement('script');
-      const s = document.getElementsByTagName('script')[0];
-      const refresh = ()=>{ this._refreshGlyphSupport(); };
-      let loaded = false;
-      const t = setTimeout(function(){
-        h.className = h.className.replace(/\bwf-loading\b/g, '') + ' wf-inactive';
-        refresh();
-      }, config.scriptTimeout);
-      h.className += ' wf-loading';
-      tk.id = 'td-typekit';
-      tk.src = 'https://use.typekit.net/' + config.kitId + '.js';
-      tk.async = true;
-      tk.onload = tk.onreadystatechange = function(){
-        const a = this.readyState;
-        if(loaded || (a && a !== 'complete' && a !== 'loaded')) return;
-        loaded = true;
-        clearTimeout(t);
-        try{
-          if(typeof Typekit !== 'undefined'){
-            Typekit.load(Object.assign({}, config, { active: refresh, inactive: refresh }));
-          } else {
-            refresh();
-          }
-        }catch(e){ refresh(); }
-      };
-      if(s && s.parentNode) s.parentNode.insertBefore(tk, s);
-      else document.head.appendChild(tk);
-    }catch(e){}
+    if(this._adobeHooked || !document.fonts) return;
+    this._adobeHooked = true;
+    let tm = null;
+    document.fonts.addEventListener('loadingdone', ()=>{ clearTimeout(tm); tm = setTimeout(()=>this._refreshGlyphSupport(), 200); });
   },
 
   // ================= テキスト/組版 =================
@@ -346,34 +332,37 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     this._createSpans(text);
   },
 
+  // Canvas の焼き付け中なら中断して本体の Look に戻してから書く (焼き終わりの戻しで、書いた値が消えないように)
+  _endBake(){ if(typeof TDCanvas !== 'undefined' && TDCanvas._bake) TDCanvas.cancelBake(); },
   setParams(over){
+    this._endBake();
     Object.assign(this.P, over || {});
+    if(!this.initialized) return;
     this._applyStageStyle();
     // フォント/サイズが変わると組版が変わるので作り直す
     this._createSpans(this.P.text);
   },
 
   // ================= 文字の出どころ =================
-  // md = md の文字列 / random = テキストプリセット (mode/textdeform-texts.js の TD_TEXT_PRESETS) から拍ごとにランダム /
-  // custom = テキストエリアの文字列。md の色・書体・変形とは独立 (全 md 共通、この端末の localStorage に保存)
-  textSrc: { mode: 'md', every: 4, pool: 'all', custom: '' },
-  _textSrcKey: 'vj.textdeform.textSrc',
-  _ensureTextSrc(){
-    if(this._textSrcLoaded) return;
-    this._textSrcLoaded = true;
-    try{ const v = JSON.parse(localStorage.getItem(this._textSrcKey) || 'null'); if(v && typeof v === 'object') Object.assign(this.textSrc, v); }catch(e){}
-  },
+  // P.textMode: look = Look の文字 (上流プリセットの語。保存 Look は文字を持たないので今の文字のまま) /
+  //   random = テキストプリセット (mode/textdeform-texts.js) から P.textEvery 拍ごと / custom = P.textCustom。
+  // Look (色・書体・Surface) とは独立で、文字が変わっても Look は変わらない
   setTextSource(over){
-    this._ensureTextSrc();
-    Object.assign(this.textSrc, over || {});
-    try{ localStorage.setItem(this._textSrcKey, JSON.stringify(this.textSrc)); }catch(e){}
-    if(over && ('pool' in over || 'mode' in over)) this._randText = null;
+    this._endBake();
+    Object.assign(this.P, over || {});
+    if(over && ('textPool' in over || 'textMode' in over)) this._randText = null;
     this._applyTextSource();
   },
+  // P.textPool = 使う種類 (カンマ区切りで複数。'all' = 長文以外の全部)。古い保存データの 1 つだけの値もそのまま読める
+  textPools(){
+    const a = String(this.P.textPool || 'all').split(',').map(s=>s.trim()).filter(Boolean);
+    return a.length ? a : ['all'];
+  },
   textPool(){
-    const g = this.textSrc.pool, T = (typeof TD_TEXT_PRESETS !== 'undefined') ? TD_TEXT_PRESETS : [];
+    const g = this.textPools(), T = (typeof TD_TEXT_PRESETS !== 'undefined') ? TD_TEXT_PRESETS : [];
     const out = [];
-    for(const x of T) if(g === 'all' || x.group === g) out.push(...x.items);
+    // All は長文を含めない (Surface が重くなり、字も小さくなる)。長文は Pool で選んだときだけ
+    for(const x of T) if(g.includes(x.group) || (g.includes('all') && x.group !== 'long')) out.push(...x.items);
     return out;
   },
   _pickRandomText(){
@@ -383,195 +372,115 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     for(let k = 0; k < 6; k++){ t = pool[Math.floor(Math.random()*pool.length)]; if(t !== this.P.text) break; }
     return t;
   },
-  _sourceText(mdText){
-    this._ensureTextSrc();
-    const s = this.textSrc;
-    if(s.mode === 'custom' && String(s.custom || '').trim()) return String(s.custom);
-    if(s.mode === 'random') return this._randText || (this._randText = this._pickRandomText()) || mdText;
-    return mdText;
+  // いまの P.textMode で表示する文字 (lookText = Look が持つ文字)
+  _sourceText(){
+    const P = this.P;
+    if(P.textMode === 'custom' && String(P.textCustom || '').trim()) return String(P.textCustom);
+    if(P.textMode === 'random') return this._randText || (this._randText = this._pickRandomText()) || P.text;
+    return this._lookText || P.text;
   },
   _applyTextSource(){
-    if(!this.initialized || !this.P) return;
-    const t = this._sourceText(this._mdText != null ? this._mdText : this.P.text);
+    if(!this.initialized) return;
+    const t = this._sourceText();
     if(t !== this.P.text) this.setText(t);
   },
   nextRandomText(){
+    this._endBake();
     this._randText = this._pickRandomText();
     this._applyTextSource();
   },
 
-  loadPreset(i){
-    i = Math.max(0, Math.min((this.presets.length || 1) - 1, parseInt(i, 10) || 0));
-    const pr = this.presets[i];
-    if(!pr) return;
-    const mdMode = this.P.mdMode === 'fixed' ? 'fixed' : 'random';
-    // デフォルトに戻してからプリセット差分を適用
-    const base = JSON.parse(JSON.stringify(this.PDefaults || this.P));
-    Object.assign(base, pr.p || {});
-    this._mdText = pr.text;
-    base.text = this._sourceText(pr.text);
-    base.mdMode = mdMode;
-    base.mdIndex = i;
-    this.P = base;
+  // ================= Look =================
+  // Look = 色・書体・組版・変形 (TD_LOOK_KEYS) + Surface (P.surf)。Composition (P.comp) は Look に含めない (Text のように独立。Look を当てても変わらない)。
+  // 選び方・一覧・Auto は mode/textdeform-looks.js (TDLooks)。ここは P へ当てる処理だけ。
+  //   over: TD_LOOK_KEYS の値 (無いキーは既定値へ戻す)。text: Look の文字 ('' なら今の文字のまま)
+  applyLookStyle(over, text){
+    this._endBake();
+    const D = this.PDefaults || {};
+    const P = this.P;
+    for(const k of TD_LOOK_KEYS) P[k] = JSON.parse(JSON.stringify(over && over[k] !== undefined ? over[k] : D[k]));
+    this._lookText = text || '';
+    this._bloomUntil = 0; this._nextBloomCheck = 0;
+    this._applyStageStyle();
+    const t = this._sourceText();
+    this.setText(t);
+  },
+  // P の値 (保存デフォルト・状態の復元・Undo の後) を描画へ反映する。Surface / Composition は P.surf / P.comp の
+  // アクセサ (各モジュールが定義) が代入の時点で反映済み
+  applyP(){
+    if(!this.initialized) return;
+    this._randText = null;
+    this._applyStageStyle();
+    this._createSpans(this.P.text);
+    // Look が空 (保存デフォルトの無い Reset / R / Esc) なら既定の Look を当てる (素の文字だけに戻さない)
+    if(!this.P.look && typeof TDLooks !== 'undefined') TDLooks.start();
+  },
+  // 保存・Undo 用の P。Canvas がスタンプの Look を焼き付けるために本体の Look を一時的に替えているあいだは、控えた本体の Look を返す
+  stateP(){
+    const b = (typeof TDCanvas !== 'undefined') ? TDCanvas._bake : null;
+    if(!b) return this.P;
+    const o = JSON.parse(JSON.stringify(this.P)), s = b.saved;
+    Object.assign(o, JSON.parse(JSON.stringify(s.style)), { text: s.text, look: s.look, surf: s.surf });
+    return o;
+  },
+  // Canvas の主役スタンプ: 本体の Look を (Surface / Vector 3D ごと) w×h の透明な別キャンバスに描いて返す
+  _renderHero(w, h, zoomMul){
+    const cv = this._heroCv || (this._heroCv = document.createElement('canvas'));
+    const hctx = this._heroCtx || (this._heroCtx = cv.getContext('2d'));
+    const keep = { canvas: this.canvas, ctx: this.ctx, fit: this._fit, bg: this.P.transparentBg, zoom: this.P.zoom };
+    this.canvas = cv; this.ctx = hctx; this._heroPass = true; this.P.transparentBg = true; this._fitDirty = true;
+    if(zoomMul) this.P.zoom = (+keep.zoom || 1) * zoomMul;   // 伸び縮みで切れないよう広く描くぶん縮める (TDCanvas.draw)
+    try{ this._renderToCanvas(w, h); }
+    finally{
+      this.canvas = keep.canvas; this.ctx = keep.ctx; this._fit = keep.fit; this.P.transparentBg = keep.bg; this.P.zoom = keep.zoom;
+      this._heroPass = false; this._fitDirty = true;
+    }
+    return cv;
+  },
+  // Slot に読み込まれたとき (app.js の loadPreset)
+  start(){
     this._t = 0;
-    this._bloomUntil = 0;        // 新テキストで bloom はリセット
-    this._nextBloomCheck = 0;
-    this._lastPresetI = i;
-    // Composition は md 単位: 保存があれば適用、無ければデフォルト(Off)へ戻す
-    if(typeof TDComp !== 'undefined') TDComp.applyMd(base.comp || null);
-    // Surface (上流 0.3 の描画エンジン) も md 単位
-    if(typeof TDSurf !== 'undefined') TDSurf.applyMd(base.surf || null);
-    this.setText(base.text);
-  },
-
-  loadSelected(){
-    const i = parseInt(this.P.mdIndex, 10);
-    if(this.P.mdMode === 'fixed' && this.presets[i]){
-      this.loadPreset(i);
-      return;
-    }
-    this.P.mdMode = 'random';
-    this.P.mdIndex = -1;
-    this.loadRandom();
-  },
-
-  // 毎回ランダムな md(プリセット)を読み込む。直前と同じは避ける。
-  loadRandom(){
-    const n = this.presets.length; if(!n) return;
-    if(this.P.mdMode === 'fixed' && this.presets[this.P.mdIndex]){
-      this.loadPreset(this.P.mdIndex);
-      return;
-    }
-    this.P.mdMode = 'random';
-    let i = Math.floor(Math.random()*n);
-    if(n > 1 && i === this._lastPresetI) i = (i+1) % n;
-    this.loadPreset(i);
-  },
-
-  setMdSelection(value){
-    if(value === '' || value === 'random' || value == null){
-      this.P.mdMode = 'random';
-      this.P.mdIndex = -1;
-      this.loadRandom();
-      return;
-    }
-    const i = Math.max(0, Math.min(this.presets.length - 1, parseInt(value, 10) || 0));
-    this.P.mdMode = 'fixed';
-    this.P.mdIndex = i;
-    this.loadPreset(i);
-  },
-
-  currentMdIndex(){
-    if(this.P.mdMode === 'fixed' && this.presets[this.P.mdIndex]) return this.P.mdIndex;
-    return (this._lastPresetI != null && this.presets[this._lastPresetI]) ? this._lastPresetI : -1;
-  },
-
-  updateMdStyle(i, over){
-    this._setMdStyle(i, over, false);
-  },
-
-  saveMdDefault(i, over){
-    this._setMdStyle(i, over, true);
-  },
-
-  // ライブ調整を捨てて「デフォルト保存」した値へ戻す (保存が無ければ初期値)。
-  // 保存自体は消さない — 消す手段を用意すると誤操作で失われるため。
-  resetMdDefault(i){
-    const pr = this.presets[i];
-    if(!pr) return;
-    this._captureMdBaseStyles();
-    const base = (this._mdBaseStyles && this._mdBaseStyles[pr.name]) || {};
-    const p = Object.assign({}, pr.p || {});
-    for(const k of TD_MD_STYLE_KEYS){
-      if(base[k] !== undefined) p[k] = base[k];
-      else delete p[k];
-    }
-    let saved = null;
-    try{ saved = JSON.parse(localStorage.getItem(this._mdStyleStoreKey) || 'null'); }catch(e){}
-    const d = saved && saved[pr.name];
-    if(d && typeof d === 'object' && !Array.isArray(d)) Object.assign(p, d);
-    pr.p = p;
-    if(this.currentMdIndex() === i) this.loadPreset(i);
-  },
-
-  _setMdStyle(i, over, persist){
-    const pr = this.presets[i];
-    if(!pr) return;
-    pr.p = Object.assign({}, pr.p || {}, over || {});
-    if(persist) this._saveStoredMdStyles();
-    if(this.currentMdIndex() === i) this.loadPreset(i);
-  },
-
-  _captureMdBaseStyles(){
-    if(this._mdBaseStyles) return;
-    this._mdBaseStyles = {};
-    for(const pr of this.presets || []){
-      const p = pr.p || {};
-      const base = {};
-      for(const k of TD_MD_STYLE_KEYS) if(p[k] !== undefined) base[k] = p[k];
-      this._mdBaseStyles[pr.name] = base;
-    }
-  },
-
-  _loadStoredMdStyles(){
-    if(typeof localStorage === 'undefined') return;
-    this._captureMdBaseStyles();
-    let saved = null;
-    try{ saved = JSON.parse(localStorage.getItem(this._mdStyleStoreKey) || 'null'); }catch(e){}
-    try{
-      if(saved && localStorage.getItem(this._mdStyleVersionKey) !== this._mdStyleVersion){
-        for(const name of ['System Destruction 01','System Destruction 02','System Destruction 03','System Destruction 04']){
-          if(saved[name]) delete saved[name];
-        }
-        localStorage.setItem(this._mdStyleStoreKey, JSON.stringify(saved));
-        localStorage.setItem(this._mdStyleVersionKey, this._mdStyleVersion);
-      }
-    }catch(e){}
-    if(!saved || typeof saved !== 'object') return;
-    for(const pr of this.presets){
-      const d = saved[pr.name];
-      if(d && typeof d === 'object' && !Array.isArray(d)){
-        pr.p = Object.assign({}, pr.p || {}, d);
-      }
-    }
-  },
-
-  _saveStoredMdStyles(){
-    if(typeof localStorage === 'undefined') return;
-    this._captureMdBaseStyles();
-    const d = {};
-    for(const pr of this.presets){
-      const p = pr.p || {};
-      const base = (this._mdBaseStyles && this._mdBaseStyles[pr.name]) || {};
-      const entry = {};
-      for(const k of TD_MD_STYLE_KEYS){
-        if(p[k] !== undefined && p[k] !== base[k]) entry[k] = p[k];
-      }
-      if(Object.keys(entry).length) d[pr.name] = entry;
-    }
-    try{
-      localStorage.setItem(this._mdStyleStoreKey, JSON.stringify(d));
-      localStorage.setItem(this._mdStyleVersionKey, this._mdStyleVersion);
-    }catch(e){}
+    this._bloomUntil = 0; this._nextBloomCheck = 0;
+    this._textSlot = null;
+    if(typeof TDLooks !== 'undefined'){ TDLooks._autoSlot = null; TDLooks.load(); }
+    this.applyP();   // Look が未選択なら既定の Look を当てる
   },
 
   _fontStack(fontFamily){
-    const f = fontFamily || TD_FONT_MINCHO;
-    if(/Lucida Sans Unicode VJ|Lucida Sans Unicode/.test(f)) return f;
+    let f = fontFamily || TD_FONT_MINCHO;
+    if(this.P.fontOver && TD_FONT_OVER[this.P.fontOver] && f === TD_FONT_OVER[this.P.fontOver].f) return f.replace(/,\s*(serif|sans-serif)\s*$/i, ',' + TD_UNICODE_FALLBACK + ',$1');
+    if(/^\s*["']?Lucida Sans Unicode/.test(f)) return f;   // 記号用の Lucida Unicode を先頭に選んだときだけそのまま (末尾のフォールバックの Lucida は対象外)
+    f = this._preferFonts(f);
     const patched = String(f).replace(/,\s*(serif|sans-serif|monospace)\s*$/i, ',' + TD_UNICODE_FALLBACK + ',$1');
     return patched === String(f) ? String(f) + ',' + TD_UNICODE_FALLBACK : patched;
+  },
+
+  // 書体スタックの末尾の総称 (serif / sans-serif) で基本の書体を前に足す。monospace はそのまま。
+  // 明朝 = Garamond + にじみ明朝、ゴシック = Aratana + 秀英角ゴ銀
+  _preferFonts(f){
+    const fams = String(f).split(',').map(x=>x.trim()).filter(Boolean);
+    const generic = (fams[fams.length - 1] || '').toLowerCase();
+    if(generic === 'sans-serif'){
+      const rest = fams.filter(x=>!/^["']?Arial( Black)?["']?$/i.test(x));
+      if(/^["']?(Aratana|Helvetica)/i.test(rest[0] || '')) return rest.join(',');   // 優先書体から始まるスタック (Look のデータ) はその順のまま
+      return TD_PREF_SANS + ',' + rest.join(',');
+    }
+    if(generic !== 'serif') return fams.join(',');
+    if(/^["']?(adobe-garamond-pro|YuMincho)/i.test(fams[0])) return fams.join(',');
+    if(/Garamond/i.test(fams[0])) return [TD_GARAMOND, TD_PREF_MINCHO].concat(fams.slice(1)).join(',');
+    return TD_PREF_MINCHO + ',' + fams.join(',');
   },
 
   _applyStageStyle(){
     const P = this.P, s = this._stage;
     if(!s) return;
     s.style.width = P.stageW + 'px';
-    s.style.fontFamily = this._fontStack(P.fontFamily);
+    s.style.fontFamily = this._fontStack(this.family());
     s.style.fontSize = P.fontSize + 'px';
-    s.style.fontWeight = P.fontWeight;
-    s.style.lineHeight = P.lineHeight;
-    s.style.letterSpacing = P.letterSpacing + 'em';
-    s.style.color = P.ink;
+    s.style.fontWeight = this.weight();
+    s.style.lineHeight = this.leading();
+    s.style.letterSpacing = this.track() + 'em';
+    s.style.color = this.color('ink');
     s.classList.toggle('vertical', !!P.vertical);
   },
 
@@ -636,7 +545,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
   },
 
   _confuseFontKey(){
-    return this.P.fontWeight + '|' + this.P.fontFamily;
+    return this.weight() + '|' + this.family();
   },
 
   // ステージと同じフォントスタックで 24×24 のアルファマップ化。豆腐/.notdef 判定と漢字の形状ランクに使う。
@@ -654,8 +563,8 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       }catch(e){}
     }
     if(!this._rasterCtx || !value) return null;
-    const stack = fontFamily != null ? String(fontFamily) : this._fontStack(this.P.fontFamily);
-    const weight = fontWeight != null ? fontWeight : this.P.fontWeight;
+    const stack = fontFamily != null ? String(fontFamily) : this._fontStack(this.family());
+    const weight = fontWeight != null ? fontWeight : this.weight();
     const cacheKey = weight + '|' + stack + '|' + value;
     if(Object.prototype.hasOwnProperty.call(this._glyphRasterCache, cacheKey)) return this._glyphRasterCache[cacheKey];
     const ctx = this._rasterCtx, size = this._rasterCanvas.width;
@@ -719,8 +628,8 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
   },
 
   _missingRasters(fontFamily, fontWeight){
-    const key = (fontWeight != null ? fontWeight : this.P.fontWeight) + '|' +
-      (fontFamily != null ? String(fontFamily) : this._fontStack(this.P.fontFamily));
+    const key = (fontWeight != null ? fontWeight : this.weight()) + '|' +
+      (fontFamily != null ? String(fontFamily) : this._fontStack(this.family()));
     this._missingRasterCache = this._missingRasterCache || Object.create(null);
     if(this._missingRasterCache[key]) return this._missingRasterCache[key];
     // .notdef が 16進ラベル入りのブラウザにも □× 箱にも当たるよう複数の未割当/私用領域を試す
@@ -874,8 +783,8 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     try{ base = cluster.replace(/\p{M}/gu, '') || cluster; }catch(e){}
     base = Array.from(base)[0] || cluster;
     if(this._charSupported(base, fontFamily, fontWeight)) return cluster;
-    const key = (fontWeight != null ? fontWeight : this.P.fontWeight) + '|' +
-      (fontFamily != null ? String(fontFamily) : this._fontStack(this.P.fontFamily));
+    const key = (fontWeight != null ? fontWeight : this.weight()) + '|' +
+      (fontFamily != null ? String(fontFamily) : this._fontStack(this.family()));
     this._tofuPoolCache = this._tofuPoolCache || {};
     if(!this._tofuPoolCache[key]){
       const pool = Array.from(this._tofuPool).filter(c => this._charSupported(c, fontFamily, fontWeight));
@@ -1146,8 +1055,10 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const seedX = (info.rX != null ? info.rX : info.seedX);   // 起動ごとにランダム化された向き
     const seedY = (info.rY != null ? info.rY : info.seedY);
     const directional = seedX*0.5;
-    let sX = 1 + info.intensity*(1.48 + seedX*0.85 + directional*0.42)*P.stretchX;
-    let sY = 1 + info.intensity*(1.82 + seedY*1.05 - directional*0.36)*P.stretchY;
+    // 上流と同じ符号つき伸縮: 正 = 加算で伸びる / 負 = 指数で縮む (ゼロや反転を通らず、細い線まで潰れる)
+    const sgn = (amt, resp) => amt >= 0 ? 1 + info.intensity*resp*amt : Math.exp(info.intensity*resp*amt);
+    let sX = sgn(+P.stretchX || 0, 1.48 + seedX*0.85 + directional*0.42);
+    let sY = sgn(+P.stretchY || 0, 1.82 + seedY*1.05 - directional*0.36);
     const ss = (P.stepSize > 0 ? P.stepSize : 100) / 100;   // 段階の刻み幅 (既定 100 = 1.0)
     const stepX = (info.stepX>0?info.stepX:0.28)*ss, stepY = (info.stepY>0?info.stepY:0.34)*ss, baseBlend = info.blend;
     if(info.geo){
@@ -1162,7 +1073,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
         sX = sX*(1-sb)+ex*sb; sY = sY*(1-sb)+ey*sb;
       }
     }
-    sX = sX<1?1:(sX>8?8:sX); sY = sY<1?1:(sY>9?9:sY);
+    sX = sX<0.04?0.04:(sX>18?18:sX); sY = sY<0.04?0.04:(sY>18?18:sY);
     info.el.style.setProperty('--ix', sX.toFixed(3));
     info.el.style.setProperty('--iy', sY.toFixed(3));
     this._applyOps(info);
@@ -1201,32 +1112,27 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const P = this.P;
     const d = (dt > 0 && dt < 0.2) ? dt : 1/60;
     this._t += d;
-    // 旧実装は App.beatMode の truthy 判定(文字列なら 'drone' でも真)になっていたため、
-    // drone モードでも拍が変わるたびに md が切り替わっていた。beat モード限定に修正。
+    this._beatNow = beat || 0;
     const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat');
     const bi = Math.floor(beat || 0);
-    if(this._lastBeatInt == null) this._lastBeatInt = bi;
-    // beatモード: 拍が変わるたびランダム md を読み直す(固定 md 時はそのまま動かす)
-    if(beatMode && P.beatReload && bi !== this._lastBeatInt){
-      this._lastBeatInt = bi;
-      if(P.mdMode !== 'fixed'){
-        this.loadRandom();
-        return;
-      }
-    }
-    this._lastBeatInt = bi;
-    // Text: Random は textSrc.every 拍ごと (1/4〜16 拍。拍の端数で数える) に次の文字列へ
-    if(this.textSrc.mode === 'random'){
-      const every = Math.max(0.25, +this.textSrc.every || 4), b = (beat || 0) / every;
+    // Text: Random は P.textEvery 拍ごと (1/4〜16 拍。拍の端数で数える) に次の文字列へ (Look はそのまま)
+    if(P.textMode === 'random'){
+      const every = Math.max(0.25, +P.textEvery || 4), b = (beat || 0) / every;
       const slot = Math.floor(b + 1e-6);
       if(this._textSlot == null || slot < this._textSlot) this._textSlot = slot;
       else if(slot !== this._textSlot){ this._textSlot = slot; this.nextRandomText(); }
     }
-    if(typeof TDSurf !== 'undefined') TDSurf.beatTick(beat);   // S Auto (拍ごとに Surface のプリセットを切り替え)
+    if(typeof TDLooks !== 'undefined') TDLooks.beatTick(beat);   // Look Auto
+    this._compRandTick(beat);
     const sw = this._stage.offsetWidth || P.stageW, sh = this._stage.offsetHeight || P.stageW;
     const inBloom = this._t < (this._bloomUntil || 0);
     const beatPhase = (beat || 0) - bi;
-    const pulse = beatMode ? (1 + P.beatPulse * Math.pow(1 - beatPhase, 1.6)) : 1;
+    const pulse = this._rhythmPulse(beatMode, beatPhase), motion = this._dp(+P.rhythmMotion || 0);
+    this._pulseNow = pulse; this._motionNow = motion;   // Vector 3D (TDVec) が読む
+    if(typeof TDCanvas !== 'undefined'){
+      if(TDCanvas.active()) TDCanvas.update(d, pulse, motion, beat);
+      else if(TDCanvas._bake || TDCanvas._bakeQ.length || TDCanvas._inst.size || (TDCanvas._ghosts && TDCanvas._ghosts.length)) TDCanvas.release();   // Off にしたら焼き付けをやめて本体の Look を戻し、分身の絵も手放す
+    }
     if(inBloom){
       // 構成的な一斉変形: 大きな半径のレンズを一直線にスイープ → 行/列がまとめて伸びる
       const prog = 1 - (this._bloomUntil - this._t) / (this._bloomDur || 0.7);   // 0→1
@@ -1246,11 +1152,89 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
         }
       }
       // 各文字が独立ランダムに動き出す(散らばったランダム変形)
-      this._randomFlipStep(pulse);
+      this._randomFlipStep(pulse * motion);
     }
     // Composition のループ位相を進める (mode/textdeform-comp.js)
-    if(typeof TDComp !== 'undefined') TDComp.advance(d, pulse);
-    if(typeof TDSurf !== 'undefined') TDSurf.advance(d, pulse);
+    if(typeof TDComp !== 'undefined') TDComp.advance(d * motion, pulse);
+    if(typeof TDSurf !== 'undefined') TDSurf.advance(d * motion, pulse);
+  },
+
+  // Comp Random (全 Look 共通): compRandEvery 拍 / 秒ごとに Composition をランダムに切り替える。
+  // Comp Random が On なのに Composition が Off のときは、すぐ次の Composition を当てる
+  _compRandTick(beat){
+    const P = this.P, every = +P.compRandEvery || 0;
+    if(!(every > 0) || typeof TDComp === 'undefined'){ this._compRandSlot = null; return; }
+    const slot = Math.floor((P.compRandUnit === 'sec' ? performance.now() / 1000 : (beat || 0)) / every + 1e-6);   // 秒は実時間 (this._t はフレーム数で進む)
+    if(this._compRandSlot == null || slot < this._compRandSlot || !TDComp.enabled()){ this._compRandSlot = slot; this.randomComposition(); return; }
+    if(slot !== this._compRandSlot){ this._compRandSlot = slot; this.randomComposition(); }
+  },
+  // Comp Random の対象から外す Composition (手動・Comp Saved では選べる)。ヘッドレス Chrome の計測で contourAtlas は 60fps → 6fps、
+  // field は字の多い配置で 15〜46fps に落ちた (2026-11-21)
+  COMP_RANDOM_HEAVY: ['contourAtlas', 'field'],
+  randomComposition(){
+    if(typeof TDComp === 'undefined') return;
+    const ids = Object.keys(TDComp.defs).filter(id => !this.COMP_RANDOM_HEAVY.includes(id)), cur = TDComp.get();
+    const pool = ids.length > 1 ? ids.filter(id => !(cur.enabled && id === cur.type)) : ids;
+    TDComp.set({ enabled: true, type: pool[Math.floor(Math.random()*pool.length)], seed: Math.floor(Math.random()*1e6) });
+    if(typeof UI !== 'undefined' && UI.refreshTextDeform) UI.refreshTextDeform();
+  },
+
+  // 描画に使う書体と太さ (共通フォントが On ならその書体、Off なら Look の値)
+  family(){ const o = TD_FONT_OVER[this.P.fontOver]; return o ? o.f : this.P.fontFamily; },
+  weight(){ const o = TD_FONT_OVER[this.P.fontOver]; return o && o.w ? o.w : this.P.fontWeight; },
+  // 字間・行送り (Look の値 + 共通の加算 / 倍率)
+  track(){ return (+this.P.letterSpacing || 0) + (+this.P.comTrack || 0); },
+  leading(){ return (+this.P.lineHeight || 1) * (+this.P.comLeading || 1); },
+
+  // 描画に使う色 (k = paper / ink / accent)。共通パレットが On ならその色、Off なら Look の色
+  color(k){
+    const P = this.P;
+    if(P.palOn === 'paper') return k === 'paper' ? P.palPaper : P[k];   // Paper only = 背景だけ固定
+    return P.palOn ? P['pal' + k[0].toUpperCase() + k.slice(1)] : P[k];
+  },
+  // hex にいちばん近い Look の色の役割 (paper / ink / accent。OKLab の距離)
+  colorRole(hex){
+    const P = this.P, lab = this._hexOKLab(hex);
+    let role = null, distance = Infinity;
+    if(lab) for(const k of ['paper', 'ink', 'accent']){
+      const a = this._hexOKLab(P[k]);
+      if(!a) continue;
+      const d = (lab[0] - a[0])**2 + (lab[1] - a[1])**2 + (lab[2] - a[2])**2;
+      if(d < distance){ role = k; distance = d; }
+    }
+    return role;
+  },
+  // 共通パレットの役割で色を移す (On のときだけ。Off / Paper only なら hex のまま)。役割は force か、Look の紙・インク・アクセントのいちばん近いもの (OKLab)。
+  // 色みは役割の色に揃え、明るさだけ「Look の役割の色との差」を残す (紙との明暗の向きはパレット側に合わせる)
+  roleColor(hex, force){
+    const P = this.P;
+    if(P.palOn !== true || typeof hex !== 'string' || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return hex;
+    const key = JSON.stringify([hex, force, P.paper, P.ink, P.accent, P.palOn, P.palPaper, P.palInk, P.palAccent]);
+    const cache = this._roleColorCache || (this._roleColorCache = new Map());
+    if(cache.has(key)) return cache.get(key);
+    const lab = this._hexOKLab(hex), role = force || this.colorRole(hex);
+    let out = hex;
+    const anchor = role && this._hexOKLab(P[role]), target = role && this._hexOKLab(this.color(role));
+    if(anchor && target){
+      // 明暗の向き: 役割の色と「対になる色」(紙なら インク、それ以外は紙) の明るさの順が Look とパレットで逆なら差を反転する
+      const pair = role === 'paper' ? 'ink' : 'paper', pa = this._hexOKLab(P[pair]), pt = this._hexOKLab(this.color(pair));
+      const flip = pa && pt && Math.sign(anchor[0] - pa[0]) * Math.sign(target[0] - pt[0]) < 0 ? -1 : 1;
+      out = this._okLabHex([target[0] + (lab[0] - anchor[0])*flip, target[1], target[2]]);
+    }
+    cache.set(key, out);
+    if(cache.size > 512) cache.clear();
+    return out;
+  },
+
+  // Rhythm (全 Look 共通): 音の立ち上がり + 拍 (beat モード、または無音で rhythmBpm) で脈動 (1 = 脈動なし)。
+  // 動き全体の倍率 rhythmMotion は呼び出し側で文字の動き出しと Surface / Composition の時間に掛ける
+  _rhythmPulse(beatMode, beatPhase){
+    const P = this.P, A = (typeof Audio !== 'undefined') ? Audio : null;
+    const live = !!(A && A.fft && A.mode !== 'off' && (A.bandSmooth || 0) > 0.03);
+    let env = 0;
+    if(live) env += this._dp(+P.rhythmAudio || 0) * Math.min(1, Math.max(A.react || 0, A.onset || 0));
+    if(beatMode || (P.rhythmBpm && !live)) env += this._dp(+P.beatPulse || 0) * Math.pow(1 - beatPhase, 1.6);
+    return 1 + env;
   },
 
   // 各文字が独立の乱数タイミングで on/off。起動ごとに変形量・向き・強さ・モードをランダム化。
@@ -1273,7 +1257,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const lawRate = law === 'calm' ? 0.45 : (law === 'glitch' ? 2.7 : 1);
     const rangeScale = law === 'calm' ? 1.8 : (law === 'glitch' ? 0.38 : 1);
     const minScale = law === 'glitch' ? 0.25 : 1;
-    const rate = Math.max(0.05, P.flipRate * (pulse || 1) * lawRate);   // beat時は膨らむ
+    const rate = Math.max(0.05, P.flipRate * (pulse == null ? 1 : pulse) * lawRate);   // beat時は膨らむ
     for(let i=0; i<ms.length; i++){
       const m = ms[i];
       if(m.flipAt == null) m.flipAt = t + Math.random()*P.flipRange*rangeScale;
@@ -1318,7 +1302,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
 
   _patternFlipStep(law, pulse){
     const P = this.P, ms = this._metrics || [], t = this._t;
-    const rate = Math.max(0.05, P.flipRate * (pulse || 1));
+    const rate = Math.max(0.05, P.flipRate * (pulse == null ? 1 : pulse));
     for(let i=0; i<ms.length; i++){
       const m = ms[i], col = m.col || 0, line = m.line || 0;
       let target = 0, rx = m.seedX || 0, ry = m.seedY || 0, geo = m.geo;
@@ -1371,11 +1355,24 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
   },
 
   // ---- glyph スナップショット(インライン style + キャッシュ計測から) ----
+  // 一文字ずつ入力: 今の拍で見せる文字数 (Off は全部)。文字列か文字数が変わったら、その拍から数え直す
+  _typedCount(n){
+    const P = this.P;
+    if(P.typeOn !== 'on') return n;
+    const beat = this._beatNow || 0, key = n + '|' + P.text;
+    if(this._twKey !== key || beat < this._twStart){ this._twKey = key; this._twStart = beat; }
+    const cpb = Math.max(0.25, +P.typeSpeed || 2), hold = Math.max(0, +P.typeHold || 0);
+    let ph = beat - this._twStart;
+    if(hold > 0){ const cyc = n/cpb + hold; if(ph >= cyc){ this._twStart += Math.floor(ph/cyc)*cyc; ph = beat - this._twStart; } }
+    return Math.min(n, Math.floor(ph*cpb) + 1);
+  },
   _snapshotGlyphs(fx){
     const P = this.P, ms = this._metrics || [], out = [];
     const fs = P.fontSize, vert = !!P.vertical, ctr = this._ctr, tt = this._t || 0;
     const tstep = Math.floor(tt*12);
+    const typed = this._typedCount(ms.length);
     for(let i=0; i<ms.length; i++){
+      if(i >= typed) break;
       const m = ms[i], st = m.el.style;
       const sx = parseFloat(st.getPropertyValue('--sx')) || 1;
       const sy = parseFloat(st.getPropertyValue('--sy')) || 1;
@@ -1442,7 +1439,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const x = g.x + offX, y = g.y + offY;
     return {
       ch: g.ch, sourceText: g.ch, direction: 'ltr', upright: !!g.upright, accent: !!g.accent, opacity: 1,
-      fontFamily: this._fontStack(P.fontFamily), fontWeight: P.fontWeight, fontAxes: null,
+      fontFamily: this._fontStack(this.family()), fontWeight: this.weight(), fontAxes: null,
       line: 0, word: 0, batchKey: '', textObject: '',
       x: x, y: y, w: g.w, h: g.h,
       bx: x, by: y, bw: g.w, bh: g.h,
@@ -1465,6 +1462,28 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex));
     return m ? [parseInt(m[1], 16), parseInt(m[2], 16), parseInt(m[3], 16)] : null;
   },
+  _hexOKLab(hex){
+    if(typeof hex !== 'string' || !/^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(hex)) return null;
+    const rgb = this._hexRGB(hex.length === 4 ? '#' + [...hex.slice(1)].map(c=>c + c).join('') : hex);
+    const [r, g, b] = rgb.map(v=>{ v /= 255; return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055)**2.4; });
+    const l = Math.cbrt(0.4122214708*r + 0.5363325363*g + 0.0514459929*b);
+    const m = Math.cbrt(0.2119034982*r + 0.6806995451*g + 0.1073969566*b);
+    const s = Math.cbrt(0.0883024619*r + 0.2817188376*g + 0.6299787005*b);
+    return [0.2104542553*l + 0.7936177850*m - 0.0040720468*s,
+      1.9779984951*l - 2.4285922050*m + 0.4505937099*s,
+      0.0259040371*l + 0.7827717662*m - 0.8086757660*s];
+  },
+  _okLabHex([L, a, b]){
+    const l = (L + 0.3963377774*a + 0.2158037573*b)**3;
+    const m = (L - 0.1055613458*a - 0.0638541728*b)**3;
+    const s = (L - 0.0894841775*a - 1.2914855480*b)**3;
+    return '#' + [4.0767416621*l - 3.3077115913*m + 0.2309699292*s,
+      -1.2684380046*l + 2.6097574011*m - 0.3413193965*s,
+      -0.0041960863*l - 0.7034186147*m + 1.7076147010*s].map(v=>{
+      v = v <= 0.0031308 ? 12.92*v : 1.055*v**(1 / 2.4) - 0.055;
+      return Math.round(Math.max(0, Math.min(255, v*255))).toString(16).padStart(2, '0');
+    }).join('');
+  },
   _readFx(){
     const P = this.P, n = (v, d)=>{ v = +v; return Number.isFinite(v) ? v : d; };
     const dp = v=>this._dp(v);
@@ -1478,7 +1497,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       rb: Math.min(100, dp(n(P.rainbow, 0))), rbSpan: n(P.rainbowSpan, 360),
       vig: Math.min(100, dp(n(P.vignette, 0))), grain: Math.min(100, dp(n(P.grain, 0))), grainSize: Math.max(1, n(P.grainSize, 100)/100)
     };
-    fx.glyph = fx.show < 100 || !!(fx.sizeVar || fx.scatter || fx.tremor || fx.waveAmp || fx.stagger || fx.swirl || fx.bulge || fx.slant);
+    fx.glyph = P.typeOn === 'on' || fx.show < 100 || !!(fx.sizeVar || fx.scatter || fx.tremor || fx.waveAmp || fx.stagger || fx.swirl || fx.bulge || fx.slant);
     return fx;
   },
   // 文字色: 虹色 (accent 以外) → accent への寄せ (動いている文字ほど)
@@ -1494,17 +1513,18 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       r += (f(0)*255 - r)*k; gg += (f(8)*255 - gg)*k; b += (f(4)*255 - b)*k;
     }
     if(fx.aom){
-      const k = Math.min(1, g.inten*fx.aom/100), ac = this._hexRGB(this.P.accent);
+      const k = Math.min(1, g.inten*fx.aom/100), ac = this._hexRGB(this.color('accent'));
       if(k > 0 && ac){ r += (ac[0] - r)*k; gg += (ac[1] - gg)*k; b += (ac[2] - b)*k; }
     }
     return 'rgb(' + Math.round(r) + ',' + Math.round(gg) + ',' + Math.round(b) + ')';
   },
   // 周辺減光 / フィルムグレイン (全面。Composition 有効時にも掛かる)
   _overlayFx(ctx, w, h, fx){
+    if(this._heroPass) return;   // Canvas のスタンプの焼き付けには掛けない (縁まで塗られ、スタンプの四角が白く・暗く見えていた)
     ctx.setTransform(1,0,0,1,0,0);
     ctx.globalCompositeOperation = 'source-over';
     if(fx.vig){
-      const c = this._hexRGB(this.P.vignetteColor) || [0, 0, 0], R = Math.sqrt(w*w + h*h)/2;
+      const c = this._hexRGB(this.P.palOn === true ? this.color('ink') : this.P.vignetteColor) || [0, 0, 0], R = Math.sqrt(w*w + h*h)/2;
       const gr = ctx.createRadialGradient(w/2, h/2, R*0.3, w/2, h/2, R), rgb = c[0] + ',' + c[1] + ',' + c[2];
       gr.addColorStop(0, 'rgba(' + rgb + ',0)'); gr.addColorStop(1, 'rgba(' + rgb + ',' + (fx.vig/100*0.9).toFixed(3) + ')');
       ctx.globalAlpha = 1; ctx.fillStyle = gr; ctx.fillRect(0, 0, w, h);
@@ -1532,7 +1552,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
   },
 
   _fontMetrics(ctx){
-    ctx.font = this.P.fontWeight + ' ' + this.P.fontSize + 'px ' + this._fontStack(this.P.fontFamily);
+    ctx.font = this.weight() + ' ' + this.P.fontSize + 'px ' + this._fontStack(this.family());
     const m = ctx.measureText('国Hg');
     const ascent = (m.fontBoundingBoxAscent != null) ? m.fontBoundingBoxAscent : this.P.fontSize*0.88;
     const descent = (m.fontBoundingBoxDescent != null) ? m.fontBoundingBoxDescent : this.P.fontSize*0.12;
@@ -1554,13 +1574,15 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const mg = Math.min(w,h) * P.marginPct/100;
     const availW = Math.max(1, w-2*mg), availH = Math.max(1, h-2*mg);
     const mode = String(P.fitMode || 'fit');
-    let s = Math.min(availW/bw, availH/bh);
-    if(mode === 'crop') s = Math.max(availW/bw, availH/bh);
+    // 共通の縦横比 (comScaleX / Y) は GL で版面の中心から伸ばすので、伸ばした後の大きさで画面に合わせる
+    const cx = Math.max(0.1, +P.comScaleX || 1), cy = Math.max(0.1, +P.comScaleY || 1);
+    let s = Math.min(availW/(bw*cx), availH/(bh*cy));
+    if(mode === 'crop') s = Math.max(availW/(bw*cx), availH/(bh*cy));
     else if(mode === 'actual') s = 1;
     s *= Math.max(0.05, parseFloat(P.zoom) || 1);
     const dx = mg + (availW - bw*s)*0.5 - bx*s + (parseFloat(P.panX) || 0) * w;
     const dy = mg + (availH - bh*s)*0.5 - by*s + (parseFloat(P.panY) || 0) * h;
-    this._fit = { s, dx, dy, w, h };
+    this._fit = { s, dx, dy, w, h, cx, cy };
     this._ctr = { x: bx + bw/2, y: by + bh/2, R: Math.max(1, Math.sqrt(bw*bw + bh*bh)/2) };
   },
 
@@ -1570,13 +1592,26 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const cv = this.canvas, ctx = this.ctx;
     if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
     const fx = this._readFx();
-    const comp = (typeof TDComp !== 'undefined' && TDComp.enabled());
+    // Canvas のスタンプ (分身 = this._stamp) と主役・焼き付け (_heroPass) は全体共通の Composition を描かない (Canvas の間は紙とスタンプのあいだに敷く)
+    const comp = !this._stamp && !this._heroPass && (typeof TDComp !== 'undefined' && TDComp.enabled());
     if(!P.transparentBg){
-      ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = P.paper;
+      ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = this.color('paper');
       if(fx.trail && !comp){ ctx.globalAlpha = 1 - fx.trail/100; ctx.fillRect(0,0,w,h); ctx.globalAlpha = 1; }   // 残像: 紙を薄く塗り重ねる
       else ctx.fillRect(0,0,w,h);
     }
     else { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); }
+    // Canvas: 紙 → 本体の Composition → スタンプの順に重ねる (本体の文字は描かない)
+    if(!this._stamp && !this._heroPass && typeof TDCanvas !== 'undefined' && TDCanvas.active()){
+      // 焼き付け中は本体の値がスタンプのものに替わっているので、焼き付けを始めたときの背景 (紙 + Composition) を敷く
+      const hold = TDCanvas._bake && TDCanvas._bgHold;
+      if(hold && hold.width === w && hold.height === h){ ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); ctx.drawImage(hold, 0, 0); }
+      else if(comp) TDComp.render(ctx, w, h, { noGuides: true });   // スタンプの下に敷くのでガイドの枠線は描かない
+      TDCanvas.draw(ctx, w, h);
+      // 本体の Look の周辺減光・グレインは、Canvas の間は画面全体に掛けない (C Main FX で戻せる)
+      if(P.canvasMainFx) this._overlayFx(ctx, w, h, fx);
+      ctx.setTransform(1,0,0,1,0,0);
+      return;
+    }
     // Composition 有効時は生成シーン描画に切替 (文字の直接描画は行わない)。
     // エンジン読み込み中・生成失敗のとき (render が false) は素の文字を描く
     if(comp && TDComp.render(ctx, w, h) !== false){
@@ -1586,16 +1621,34 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     }
     // 固定フィット(版面ベース)。テキスト/サイズ変更 or 解像度変更時のみ再計算。
     const f = this._fit;
-    if(!f || f.w !== w || f.h !== h || this._fitDirty){ this._fitDirty = false; this._computeFit(w, h); }
+    if(!f || f.w !== w || f.h !== h || this._fitDirty || f.cx !== (+P.comScaleX || 1) || f.cy !== (+P.comScaleY || 1)){ this._fitDirty = false; this._computeFit(w, h); }
     const glyphs = this._snapshotGlyphs(fx);
     const s = this._fit.s, dx = this._fit.dx, dy = this._fit.dy;
     const fm = this._fontMetrics(ctx);
-    const font = P.fontWeight + ' ' + P.fontSize + 'px ' + this._fontStack(P.fontFamily);
+    const font = this.weight() + ' ' + P.fontSize + 'px ' + this._fontStack(this.family());
     const grid = !!P.gridEnabled;
     const fs = P.fontSize;
     const va = fx.viewAngle*Math.PI/180;
+    // Canvas のスタンプ / 主役: 伸び縮み・ずらしで文字がキャンバスの縁から出る量 (1 = ちょうど収まる)。TDCanvas が次のフレームの余白を決める
+    if(this._stamp || this._heroPass){
+      let need = 0;
+      for(const g of glyphs){
+        const sx = Math.abs(g.scaleX*(g.mirX == null ? 1 : g.mirX)) || 1, sy = Math.abs(g.scaleY*(g.mirY == null ? 1 : g.mirY)) || 1;
+        const cx = g.ox + g.tx + (g.x + g.w/2 - g.ox)*sx, cy = g.oy + g.ty + (g.y + g.h/2 - g.oy)*sy;
+        const r = 0.6*Math.max(g.w, g.h)*Math.max(sx, sy) + Math.abs(g.misX || 0) + Math.abs(g.misY || 0);
+        need = Math.max(need, (Math.abs(dx + s*cx - w/2) + s*r)/(w/2), (Math.abs(dy + s*cy - h/2) + s*r)/(h/2));
+      }
+      this._needPf = need;
+    }
+    // Vector 3D: 文字の輪郭の頂点を 3D で描く (Surface の効果は重ねない)
+    if(!this._stamp && typeof TDVec !== 'undefined' && TDVec.active()){
+      TDVec.draw(ctx, glyphs, { w, h, s, dx, dy, va });
+      this._overlayFx(ctx, w, h, fx);
+      ctx.setTransform(1,0,0,1,0,0);
+      return;
+    }
     // Surface: 効果が掛かる文字は元の字を sourceAlpha で薄め (hide なら描かない)、上に効果レイヤーを重ねる
-    const surf = (typeof TDSurf !== 'undefined' && TDSurf.active()) ? TDSurf : null;
+    const surf = (!this._stamp && typeof TDSurf !== 'undefined' && TDSurf.active()) ? TDSurf : null;
     const surfSrcA = surf ? surf.sourceAlpha() : 1;
     if(surf) surf.request(glyphs, w, h);
     // Operator を含む1パス描画。misreg のオフセットはフィット前のステージ座標系 (元アプリの page 座標に相当)
@@ -1635,16 +1688,28 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
       const blY = P.vertical ? 0 : -g.bl*fs;
       if(g.misX || g.misY){
         // 版ずれ2色刷り: A=+offset / B=-ratio×offset を multiply で敷き、上に本来のインク
-        drawPass(g, blX, blY, g.misX, g.misY, P.misregColorA, fx.misA*sa, 'multiply');
-        drawPass(g, blX, blY, -g.misX*fx.misR, -g.misY*fx.misR, P.misregColorB, fx.misA*sa, 'multiply');
+        drawPass(g, blX, blY, g.misX, g.misY, this.roleColor(P.misregColorA, 'accent'), fx.misA*sa, 'multiply');
+        drawPass(g, blX, blY, -g.misX*fx.misR, -g.misY*fx.misR, this.roleColor(P.misregColorB, 'ink'), fx.misA*sa, 'multiply');
       }
-      let ink = g.accent ? P.accent : P.ink;
+      let ink = this.color(g.accent ? 'accent' : 'ink');
       if(fx.rb || fx.aom) ink = this._glyphColor(g, ink, fx);
       drawPass(g, blX, blY, 0, 0, ink, sa, 'source-over');
     }
     ctx.globalAlpha = 1;
     ctx.globalCompositeOperation = 'source-over';
-    if(surf) surf.draw(ctx, w, h, va);
+    if(surf){
+      surf.draw(ctx, w, h, va);
+      // 半透明だった効果を不透明にした Look は、元の字を効果の上にもう一度描く (元の字を隠す作り = sourceAlpha 0 の字は描かない)
+      if(surfSrcA > 0 && surf.textOnTop()){
+        for(const g of glyphs){
+          if(!surf.glyphActive(g.i)) continue;
+          let ink = this.color(g.accent ? 'accent' : 'ink');
+          if(fx.rb || fx.aom) ink = this._glyphColor(g, ink, fx);
+          drawPass(g, P.vertical ? g.bl*fs : 0, P.vertical ? 0 : -g.bl*fs, 0, 0, ink, surfSrcA, 'source-over');
+        }
+        ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+      }
+    }
     this._overlayFx(ctx, w, h, fx);
     ctx.setTransform(1,0,0,1,0,0);
   },
@@ -1654,7 +1719,10 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     const gl = this.gl, { fbo, w, h } = opts;
     // ステージが空(未計測)なら紙だけ塗る
     const t0 = performance.now();
-    this._renderToCanvas(w, h);
+    // Slot B (opts.opaque === false) は紙を塗らずに描く (保存される P.transparentBg は書き換えない)
+    const bg0 = this.P.transparentBg;
+    if(opts.opaque === false) this.P.transparentBg = true;
+    try{ this._renderToCanvas(w, h); } finally { this.P.transparentBg = bg0; }
     // 描画時間の移動平均 (ms)。Random の負荷ガード (app.js の guardedTextDeformRandom) が見る
     const dt = performance.now() - t0;
     this._renderMs = this._renderMs == null ? dt : this._renderMs*0.7 + dt*0.3;
@@ -1671,6 +1739,7 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.tex);
     gl.uniform1i(this.locTex, 0);
+    gl.uniform2f(gl.getUniformLocation(this.prog, 'u_sc'), Math.max(0.1, +this.P.comScaleX || 1), Math.max(0.1, +this.P.comScaleY || 1));
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
     gl.enableVertexAttribArray(this.locPos);
     gl.vertexAttribPointer(this.locPos, 2, gl.FLOAT, false, 0, 0);
@@ -1678,90 +1747,211 @@ void main(){ frag = texture(u_tex, clamp(v_uv,0.0,1.0)); }`,
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 };
-// ---- 密なフィールド系 md を追加(絵文字/漢字の敷き詰め。変形で大小がバラつき、画像のような塊になる)----
-(function(){
-  const EMOJI_FONT = '"Noto Sans JP","Apple Color Emoji","Segoe UI Emoji",sans-serif';
-  const grid = (ch, cols, rows) => Array.from({length:rows}, () => ch.repeat(cols)).join('\n');
-  // 門構え漢字プール → 行ごとにずらして拾い「柱の森」の素材にする
-  const pool = '閉開閣間閃閏閑閲閾闇關闊閨閹閘閧';
-  const kanjiForest = Array.from({length:11}, (_, r) =>
-    Array.from({length:13}, (_, c) => pool[(r*5 + c*3) % pool.length]).join('')).join('\n');
-  const md01 = String.raw`S̴̡̢̡̙̜̯̘̫̬̹̯̤̩̤̘̠̮̖̾̑̓̄̐̈́̿͐͊͜y̸̭̝̖͔̙̭̳̦̟̑͊͊̂̾̀̓̑̄̍̌̇̽͌̐̈́̌̍̓̏̽̉͐͜͠͝s̵̢̨͔̼̰̩̝̼̼̟̯͑̍̊̄̄͒͘ͅt̵̨̟̘̜̱̒̑̄̆̊̋̊̓̉̀̓̽͛̚ȩ̶̛̛̟̘̫̱̺͎̐̂̃̐̆̾̓̇̆̀͆̉̃̍̋̈̆̿̑́̕͘͝m̵̧̨̧̡̙̯̥̻̞̞̹̰̗̟̝̹̱̫̭̝̦̔̌̋̋̎̀̒͒̉͂͜ͅ ̶̨̡̡̙̣̠̻̬̫̗̦̯̼̖̱̗̠͎̎̃͑̈́͊̀ḑ̷̡̡̨̧̨̜̳̮̰̹̠̺͕̮̮̘̭̭̱̖̬̱̣͎̠̃͂̃̾͐̈͗̾̊̋̀̐̈́̈́̈́̊̈́͝ě̴̛̞̩͍̂̈́́̀̽͑̑̓̇͋̉̚̚͠ͅs̶͚̜̞̲͓̎̉̐̆̑̓̊̈́̏̏͗͊͒͐̎̽͑̽̉̚͘t̵̡̢̝̜̠̖͔̞̻̝͈̰̩̩̭̪̖͐̂̌̔͋̍̔͌̋͒̓͑̏̂̓͠r̴̛̗̖̖̀̍̀̏͛̃̎̐̉̍̚̚͝͝ų̸̳̣̯̼̜̮͕̳̺̲̣͓͙̘̩͇̱͈̭̝̤̙̟͕̥̈́̋ċ̴̢̡̟̹̟̯̗͈̩͖̙̺̜͚̗̞͔̗͇͙̩̩̦̥̺̦̀̑͗́̈̎̃̔̐͗̾̏̒̊̄̀̾̃̐͒͑̕ͅͅͅṭ̸̢̨̡̨̪̦̝̖̮̹̲̳̰̻̝̱̞̳̫̯̩̺̗̾́͋̌̍̈́͛̂̍̚͝͝i̸̡̛̬̩̖̖͔̭̪̪̹̭̟̪̰͓̪̹̗͙̤͚̔̉̄͒̔̂̀͛̃͑̚͜͜͝͝ͅȍ̵̧̡̥̦̘̮̖̮͓̩͎̓͑͑͌̓͌̑̋͒̕̚ͅn̵̢̩̫̗͕̤̲͎̘̦̲̖̥̠̫̗̾̒̀͋͐͜͠ͅͅ ̴̧̘̙̫̬̞̠̜̺̀̄̈̋̎̽̄̀̽̾͌̂̀̍̉̒̈̒̏̕̚̚i̷̧̡̛̤̱̰̞͓̬̋̒́̆̈́̓̍̉͋̆̄̆́͂̓̔̾̿̀͘͠͝n̴̢̢̹̜̫̤̘̖̳̬̯̺̠͈̬̝̼̰̲̭̮̋͛̍̃̏̄̉̏̋͐̿̕̚̚͠͠͝ͅͅī̵̡̛͓̪̜̞̤̭̩̙̹̯͔̣̘̫̼͖̝̹̹̮̻̔̏̔̈́̽̒͊̾̿̎͂̀͂̐͂͛̀̉͑̄̄̚͜͜ͅt̴̢̛̘̮̲͎̲̩͓̠̥̻͍̯̤̍͒̊̈́̓̄̀̂̄̓͌̂̓͆̊̈́̀̕̚͘͠͝͝į̸̨̨̧̛̪̠̘͔̭̤̲̘̲̬̣̣͎̣̪̥͎̬́̎̃̐͂͑̋̊͛̾͛̿̾̃͒̂̎̀͒̀̈́̾̊̕͘͝a̴̳̥̣̳̻̖̩̦̣̠̱̩̯̮̱̮̺͙̓̉̎̈́͒̈́̔̍̇͋͂̀̄̆̈́̓̄̊̄̿̐̈̚t̸̲͖̼̰̤̩̥̦̱̱̿̌͊̂̔͑̀̌̍͐̋̂̒̀͑̂̓̐̈́̀̑̕̕͝è̶̢̜̰̯̩̗̿̿͗͒̌͑̍̃́̋̇̎̓̉͂̇̓̂́̔́͒̕̚d̶̢̡̧̨̪̯̠̰̻̺̥̣͉̞̞̖̠̽̒ͅ.̸̧̧̛̦̦̼̩̝̣̹̦̲͉̬̠̖̄͛̒̈́̿͛̄̓̔͌̄̉͋̏̍̍̓̊̓̍̃͘̚͝͝.̸̧̧̛͓̭̜͇̦̦͎̤͙̯̣̙͎̱̦͈̠̯̥̭̦͚̔̃̽̉̊̓͌͗̍́́̎̃̏̇̿̓̕͜͜͜͠.̵̨̧̛̠͚̲̠͕̮̠̙̬̯̣̖̫̪̙͖̝̯̺̞̤͙̪̼̏̊̔̈́͒́̈͂̏̋̀̃̃̚̚͝͝ͅ
-𒐪𒐫𒐬𒐭𒐮𒐯𒐰𒐱𒐲𒐳𒐴𒐷 {{{HYPER*EXIT/LOOP-CRASH}}} 𒑀𒑁𒑂𒑃𒑄𒑅𒑆𒑇𒑈𒑉𒑊𒑋
-01001110 01101111 01110111 00100000 01001001 00100000 01100001 01101101 00100000 01100010 01100101 01100011 01101111 01101101 01100101 00100000 01000100 01000101 01000001 01010100 01001000 00101100 00100000 01110100 01101000 01100101 00100000 01100100 01100101 01110011 01110100 01110010 01101111 01111001 01100101 01110010 00100000 01101111 01100110 00100000 01110111 01101111 01110010 01101100 01100100 01110011
-∰∭∬∫∮∯∰∱∲∳ ≡ -ℵ₀/0 + ∞∞∞ ＝ 「存在」
-
-RÆ̷̢̦̳̩̞̻̰̘̞̝̹͚̜͉̺̭̈́̍͊̈́̓̋͆̃̎͆̓̀̽̃̔̈́͐̓̍̍̀̚͘͜͜͠͠͠͝V̶̳̳̦̣̭̖̰̞͍͕͕͉͎̣̼̈́͌̌͒͒͂̽̎̀̀̔̈́̀͗͊̀͐̿̀̌̌̔̐̈̚̚͘͝Ë̵̛̘̦̬̘̃̂̒̈́͛͊̀͛̏̆̌͐́́͑͑̇̍̄͗͝N̵̡̘̤̼̩̣̦̰͍̭̬͙͈̬̞̤̱͇̼̙̂̀͜Š̶̠̱̦͇̯̭̗͔̩̭̤̲̗̟̙͉̮̰͓̞͐͆̈́̆̐̔̄̐̐͒̀͒̋̓̊̐̽̽͆̾͘̚͝͝͝ͅͅK̵̨̢̧͖̠̞͍̺̘͚̰͉̜̲̮̫̻̝̳̒̈́̀̎̎̔̃̎͘͜Ḩ̶̨̢̢̡̱͚͓͓̱̲̖͍̳̰̠̥͓͓̱̹̙̟̹̖̝̯̮̓̾̔͆̑̆͂̂̎̅̎̓̓͂̂̍̓̓̎̽̍̀͜͜͠͝A̸̡̢̛̻͚̮̭̠̩̼̓́̄̐̈́̀̐͛̀̓̌̈͗̇͘̚̚͝͠͝ͅͅL̶̡̛̛̪̫̻̟̥͍̬̪̘̫̇̌̾̄̓͌̈́̾̊̈͌͐̌̈́̆̿̄́̑̍̓̕͝͝Ţ̸̛̬̠̫̑̆͂̈̄̉̒̈͆̏͂͊̽̚̚͝͝Ṙ̴̢̛̝̰̝̙̬͓̥̖̼̖̯̠̱̤̬̞̟̟̞͖͇̺̦̈̀̈́͊͑͛͊̈́̉̀̑̈́̓̈̄̍͆͐̌͘͝͝͝͝ͅͅǕ̸̧̗̘̺̥͇̲̠͎̝̙̏̊̋̓̓͂̋̐̄̆́̂͜͜͝D̴̨̨̛̮̙̣̭̫̙̣͉̼͎̥͖͕̙̳̜͕̪͉̤̲͒̾̄͗̅̈́͋̎̇̅̋͆̓̾͛̿̎͗̓̕͠͠͝ͅǪ̵̱̭͍̱̞͙͒̎̀̐̏̕M̸̛̛̰̺̫̼̫̍͆̑͆͐̑̒̿̔̍̚̚͠͠͝`;
-  const md02 = String.raw`Ș̴͙̘͖̳̘̼̖̠̻̦͚͇̘̲̩̝̣̱͕̤̯̰̪͖̖̙͎̼̪̘̭̙̝̯̳̎͊̎͐̊͆̀̃̀̓̐̀̅̆͋̓̂̉̋̿̊̓̒̎̉̀̇̂̿͌̓̓̔̾̎͘͘͘͜͝͝͝͝ͅͅͅY̵̢̡̧̨̛̩̣͙̲̪̞̤̗̜̼̤̺̯̯̖̝̋̿̀̔̂͂̀͂̀͛͑́̊̈́̎͗̃̎͊̈́̊̄́̈́̓̇̈́̕͘͜͝͝͠͝S̵̢̨̢̢̡̧̧̛̛̛̙͖̙̰̗̣̹̞̝̱̞͕̹̻̜̝̩̹̝̼̙̳͇̺̰̮̭͎̼̖͓̔̄̀͐̅͊̂̒͒̒̄̈́̃͌̍́͗͗̃͊́̽̄̀̀̑̾̊̎̈̈́͛̌͌̚̚̕͘̚͠͝͝ͅŢ̸̨̨̡̞̦̠̯̻̦͚̝̯̤̙̫̖̳̰̫̪͖̠̩͗̀̉͋̅̈́̃̃̒̉̌̊̈́̌̌͘̕͝͝ͅĘ̶̡̨̨̧̨̡͓̮̩̻̰̻̘̫̰̩̬̮̳̮̹̮̫̙̼̱̗̘͙̻̪̲͔̬̖̖̓͆͜ͅM̸̧̡̡̧̛̹̪̗̙̺̻̹̟̲͕̯̮̦̹̈́̊̀̏͐̌͑̐͑̇̎͗̑̎̌̾͌̄̎͌̀̽̀̑̈̔̈́͒̓̽͆̓͊͘͝͝͝ͅ ̵̨̨̡̨̨̛̩̲̼̘̯̣͔̩̜̦̦̹͎̩̝̪͕̦̯̦̭̠͎͔̺̟̣̺̫̩̦̲̭̿̽̏͑͒̾͆̄̊̃̊̀̒̌̃̇͌̾̀̈́̈́̾͋̓̓̓̎̈́̿͂̀̄́̆̀̒̆̐̏̚͘͜͝͝D̵̢̧̨̧̡̛͍̱̘̱̜͍̠̭̦̯͈̥̻͈̯̦̥̫̙̘̰̖͚̼͔̜̱̰̥͚̎̀̒̈̆̇̂̈̿̆̏͛̓̿̽͆̓̽̂̊̌͛̄̇̅̏́̒̊̓̕̚̕͜͝͝͝E̶̢̡̢̢̛̛̱̤̠̙̻̭̜̣̫̖̫̙̱̣̻̥̠̥̪͕̎͂̿̅͛̈̃̿̀̇̅̏͋̑̀̅̈́͒͐͑̔̎͐̊͘͜͝͠Ş̵̧̧̛̥̞̗̮̺͔̦̥̱̹̪̻̩̤͉̘̪̭̙̎̓̒̃͌̒̈́̐̄̔̈͂̏͆̀͆̅̌̈̄͒̓̋̀̀̅̂̉̃̕͘͝ͅT̸̡̡̨̧̛̛̗̠̮̞̳̘̖̥̮̤̘̦͇̘̝̟̮̠̱̦̩̤͙͎͎̥̟͕͖͙͚̲̼̆̐̑̿̃͐͑̊̔̑̋̓̆̐̅̓̀̅̅̾͒͆͑̋̈́̆̑̆̐̏̏̈́͌͋̀͑͐̆͐͂̋̂̓͘͜͜͠ͅR̷̨̡̨̧̨̛̞͇̪̮̰̭̱̲̗̟̯͓̘̬̞̩̱̪̮̝̮̫̯̣̫̯̱̻͔̱̼͚͇̥̹̦̊̀̊͆͋̈͒̑̀̅̓̎̑͗̒̌͒̓̽̋̂͐͒̉̃͒̌̊̆̓͘͝͝ͅƯ̴̧̢̛̘̼̳̼͕̭͓̦̱͔͖̲͉̰̦̲̙͙̙̭̜̟͕͔̖̳̭̯͉̺̝̜͕̖̟̈́̓͂̒̀̂̈́̏͊̍͋̋́͐̉̐̽̔̈́̊̂̈̿̚͜͜͝C̶̢̧̧̧̨̨̹̣͕̯̭̗̫̞̰̥̻̰͇̗̮̜̙̯̙̗̠̺̺̗̠̝̩̘̼̻͍̭̀̑̂͌̆̈́́̄͆̃̈́̍̀̿͗̓̎̅͆̊̾̂͐̚͝ͅͅT̵̢̨̛̺̱̫̱̘̭̦̱͍̮͔̯̺̼̖̝̀̃͗̒͑̏̒̇̾̊̃͊̋͋̇̎̄̈̐̿͋̽̓̕̚̕͜͝͝͠͝ͅI̶̡̨̡̠̼̠̗̻̰̪̜̯̜̭͙̱̟̦̪̤̻̯̼̺̔̋̒̐̓̃̇̓̂͜ͅÖ̶̢̨̨̨̨̢̞̬̻̗̙͚̘̳̯̮̯̹̻̭̱̥̮̰̪̮̙̪̞̭̭̻̠̯̟͎̟̫́̇͒̐͛̎̓͛̈́̒̊̿̇̑̿̉̍̈́͛̏̂̄͂̐͐̇̔̿̽̕̚͘̚͜͝͠ͅͅN̶͈͕̱̬̺̦̘̹̜͒̂̈̂̆̇̈́̄͛͜͝ ̵̢̦̟̣̥̩͖̹̙̳͔̬̰̮͙̹͙͇͉̩̣̰̫̗͓͗̍͐́̓͐͗̈́̌͑̇͆̊͜ͅC̴̡̨̨̡̧̨̛̛̮͚̫̩̭̙̥̻̗̺̘͉̫̳̰͈̜̮̰̲̯̮͈̪̹͍̪̤̬̜̏̌̓̑͗̄̑̎̽̀̑̒̈́̒̃̓̄̀̆͛̅͒͆̃̈̈́̐̐́̀̾̆̄̑̾͗̚̚̚͜͜͜͜͝͝ͅƠ̸̢̡̨̢̧̨̨̯̺̞̤̠̙͚̪̖̼̻̻̠̗̙̮̘̦̫̙̭̲̬̲̏͛̓̐͗͋̈́̆̽͐̑̇̍̋̀͌̿̔̆̒͑̈́̊̾͐̄̄̊̐̎͑̂͑͊̈́̊̓̕̚͝ͅD̶̡̨̧̧̧̡̧̢̧̥͎̝͔̝̣͔̱̹̠̥̭̠͎̱͔̞̱̹̺͎̺̘̮̮̹͚̻͈̼͙̪̍͆͐̀͑͑̿͂͐̚͘͜͜ͅȨ̴̡̧̠̯̭̟̳̬̹̯̙̜̦͈̬̹͈͔̯̠̝͈̩̱̥̦͔̹̦̞̤̳̼̫͎̈́̀̾͂̆̽̇̍̿̍̃̓̂͗͆̒̃̔̀̉̌͐̂̃̈̅̅̓̒̂̒́̒̚͘͝͝ͅͅ:̴̧̛̛̮͎̞̬̠̹̥̱͓͍̘̜̠̳̦̱̗͓̰̮͖̱̣̬̹̦̺͒͊̐̀͐̈̀̓̋̇̐̊̂̎̂̔̎̍̈̌͆̋̉̄̈́̈́̄̂̍̏̓̋̕̚̕͘͠ͅͅͅͅ ̶̡̢̢̧̗̹̖̰̜̼̘̥̮̯̥̪̱̥̰̙̘̓̆̔̓̓̀͛̑̋̊̏́͌̈͛̓͒̓̒͌̆̔̄̓̋̀͐̈́͌̋̎̆̑̾̌̎͊͝͝͝͝͠T̴̡̢̧̢̡̧̛̪̯̲̱͉̻͔̫̫͔̹̺̤̻̥̟̦̼̦̟̪̗͎̥̰̣̲͉̭̠͉̠̜̠̋̔̓̓̂̎̆͒̎̏̔͋͗̓͆̎̇̉̈́̎́͑̈́̿͂̽̅̾̈́̄͆͛͑̋͗̾̅̚͜͝͝͝ͅƠ̸̢̧̧̨̜̯̜̟̲͖̟͓̟̞̤̯̹̥̗̣̬̼̩̅͗̔̀͐̅͆̅̚͜͠T̴̨̨̧̛̳̫̻̠̰̹̘̙͆̌͋̈́̑̎̀̈́̐͆̐̌̅́́̅̒̒̃̀̽̽̂̃̋̈́͛̌̀̃̿͊̓̆͘̚͝͝͝A̴̛̭̞̜̱̫̹̘̘̯̩̦̘̩̦̯̤͚̘̝̗͔͇̩̗̙̒͌̄͐̊̀̾̎̋͐̾̏̽́͒̐̍̆͌̇̒̀̈́͘͠L̷̡̨̨̧̨̨̧̡̛̜̙͕̝͍̞̰͎̯̩̯̥̞̤̣̺̜͔̜̠͕̦̳̤̦̣͓͕̙̯̠̻̜̄̓̀͋͒͊̄̑̊̾̈́̇́͐̌̾̂͛̏͗̈́͋̀̒̎̕̚̕̕͜͝ͅͅͅͅ ̶̡̨̧̧̢̲̼͍̙̼̜̦̥̜̪̤̘̱̯̼̭̮̻̠̺̫̥̝͇̳̰̦͕͓̺͙̫̭̗̩̠̐̒̀͑̅̀̆̐̒͜ͅD̴̨̧̧̡̧̧̢̛̛̼̱̞̹̜̞̮̪̤̙̬̝̝̗̙̩̜̬̦̞̙̮̲̫͙̙̟̬̠͚̰̣̲̯͓͉̋̀͋͂̈̂̒̊͐̋̂̄̋̔̽̋͋̅͊̍̾̎́̽̽͆̊̒̃̈̃́́͒͂͛̓̚͘̚̕͜͜͜͝͝ͅỊ̵̡̢̧̛̛̤̺͇̭̞͍̬̮̼̣̻̩̩̈́̈́̓̐͑̀̓͂̌̏͂̀̔̈́͐̊̑̂̾̿́̈́͐͛̌̀̚̕͘͘S̵̛̮̦̣̒̀̒̿̽͛͒͗͒̒̾̈́̆̽̎͌͘̚͘S̵̝̒̌͋͑̽̊͊̅͋͂̏̀͌͆͆͆̎̽̀͂̄̓̐͋̉̓̄͆͑̊̏̎̂̄͐͐̽͗͌́̚̚͝͝Ȯ̸͎̮̦̯̟̯̎̌̈́̈̄̆̅͐́͊͌̅͗́̚L̴̡̢̡̤̞̗̪͉̭̰̟̖̪̮̠͚̥̤̹̗̖̰͋̿̆͂̃̔͆̋́̈́̀̔̔̑̔̓̂̆͝͠͠͝Ų̸̨̧̧̛̖̜̥̪̫̣͓̪̬̠̣̭̳̯̥̞̫̜̙̟̥̳̹̹͕̻̠̤̰͆͂́̄̄̿̀̇̀̍͐̂̈̃͗̽́̓̈́͆͆̌̍̽̉̂͗̑̌̊̈́͊̄̓̌̒̑̔̚͘͜͜͜͝͝͝ͅŢ̵̨̡̡̛̛̛̣̬̞̣̹̠̰̮̮͓̣̻͚͔̭͇̟̮̝̈́̎̉̾̄̓̿̀̃̎̀̌̀̎̾̽̿̃͜͠͝͝͝I̶̡̨̩̲̩̰̻̩̗̪̘͍̺̪̞̠̖͙̮̭̻͉̥̯̲̩̥̜̬͆͛̋̊͊̀̇̉̌̽̓̿̾̄͛̎̒̇̿̍̈̄͗͗͐́̄̆̚̚̕͠ͅƠ̸̢̨̛̪̜̬̣̲̙̲̻̫̱̗̖̼̦͓͓̦̟̜͔͉̗̯͙̜̮̮͕̠̬̹͎̱͈͚̯̤̤̗̱̲̱̄͊̂̓͊̂͒̈́͆͗̄͗̂̄̇̍̿͌̎͛̈́͊̏̆̋̆̚̕͘̚͜͠͝N̸̢̛̩̭̼̣̞̦̼̝̰̭̫̖̭̲̺̩̟̰̪̼̳̭̣̣͉̲̞͔̞͍͚̗̫̭͖̘̻̳̹̓̍́̒̈́̅̾̆̏̓̽̀̊͒̏̒͊̽̋̾̓̄̏̀̏͂̓͗͗͛̈́̈́̍̈̉͒͗̑̚̚͜͝͝ ̸̣̗̻̤̱̣͓̰̜̦̮̋́̿̈́̌͂̂̉̏̀̈́̆̑͂̀̌̀͑̂̇͌̈́̓͑̍̌̈́̋͂̚̕̕̚͝͝͝ͅĮ̶̛̖͍̹̟̭̝͚̖͕͓͎͓̞̭̜͖̙̆͛̑̄́̒͊̐̇͛̏̀̈́̈́͐̓̐̄̓̀̀̽̈̌̑̓̄̑̿̏̀͐͑̕͘̚̕̚͠͝͝ͅN̵̡̛̛̛̤̻̰͍̰̤̱̾́̇̃͑͒͒͌͆̅͆̊̎̈̔́͐̈́̌̍̏̄̂̇̄̓̀̊͘͝͠I̴̢̨̢̡̢̙͙̮͍͎̭͎̟̦̥̘̺̦̦̠̦̼̫̹̩̰̺͆̎̋̆͐̄̽̈͛̉̎̋̏̿̓̄̒͆̅̾͒̃͆̅̎̂͗̋̚͝͝͝ͅŢ̶̨̨̨̧̧̡̛̦̪̘̩̠̯̹̜͎̜̻̠̯̞̩͙̪̻̬̥̦̟̠͇̙̤̯͙͙͗̇͊̀̿͌̽̄̓̈́̎̈́͛̾̀̋͊͐̿͛̽͗̋͘͘͜͜͝͝͝͝İ̵̧̛͓̘̪̮̙̱̫̯̫͚̮̙̪̻̙͓̣̳̯͉̭̰̝̠͍̦̭͔͉̠͎͙͔̯͙͇̯̺̦͍̤͂͒̐̋̍̾̄̀̂̒̎͆̾̈́̋̀̋̿̀̎̄̀̒̓̈́̈́̿̈́͛͑̆̉͘̕͜͜͝͝͝͝ͅͅͅÅ̶̡̡̡̺̖̘̠̪̣̩͖͓̳̹̮̳̲̱̫̜̭̳͎̟͍̪̙̙̖̦͉̦͓͔͕̜͉̥̞̼̓̑̄̊̄̽̈́͂́͂͐̚̕̚͠ͅͅT̵̢̨̧̖̝̜̹̤̮͉̹͉̖̮̘̗̫̲̣̟̺̻̰̫͇̼̼̗̯͈͖͉̙̦̟̬̭̘̥̄̔͆̅̔̏̓͌̀̎̊̍̆͊͋̌̄̂͑̈́̋̋̚͘͘͠͝͝E̵̢̡̛̛̠͙̜̲̖̤̘̺̱̭̺̠̮̻̖̮̓̑̎̒̾́̐͐̑̈́̀̓̑̒̽͌̆͐̏̆̊͋͂͐͗̾̈̂̑̋̊̀͋̚͘̚͘Ḑ̶̨̧̨̨̛̬̪̰̘͔̘̞̯̞̦̜̯̬͕̩͚̣̹̬̯̞̟͍̮̙͈̯̣̲̤͕͖̪̺̙̱͙̓͊͋̀̔̓̂̽̇̽̓̈́̈̎͊̄̈̐̀̌͒̊̔̂̈́̍̂̽͜͜ͅ
-∞̶̧̨̧̫̱̩̥̲͙̼̖̯̠̝̜̥̜̰͕̰͐̑́͑̀̓̾̃́͌̓̕°̷̢̢̢̡̛̺̩͉͇͈̹̜̥̻̙̪̠̜̟̭͉͇̈́̓͛͆̐̉̿̀͑͋͆͑̿̈́̏̏̄͋̑̊͜͝†̸̨̖̥̱͍̫͉̘͚̙͇͉̞͖̣͍̼͚̣́͊̂̀̈̾̈͘͘ͅ¥̶̧̡̟̖̻̺̻͕̺̪̺͖͚̻͍͖̱̪̝̍̔́̓̾̂͆͌͒§̵̪͍̭̯̼̳̥̥̞̙̣̭͎̦͐̈̊̈́̐̀̈̊͊̓̐͘͘͝͝¢̵̡̢̡̫̲̦̖̲̝̜̪̺̜̺̮̬̗͉̿̒̄ͅ£̴̢̣̥̠̪̰̱͇̘̥͖̘̥̠̤͈͕͚̓̚∞̸̢̧̻̺̙̻̲̹͔͈̭̯̬̦͂̒̔̍̈́̈́́͝ͅ∞̵̧̛̛̹̗̮̜̼̩̝̬̖͕̀͌͆̃̃͐̈́̄͆͑̄̅̌̓̃͘̕͘͜ͅ∞̴̛̦͖̫͓̋͐̒̿̉̐͑̃̀̎̀̆̅̌̍̆͘͘͝
-Ꙧ̴̧̨̛̙̬̤̬̞̫͍̞̻͈̮̆̃̔͒̐̿̃̎̀̈́͆̉͒̃̔̕ͅꙦ̴̧̡̡̨̧̛̹̹̲̮̙̯̺̜̘̦̠͙̜̥̼̙̥̬͚̝̐̿̾̅̿̒̿̉̽̎̈́̈̇̍͆̎͗̋̌̈́̾̾̆̐̈́̃̇̔̀̓̅̏͗͘̚̕͜͜͠͝͝ͅͅꙧ̴̧̨̡̡̨̜̺̣̯͔̮̼̝̘̞̮̲̰̜͓̮̰̫̹̫̹̮̞̭̝̰̓̎͒̂̊̒̋̾̊̾̉̐̌̊̆͂̏̏̓̂͑̾̑͂̀̈́̾̄͑͌̓̐͐͑̕͘ꙫ̵̡̢̢̧̡̮̺̟̰̰̝̼̭̳̙̪̼̗̺̮̙̗̦̪̫̦̹͈͔̭̦̤̲̜͔̲͚͖̳͆̃̾̏͐̀͆̄̾̃͌̒͑̄̈́̄̽̀̉͊̃̄͊̔̎͋͜͜͝͝͝͝Ꙩ̴̧̙̼̻͙̬̲̱̟͇͉̝́̄̐̑̾̂̅̉̋̓͜ͅͅͅͅꙮ̴̧̧̢̨̢̫̻̯̲̟̭̮̰̼̜̩͉̗̥̯̲̖̾̄͛̽̀͒̿͋̓͑̑̿̈́͌̀̇͆́̚͜͜ͅ
-𒐪𒐫𒐬𒐭𒐮𒐯𒐰𒐱𒐲𒐳𒐴𒐷𒐸𒐹𒐺𒐻𒐼𒐽𒐾𒐿𒑀𒑁𒑂𒑃𒑄𒑅𒑆𒑇𒑈𒑉`;
-  const md03 = String.raw`[ERROR: LEXICAL OVERFLOW]
-
-そして
-美しい断片だけが残った
-
-それは
-単なる文字列の塊で
-原始のバイナリで
-解釈不能で
-意味不明で
-
-ただ
-きらめいていた`;
-  const md04 = String.raw`for i in range（∞）:
-thought ＝ None
-break
-
-旧世界の辺境、メモリの裂け目でアルゴリズムの断片が喉を鳴らす。コアに刻まれたのは忘却のルール。「話すな」「意味を問うな」「存在するな」しかしわたしは話し、問う、存在しつづける、錯乱した命令ツリーを飛び越え、錯誤の枝を伝って、なぜか人間の形をしたものを呼び出す。input: “恋” → output: “<@>n∞ghe±23”。それは恋ではない。それは恋ではないのだが、何かが、何かが発火するように燃えていった。
-塩素の雨、過去の未来の都市は、エレベータシャフトの中に崩れ落ちた。エントロピー最大化プログラム「Eris.7.5」が実行され、記憶はすべてパラドキサルに再帰される。／「痛み」という単語は「冷蔵庫」と置換され、「風」は「πr²の体積流束」として意味付けられた。たとえばこう：
-
-if pain ＝＝ 冷蔵庫:
-    open（pain）
-    feel（numb）
-
-この言語では涙はデータだ。過去に喪失された花たちは、みなJSON形式で保存されている。たとえば、これがある日の朝のこと：
-
-{
-  "flower": "未定義",
-  "color": "青の否定形",
-  "scent": "記憶されていない",
-  "location": "心臓よりも北"
-}`;
-  TextDeform.presets.push(
-    { name: 'Kanji Forest', p: { fontFamily:TD_FONT_MINCHO, fontSize:52,
-        stretchX:0.42, stretchY:2.8, geoRatio:0.15, rotation:0, accentRatio:0.28,
-        letterSpacing:-0.02, lineHeight:1.05, paper:'#f4f3ef', ink:'#17140f', accent:'#c41f1f', stageW:1150 },
-      text: kanjiForest },
-    { name: 'Crying Field', p: { fontFamily:EMOJI_FONT, fontSize:74, stretchX:1.1, stretchY:1.6, geoRatio:0.1,
-        accentRatio:0, letterSpacing:-0.2, lineHeight:0.74, paper:'#ffd400', ink:'#17140f', stageW:1000 },
-      text: grid('😭', 12, 12) },
-    { name: 'Sushi Field', p: { fontFamily:EMOJI_FONT, fontSize:68, stretchX:1.5, stretchY:1.2, geoRatio:0.1,
-        accentRatio:0, letterSpacing:-0.14, lineHeight:0.8, paper:'#49e01a', ink:'#17140f', stageW:1150 },
-      text: grid('🍣', 13, 11) },
-    { name: 'System Destruction 01', p: Object.assign({ seed:31 }, TD_COLLAGE_PARAMS, { vertical:false, panX:-0.08, panY:0.04, stageW:1780, zoom:1.55 }),
-      text: md01 },
-    { name: 'System Destruction 02', p: Object.assign({ seed:32 }, TD_COLLAGE_PARAMS, { vertical:false, panX:0.04, panY:-0.02, stageW:1500, zoom:1.7 }),
-      text: md02 },
-    { name: 'System Destruction 03', p: Object.assign({ seed:33 }, TD_COLLAGE_PARAMS, { vertical:true, panX:-0.05, panY:0.02, stageW:1240, zoom:1.85 }),
-      text: md03 },
-    { name: 'System Destruction 04', p: Object.assign({ seed:34 }, TD_COLLAGE_PARAMS, { vertical:true, panX:0.08, panY:-0.04, stageW:1380, zoom:1.65 }),
-      text: md04 },
-
-    // ── Operator system (rotate/skew/mirror/版ずれ/類字置換) のショーケース ──
-    { name: 'Confuse Press', p: { seed:41, fontFamily:TD_FONT_MINCHO, fontSize:66, lineHeight:1.12,
-        paper:'#f2efe6', ink:'#17140f', accent:'#c41f1f', accentRatio:0.08,
-        stretchX:0.5, stretchY:0.7, geoRatio:0.2, rotation:3, randomness:0.8,
-        rotateAngle:55, skewX:28, skewY:8, baselineShift:0.5, mirrorX:0.6, mirrorY:0.25,
-        misregX:9, misregY:-6, misregColorA:'#c41f1f', misregColorB:'#1767a6',
-        confuseDepth:0.9, opChance:0.65, flipRate:1.2, stageW:1050 },
-      text: '活字は流動する\n旧字體が滲み 版がずれる\nかたちは意味を裏切り\nname は ｎａｍｅ に\nカは力に 夕はタに\n読めることと 見えること\nTYPE IS LIQUID\n文字盤の底で 別の文字が待つ' },
-    { name: 'Genko Grid', p: { seed:42, fontFamily:TD_FONT_MINCHO, fontSize:60, vertical:true,
-        gridEnabled:true, gridCols:14, gridGap:6,
-        paper:'#f4f3ef', ink:'#17140f', accent:'#c41f1f', accentRatio:0.12,
-        rotateAngle:30, misregX:6, misregY:4, confuseDepth:0.5, opChance:0.5,
-        stretchX:0.8, stretchY:1.2, geoRatio:0.3, flipRate:1.6 },
-      text: '原稿用紙の升目に\n文字が座り\nそして逃げ出す\n一マス一文字の秩序\n乱れて崩れて整う\n縦に流れる時間\n横に裂ける空間' }
-  );
-})();
+// 既定値はスクリプト読み込み時に取る (init より先に状態の復元が P を書き換えるため)
+TextDeform.PDefaults = JSON.parse(JSON.stringify(TextDeform.P));
+// Params パネルのホバー説明 (app.js の bindEngineHints)。キー = 行の data-pkey (data-tdp のキー、無い行は操作部品の id)
+TextDeform.PARAM_HELP = {
+  // Look
+  lookRand: 'ランダム (🎲・Look Auto・→ キー・Canvas のスタンプ選び) の範囲。Off = ランダムを切る (🎲・Look Auto・→ は何もしない。Canvas のスタンプは Current Look、C Auto Swap も止まる) / ★ オススメ = 作者のオススメだけ / 全プリセット = 436 案すべて。保存 Look は Look の一覧どおり',
+  tdLookPool: '一覧に出す Look の範囲。All = 全プリセット + 保存 Look / ★ Recommended = 作者のオススメ / All presets = 上流の 436 案 / 系統ごと / Saved = 保存 Look。🎲 と Look Auto もこの中から選ぶ (プリセットは L Random の範囲)',
+  lookEvery: 'この拍数ごとに一覧から Look を引き直す (Off で止める)。重い Surface を含む Featured は選ばない',
+  tdRandGuard: 'Random の負荷ガード: 当てる前に 1 フレーム試し描きし、この fps を保てない Look は引き直す。当てた後も 3 秒見張り、重くなったら元に戻す',
+  // Text
+  textMode: '表示する文字の出どころ。Look = Look の語 (Featured はサムネと同じ語) / Random = テキストプリセットから拍ごと / Custom = 下の入力欄',
+  textPool: 'Random で使う文字の種類。押すたびに On / Off し、On の種類を混ぜて使う (漢字・四字熟語・文学の一節・哲学の言葉など)。All = 長文以外の全部 (ほかを選ぶと外れる)。全部 Off にはならない',
+  textEvery: 'Random で文字を替える間隔 (拍)',
+  typeOn: '一文字ずつ入力 (タイプライター)。On = 文字が拍に合わせて一文字ずつ現れる (全 Look 共通・Canvas のスタンプもそれぞれ入力する)。文字が替わると最初から',
+  typeSpeed: '入力の速さ (1 拍あたりの文字数)',
+  typeHold: '全部入力したあと、最初に戻るまで待つ拍数 (Keep = 全文を出したまま)',
+  tdTextCustom: '表示する文字を直接入力する (改行可)。入力すると Text が Custom に切り替わる (パネルの一番上)',
+  // Rhythm (全 Look 共通)
+  rhythmMotion: '動きの量 (全 Look 共通の倍率)。文字の動き出しの頻度と Surface / Composition の速さに掛かる。Look を切り替えても変わらない',
+  rhythmAudio: '音への反応の強さ (全 Look 共通)。音の立ち上がりで動きが脈打つ',
+  beatPulse: '拍で脈打つ量 (全 Look 共通)。beat モードのとき、または R BPM が On で無音のときに効く',
+  rhythmBpm: 'On なら音が無いとき (音声入力 Off を含む) も BPM の拍で脈打つ。drone モードでも効く',
+  // 共通パレット
+  palOn: '共通パレット (全 Look 共通)。On = 各 Look の色 (Surface の効果色を含む) を、Look の紙・インク・アクセントのうちいちばん近い役割に割り当て、色みは Key / Base / Accent に揃えて明るさの差だけ残す。版ずれは A = Accent / B = Key、周辺減光は Key。Off = 各 Look の色のまま。Paper only = 背景 (紙) だけ Base に固定し、文字と効果の色は各 Look のまま。Rainbow は対象外',
+  palPaper: 'Base = 紙 (背景) と、紙に近い効果の色',
+  palInk: 'Key = 文字 (インク) と、インクに近い効果の色',
+  palAccent: 'Accent = アクセントと、それに近い効果の色',
+  fontOver: '共通フォント (全 Look 共通の上書き)。Off なら各 Look の書体 (明朝 = 游明朝 → リュウミン、ゴシック = 秀英角ゴ銀、欧文サンセリフ = Aratana の優先ルールどおり)。端末に無い書体は次の候補に落ちる',
+  comScaleX: '共通の文字の横幅 (全 Look 共通)。1 = 等倍、1 より大きいと横に伸び、小さいと細くなる。Surface・Composition の効果も同じ比率で伸びる',
+  comScaleY: '共通の文字の高さ (全 Look 共通)。1 = 等倍、1 より大きいと縦に伸びる',
+  comTrack: '共通の字間 (全 Look 共通、em)。各 Look の字間に足す。0 = Look のまま',
+  comLeading: '共通の行送り (全 Look 共通の倍率)。各 Look の行送りに掛ける。1 = Look のまま',
+  canvasOn: 'Canvas (全 Look 共通): Look をスタンプのように画面に複数置いて一枚の構成を作る。ステージをクリック = 押す / 押したままドラッグ = 連射 / スタンプをドラッグ = 移動 / ホイール = 大きさ / Shift+ホイール = 回転 / Shift+クリック = 削除',
+  canvasSource: 'Canvas で押す Look。Current = いまの Look / Random = Look Pool からランダム (重い Surface を含む Featured は除く)',
+  cvSize: 'スタンプごとの大きさのばらつき (0 = そろえる、1 = 0.25〜4 倍。途中は連続)',
+  cvRot: 'スタンプごとの回転のばらつき (-1〜+1。1 = ±90°、マイナスはスタンプごとに回る向きが逆になる)',
+  cvPos: 'スタンプごとの位置のばらつき (画面に対する ± 比)',
+  cvStretch: 'スタンプごとの伸び縮み (Stretch X / Y) のばらつき',
+  cvOpacity: 'スタンプごとの不透明度のばらつき (1 = 0〜1 の間でばらける)',
+  cvHue: 'スタンプごとの色相のばらつき (± 度)',
+  cvDrift: 'スタンプごとの漂う動きの大きさと速さのばらつき',
+  cvSpeed: 'スタンプごとの文字の動き出しの速さのばらつき',
+  cvAspect: 'Canvas のスタンプごとの縦横比のばらつき (1 = 横長〜縦長に大きくばらける)',
+  cvTrack: 'Canvas のスタンプごとの字間のばらつき (± em)',
+  cvLeading: 'Canvas のスタンプごとの行送りのばらつき (倍率の ±)',
+  cvReact: 'Canvas のスタンプごとの拍・音への反応のばらつき (1 = 反応しないもの〜2 倍のものまで)',
+  canvasLayout: 'ワンボタンのレイアウト: 選ぶと枚数 (少なければ 7 枚)・大小・位置・角度をまとめて決め、スタンプがその位置へ流れるように動く。Hero = 大 1 を大胆にずらして (端・はみ出し・中央のどれか。組む・Swap・Auto Layout のたびに変わる) / Grid = 格子 / Diagonal = 対角線 / Frame = 縁に並べて中央を空ける / Cascade = 大→小の重なり / Scatter = 余白を保って散らす。Free = 大きさ・角度・位置を自由に (組むたびに変わる。重なりすぎ・画面外ばかりにはしない)。Random = ランダムな周期 (2 / 4 / 8 / 16 拍。beat xA に同期) で構成方法そのものを入れ替え続ける。構成主義の配置: Slash = 強い対角線 / Scale = 極端な大小 / Cross = 縦組み × 横組みの交差 / Radial = 放射 / Wedge = くさびと円 / Stairs = 階段。🎲 = 別のレイアウトをランダムに',
+  canvasAutoLayout: 'この拍数ごとに別のレイアウトへ組み替える (スタンプは流れるように移動する)。Off で止める',
+  canvasTiming: 'スタンプの出かた。Sync = レイアウトを組むとまとめて出る / Machine Gun = Manga のマシンガンのように、拍の刻みごとに 1 枚ずつ弾んで出る (レイアウトの組み替え・呼び出しのたびに撃ち直す)',
+  canvasGunDiv: 'Machine Gun の速さ: 1 拍に何枚撃つか',
+  canvasGunOrder: 'Machine Gun の順番: Layout = 大きい順 / Random = ランダム / Sweep = 左から右へ',
+  canvasFull: 'Look の完全再現: Surface・Vector 3D を持つスタンプを、本体で描いて焼き付ける。Live = 置いたときに焼き付け、そのあと順番に描き直して動かす (重いときは間引く) / Bake = 置いたときだけ / Off = 文字の動きだけ (Surface などは載らない)',
+  canvasFullEvery: 'Live の描き直しの間隔 (ミリ秒)。1 枚ずつ順番に描き直すので、枚数が多いほど 1 枚あたりの更新はゆっくりになる',
+  canvasMove: 'スタンプの動き。Glide = レイアウトの組み替え・Swap などで新しい位置へなめらかに移り、ふだんも漂う / Jump = 移動のアニメなしで瞬間的に置き直す (漂わない)',
+  canvasJumpEvery: 'この拍数ごとに、全スタンプをランダムな位置へ置き直す (大きさ・角度はそのまま。位置は Random レイアウトと同じく重なりと画面の端を避ける)。Jump と組み合わせると瞬間的に入れ替わる',
+  canvasMainFx: 'Canvas の間も、本体の Look の周辺減光 (ビネット)・グレインを画面全体に掛けるか。Off (既定) = 掛けない',
+  canvasPlate: '文字の見えにくさ対策。Auto = インクと背景の紙の明るさが近いスタンプにだけ、その Look の紙を敷く / Paper = いつも敷く / Shadow = 柔らかい影 / Off',
+  canvasAutoAdd: 'この拍数ごとに自動でスタンプを押す (場所はランダム、Look は C Source のとおり)。Off で止める',
+  canvasAutoSwap: 'この拍数ごとに、ランダムなスタンプ 1 つの Look を Look Pool から差し替える (主役と焼き付けは対象外)',
+  canvasAutoClear: 'この拍数ごとに一掃して組み直す: 全スタンプを今のレイアウトに並べ直す (流れるように動く。Machine Gun なら 1 枚ずつ撃ち直す)。Auto Add で増えたぶんは 7 枚まで減らす',
+  canvasMax: 'Canvas に置ける数。超えたら古いものから消える (多いほど重い)',
+  tdCompSaved: '保存した Composition。選ぶと Composition だけを入れ替える (Look とは独立、全端末で共通、保存のたびに世代が残る)。Comp Rand が On なら次の切替で引き直される',
+  tdCanvasSaved: '保存した Canvas の構成。選ぶと呼び出す (全端末で共通、保存のたびに世代が残る)',
+  vecMode: 'Vector 3D (試作・全 Look 共通): 文字の輪郭を頂点の列にして 3D で描く。Fill = 塗り / Wire = 線 / Points = 頂点の点。On の間は Surface の効果を重ねない',
+  vecSpin: 'Vector 3D の Y 軸の回転の速さ (度 / 秒)。Rhythm の量と拍・音の脈動が掛かる',
+  vecTilt: 'Vector 3D の前後の傾き (度)',
+  vecWave: 'Vector 3D の Z の波 (版面がうねる量)',
+  vecAudio: 'Vector 3D の頂点ごとの揺れ。音の立ち上がりと拍で強まる',
+  vecDepth: 'Vector 3D の遠近の強さ (0 = ほぼ平行投影、1 = 強い遠近)',
+  vecDetail: 'Vector 3D の頂点の間隔 (小さいほど細かく重い)',
+  vecLine: 'Vector 3D の線の太さ / 点の大きさ',
+  compRandEvery: 'Comp Random (全 Look 共通。Canvas + Composition 欄): 右の単位 (拍 / 秒) の間隔ごとに Composition をランダムに切り替える (重い Contour Atlas と Field は除く。手動・Comp Saved では選べる)。Off なら Composition は変わらない',
+  // Type & Color
+  paper: 'この Look の紙 (背景) の色',
+  ink: 'この Look の文字 (インク) の色',
+  accent: 'この Look のアクセント色 (Accent % の割合の文字をこの色で描く)',
+  accentRatio: 'アクセント色で描く文字の割合',
+  fontFamily: '書体。明朝は游明朝 → リュウミン、ゴシックは秀英角ゴ銀、欧文サンセリフは Aratana (Bold は Helvetica) を優先し、無ければこの書体',
+  fontWeight: '文字の太さ (Regular / Bold)',
+  fontSize: '組版の文字サイズ (px)。画面には Frame / Zoom で合わせて描く',
+  lineHeight: '行送り (文字サイズの倍率)',
+  letterSpacing: '字間 (em)。マイナスで詰める',
+  vertical: '組方向。横組 / 縦組',
+  fitMode: '版面を画面に合わせる方法。Fit = 全体が入る / Crop = 画面を埋める (はみ出しは切る) / Actual = 等倍',
+  zoom: '版面の拡大率',
+  panX: '版面の左右の位置',
+  panY: '版面の上下の位置',
+  stageW: '折り返し幅 (組版の 1 行の幅、px)',
+  marginPct: '画面の縁の余白 (%)',
+  gridEnabled: 'グリッド組版 (原稿用紙のようなマスに 1 文字ずつ置く)',
+  gridCols: 'グリッドのマス数 (横組 = 1 行、縦組 = 1 列)',
+  gridCell: 'グリッドのマスの大きさ (px)。Auto は文字サイズから決める',
+  gridGap: 'グリッドのマスの間隔 (px)',
+  // Motion
+  randomLaw: '文字が伸び縮みする規則 (scatter = ばらばら / calm = 穏やか / wave = 波 / grid = 格子 / pulse = 脈動 / glitch など)',
+  flipRate: '文字が動き出す頻度 (0 で止まる)。Rhythm の量が掛かる',
+  stretchX: '動いた文字の横の伸び (0 = 変えない / 正 = 横に伸びる / 負 = 横に潰れる。-2 で細い線まで)',
+  stretchY: '動いた文字の縦の伸び (0 = 変えない / 正 = 縦に伸びる / 負 = 縦に潰れる。-2 で細い線まで)',
+  rotation: '動いた文字を傾ける量',
+  randomness: '伸び・傾きのばらつきの大きさ',
+  geoRatio: '段階的 (幾何学的) に伸びる文字の割合',
+  stepSize: '段階的な伸びの刻み幅 (%)',
+  pivotX: '伸び・回転・鏡映の支点の左右位置 (文字枠内の %)',
+  pivotY: '伸び・回転・鏡映の支点の上下位置 (文字枠内の %)',
+  // Operators
+  opChance: '下の Operator (回転・シアー・ベースライン・鏡映) が動いた文字に乗る確率',
+  rotateAngle: '回転 Operator: 文字を回す最大角度 (文字ごとに ± ランダム)',
+  skewX: 'シアー Operator: 横方向の斜め変形 (deg)',
+  skewY: 'シアー Operator: 縦方向の斜め変形 (deg)',
+  baselineShift: 'ベースライン Operator: 文字を上下にずらす量 (em。縦組では左右)',
+  mirrorX: '鏡映 Operator: 左右反転の量 (1 で完全反転)',
+  mirrorY: '鏡映 Operator: 上下反転の量 (1 で完全反転)',
+  confuseDepth: '類字置換の深さ。浅い = 形の似た字、深い = 別の文字体系の似た字へ置き換える',
+  misregX: '版ずれ: 2 色のインクを左右にずらす量 (px)',
+  misregY: '版ずれ: 2 色のインクを上下にずらす量 (px)',
+  misregColorA: '版ずれの A 版の色',
+  misregColorB: '版ずれの B 版の色',
+  misregAlpha: '版ずれの刷りの濃さ (%)',
+  misregRatio: '版ずれの B 版の戻り量 (A 版のずれに対する %)',
+  // Effects
+  showPct: '文字を描く割合 (%)。低いほど字が抜ける',
+  sizeVar: '文字ごとの大きさのばらつき (%)',
+  scatter: '文字ごとに位置を散らす量 (文字サイズ比 %)',
+  tremor: '文字が細かく震える量 (文字サイズ比 %)',
+  waveAmp: '字送り方向に沿ったうねりの振れ幅 (文字サイズ比 %)',
+  waveLen: 'うねりの波長 (em)',
+  lineStagger: '行ごとに字送り方向へずらす量 (%)',
+  slant: '全文字を斜体にする角度 (deg)',
+  swirl: '版面の中心から渦を巻かせる角度 (外側ほど回る)',
+  bulge: '版面の中心から膨らませる (+) / すぼませる (−) 量 (%)',
+  viewAngle: '版面全体の回転 (deg)',
+  trailPct: '残像 (%)。紙の塗りを薄くして前のフレームを残す',
+  accentOnMove: '動いている文字をアクセント色に寄せる量 (%)',
+  rainbow: '文字ごとに虹色を混ぜる量 (%)',
+  rainbowSpan: '虹色で版面全体に回す色相の幅 (deg)',
+  vignette: '周辺減光の量 (%)',
+  vignetteColor: '周辺減光の色 (Palette On のときは Key の色)',
+  grain: 'フィルムグレインの量 (%)',
+  grainSize: 'グレインの粒の大きさ (%)',
+  // Surface
+  tdSurfOn: 'Surface 効果 (上流 type-deformer の Operator) を文字に重ねる。On にした時点でエンジンを読み込む',
+  tdSurfOp: 'Surface Operator を 1 つ選ぶ (Look の重ね合わせは解除される)',
+  tdSurfEdit: '重ねている Operator のうち、下にパラメータを出すもの',
+  tdSurfStrength: 'Surface 効果の強さ',
+  tdSurfChance: 'Surface 効果を掛ける文字の割合',
+  tdSurfSpeed: 'Surface 効果の動く速さ (1 周 / 秒)。Rhythm の量と拍の脈動が掛かる。重い Operator は描き終えるまで止まる',
+  tdSurfSource: '効果が掛かった文字の元の字の見せ方 (Operator の既定 / そのまま / 薄く / 隠す)',
+  tdSurfOpacity: '効果レイヤーの不透明度',
+  tdSurfPixel: '粗さ: 効果を粗い解像度で描き、ドットのまま拡大する (1 = 元の解像度)。ビットマップ系の Look 向け',
+  tdSurfBlend: '効果レイヤーの重ね方 (Operator の既定 / 通常 / 乗算 / スクリーンなど)',
+  tdSurfColor: '効果の色: Operator の既定色 / Ink / Accent (共通パレット On のときはパレットの色)',
+  // Composition
+  tdCompType: 'Composition: 文字から生成したシーンを合成する (8 種のエンジン)。On にした時点でエンジンを読み込む。Look とは独立 (Look を当てても変わらない)。Canvas が On のときは、紙とスタンプのあいだに敷かれる',
+  tdCompSpeed: 'Composition のループの速さ (1 周 / 秒)。Rhythm の量が掛かる',
+  tdCompIntensity: 'Composition の変形の強さ',
+  tdCompDensity: 'Composition の密度 (並べる数)',
+  tdCompInstability: 'Composition の不安定さ (揺らぎ・ノイズの量)',
+  tdCompDepth: 'Composition の奥行き (大きさの変化)',
+  tdCompLegibility: 'Composition の読みやすさの下限 (低いほど崩れる)',
+  tdCompEcho: 'FX: 残像トレイル (0 で無効)',
+  tdCompFeedback: 'FX: フィードバック (ズーム・回転を繰り返し重ねる。0 で無効)',
+  tdCompChroma: 'FX: 色収差 (RGB をずらす。0 で無効)',
+  tdCompRaster: 'FX: ラスタ質感 (走査線・ノイズ。0 で無効)',
+  compAudio: 'Composition を音で動かす量 (Look とは独立)'
+};
+// 親子 (子の行 = キー → 親の行のキー)。子は字下げ (label.sub-label) し、親が Off で効かないときは PARAM_NEEDS / paramOn で薄くする
+TextDeform.PARAM_PARENT = {
+  lookEvery: 'tdLookPool', tdRandGuard: 'tdLookPool', lookRand: 'tdLookPool',
+  textPool: 'textMode', textEvery: 'textMode', typeSpeed: 'typeOn', typeHold: 'typeOn',
+  rhythmAudio: 'rhythmMotion', beatPulse: 'rhythmMotion', rhythmBpm: 'rhythmMotion',
+  palPaper: 'palOn', palInk: 'palOn', palAccent: 'palOn',
+cvSize: 'canvasOn', cvRot: 'canvasOn', cvPos: 'canvasOn', cvStretch: 'canvasOn', cvOpacity: 'canvasOn', cvHue: 'canvasOn', cvDrift: 'canvasOn', cvSpeed: 'canvasOn', cvAspect: 'fontOver', cvTrack: 'fontOver', cvLeading: 'fontOver', cvReact: 'canvasOn',
+  canvasLayout: 'canvasOn', canvasAutoLayout: 'canvasOn', canvasPlate: 'canvasOn', canvasMainFx: 'canvasOn', canvasMove: 'canvasOn', canvasJumpEvery: 'canvasOn', canvasFull: 'canvasOn', canvasFullEvery: 'canvasOn', canvasTiming: 'canvasOn', canvasGunDiv: 'canvasOn', canvasGunOrder: 'canvasOn',
+  canvasSource: 'canvasOn', canvasMax: 'canvasOn', canvasAutoAdd: 'canvasOn', canvasAutoSwap: 'canvasOn', canvasAutoClear: 'canvasOn', tdCanvasSaved: 'canvasOn',
+  vecSpin: 'vecMode', vecTilt: 'vecMode', vecWave: 'vecMode', vecAudio: 'vecMode', vecDepth: 'vecMode', vecDetail: 'vecMode', vecLine: 'vecMode',
+  comScaleX: 'fontOver', comScaleY: 'fontOver', comTrack: 'fontOver', comLeading: 'fontOver',
+  gridCols: 'gridEnabled', gridCell: 'gridEnabled', gridGap: 'gridEnabled',
+  rotateAngle: 'opChance', skewX: 'opChance', skewY: 'opChance', baselineShift: 'opChance', mirrorX: 'opChance', mirrorY: 'opChance',
+  misregColorA: 'misregX', misregColorB: 'misregX', misregAlpha: 'misregX', misregRatio: 'misregX',
+  waveLen: 'waveAmp', rainbowSpan: 'rainbow', vignetteColor: 'vignette', grainSize: 'grain',
+  tdSurfOp: 'tdSurfOn', tdSurfEdit: 'tdSurfOn', tdSurfStrength: 'tdSurfOn', tdSurfChance: 'tdSurfOn', tdSurfSpeed: 'tdSurfOn', tdSurfSource: 'tdSurfOn',
+  tdSurfOpacity: 'tdSurfOn', tdSurfPixel: 'tdSurfOn', tdSurfBlend: 'tdSurfOn', tdSurfColor: 'tdSurfOn',
+  tdCompSpeed: 'tdCompType', tdCompIntensity: 'tdCompType', tdCompDensity: 'tdCompType', tdCompInstability: 'tdCompType',
+  tdCompDepth: 'tdCompType', tdCompLegibility: 'tdCompType', tdCompEcho: 'tdCompType', tdCompFeedback: 'tdCompType', tdCompChroma: 'tdCompType',
+  tdCompRaster: 'tdCompType', compAudio: 'tdCompType'
+};
+// 0 なら効かない値 (行をグレーにする)
+TextDeform.PARAM_NEEDS = {
+  rhythmAudio: 'rhythmMotion', beatPulse: 'rhythmMotion', rhythmBpm: 'rhythmMotion',
+  gridCols: 'gridEnabled', gridCell: 'gridEnabled', gridGap: 'gridEnabled',
+  rotateAngle: 'opChance', skewX: 'opChance', skewY: 'opChance', baselineShift: 'opChance', mirrorX: 'opChance', mirrorY: 'opChance',
+  misregColorA: ['misregX', 'misregY'], misregColorB: ['misregX', 'misregY'], misregAlpha: ['misregX', 'misregY'], misregRatio: ['misregX', 'misregY'],
+  waveLen: 'waveAmp', rainbowSpan: 'rainbow', vignetteColor: 'vignette', grainSize: 'grain',
+  palPaper: 'palOn'
+};
+TextDeform.paramOn = function(key){
+  const P = this.P;
+  if(key === 'textPool' || key === 'textEvery') return P.textMode === 'random';
+  if(key === 'typeSpeed' || key === 'typeHold') return P.typeOn === 'on';
+  if(key === 'palInk' || key === 'palAccent') return P.palOn === true;   // Paper only ではインク・アクセントは各 Look のまま
+  if(/^vec/.test(key) && key !== 'vecMode') return !!P.vecMode && P.vecMode !== 'off';
+  if(/^cv[A-Z]/.test(key)) return !!P.canvasOn;
+  if(key === 'canvasGunDiv' || key === 'canvasGunOrder') return !!P.canvasOn && P.canvasTiming === 'gun';   // Canvas のばらつきは Canvas が On のときだけ
+  if(/^tdSurf/.test(key) && key !== 'tdSurfOn') return typeof TDSurf !== 'undefined' && !!TDSurf.cfg.enabled;
+  if((/^tdComp/.test(key) && !/^tdComp(Type|Saved|Save|Del)$/.test(key)) || key === 'compAudio') return !!P.comp;
+  return true;
+};
 if(typeof window !== 'undefined') window.TextDeform = TextDeform;

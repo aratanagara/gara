@@ -580,6 +580,7 @@ vec3 bg_flowcollage(vec2 fc){
   //   Slot B: 紙を透かす。合成 (sampleAB) は straight alpha なので、紙を除いた色を alpha で割って返す
   float cov = clamp(1.0 - wp, 0.0, 1.0);
   bgAlpha = cov;
+  vjDepth = cov;   // 深度 (紙以外 = 帯・図形=手前 1 / 紙 0)
   vec3 inkP = col - pc;                                          // 紙を除いた色 (alpha 乗算済み)
   if(uSlotIsA > 0.5){
     float paperOn = step(max(uBgColor.r, max(uBgColor.g, uBgColor.b)), 0.004);

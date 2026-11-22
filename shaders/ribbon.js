@@ -227,3 +227,37 @@ void main(){
   }
 };
 Ribbon.PDefaults = JSON.parse(JSON.stringify(Ribbon.P));   // 既定値はスクリプト読込時に確定 (state 復元より先)
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Ribbon.PARAM_HELP = {
+  strands:'リボンを編む線の本数',
+  span:'線の長さ。曲面が広がる範囲',
+  twist:'ねじれの強さ',
+  twistSwing:'ねじれの強さの揺れ幅',
+  wave:'横うねりの細かさ',
+  loop:'輪の横幅',
+  arch:'縦のアーチ',
+  depthWave:'奥行き方向のうねり',
+  swayYaw:'左右の首振りの振れ幅',
+  swayRoll:'画面内の回転の振れ幅',
+  distance:'カメラからの距離',
+  breathe:'距離の呼吸の振れ幅',
+  lens:'遠近の強さ。下げると広角に広がる',
+  fade:'奥の線を消すしきい値。0 で奥の線もすべて見える',
+  swayPitch:'上下の首振りの振れ幅。0 で振らない',
+  rollOffset:'画面内の回転の基準角',
+  centerX:'画面中心からの横ずれ',
+  centerY:'画面中心からの縦ずれ',
+  stretchX:'形の横幅',
+  stretchY:'形の縦幅',
+  strandSpread:'線同士の位相の開き。上げると線がばらける',
+  lineWeight:'線の太さ。100 で 1px',
+  lineOpacity:'線の濃さ',
+  depthFade:'奥ほど線が薄くなる強さ',
+  tipFade:'線の両端が消える長さ',
+  dashes:'線の破線の数 (0 で実線)',
+  dashDuty:'破線の線の割合',
+  lineHue:'線の色相',
+  lineTint:'線の色づき。0 で白',
+};
+Ribbon.PARAM_NEEDS = {dashDuty:'dashes', lineHue:'lineTint'};

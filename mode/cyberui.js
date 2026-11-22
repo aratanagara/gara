@@ -580,3 +580,61 @@ const CyberUI = {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 };
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+CyberUI.PARAM_HELP = {
+  spin:'リングの回転の速さ',
+  speed:'全体の時間の速さ',
+  audioSync:'音量との同期。0 で常に動き、1 で無音のときバーが引っ込む',
+  barLen:'バーの長さの倍率',
+  clockScale:'時計全体の大きさ',
+  clockX:'時計の中心を横へずらす量',
+  clockY:'時計の中心を縦へずらす量',
+  ringTilt:'リングの向き (回転の起点)',
+  ringR:'リング・バー・目盛りの半径 (針とエンブレムは変わらない)',
+  ringGap:'外リングと内リングの間隔 (目盛りの長さ)',
+  barCount:'バーの本数',
+  barFill:'バーの太さ (ピッチに対する割合)',
+  barMin:'バーの最短長。谷の底上げ',
+  hillSharp:'山の鋭さ',
+  spikeAmt:'ランダムに突き出る棒の量',
+  barShuffle:'棒ごとの高さのばらつき',
+  barPulse:'棒の脈動の振れ幅',
+  barFall:'棒の戻りの速さ。小さいほど余韻が残る',
+  atkPunch:'音の立ち上がりで山が伸びる量',
+  innerBars:'内リングから中心へ向かう鏡像バーの量',
+  tickCount:'目盛りの本数 (12 の倍数)',
+  tickWeight:'目盛りの太さ',
+  ringWeight:'同心リングの線の太さ',
+  handLen:'針の長さ',
+  handWeight:'針の太さ',
+  handLabel:'針先ラベルの大きさ。0 で消す',
+  emblemSize:'中央エンブレムの大きさ',
+  emblemTilt:'エンブレムの向き',
+  bandLen:'縁のマーキー帯の長さ',
+  conLines:'端末の表示行数',
+  conSize:'端末の文字の大きさ',
+  frameInset:'外枠とコーナーの余白',
+  frameWeight:'外枠の線の太さ',
+  bracketSize:'四隅のコーナーの大きさ',
+  titleSize:'左上の見出しの大きさ。0 で消す',
+  iconScale:'右下の HUD アイコンの大きさ',
+  black:'HUD の線を黒にする',
+  bars:'FFT バーのリングを出す',
+  clock:'時計の針を出す',
+  emblem:'中央のエンブレムを出す',
+  cdBars:'縁のマーキー帯を出す',
+  console:'端末ログを出す',
+  inkColor:'線の色。白モードのみで、Black のときは黒のまま',
+};
+CyberUI.paramOn = function(key){
+  const P = this.P;
+  const bars = ['barLen', 'barCount', 'barFill', 'barMin', 'hillSharp', 'spikeAmt', 'barShuffle', 'barPulse', 'barFall', 'atkPunch', 'innerBars', 'audioSync'];
+  if(bars.includes(key)) return !!P.bars;
+  if(['handLen', 'handWeight', 'handLabel'].includes(key)) return !!P.clock;
+  if(key === 'emblemSize' || key === 'emblemTilt') return !!P.emblem;
+  if(key === 'bandLen') return !!P.cdBars;
+  if(key === 'conLines' || key === 'conSize') return !!P.console;
+  if(key === 'inkColor') return !P.black;
+  return true;
+};

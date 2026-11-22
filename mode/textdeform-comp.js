@@ -5,13 +5,14 @@
  * render-engine.js (mode/typedeformer/、MIT) をメインスレッドで動かす (On にした時点で読み込む)。
  * このファイルは状態 (上流 editor の COMPOSITION_DEFAULTS / normalizeComposition を移植)、
  * 入力バス (VJ: 仮想ポインタ + ビートの脈動)、描画 (帯 + 文字インスタンス) と TDComp API。
- * phase は TextDeform.update() から自動進行。状態は md 単位 (pr.p.comp) — loadPreset が
- * TDComp.applyMd() で適用し、保存の無い md ではデフォルト(Off)へ戻る。永続化は「デフォルト保存」経由。
+ * phase は TextDeform.update() から自動進行。状態は TextDeform.P.comp (末尾のアクセサ) — Look の一部として
+ * 保存デフォルト・状態の復元・Undo・保存 Look と一緒に読み書きする。
  * ======================================================================== */
 (function(){
 'use strict';
 if(typeof TextDeform === 'undefined') return;
 const TD = TextDeform;
+const COMP_VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ''; })();
 
 /* ---- 元エディタのグローバルへのシム ---- */
 const params = new Proxy({}, {
@@ -598,7 +599,7 @@ function snapshotGlyphs(forceAll){
         return result;
       }
 
-      // VJ: 音 (app.js の Audio) を Composition へ。量は md の compAudio (デッドゾーンあり)。0 なら null = 従来どおり
+      // VJ: 音 (app.js の Audio) を Composition へ。量は P.compAudio (デッドゾーンあり)。0 なら null = 従来どおり
       function audioDrive(){
         var a = TD._dp(+TD.P.compAudio || 0);
         if(!(a > 0) || typeof Audio === 'undefined' || !Audio.fft) return null;
@@ -844,7 +845,9 @@ function snapshotGlyphs(forceAll){
 
       // 1フレーム分のシーンを生成して VJ の 2D canvas に描く (レイアウトは全面 1:1)。
       // 上流 editor の workerCompositionScene と同じ順: tokens → loop clock → 入力バス → evaluate → FX ラック
-      function renderCompositionToCtx(ctx, w, h){
+      // opts.noGuides: ガイド線 (Type Matrix の枠・格子・ベースライン、Path Loom の経路、Glyph Vessel の輪郭) を描かない
+      // (Canvas の背景として敷くとき。スタンプの下では浮いた枠線に見える)
+      function renderCompositionToCtx(ctx, w, h, opts){
         if(!engine){ ensureEngine(); return false; }   // 読み込み中は素の文字を描かせる
         w = Math.max(1, w); h = Math.max(1, h);
         compositionScene.width = w; compositionScene.height = h;
@@ -857,6 +860,10 @@ function snapshotGlyphs(forceAll){
         var scene;
         envState.audio = audioDrive();
         envState.modState = audioModulatedState(envState.audio);
+        if(opts && opts.noGuides){
+          var base = envState.modState || compositionState, off = function(o){ return Object.assign({}, o, { guides: 'none' }); };
+          envState.modState = Object.assign({}, base, { typeMatrix: off(base.typeMatrix), pathLoom: off(base.pathLoom), glyphVessel: off(base.glyphVessel) });
+        }
         try{
           var tokens = engine.compositionSourceTokens(glyphs);
           envState.compositionInputs = createCompositionInputBus(tokens, w, h,
@@ -874,24 +881,9 @@ function snapshotGlyphs(forceAll){
         return true;
       }
 
-      /* ---- 永続化: md 単位 (TD_MD_STYLE_KEYS の 'comp' → vj.textdeform.mdStyles)。
-       * 旧グローバル保存キーは廃止。v6 以前の保存値は normalizeComposition が v10 へ読み替える。 ---- */
+      /* ---- 永続化: TextDeform.P.comp (このファイルの末尾のアクセサ)。保存デフォルト・状態の復元・Undo・保存 Look が
+       * P と一緒に読み書きする。v6 以前の保存値は normalizeComposition が v10 へ読み替える。 ---- */
       try{ localStorage.removeItem('vj.textdeform.comp'); }catch(e){}
-
-      // comp を持たない md プリセットへデフォルト値を書き込む (全 md が明示的に comp を持つ)。
-      // TextDeform.init の _captureMdBaseStyles より先に走るので、これがリセット時の基準になる。
-      (function seedCompDefaults(){
-        var presets = TD.presets || [];
-        for(var i = 0; i < presets.length; i++){
-          var pr = presets[i];
-          pr.p = pr.p || {};
-          if(!pr.p.comp){
-            var d = cloneCompositionDefaults();
-            delete d.quality;
-            pr.p.comp = d;
-          }
-        }
-      })();
 
       window.TDComp = {
         defs: COMPOSITION_DEFS,
@@ -914,15 +906,51 @@ function snapshotGlyphs(forceAll){
           compositionState.phase = phase;
           if(compositionState.enabled) ensureEngine();
         },
-        // md の読み込み時に呼ぶ: 保存された comp があれば復元、無ければデフォルト(Off)。位相は維持
-        applyMd(raw){
+        // 保存値を当てる (P.comp への代入・Look の適用): comp があれば復元、無ければデフォルト(Off)。位相は維持。
+        // エンジンは描画の時点で読み込む (状態の復元では読み込まない)
+        apply(raw){
           var phase = compositionState.phase;
           compositionState = raw ? normalizeComposition(raw) : cloneCompositionDefaults();
           compositionState.phase = phase;
-          if(compositionState.enabled) ensureEngine();
         },
-        // md へ保存する用のスナップショット (quality 抜き)
+        // 保存用のスナップショット (quality 抜き)
         snapshot(){ return persistentCompositionState(); },
+        // ---- 保存 Composition (store「tdcomps」。正はサーバー、保存のたびに世代が残る。空なら mode/textdeform-comps.json) ----
+        saved: null, _loading: null,
+        _storeUrl(){ return (typeof App !== 'undefined' && App._storeBase ? App._storeBase() : 'presets/store.php') + '?name=tdcomps'; },
+        loadSaved(){
+          if(this.saved) return Promise.resolve(this.saved);
+          if(this._loading) return this._loading;
+          return (this._loading = (async ()=>{
+            let list = null;
+            try{ const r = await fetch(this._storeUrl(), { cache: 'no-store' }); if(r.ok){ const d = await r.json(); if(Array.isArray(d) && d.length) list = d; } }catch(e){}
+            if(!list){
+              try{ const r = await fetch('mode/textdeform-comps.json' + (COMP_VER ? '?v=' + COMP_VER : '')); if(r.ok) list = await r.json(); }catch(e){}
+            }
+            this.saved = Array.isArray(list) ? list : [];
+            this._loading = null;
+            return this.saved;
+          })());
+        },
+        async _save(){
+          const r = await fetch(this._storeUrl(), { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(this.saved) });
+          if(!r.ok) throw new Error('store ' + r.status);
+        },
+        async saveAs(name){
+          await this.loadSaved();
+          const comp = TD.P.comp;
+          if(!comp) throw new Error('Composition が Off です');
+          this.saved.push({ name: name || ('Comp ' + (this.saved.length + 1)), comp: JSON.parse(JSON.stringify(comp)) });
+          await this._save();
+          return this.saved.length - 1;
+        },
+        async load(i){
+          await this.loadSaved();
+          const c = this.saved[i]; if(!c || !c.comp) return false;
+          TD.P.comp = JSON.parse(JSON.stringify(c.comp));
+          return true;
+        },
+        async removeSaved(i){ await this.loadSaved(); if(!this.saved[i]) return; this.saved.splice(i, 1); await this._save(); },
         status(){ return engine ? 'ready' : engineError ? 'error: ' + engineError : engineLoading ? 'loading' : 'idle'; },
         // dt 秒ぶん位相を進める。pulse(ビート脈動)は入力バスの pressure へ
         advance(dt, pulse){
@@ -933,6 +961,10 @@ function snapshotGlyphs(forceAll){
           compositionState.phase = ((compositionState.phase + dt * compositionState.speed * boost * dir) % 1 + 1) % 1;
         },
         // false = エンジン読み込み中 / 生成に失敗 (呼び出し側は素の文字を描く)
-        render(ctx, w, h){ return renderCompositionToCtx(ctx, w, h); }
+        render(ctx, w, h, opts){ return renderCompositionToCtx(ctx, w, h, opts); }
       };
+      // P.comp = Composition の保存値 (Off なら null)。JSON 化・Object.assign がこのアクセサを通る
+      Object.defineProperty(TD.P, 'comp', { enumerable: true, configurable: true,
+        get: function(){ return compositionState.enabled ? persistentCompositionState() : null; },
+        set: function(v){ window.TDComp.apply(v); } });
 })();

@@ -180,7 +180,12 @@ const MediaImport = {
   // 内蔵サーバ (取り込み可能) かどうか。1 セッションに 1 回だけ問い合わせる
   local(){
     if(!this._probe) this._probe = (async ()=>{
-      if(/\.github\.io$/.test(location.hostname)) return false;   // 公開版 (github.io) はサーバーへ保存しない (セッション限りの blob 読み込み)
+      // 取り込みの内蔵サーバ (desktop/server.js) は手元 (localhost / LAN) でだけ動く。本番 (vj.aratanagara.com) や公開版 (github.io) では
+      //   問い合わせ自体をしない (/__media が 500 で返り、起動のたびにエラーが出ていた)。セッション限りの blob 読み込みになる
+      const h = location.hostname;
+      const isLocal = h === 'localhost' || h === '::1' || h === '[::1]' || /\.local$/.test(h) || /\.localhost$/.test(h)
+        || /^127\./.test(h) || /^10\./.test(h) || /^192\.168\./.test(h) || /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+      if(!isLocal) return false;
       try{
         const r = await fetch('__media', { cache:'no-store' });
         if(!r.ok) return false;
@@ -343,12 +348,42 @@ const GL = {
   startTime:0, lastTime:0, frame:0, paused:false,
   clock:0, clockDt:0, _lastReal:0, // speed 反映済みの累積時刻 (App.speed で進む)
 
+  // WebGL2 が取れない (直前に描画が落ちてブラウザが GPU を止めた・ドライバ不調など): 案内を出し、
+  //   5 秒ごとに WebGL2 が取れるか確かめ、取れたら自動で読み直す
+  _noWebGL2(){
+    const ld = document.getElementById('__loading'); if(ld) ld.remove();   // 起動中のロゴ画面は先へ進まないので外す
+    const el = document.createElement('div');
+    el.id = 'noWebGL2';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:#000;color:#ccc;font:14px/1.8 system-ui,sans-serif;padding:16px;text-align:center';
+    el.innerHTML = '<div style="max-width:520px">'
+      + '<div style="font-size:18px;color:#fff;margin-bottom:12px">WebGL2 を使えません</div>'
+      + 'ブラウザが GPU を止めている可能性があります (直前に描画が落ちたときなど)。<br>ブラウザを一度完全に終了して、開き直してください。<br>'
+      + '<span style="opacity:.6">Chrome は chrome://gpu で WebGL2 の状態を確かめられます。</span>'
+      + '<div id="noWebGL2Status" style="margin-top:14px;opacity:.6">5 秒ごとに確かめ、使えるようになったら自動で読み直します</div>'
+      + '<button type="button" id="noWebGL2Reload" style="margin-top:14px;padding:6px 18px;cursor:pointer">再読み込み</button></div>';
+    document.body.appendChild(el);
+    el.querySelector('#noWebGL2Reload').addEventListener('click', ()=>location.reload());
+    let n = 0;
+    const timer = setInterval(()=>{
+      n++;
+      const g = document.createElement('canvas').getContext('webgl2', {powerPreference:'high-performance'});
+      if(g){
+        clearInterval(timer);
+        const lose = g.getExtension('WEBGL_lose_context'); if(lose) lose.loseContext();   // 確かめ用のコンテキストはすぐ返す
+        location.reload();
+        return;
+      }
+      const st = document.getElementById('noWebGL2Status');
+      if(st) st.textContent = '5 秒ごとに確かめています (' + n + ' 回目)。使えるようになったら自動で読み直します';
+    }, 5000);
+  },
+
   init(){
     this.canvas = $('#glcanvas');
     // powerPreference: ハイブリッドGPU機(Intel内蔵+NVIDIA等)で省電力側の内蔵GPUに割り当てられると
     // 過負荷で context lost (TDR) が頻発するため、必ず高性能側の GPU を要求する。
     const gl = this.canvas.getContext('webgl2', {antialias:false, preserveDrawingBuffer:false, alpha:false, powerPreference:'high-performance'});
-    if(!gl){ alert('WebGL2 not available'); return false; }
+    if(!gl){ this._noWebGL2(); return false; }
     this.gl = gl;
     // 実際に使われている GPU 名 (ハイブリッドGPU機で内蔵GPUに割り当てられていないかの診断用)
     try{
@@ -489,6 +524,8 @@ uniform int   uMatte;     // 3D FX 中の紙抜き (@matte): 1 = Slot A だけ /
 uniform int   uMatteDepth; // 1 = 深度で抜く: 深度 0 (背景) を alpha 0 にして物体だけを 3D 段へ / 2 = 抜かない絵 (alpha = 背景の割合。3D 段の最後に背景として敷く) / 3 = 選んだスロットだけ全体 (3D Slot = A / B) / 4 = 何も運ばない (選んだスロットが隠れている)
 uniform int   uMatteSlot;  // 深度で抜くスロット (1 = A / 2 = B)
 uniform sampler2D uMatteD; // 深度で抜くスロットの深度 (R8。1 = 手前 → 0 = 奥・背景)
+uniform sampler2D uMatteD2; // 両スロットを深度で抜くとき (uMatteSlot = 3) の Slot B の深度 (uMatteD = Slot A)
+uniform vec3  uMatteW;     // uMatteSlot = 3: xy = A / B の物体の重み (クロスフェード × 表示の割合)、z = 1 で手前優先 (max) / 0 でミックス比 (和)
 uniform vec3  uBgColA;    // Slot A の背景色 (A の透明部分を埋める下地)。既定 黒
 uniform float uZoomA, uZoomB;   // mode エンジン用 テクスチャズーム (shader は iZoom で処理済のため 1.0)
 uniform vec2  uPanA, uPanB;     // mode エンジン用 テクスチャパン
@@ -516,6 +553,7 @@ uniform float uHit, uHitSeed;  // AR エンベロープ(音中ホールド→減
 uniform sampler2D uFFT;        // 音声スペクトル(512x2 LUMINANCE: row0=FFT)
 uniform float uScn, uGrn;
 uniform float uTexN;       // テクスチャノイズ強度 (Photoshop の「ノイズを加える」相当)
+uniform float uBOverB;     // Slot B が @blendover シェーダ: 実 alpha のある画素はブレンドモードに関わらず A の上へ合成 (リングなど)
 uniform float uBKeyBlack;  // Slot B が黒背景エンジン(novel 等)のとき、黒をキーして透過(下の A を出す)
 uniform float uBKeyWhite;  // Slot B が白背景(ribbon 等)のとき、白をキーして透過(明部→透明 / 暗線→不透明)
 uniform int   uPalette;    // 統一パレット: 0=off 1..7=プリセット 8=Slot A 抽出
@@ -702,6 +740,11 @@ uniform vec2 uOsA, uOsB;
 vec2 fl_slotUv(vec2 s, vec2 o){ return (o.x == 0.0 && o.y == 0.0) ? fl_mirror(s) : fl_mirror((s - 0.5) / (1.0 + o) + 0.5); }
 // 深度で抜くスロットの物体の割合 (深度 > 0 = 1 / 背景 = 0)
 float matteObj(vec2 uv){
+  if(uMatteSlot == 3){   // 両スロットとも深度を出す: 両方の物体を 3D 段へ
+    float oa = uMatteW.x * step(0.004, texture(uMatteD, fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA)).r);
+    float ob = uMatteW.y * step(0.004, texture(uMatteD2, fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB)).r);
+    return uMatteW.z > 0.5 ? max(oa, ob) : min(1.0, oa + ob);
+  }
   vec2 mu = uMatteSlot == 1 ? fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA) : fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB);
   return step(0.004, texture(uMatteD, mu).r);
 }
@@ -709,7 +752,7 @@ vec4 sampleAB(vec2 uv){
   vec4 ca = texture(uA, fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA));   // mode エンジンの user zoom/pan (領域外はミラー)
   vec4 cb = texture(uB, fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB));
   // 紙抜き: 映っているスロットの前乗算の色を戻して alpha ごと返す (紙 = alpha 0。紙の色は 3D 段の最後に敷く)
-  if(uMatteDepth == 1 && uMatte > 0){
+  if(uMatteDepth == 1 && uMatte > 0 && uMatte < 3){
     vec4 c = uMatte == 1 ? ca : cb;
     return vec4(c.rgb / max(c.a, 1e-4), matteObj(uv));
   }
@@ -739,7 +782,7 @@ vec4 sampleAB(vec2 uv){
   // Slot B が透過シェーダ(実アルファ<1)なら、チェック不要で自動的に A の上へ合成する。
   // 不透明な内容(cb.a==1)は下の通常クロスフェード/ブレンドへ。背景が透明な箇所は
   // 単独表示ならキャンバスの黒で黒く見え(暫定的に黒)、B では下の A が透ける。
-  if(cb.a < 0.999){
+  if(cb.a < 0.999 || (uBOverB > 0.5 && uBlendMode != 0)){
     float la = clamp(cb.a, 0.0, 1.0) * uMix;
     both = vec4(mix(ca.rgb, cb.rgb, la), max(ca.a, la));
   } else if(uBlendMode == 0){
@@ -779,6 +822,7 @@ vec4 sampleAB(vec2 uv){
   if(uCandyMode == 2){
     abRes = vec4(texture(uCandyTex, fl_mirror(uv)).rgb, 1.0);
   }
+  if(uMatteDepth == 1 && uMatte == 3) abRes.a = matteObj(uv);   // 両スロットを深度で抜く: 合成した絵のまま、背景 (どちらの物体でもない所) を alpha 0 に
   return abRes;
 }
 
@@ -3144,74 +3188,77 @@ void main(){
   frag=vec4(mix(src,pixelOutline,a),1.0);
 }`);
 
-    // Flames owns its long ray-march program. Keeping the 90-step loop out of
+    // Passage owns its long ray-march program. Keeping the 90-step loop out of
     // compositeProg makes all lightweight Post FX available immediately.
-    this._linkDeferred('flamesProg', `#version 300 es
+    this._linkDeferred('passageProg', `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uAmount, uTime;
-float rvTT;
+uniform int uSteps;   // レイマーチの回数 (定数ループは ANGLE が展開して重くなるので uniform にする)
+float rvTT, rvTw;
+const float RV_W=1.2;   // 通路の半幅
 mat2 rvR2(float r){ return mat2(cos(r),sin(r),-sin(r),cos(r)); }
-float rvBox(vec3 p,vec3 b){ vec3 d=abs(p)-b; return length(max(d,0.0))+min(max(d.x,max(d.y,d.z)),0.0); }
-float rvMenger(vec3 p){
-  float d=rvBox(p,vec3(1.0));
-  float s=1.0;
-  for(int m=0;m<3;m++){
-    vec3 a=mod(p*s,2.0)-1.0;
-    s*=3.0;
-    vec3 r=abs(1.0-3.0*abs(a));
-    float c=(min(max(r.x,r.y),min(max(r.y,r.z),max(r.z,r.x)))-1.0)/s;
-    d=max(d,c);
-  }
-  return d;
+// ねじれ: 奥 (z) へ進むほど通路の断面が回る。量に合わせて強くなる
+float rvAng(float z){ return z*rvTw + rvTT*0.15; }
+vec3 rvTwist(vec3 p){ p.xy*=rvR2(rvAng(p.z)); return p; }
+// 四角い通路の内側
+float rvMap(vec3 p){
+  vec3 q=rvTwist(p);
+  return (RV_W-max(abs(q.x),abs(q.y)))*0.8;   // ねじれで距離場が歪む分を詰める
 }
-vec2 rvMap(vec3 p){
-  p.xy*=rvR2(rvTT*0.05);
-  return vec2(rvMenger(mod(p,2.0)-1.0),3.0);
-}
-vec2 rvTrace(vec3 ro,vec3 rd,float shape){
-  vec2 h,t=vec2(0.1);
-  for(int i=0;i<90;i++){
-    vec2 sc=rvMap(ro+rd*t.x);
-    h=mix(vec2(12.0-t.x,5.0),sc,shape);
-    if(h.x<0.0006||t.x>18.0) break;
-    t.x+=h.x*0.85; t.y=h.y;
+// shape 0 = 画面と同じ平面 (元の映像) → 1 = ねじれた通路
+float rvTrace(vec3 ro,vec3 rd,float shape){
+  float t=0.1;
+  for(int i=0;i<uSteps;i++){
+    float d=mix(12.0-t,rvMap(ro+rd*t),shape);
+    if(d<0.0006*t||t>40.0) break;
+    t+=d;
   }
-  if(t.x>18.0) t.x=0.0;
-  return t;
+  return t>40.0?0.0:t;
 }
 vec3 rvNormal(vec3 p){
-  vec2 e=vec2(0.001,0.0);
+  vec2 e=vec2(0.002,0.0);
   return normalize(vec3(
-    rvMap(p+e.xyy).x-rvMap(p-e.xyy).x,
-    rvMap(p+e.yxy).x-rvMap(p-e.yxy).x,
-    rvMap(p+e.yyx).x-rvMap(p-e.yyx).x));
+    rvMap(p+e.xyy)-rvMap(p-e.xyy),
+    rvMap(p+e.yxy)-rvMap(p-e.yxy),
+    rvMap(p+e.yyx)-rvMap(p-e.yyx)));
 }
+float rvMir(float x){ return 1.0-abs(mod(x,2.0)-1.0); }   // 鏡映しで継ぎ目なく敷く
 float rvRise(float x){ x=pow(clamp(x,0.0,1.0),1.25); return x*x*(3.0-2.0*x); }
 void main(){
   vec3 baseCol=texture(uTex,vUv).rgb;
   if(uAmount<=0.00001){ frag=vec4(baseCol,1.0); return; }
-  float shape=rvRise(uAmount);
+  float shape=rvRise(min(1.0,uAmount*1.6));   // 0.6 で通路が出来上がる (中間の値でも一目で分かる)
   vec2 uv=vUv-0.5;
-  uv/=vec2(uRes.y/uRes.x,1.0);
+  float asp=uRes.x/uRes.y;
+  uv.x*=asp;
   rvTT=mod(uTime,1000.0);
-  vec3 ro=vec3(0.6*sin(rvTT*0.15),0.5*cos(rvTT*0.12),rvTT*0.9);
-  vec3 ta=ro+vec3(0.15*sin(rvTT*0.1),0.1*cos(rvTT*0.11),1.0);
+  rvTw=shape*(0.08+0.30*uAmount);   // 0.6 で通路が出来上がり、その先はねじれが強くなる
+  vec3 ro=vec3(0.3*sin(rvTT*0.21),0.25*cos(rvTT*0.17),rvTT*1.2);
+  vec3 ta=ro+vec3(0.25*sin(rvTT*0.13),0.2*cos(rvTT*0.11),1.0);
   vec3 cw=normalize(ta-ro);
   vec3 cu=normalize(cross(cw,vec3(0.0,1.0,0.0)));
   vec3 cv=cross(cu,cw);
-  vec3 rd=normalize(mat3(cu,cv,cw)*vec3(uv,1.3));
-  vec3 col=vec3(0.0);
-  float t=rvTrace(ro,rd,shape).x;
+  vec3 rd=normalize(mat3(cu,cv,cw)*vec3(uv,1.0));
+  vec3 col=baseCol*0.2;
+  float t=rvTrace(ro,rd,shape);
   if(t>0.0){
-    vec3 nrm=rvNormal(ro+rd*t);
-    float depth=clamp(1.2-t*0.10,0.18,1.0);
-    float diff=0.45+0.55*clamp(dot(nrm,normalize(vec3(0.5,0.7,0.45))),0.0,1.0);
-    col=baseCol*mix(1.0,depth*diff*1.35,shape);
+    vec3 p=ro+rd*t;
+    vec3 nrm=rvNormal(p);
+    vec3 q=rvTwist(p);
+    // 壁ごとに映像を 1 枚: 横 = 壁の幅、縦 = 奥行き (映像の縦横比のまま)。映像は壁の上を手前へ川のように流れる
+    float along=abs(q.x)>abs(q.y)?q.y*sign(q.x):-q.x*sign(q.y);
+    vec2 tuv=vec2(rvMir(along/(2.0*RV_W)+0.5), rvMir((q.z-rvTT*(0.5+0.6*uAmount))/(2.0*RV_W)*asp*0.5));
+    vec3 alb=texture(uTex,tuv).rgb;
+    vec3 L=normalize(cw*0.6+vec3(0.3,0.5,0.0));
+    float diff=clamp(dot(nrm,-L)*0.5+0.5,0.0,1.0);
+    float spec=pow(clamp(dot(reflect(rd,nrm),-rd),0.0,1.0),30.0);
+    vec3 s=alb*(0.45+0.75*diff)+vec3(spec*0.15);
+    col=mix(baseCol*0.2,s,exp(-t*0.06));
   }
-  frag=vec4(col,1.0);
+  frag=vec4(mix(baseCol,col,shape),1.0);
 }`);
 
     // PiP 用: Post FX 適用付き転写プログラム (Slot tex → 小 RGBA8 FBO)
@@ -4484,6 +4531,7 @@ void main(){
     gl.bindTexture(gl.TEXTURE_2D, o.tex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, w, h, 0, gl.RGBA, gl.HALF_FLOAT, null);
     o.w=w; o.h=h;
+    o.depthValid = false;   // 色の領域を作り直したので、深度も次の描画まで無効
   },
 
   // プリセット単位の内部描画倍率。最終合成は常に FIXED_W x FIXED_H なので画角・表示サイズは不変。
@@ -4706,7 +4754,7 @@ void main(){
   // 折り (Needle 変位 + 蛇腹 + 折り線 + ひねり) の GLSL。統合パスの頂点シェーダと、3D のまま掛ける頂点フック (fx3dApply) が共有する。
   // pre='u' は統合パスの uniform 名そのまま。他は 'uF3' に付け替える。
   _foldPaperGLSL(pre){
-    const src = `uniform float uNeedleAmt, uNt, uWarp2, uWt2, uTwist, uFitScale, uNeedleScat;
+    const src = `uniform float uNeedleAmt, uNt, uWarp2, uWt2, uTwist, uFitScale, uNeedleScat, uNeedleLen, uNeedleThick, uNeedleSides;
 uniform float uBeat, uBeatMode, uHit;
 uniform vec2 uRollDir;
 uniform float uRollOff, uRollR, uRollShift, uRollK;
@@ -4746,7 +4794,7 @@ float f3NeedleH(vec2 q, float t){
       c += drift;
       // 底は 3〜5 角形 (向きも種ごと) = 円錐でなく面のまっすぐな角錐
       vec2 dq = q - c;
-      float ns = 3.0 + floor(f3h1(cell + 23.9) * 2.999);
+      float ns = 3.0 + floor(f3h1(cell + 23.9) * uNeedleSides);
       float rot0 = f3h1(cell + 41.3) * 6.2831;
       float d = 0.0;
       for(int k = 0; k < 5; k++){
@@ -4778,7 +4826,7 @@ float f3NeedleH(vec2 q, float t){
 vec3 f3Paper(vec2 q, float lift){
   // Needle 変位を折り前に足す。ヒット増幅は単体 Needle の depth 係数と同じ (beat 0.46 / drone 0.10)
   float nHitBoost = 1.0 + mix(0.10, 0.46, uBeatMode) * pow(clamp(uHit, 0.0, 1.0), 0.65);
-  float nz = uNeedleAmt > 0.001 ? f3NeedleH(q, uNt) * uNeedleAmt * nHitBoost : 0.0;
+  float nz = uNeedleAmt > 0.001 ? f3NeedleH(q / uNeedleThick, uNt) * uNeedleAmt * nHitBoost * uNeedleLen : 0.0;   // 太さ = 針の座標を拡大縮小 (高さは座標に比例して変わるので、長さの倍率だけが効く)
   // 蛇腹プリーツ (三角波): Kaiser 固有の折り前変形 (単体 Kaiser と同じ)
   float jab = uWarp2 * 0.30 * (abs(fract(q.x * 1.5 + uWt2 * 0.055) - 0.5) * 4.0 - 1.0);
   vec3 P = vec3(q, nz + jab + lift);
@@ -4824,7 +4872,7 @@ vec3 f3Paper(vec2 q, float lift){
   return P;
 }
 `;
-    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|NeedleScat|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|RollDir|RollOff|RollR|RollShift|RollK|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
+    return pre === 'u' ? src : src.replace(/\bu(NeedleAmt|NeedleScat|NeedleLen|NeedleThick|NeedleSides|Nt|Warp2|Wt2|Twist|FitScale|Beat|BeatMode|Hit|RollDir|RollOff|RollR|RollShift|RollK|Center|FoldN|CreaseP|CreaseN|Theta|Eps|AxisO|AxisD)\b/g, pre + '$1');
   },
   _compile(type, src){
     const gl = this.gl;
@@ -4930,11 +4978,15 @@ vec3 f3Paper(vec2 q, float lift){
     if(slot.prog) gl.deleteProgram(slot.prog);
     slot.prog = prog;
     slot.src = src;
+    slot._wdSrc = src;
+    slot.writesDepth = /\bvjDepth\s*=/.test(src || '');   // 描画前の _matteFrame も新シェーダの深度判定を使う
     slot.cosGradInShader = (src.match(/uCosGrad/g) || []).length > 1;
     slot.beatJump = !/_setBgTime|getBeat|iBeat\b|iBeatPhase|iBeatMode/.test(src);
     slot.gradMask = /@gradmask/.test(src);
     slot.bKey = /@bkey/.test(src);
+    { const m = /@blendover\b[ \t]*(\w+)?/.exec(src); slot.blendOver = m ? (m[1] || true) : false; }   // 実 alpha の画素をブレンドモードに関わらず A の上へ合成 (リング等)。param 名つきは、その値が 0 のときだけ有効 (Paper を敷いたらブレンドを効かせる)
     slot.matte = (/@matte\s+(\w+)/.exec(src) || [])[1] || null;   // 3D FX 中に紙を透過で出せるシェーダの、紙の色の param 名
+    slot.matteAlpha = /@mattealpha\b/.test(src);   // 3D Target = Object で深度ではなく透過で抜く (_matteFrame)
     { const m = /@mattepal\s+(\w+)\s+(\S+)/.exec(src);   // 組み込みパレットを持つシェーダ: パレット番号の param 名と、番号 1〜 の紙の色 (0 は @matte の色 param)
       slot.mattePal = m ? { name:m[1], papers:m[2].split(',').map(h=>[1, 3, 5].map(i=>parseInt(h.slice(i, i + 2), 16) / 255)) } : null; }
     slot.params = pp.params;
@@ -4969,6 +5021,13 @@ vec3 f3Paper(vec2 q, float lift){
         gl.bindFramebuffer(gl.FRAMEBUFFER, fsrc.fbo);
         gl.viewport(0, 0, 1, 1);
         gl.useProgram(prog);
+        // 試し描きでも uniform を 0 のまま回さない (0 だと終わらないループを持つシェーダがある: S105 の uLayerRatio など)
+        for(const p of slot.params){
+          const loc = slot.customLocs[p.name]; if(!loc) continue;
+          if(p.type==='color') gl.uniform3f(loc, p.value[0], p.value[1], p.value[2]);
+          else gl.uniform1f(loc, App.deadParam ? App.deadParam(p.value) : p.value);
+        }
+        if(slot.uniforms.iResolution) gl.uniform3f(slot.uniforms.iResolution, 1, 1, 1);
         gl.bindVertexArray(this.quadVAO);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.bindVertexArray(null);
@@ -5217,6 +5276,12 @@ vec3 f3Paper(vec2 q, float lift){
     aratanagara: ()=> (typeof Aratanagara !== 'undefined') ? Aratanagara : null,
     chrometype: ()=> (typeof ChromeType !== 'undefined') ? ChromeType : null,
     tower4149: ()=> (typeof Tower4149 !== 'undefined') ? Tower4149 : null,
+    rhizome: ()=> (typeof Rhizome !== 'undefined') ? Rhizome : null,
+    rzfan: ()=> (typeof RhizomeFan !== 'undefined') ? RhizomeFan : null,
+    rzpacks: ()=> (typeof RhizomePacks !== 'undefined') ? RhizomePacks : null,
+    rzstack: ()=> (typeof RhizomeStack !== 'undefined') ? RhizomeStack : null,
+    rztube: ()=> (typeof RhizomeTube !== 'undefined') ? RhizomeTube : null,
+    fude: ()=> (typeof Fude !== 'undefined') ? Fude : null,
   },
   // 3D Overscan (Code): 描いているスロットに余白があれば、投影行列 (列優先 4×4) の x / y を画面分 / 全体 に縮めて画角を広げる。
   //   余白の中央 (画面分) は余白なしのときと同じ絵になり、その外に画面の外のジオメトリが描かれる。余白なし・スロット以外の描画では m をそのまま返す。
@@ -5346,6 +5411,13 @@ void main(){
     // 数十秒〜数分かかることがあり、待っている間ステージが黒くなるのを防ぐ)。完成したら自動で切替。
     const P = this.compositeProg || this.compositeFallbackProg;
     if(!P) return;   // 両方とも未完成 (ローディング画面が出ている)
+    // _matte はスロット描画前の判定。切替 / Code の深度停止で失われた深度を、描画後まで持ち越さない。
+    const M = this._matte;
+    const matteD = M && M.depth ? this._slotDepthFbo(M.slot === 'AB' ? 'A' : M.slot) : null;
+    const matteD2 = M && M.depth && M.slot === 'AB' ? this._slotDepthFbo('B') : null;
+    if(M && M.depth && (!matteD || (M.slot === 'AB' && !matteD2))){
+      this._matte = M.only ? Object.assign({}, M, { depth:false }) : null;
+    }
     // 中間 FBO (_finalFBO) に composite し、Post FX を順に掛けてから最後に画面へ blit
     this._ensureFinalFBO();
     gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
@@ -5365,7 +5437,7 @@ void main(){
     gl.uniform1f(U('uShowA'),     _showA);
     gl.uniform1f(U('uShowB'),     _showB);
     { const bg = App.bgAColor(); gl.uniform3f(U('uBgColA'), bg[0], bg[1], bg[2]); }   // Slot A の背景色 (本命/フォールバック共通)
-    gl.uniform1i(U('uMatte'), (this._matte && P === this.compositeProg) ? (this._matte.slot === 'A' ? 1 : 2) : 0);
+    gl.uniform1i(U('uMatte'), (this._matte && P === this.compositeProg) ? ({ A:1, B:2, AB:3 })[this._matte.slot] : 0);
     // mode エンジン(FBO 独立描画)には user zoom/pan を合成段でテクスチャ適用 (shader は iZoom 済のため 1.0)
     { const modeSet = GL._modeZoomSet || (GL._modeZoomSet = new Set(App.modeStateKinds || []));
       const zp = (key)=>{
@@ -5440,6 +5512,7 @@ void main(){
     gl.uniform1f(U('uGradMix'),   (this.slots.A.gradMask || this.slots.B.gradMask) ? (p.gradMix || 0) : 0);
     gl.uniform1f(U('uCosGrad'),   0.0);                 // Cos Grad は廃止(composite では常に 0)
     gl.uniform1i(U('uCosPalette'), p.cosPalette || 0);
+    gl.uniform1f(U('uBOverB'), (()=>{ const bo = this.slots.B.blendOver; if(!bo) return 0.0; if(bo === true) return 1.0; const pp = (this.slots.B.params || []).find(q => q.name === bo); return (pp && pp.value > 0) ? 0.0 : 1.0; })());   // @blendover シェーダ: リング等が乗算・暗い色などで消えない
     gl.uniform1f(U('uBKeyBlack'), this.slots.B.bKey ? 1.0 : 0.0);   // @bkey シェーダ(保存プリセットの焼き込み src 互換)のみ黒キー。novel/ribbon は実 alpha に移行
     gl.uniform1f(U('uBKeyWhite'), this.slots.B.bKeyWhite ? 1.0 : 0.0);   // ribbon 等を Slot B で白キー透過
     gl.uniform1f(U('uBlm'),       p.blm);
@@ -5458,7 +5531,7 @@ void main(){
     gl.uniform1f(U('uGain'),      0);
     gl.uniform1f(U('uVoxel'),     0);
     gl.uniform1f(U('uRain'),      _safe ? 0 : (p.rain || 0));
-    // Flames Post FX
+    // Passage Post FX
     gl.uniform1f(U('uSketch'),    0);   // 単パス近似は無効(多パス SketchFX エンジンで処理)
     gl.uniform1f(U('uRings'),     0);
     gl.uniform1f(U('uSpecWarp'),  0);
@@ -5555,13 +5628,19 @@ void main(){
     } else if(this._matte && (this._matte.depth || this._matte.only) && P === this.compositeProg){
       // 深度で抜く: まず抜かない絵を _matteFlat へ (3D 段の最後に背景として敷く)、次に背景を alpha 0 にした絵を _finalFBO へ
       // 3D Slot = A / B: もう一方のスロットだけの絵を _matteOther へ (選んだスロットの物体の後ろに平らなまま敷く)、選んだスロットだけを _finalFBO へ
-      const M = this._matte, mk = this.slots[M.slot], mt = mk.fbos[mk.fbIdx ^ 1];
-      gl.uniform1i(U('uMatteSlot'), M.slot === 'A' ? 1 : 2);
+      const M = this._matte, mi = ({ A:1, B:2, AB:3 })[M.slot];
+      gl.uniform1i(U('uMatteSlot'), mi);
       gl.uniform1i(U('uMatte'), 0);
       if(M.depth){
         const MF = this._matteFlatTarget(this._finalFBO.w, this._finalFBO.h);
-        gl.activeTexture(gl.TEXTURE0 + 13); gl.bindTexture(gl.TEXTURE_2D, mt.dtex);
+        gl.activeTexture(gl.TEXTURE0 + 13); gl.bindTexture(gl.TEXTURE_2D, matteD.dtex);
         gl.uniform1i(U('uMatteD'), 13);
+        if(mi === 3){
+          gl.activeTexture(gl.TEXTURE0 + 14); gl.bindTexture(gl.TEXTURE_2D, matteD2.dtex);
+          const w = this._abDepthW();
+          gl.uniform3f(U('uMatteW'), w[0], w[1], w[2] ? 1 : 0);
+        }
+        gl.uniform1i(U('uMatteD2'), 14);
         gl.activeTexture(gl.TEXTURE0);
         gl.uniform1i(U('uMatteDepth'), 2);
         gl.bindFramebuffer(gl.FRAMEBUFFER, MF.fbo);
@@ -5576,13 +5655,14 @@ void main(){
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.uniform1f(sl, sv);
       }
-      gl.uniform1i(U('uMatte'), M.slot === 'A' ? 1 : 2);
+      gl.uniform1i(U('uMatte'), mi);
       gl.uniform1i(U('uMatteDepth'), M.depth ? 1 : (M.hidden ? 4 : 3));
       gl.bindFramebuffer(gl.FRAMEBUFFER, this._finalFBO.fbo);
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       this._ovDrawComposite(P);
       gl.uniform1i(U('uMatteDepth'), 0);
-      gl.activeTexture(gl.TEXTURE0 + 13); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
+      gl.activeTexture(gl.TEXTURE0 + 13); gl.bindTexture(gl.TEXTURE_2D, null);
+      gl.activeTexture(gl.TEXTURE0 + 14); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
     } else {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
       if(P === this.compositeProg) this._ovDrawComposite(P);
@@ -5595,13 +5675,13 @@ void main(){
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
     //   2.5) IMAGON (Overlay の筆跡)
     //   3.5) 3D FX: Photo → Slicer → Layers → Diorama → Points → Box → Blinds → Gravity → Globe
-    //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Flames → Uzumaki → (Gravity) → Needle (最後)
+    //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Passage → Uzumaki → (Gravity) → Needle (最後)
     //      Gravity は Origami / Kaiser / Roll / Uzumaki のどれかと一緒のときだけ、3D FX の段でなく統合パスで Uzumaki のあとに掛かる
     //   4.5) Pattern (Slice / Ring Slice / Mondrian / Rings / Voxel / Tunnel)
     //   5) Glitch 段: Slit-scan → Barcode → Datamosh
     //   6) Lens 段: Mirror → Pixelate → Chroma Ab
     //   7) Twist → FB Add/Multiply
-    //   8) FXAA → Unsharp → Sharpen → Crisp → Shock → Outline → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
+    //   8) FXAA → Unsharp → Sharpen → Crisp → Shock → Outline → Hatching → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
     //   9.5) Audio: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter → RGB → Shards → Waveform → Pixelsort
     //  10) Color: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
@@ -5643,7 +5723,7 @@ void main(){
       this._applyKaiserOldPost(_pF, _safe);  // 表示: Kaiser
     }
     if(_blend) this._fx3dBlendOver(this._fx3dFrame.a);
-    this._applyFlamesPost(p, _safe);
+    this._applyPassagePost(p, _safe);
     this._applyUzumakiPost(p, _safe);   // 渦巻き展開 (折り紙系と同じ幾何変形枠)
     if(this._matte) this._fx3dBgNeed = true;   // 紙抜き中は、どの段も描かなかったフレームでも紙を敷く (alpha 0 の紙を画面へ出さない)
     this._fx3dBgUnder();                // 折り系 / Uzumaki が抜いた背景 (alpha < 1) に 3D BG を敷く
@@ -5666,6 +5746,7 @@ void main(){
     this._applyUnsharpPost(p, _safe);
     this._applySharpPosts(p, _safe);   // Sharpen (CAS) → Crisp (ラプラシアン) → Shock (ショックフィルタ)
     this._applyOutlinePost(p, _safe);
+    this._applyHatchPost(p, _safe);      // Hatching (形に沿うストローク + 紙質感)。Outline のあと、Ink Bleed の前
     this._applyInkBleedPost(p, _safe);
     this._applyDitherPost(p, _safe);
     this._applyRingBlurPost(p, _safe);    // Ring Slice と同じ同心円の帯ごとの回転ブラー
@@ -6634,6 +6715,127 @@ void main(){
     });
   },
 
+  // Hatching (Ink Bleed 欄の先頭、Outline のあと・Ink Bleed の前)。濃淡をデッサンのストロークで描く。
+  //   本体 = 形に沿うストローク: ぼかした明るさの等高線を 1 層目の線にする (輪郭・面の向きをなぞる)。平らな所と、輪郭が急で
+  //          線が詰まりすぎる所は固定角度 (Angle) の線に任せる。Flow で混ぜる割合。暗い所ほど層 (直交 → 斜め 2 方向) が増える。
+  //          Length = 明るさをぼかす半径 = 線の長さ・なめらかさ
+  //   紙質感 (Paper Texture、単独で量を調整可): 紙の目・筆圧のむら・線の途切れ。Tool = Pencil (黒鉛のグレー、柔らかい縁) / Pen (硬い黒)
+  _applyHatchPost(p, safe){
+    const dz = (v)=>App.deadParam ? App.deadParam(+v || 0) : (+v || 0);
+    const amt = Math.max(0, Math.min(1, dz(p && p.hatch)));
+    if(safe || amt <= 0.001 || !this._finalFBO) return;
+    if(!this._hatchQueued){
+      this._hatchQueued = true;
+      this._linkDeferred('hatchProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uAmount;
+uniform float uDensity;
+uniform float uFlow;
+uniform float uLength;
+uniform float uLayers;
+uniform float uAngle;
+uniform float uWobble;
+uniform float uMix;
+uniform vec3 uInk;
+uniform vec3 uPaper;
+uniform float uTexAmt;
+uniform float uTool;
+uniform float uGrain;
+uniform float uBreak;
+float L(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+float lumAt(vec2 q){ return L(texture(uTex, clamp(q / uRes, vec2(0.0), vec2(1.0))).rgb); }
+float h21(vec2 q){ return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+float vn(vec2 q){ vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
+  return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0)), f.x), f.y); }
+void main(){
+  vec2 px = vUv * uRes;
+  vec3 src = texture(uTex, vUv).rgb;
+  // 形に沿う線 = ぼかした明るさの等高線。等高線は輪郭・面の向きをなぞるので、位置が飛ばずに曲がる
+  float R = mix(2.0, 18.0, uLength);   // ぼかす半径 = 線の長さ・なめらかさ
+  float lb = 0.0;
+  int N = int(min(9.0, 9.0 + uRes.x * 0.0));
+  for(int i = 0; i < N; i++){
+    vec2 dir = vec2(cos(float(i) * 0.7853982), sin(float(i) * 0.7853982));
+    lb += lumAt(px + ((i == 0) ? vec2(0.0) : R * dir));
+  }
+  lb /= float(N);
+  float lum = L(src);
+  float spacing = mix(14.0, 3.0, uDensity);
+  float baseA = uAngle * 3.1415927;
+  int layers = int(clamp(uLayers + 0.5, 1.0, 4.0));
+  bool pen = uTool > 0.5;
+  float wob = (vn(px * 0.015) - 0.5) * uWobble;
+  // 等高線の間隔を、画面上で spacing px 前後になるように明るさを伸ばす (K)。変化が急すぎる所・平らな所は固定角度に任せる
+  //   明るさを一定の倍率で伸ばした等高線。平らな所 (間隔が広すぎる所) だけ固定角度の線に任せる
+  float K = 1.0 / max(spacing * 0.0025, 1e-3);
+  float ph = lb * K + wob * 1.5;
+  float fw = max(fwidth(ph), 1e-5);
+  float pitch = 1.0 / fw;   // 等高線の画面上の間隔 (px)
+  float flowOK = uFlow * smoothstep(spacing * 8.0, spacing * 3.0, pitch);
+  float crowd = smoothstep(spacing * 0.5, spacing * 0.2, pitch);   // 線が詰まりすぎる所 (急な輪郭) は線をやめて面にする
+  float ink = 0.0;
+  for(int k = 0; k < 4; k++){
+    if(k >= layers) break;
+    float thr = 1.0 - (float(k) + 1.0) / (float(layers) + 1.0);
+    float dark = smoothstep(thr + 0.08, thr - 0.08, lum);
+    if(dark <= 0.0) continue;
+    float wid = mix(0.5, 1.5, 1.0 - lum) * (pen ? 0.9 : 1.15);
+    float aa = pen ? 0.5 : 1.1;
+    // 固定角度の線 (平らな所と 2 層目以降)
+    float off = (k == 0) ? 0.0 : (k == 1) ? 1.5707963 : (k == 2) ? 0.7853982 : -0.7853982;
+    vec2 t = vec2(cos(baseA + off), sin(baseA + off)), n = vec2(-t.y, t.x);
+    float sv = dot(px, n) / spacing + (vn(px * 0.015 + float(k) * 7.3) - 0.5) * uWobble * 1.5;
+    float lineFix = 1.0 - smoothstep(wid * 0.5, wid * 0.5 + aa, abs(fract(sv) - 0.5) * spacing);
+    float line = lineFix;
+    float along = dot(px, t), row = floor(sv);
+    if(k == 0 && flowOK > 0.001){   // 1 層目は形に沿う等高線
+      float phk = ph;
+      float lineFlow = mix(1.0 - smoothstep(wid * 0.5, wid * 0.5 + aa, abs(fract(phk) - 0.5) / fw), 0.45, crowd);
+      line = mix(lineFix, lineFlow, flowOK);
+      row = mix(row, floor(phk), flowOK);
+      along = mix(along, dot(px, vec2(dFdx(ph), dFdy(ph)).yx * vec2(-1.0, 1.0) / fw), flowOK);
+    }
+    if(uTexAmt > 0.001){
+      float grain = 0.55 * vn(px * 0.9) + 0.45 * vn(px * 2.7 + 3.1);
+      float g = mix(1.0, smoothstep(0.2, 0.8, grain + 0.25), uGrain * (pen ? 0.35 : 1.0));
+      float press = mix(1.0, 0.45 + 0.55 * vn(vec2(along * 0.012, row * 1.7 + float(k) * 9.1)), pen ? 0.4 : 0.8);
+      float brk = smoothstep(uBreak * 0.75 - 0.05, uBreak * 0.75 + 0.05, vn(vec2(along * 0.04, row * 3.1 + float(k) * 5.0)));
+      line *= mix(1.0, g * press * mix(1.0, brk, step(0.001, uBreak)), uTexAmt);
+    }
+    ink = max(ink, line * dark);
+  }
+  vec3 inkCol = pen ? uInk : mix(uInk, vec3(0.42, 0.43, 0.45), 0.35 * uTexAmt);   // 鉛筆は黒鉛のグレー寄り
+  vec3 paper = mix(uPaper, src, uMix);
+  if(uTexAmt > 0.001) paper *= 1.0 - uTexAmt * uGrain * 0.06 * (1.0 - vn(px * 1.3));   // 紙の目をうっすら
+  vec3 col = mix(paper, inkCol, ink);
+  frag = vec4(mix(src, col, uAmount), 1.0);
+}`);
+    }
+    if(!this.hatchProg) return;   // 非同期コンパイル待ち
+    const gl = this.gl;
+    const hex = (h, d)=>{ const v = parseInt(String(h || d).slice(1), 16); return [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255]; };
+    const num = (k, d)=> (p[k] != null && Number.isFinite(+p[k])) ? +p[k] : d;
+    this._runFinalPost(this.hatchProg, '_hatchTmp', (P)=>{
+      const U = (n)=>gl.getUniformLocation(P, n);
+      gl.uniform1f(U('uAmount'), amt);
+      gl.uniform1f(U('uDensity'), num('hatchDensity', 0.5));
+      gl.uniform1f(U('uFlow'), num('hatchFlow', 0.8));
+      gl.uniform1f(U('uLength'), num('hatchLength', 0.5));
+      gl.uniform1f(U('uLayers'), num('hatchLayers', 3));
+      gl.uniform1f(U('uAngle'), num('hatchAngle', 0.25));
+      gl.uniform1f(U('uWobble'), num('hatchWobble', 0.3));
+      gl.uniform1f(U('uMix'), num('hatchMix', 0));
+      gl.uniform3fv(U('uInk'), hex(p.hatchInk, '#1e1e1e'));
+      gl.uniform3fv(U('uPaper'), hex(p.hatchPaper, '#f2eee4'));
+      gl.uniform1f(U('uTexAmt'), Math.max(0, Math.min(1, dz(p.hatchTex))));
+      gl.uniform1f(U('uTool'), (p.hatchTool | 0) ? 1 : 0);
+      gl.uniform1f(U('uGrain'), num('hatchGrain', 0.5));
+      gl.uniform1f(U('uBreak'), num('hatchBreak', 0.3));
+    });
+  },
   _applyInkBleedPost(p, safe){
     const amount = safe ? 0 : p.inkBleed || 0;
     if(amount <= 0.001 || !this._finalFBO || !this.inkBleedMaskProg ||
@@ -7142,11 +7344,12 @@ ${body}
     gl.bindFramebuffer(gl.FRAMEBUFFER,null);
   },
 
-  _applyFlamesPost(p, safe){
+  _applyPassagePost(p, safe){
     const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.river) || 0));
-    if(amount <= 0.001 || !this.flamesProg) return;
-    this._runFinalPost(this.flamesProg, '_flamesTmp', (P)=>{
+    if(amount <= 0.001 || !this.passageProg) return;
+    this._runFinalPost(this.passageProg, '_passageTmp', (P)=>{
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
+      this.gl.uniform1i(this.gl.getUniformLocation(P, 'uSteps'), 90);
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
     });
   },
@@ -7291,7 +7494,7 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     const spikeF = spike ? { a: aN * onN, beat: App.visualBeat ? App.visualBeat() : BPM.beatCount(), bm: App.beatMode === 'beat' ? 1 : 0,
       hit: (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0,
       t: (this.postClock != null ? this.postClock : this.clock) * 0.5,
-      scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) } : null;
+      scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))), ...GL.needleMods(p) } : null;
     for(const name of Fx3d.ORDER){
       const e = Fx3d.effE[name] || 0;   // OFF にしたあとも要素が縮み終わるまでは直前の量で描く (Fx3d.popFrame)
       if(e <= 0.001 || !Fx3d.has(name) || skip(name)) continue;
@@ -7384,22 +7587,25 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     if(only && (aOn || bOn) && !(only === 'A' ? (aOn && !bOn) : (bOn && !aOn))){
       const so = this.slots[only], shown = only === 'A' ? aOn : bOn;
       if(shown && !so.ready) return null;
-      let dep = false;
-      if(shown && p.fx3dTarget !== 'all'){
-        const f = so.fbos && so.fbos[so.fbIdx ^ 1];
-        const depthOut = (!so.kind || so.kind === 'shader') ? !!so.writesDepth : (!!this.KIND_DEPTH[so.kind] && App.code3D !== false);
-        dep = !!(depthOut && f && f.depthValid && f.dtex);
-      }
+      const dep = !!(shown && p.fx3dTarget !== 'all' && this._slotDepthFbo(only));
       return { slot:only, only:true, hidden:!shown, depth:dep, paper:()=>[0, 0, 0] };
+    }
+    // 3D Slot = Both で両方映っている (3D Target = Object): 両方が深度を出すなら両方の物体を 3D 段へ (深度の合成は 3D Mix)。
+    //   片方だけが深度を出すなら、そのスロットの物体だけを 3D にし、もう一方は平らなまま後ろに残す (3D Slot = そのスロット と同じ)
+    if(aOn && bOn && p.fx3dTarget !== 'all'){
+      const dA = this.slots.A.ready && !!this._slotDepthFbo('A'), dB = this.slots.B.ready && !!this._slotDepthFbo('B');
+      if(dA && dB) return { slot:'AB', depth:true, paper:()=>[0, 0, 0] };
+      if(dA || dB) return { slot:dA ? 'A' : 'B', only:true, depth:true, paper:()=>[0, 0, 0] };
     }
     const key = (aOn && !bOn) ? 'A' : (bOn && !aOn) ? 'B' : null;
     const s = key && this.slots[key];
     if(!s || !s.ready) return null;
-    if(p.fx3dTarget !== 'all'){ // 3D Target = Object: 深度を出す Visual は深度 0 (背景) を抜いて物体だけを 3D FX に乗せ、背景は元の平らな絵のまま敷く
-      const f = s.fbos && s.fbos[s.fbIdx ^ 1];
-      const depthOut = (!s.kind || s.kind === 'shader') ? !!s.writesDepth : (!!this.KIND_DEPTH[s.kind] && App.code3D !== false);
-      if(depthOut && f && f.depthValid && f.dtex) return { slot:key, depth:true, paper:()=>[0, 0, 0] };
-    }
+    // 3D Target = Object: 深度を出す Visual は深度 0 (背景) を抜いて物体だけを 3D FX に乗せ、背景は元の平らな絵のまま敷く。
+    //   @mattealpha を書いた透過シェーダは深度で抜かない: 深度で抜くと背景に「元の平らな絵」を敷くため、
+    //   物体自身もそこに写り、3D FX で動かした物体の元の位置に影が残る (背景と物体が分かれない)。透過なら背景は紙の色だけ。
+    //   背景に霧や地を描くシェーダを透過で抜くとそれが消えるので、背景が紙の色だけのシェーダに限って指定する
+    const alphaMatte = (!s.kind || s.kind === 'shader') && !!s.matte && !!s.matteAlpha;
+    if(p.fx3dTarget !== 'all' && !alphaMatte && this._slotDepthFbo(key)) return { slot:key, depth:true, paper:()=>[0, 0, 0] };
     if(s.kind && s.kind !== 'shader'){
       // 3D で描くエンジン: そのフレームは背景を塗らずに描かせ (opaque:false)、エンジンの背景色を最後に敷く
       if(!this.MATTE_KINDS.includes(s.kind)) return null;
@@ -7413,6 +7619,20 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     const q = s.params.find(x=>x.type === 'color' && x.name === s.matte);
     const mp = s.mattePal, pp = mp && s.params.find(x=>x.name === mp.name);
     return q ? { slot:key, paper:()=>{ const i = pp ? Math.round(+pp.value || 0) : 0; return (i >= 1 && mp.papers[i - 1]) ? mp.papers[i - 1].slice() : q.value.slice(0, 3); } } : null;
+  },
+  // いま描き終えたフレームが深度を持っていればその FBO (なければ null)
+  _slotDepthFbo(k){
+    const s = this.slots[k], f = s && s.fbos && s.fbos[s.fbIdx ^ 1];
+    const depthOut = (!s.kind || s.kind === 'shader') ? !!s.writesDepth : (!!this.KIND_DEPTH[s.kind] && App.code3D !== false);
+    return (depthOut && f && f.depthValid && f.dtex) ? f : null;
+  },
+  // 両スロットの深度を合わせるときの重み [A, B, 手前優先か]。3D Mix = Front: 手前優先 (max)。クロスフェードの中ほどでは両方を全量で使い、端で片方へ消える /
+  //   Blend: ミックス比 (A × (1 - Crossfade) + B × Crossfade)。どちらも表示の割合 (slotVisibleAmount) を掛ける
+  _abDepthW(){
+    const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0));
+    const front = !(App.post && App.post.fx3dMix === 'blend');
+    const w = front ? [Math.min(1, 2 * (1 - cf)), Math.min(1, 2 * cf)] : [1 - cf, cf];
+    return [w[0] * App.slotVisibleAmount('A'), w[1] * App.slotVisibleAmount('B'), front];
   },
   // 紙抜きに対応した 3D エンジン (render が opaque:false で背景を透過にできるもの)。tower4149 は自前の 3D FX 経路を持つので入れない
   MATTE_KINDS: ['layer','photoplane','slicer','spacetype','shredder','transflock','windflock','liquidpeel','chrometype'],
@@ -7894,7 +8114,7 @@ void main(){
     const bgDark = Math.max(onF, 1 - hs);   // 吸い込み(hs→0)で背景を黒へ → ブラックホールに呑まれる
 
     // Roll: 巻く向きは drone でゆっくり回り、beat では拍ごとの乱数角へ Ease Out。巻き始めの線は紙の外 (R0) から、量に応じて内へ進む
-    return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, rollShift, rollK, rollM, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5, scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))) };
+    return { foldsU, aN, aO, aK, aR, rollDir, rollOff, rollR, rollShift, rollK, rollM, onF, twist, warp2, wt2, ctr, view, proj, eye, shade, bgDark, fitScale, beatMode, beatId, hit, D, nt: this._foldClock * 0.5, scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))), nm: this.needleMods(p) };
   },
   // 統合折りの uniform を prog へ送る。pre は _foldPaperGLSL の接頭辞 ('u' = 統合パス / 'uF3' = フック)
   // 深度 (dtex) をミップマップ付きの別テクスチャ (dmip) に写して均す。1 フレームに 1 回。
@@ -7948,11 +8168,10 @@ void main(){
     });
     gl.uniform4f(U('uDepthOs'), dos[0], dos[1], dos[2], dos[3]);
     gl.uniform2f(U('uDepthLod'), lod[0], lod[1]);
-    // 両方が深度を出すときだけクロスフェードで分ける (片方だけならその深度を全量)
-    if(rel[0] > 0 && rel[1] > 0){
-      const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0));
-      rel[0] *= 1 - cf; rel[1] *= cf;
-    }
+    // 両方が深度を出すときだけ 3D Mix で合わせる (片方だけならその深度を全量)
+    let rmax = 0;
+    if(rel[0] > 0 && rel[1] > 0){ const w = this._abDepthW(); rel[0] = w[0]; rel[1] = w[1]; rmax = w[2] ? 1 : 0; }
+    gl.uniform1f(U('uReliefMax'), rmax);
     { // Needle の針を物体にだけ生やす: 映っているスロットの重み (両方映るならクロスフェードで分ける) と、深度を出すか。3D Depth の量には依らない
       const vis = ['A', 'B'].map(k=>{ const s = this.slots[k]; return (s && s.kind !== 'none' && !(this._matte && this._matte.only && this._matte.slot !== k)) ? App.slotVisibleAmount(k) : 0; });
       if(vis[0] > 0 && vis[1] > 0){ const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0)); vis[0] *= 1 - cf; vis[1] *= cf; }
@@ -7975,6 +8194,9 @@ void main(){
     gl.uniform1f(U('Warp2'), F.warp2);
     gl.uniform1f(U('Wt2'), F.wt2);
     gl.uniform1f(U('NeedleAmt'), F.aN * F.onF);
+    gl.uniform1f(U('NeedleLen'), F.nm.len);
+    gl.uniform1f(U('NeedleThick'), F.nm.thick);
+    gl.uniform1f(U('NeedleSides'), F.nm.sides - 2.001);   // 底の多角形の辺数 = 3 + floor(乱数 × この値)
     gl.uniform1f(U('NeedleScat'), F.scat);          // needle 変位も onset で 0 から立ち上げ
     gl.uniform1f(U('Nt'), F.nt);   // 統合時は needle の動きを控えめに
     gl.uniform1f(U('Beat'), F.beatId);
@@ -8217,6 +8439,7 @@ vec4 fx3dApply(vec4 clip){
     return `uniform sampler2D uDepthA;
 uniform sampler2D uDepthB;
 uniform vec2 uRelief;
+uniform float uReliefMax;   // 1 = 両スロットの深度は手前優先 (max) / 0 = ミックス比で足す
 uniform vec2 uDepthLod;  // 深度を均す細かさ (xy = Slot A / B。0 = 等倍。_reliefBind の cell = メッシュの 1 マスに合わせる)
 uniform vec4 uDepthOs;   // 3D Overscan: 深度テクスチャの余白 (xy = Slot A / zw = Slot B。全体 / 画面分 - 1)
 // 画面座標 → 深度テクスチャ座標 (余白があれば画面の外も実際の深度。その外はミラー)
@@ -8234,13 +8457,23 @@ float vjDepthAt(sampler2D t, vec2 m, float L){
 }
 float vjRelief(vec2 uv){
   // 紙を広げたときの画面の外は、スロットに余白 (3D Overscan) があればその深度、なければミラー
-  return (uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, vjDepthUv(uv, uDepthOs.xy), uDepthLod.x) : 0.0) + (uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, vjDepthUv(uv, uDepthOs.zw), uDepthLod.y) : 0.0);
+  float a = uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, vjDepthUv(uv, uDepthOs.xy), uDepthLod.x) : 0.0;
+  float b = uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, vjDepthUv(uv, uDepthOs.zw), uDepthLod.y) : 0.0;
+  return uReliefMax > 0.5 ? max(a, b) : a + b;
 }
 float fx3dRelief(vec2 uv){ return (uRelief.x + uRelief.y > 0.0) ? vjRelief(uv) : 0.0; }
 `;
   },
+  // Needle の太さ・長さ・最大辺数 (App.post の needleThick / needleLen / needleSides) → 倍率。太さ・長さは 2^値 (0 = 従来、-1 = 半分、+1 = 2 倍)。
+  //   太さ = 面 (格子) の大きさの倍率。各エンジンの面分割は Fx3d.nvScale() を通す。高さは面の大きさに比例するので uSpLen = 長さ / 太さ で太さと独立にする。
+  //   sides = 最大辺数 (3 〜 5。5 = 従来)。面分割の経路は三角形と四角形だけなので 3 = 三角形のみ / 4 以上 = 従来、フック経路は底の多角形の最大辺数
+  needleMods(p){
+    const dz = k => { const v = p && p[k] != null ? +p[k] : 0; return App.deadParam(isFinite(v) ? v : 0); };
+    const sd = p && p.needleSides != null ? +p.needleSides : 5;
+    return { thick: Math.pow(2, Math.max(-1, Math.min(1, dz('needleThick')))), len: Math.pow(2, Math.max(-1, Math.min(1, dz('needleLen')))), sides: Math.max(3, Math.min(5, Math.round(isFinite(sd) ? sd : 5))) };
+  },
   needleCellGLSL(){
-    return `uniform float uSpA, uSpBeat, uSpBM, uSpHit, uSpT, uSpScat;
+    return `uniform float uSpA, uSpBeat, uSpBM, uSpHit, uSpT, uSpScat, uSpLen, uSpTri;
 float spH(vec2 p){ p = fract(p * vec2(123.34, 456.21)); p += dot(p, p + 45.32); return fract(p.x * p.y); }
 float spVn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(spH(i), spH(i + vec2(1.0, 0.0)), f.x), mix(spH(i + vec2(0.0, 1.0)), spH(i + vec2(1.0, 1.0)), f.x), f.y); }
@@ -8255,7 +8488,7 @@ float fx3dNeedleH(vec2 key, vec2 at){
   osc = mix(osc, bosc, uSpBM);
   osc = clamp(osc + 0.45, -1.0, 1.0);   // 大半は外へ伸び、2〜3 割が内へ刺さる (凹み)
   float patchF = mix(1.0, 0.2 + 1.6 * spVn(at + 7.1), uSpScat);   // Scatter: 高い針の群れと低い針の群れ
-  return 4.0 * amp * sign(osc) * sqrt(abs(osc)) * patchF * uSpA * (1.0 + mix(0.10, 0.46, uSpBM) * pow(clamp(uSpHit, 0.0, 1.0), 0.65));
+  return 4.0 * amp * sign(osc) * sqrt(abs(osc)) * patchF * uSpA * (1.0 + mix(0.10, 0.46, uSpBM) * pow(clamp(uSpHit, 0.0, 1.0), 0.65)) * uSpLen;
 }
 vec2 nvSeed(ivec2 c, vec2 salt){
   vec2 k = vec2(c) * vec2(1.37, 2.11) + salt;
@@ -8263,7 +8496,7 @@ vec2 nvSeed(ivec2 c, vec2 salt){
 }
 // 格子の四角形 q (左下の種の番号) の割り方: 0 = 四角形のまま (半分) / 1 = 対角線 左下-右上 / 2 = 右下-左上 で三角形 2 枚
 vec2 nvFaceA;   // fx3dNeedleVert が置く、いまの面の重心 (ab = 0..1)。面ごとに一定 = 面単位で針を出す / 出さないを決められる
-int nvSplit(ivec2 q, vec2 salt){ float h = spH(vec2(q) * vec2(2.71, 1.93) + salt + 17.3); return h < 0.5 ? 0 : (h < 0.75 ? 1 : 2); }
+int nvSplit(ivec2 q, vec2 salt){ float h = spH(vec2(q) * vec2(2.71, 1.93) + salt + 17.3); if(uSpTri > 0.5) return h < 0.5 ? 1 : 2; return h < 0.5 ? 0 : (h < 0.75 ? 1 : 2); }   // uSpTri = 1: 最大辺数 3 (四角形を作らず三角形だけ)
 void fx3dNeedleVert(int vid, vec2 grid, float sub, vec2 salt, out vec2 ab, out float w, out vec2 key){
   int n = int(sub), perFan = n * n * 3, gxs = int(grid.x) + 2;
   int qd = vid / (perFan * 6), r = vid - qd * perFan * 6;
@@ -8464,12 +8697,12 @@ vec3 fx3dFoldShade(vec3 c){
     if(aN > 0.001 && typeof Fx3d !== 'undefined'){
       // Needle: 紙を針の面で覆って描く (格子の高さ場は使わない = 針の縁が格子で崩れない)
       const nvM = (aO > 0.001 || aK > 0.001 || aR > 0.001 || uzOn) ? 1 : 1.8;   // Needle だけ = 折らないので紙を画面の外まで広げる
-      const nvGy = Math.round(14 * nvM), nvGx = Math.max(1, Math.round(14 * nvM * w / Math.max(1, h))), nvSub = uzOn ? 2 : 3;
+      const nvK = F.nm.thick, nvGy = Math.round(14 * nvM / nvK), nvGx = Math.max(1, Math.round(14 * nvM / nvK * w / Math.max(1, h))), nvSub = uzOn ? 2 : 3;
       gl.uniform1f(U('uNeedleAmt'), 0);
       gl.uniform2f(U('uNvGrid'), nvGx, nvGy);
       gl.uniform1f(U('uNvSub'), nvSub);
       gl.uniform1f(U('uNvMargin'), nvM);
-      Fx3d.spikeUniforms(gl, P, { a: F.aN * F.onF, beat: F.beatId, bm: F.beatMode ? 1 : 0, hit: F.hit, t: F.nt, scat: F.scat });
+      Fx3d.spikeUniforms(gl, P, { a: F.aN * F.onF, beat: F.beatId, bm: F.beatMode ? 1 : 0, hit: F.hit, t: F.nt, scat: F.scat, len: F.nm.len, thick: F.nm.thick, sides: F.nm.sides });
       gl.uniform1f(U('uMode'), 2.0);
       gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * this.needleCellVerts(nvGx, nvGy, nvSub));
     } else {
@@ -9891,6 +10124,7 @@ vec3 fx3dFoldShade(vec3 c){
     }
     if(slot.kind === 'layer'){
       if(!Layer.initialized) Layer.init(this.gl);
+      App.ensureLazyImages('layer');
       const target = slot.fbos[slot.fbIdx];
       Layer.render({
         fbo: target.fbo, w: target.w, h: target.h,
@@ -9909,6 +10143,7 @@ vec3 fx3dFoldShade(vec3 c){
     if(slot.kind === 'manga'){
       if(typeof Manga === 'undefined') return;
       if(!Manga.initialized) Manga.init(this.gl);
+      App.ensureLazyImages('manga');
       const target = slot.fbos[slot.fbIdx];
       Manga.update(slotScaledBeat, 1/60, target.w, target.h);
       // Slot B は背景を実 alpha で透過 (貼られた画像だけ残して下の Slot A を見せる)
@@ -9924,7 +10159,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(!TextDeform.initialized) TextDeform.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
       TextDeform.update(slotScaledBeat, 1/60, target.w, target.h);
-      TextDeform.render({ fbo: target.fbo, w: target.w, h: target.h });
+      TextDeform.render({ fbo: target.fbo, w: target.w, h: target.h, opaque: slotKey !== 'B' });   // Slot B は背景 (紙) を塗らず実 alpha で透過 (下の Slot A を見せる)
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -9981,6 +10216,7 @@ vec3 fx3dFoldShade(vec3 c){
     if(slot.kind === 'slicer'){
       if(typeof Slicer === 'undefined') return;
       if(!Slicer.initialized) Slicer.init(this.gl);
+      App.ensureLazyImages('slicer');
       Slicer.update(slotScaledBeat, 1/60);
       const target = slot.fbos[slot.fbIdx];
       Slicer.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, opaque: this._matteOpaque(slotKey) });
@@ -11191,7 +11427,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], sharpen:[0,1], crisp:[0,1], shock:[0,1], inkBleed:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], specWarp:[0,1], zoomPump:[0,1], shatter:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], fx3dDepth:[0,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelTrack:[0,1], novelLead:[0,1], novelSwitch:[0,1], novelCluster:[0,1], novelGrid:[0,1], novelVary:[0,1], novelSep:[0,1], novelTone:[0,1], novelShape:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], sharpen:[0,1], crisp:[0,1], shock:[0,1], inkBleed:[0,1], hatch:[0,1], hatchDensity:[0,1], hatchFlow:[0,1], hatchLength:[0,1], hatchLayers:[1,4], hatchWobble:[0,1], hatchMix:[0,1], hatchAngle:[0,1], hatchTex:[0,1], hatchGrain:[0,1], hatchBreak:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], specWarp:[0,1], zoomPump:[0,1], shatter:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], needleThick:[-1,1], needleLen:[-1,1], needleSides:[3,5], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], fx3dDepth:[0,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelTrack:[0,1], novelLead:[0,1], novelSwitch:[0,1], novelCluster:[0,1], novelGrid:[0,1], novelVary:[0,1], novelSep:[0,1], novelTone:[0,1], novelShape:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -11398,7 +11634,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Flames', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', hatch:'Hatching', hatchDensity:'Density', hatchFlow:'Flow', hatchLength:'Length', hatchLayers:'Layers', hatchWobble:'Wobble', hatchMix:'Color Mix', hatchAngle:'Angle', hatchTex:'Paper Texture', hatchTool:'Tool', hatchGrain:'Grain', hatchBreak:'Break', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', needleThick:'Needle Thick', needleLen:'Needle Length', needleSides:'Needle Sides', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dMix:'3D Mix', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Passage', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -13266,6 +13502,17 @@ const Diag = {
     const rec = { t:new Date().toISOString(), fps, memMB,
       a:(typeof GL!=='undefined' && GL.slots && GL.slots.A) ? GL.slots.A.kind : '?',
       b:(typeof GL!=='undefined' && GL.slots && GL.slots.B) ? GL.slots.B.kind : '?' };
+    // Type Deformer を出している間は、長く回すと積み上がる候補の数も残す (タブごと落ちたあとで持ち主を見分ける)
+    if(typeof TDCanvas !== 'undefined' && [rec.a, rec.b].includes('textdeform')){
+      try{
+        const mpx = cs => Math.round(cs.reduce((a, c) => a + (c ? c.width*c.height : 0), 0)/1e5)/10;
+        const insts = Array.from(TDCanvas._inst.values());
+        rec.td = { on: TDCanvas.active() ? 1 : 0, st: insts.length, stMpx: mpx(insts.flatMap(i => [i.canvas, i.full])), poolMpx: mpx(TDCanvas._pool),
+          ghMpx: mpx((TDCanvas._ghosts || []).map(g => g.c)), surfMpx: mpx((TDSurf.layers || []).map(L => L.canvas).concat(TDSurf._pool || [])),
+          bakeQ: TDCanvas._bakeQ.length, q: TDCanvas._pixelQ, fonts: document.fonts.size, nodes: document.getElementsByTagName('*').length,
+          glyph: TextDeform._glyphRasterCache ? Object.keys(TextDeform._glyphRasterCache).length : 0 };
+      }catch(e){}
+    }
     this.hb.push(rec);
     while(this.hb.length > 90) this.hb.shift();
     try{ localStorage.setItem(this.HB_KEY, JSON.stringify(this.hb)); }catch(e){}
@@ -13885,6 +14132,7 @@ const App = {
   //   (後者は元から音駆動なので二重に掛けない)。設定値・離散値も対象外。
   AUDIO_MOD_EXCLUDE: {
     inkBleedSpread:1, inkBleedFiber:1, inkBleedEdge:1, inkBleedNode:1, inkBleedSeed:1,
+    hatchDensity:1, hatchFlow:1, hatchLength:1, hatchLayers:1, hatchWobble:1, hatchMix:1, hatchAngle:1, hatchTool:1, hatchGrain:1, hatchBreak:1,
     inv:1, gamma:1, bri:1, con:1, sat:1, hue:1, hueRot:1, hueRotSpeed:1, hueAuto:1,
     palette:1, cosPalette:1, paletteAmt:1, gradMix:1, cosGrad:1, gradA:1, gradB:1, gradStops:1,
     gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, waveform:1,
@@ -13899,7 +14147,7 @@ const App = {
     novel:1, novelSize:1, novelThresh:1, novelColor:1, novelFlow:1, novelBg:1, novelTate:1, novelDepth:1, novelTrack:1, novelLead:1, novelSwitch:1, novelCluster:1, novelGrid:1, novelVary:1, novelSep:1, novelTone:1, novelShape:1,
     // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
     fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dLayerEdge:1, fx3dScale:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleScatter:1, fx3dDepth:1,
+    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleScatter:1, needleThick:1, needleLen:1, needleSides:1, fx3dDepth:1,
     pollockGloss:1, pollockMatt:1, pollockFlat:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
@@ -14016,7 +14264,7 @@ const App = {
   //   Audio FX 見出し配下(音/拍に対して瞬時に反応する必要があり、フェードすると
   //   トリガーが鈍る)を対象外にする。
   POST_FADE_IMMEDIATE: {
-    inkBleedSeed:1,
+    inkBleedSeed:1, hatchLayers:1, hatchTool:1,
     palette:1, cosPalette:1, mir:1,
     // Post FX (inv / hue はフェード対象に変更: プリセット切替でも Param Fade でなめらかに反転・回頭する)
     gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1, hueRot:1,
@@ -14027,7 +14275,7 @@ const App = {
     glass:1, twist:1, origami:1, kaiser:1, kaiserOld:1,
     // 3D FX の離散値 (フェード中の中間値が無意味)
     fx3dScale:1, fx3dPhotoCount:1, fx3dSlicerPieces:1, fx3dLayerCount:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dGravityPoints:1, fx3dGlobeDetail:1,
+    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleSides:1,
     fx3dRoll:1,
   },
   applyPostFaded(target){
@@ -14285,18 +14533,14 @@ const App = {
     this._camTween = { t: 0, dur: dur, fx: this.userPan.x, fy: this.userPan.y, fz: this.userZoom };
     for(const d in this._panSpeed) this._panSpeed[d] = 0;
   },
-  // アクティブスロットが textdeform / ugomeki のとき、次のランダム md を読み込む。
-  // 読み込んだ md 名を返す(対象エンジンでなければ null)。→ / c キーから呼ぶ。
+  // アクティブスロットが textdeform のときは次のランダムな Look、ugomeki のときは次のランダム md を読み込む。
+  // 読み込んだ md 名を返す (Type Deformer は true = 自前で toast。対象エンジンでなければ null)。→ / c キーから呼ぶ。
   nextRandomMd(){
     const slot = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[this.activeSlot] : null;
     const kind = slot && slot.kind;
-    if(kind === 'textdeform' && typeof TextDeform !== 'undefined' && TextDeform.initialized){
-      TextDeform.P.mdMode = 'random';
-      if(TextDeform.loadRandom) TextDeform.loadRandom();
-      if(UI && UI.refreshTextDeform) UI.refreshTextDeform();
-      const i = TextDeform.currentMdIndex ? TextDeform.currentMdIndex() : -1;
-      const pr = TextDeform.presets && TextDeform.presets[i];
-      return (pr && pr.name) || 'random';
+    if(kind === 'textdeform' && typeof TextDeform !== 'undefined' && TextDeform.initialized && typeof TDLooks !== 'undefined'){
+      UI.tdLookRandom();   // Type Deformer は次の Look (非同期。名前は適用後に tdLookRandom が toast)
+      return true;
     }
     if(kind === 'ugomeki' && typeof Ugomeki !== 'undefined' && Ugomeki.initialized){
       if(Ugomeki.autoNextMd) Ugomeki.autoNextMd();
@@ -14323,11 +14567,12 @@ const App = {
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, slitScan:0.0, palette:8, paletteAmt:0,
-    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dOverscan:0,
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
+    hatch:0, hatchDensity:0.5, hatchFlow:0.8, hatchLength:0.5, hatchLayers:3, hatchWobble:0.3, hatchMix:0, hatchAngle:0.25, hatchInk:'#1e1e1e', hatchPaper:'#f2eee4', hatchTex:0, hatchTool:0, hatchGrain:0.5, hatchBreak:0.3,
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
@@ -14450,7 +14695,7 @@ const App = {
     audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','waveform','mosaic','shake','specWarp','zoomPump','shatter','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
     pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
-    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','kaiser','kaiserOld','fx3dRoll','fx3dDepth','uzumaki','river','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dOverscan'],
+    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','needleThick','needleLen','needleSides','kaiser','kaiserOld','fx3dRoll','fx3dDepth','uzumaki','river','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dMix','fx3dOverscan'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline','unsharp','unsharpRadius','sharpen','crisp','shock'],
     glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
@@ -14459,7 +14704,8 @@ const App = {
     pos:'texture', vibrance:'quality', boltz:'distortion', split:['glitch','audioFx'], rings:['glitch','audioFx'], voxel:['glitch','texture'], blm:'texture',
     candy:'distortion', slice:'glitch', ringSlice:'glitch', ringBlur:'glitch', unsharp:'quality', unsharpRadius:'quality' },
   // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
-  INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper'],
+  INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper',
+    'hatch', 'hatchDensity', 'hatchFlow', 'hatchLength', 'hatchLayers', 'hatchWobble', 'hatchMix', 'hatchAngle', 'hatchInk', 'hatchPaper', 'hatchTex', 'hatchTool', 'hatchGrain', 'hatchBreak'],
   // 他欄から移したキーの旧保存値 (POST_KEY_FROM の値は欄名、または新しい順の欄名の配列)
   postKeyFromSaved(key){
     const from = this.POST_KEY_FROM[key]; if(!from) return undefined;
@@ -14492,9 +14738,9 @@ const App = {
       if(value === undefined) value = this.postKeyFromSaved(key);
       const fallback = d[key];
       const valid = typeof fallback === 'number'
-        ? Number.isFinite(value) && value >= 0 && value <= (key === 'inkBleedSeed' ? 999 : 1)
+        ? Number.isFinite(value) && value >= 0 && value <= ({ inkBleedSeed: 999, hatchLayers: 4 }[key] || 1)
         : typeof value === 'string' && /^#[0-9a-f]{6}$/i.test(value);
-      if(valid) d[key] = key === 'inkBleedSeed' ? Math.round(value) : value;
+      if(valid) d[key] = (key === 'inkBleedSeed' || key === 'hatchLayers' || key === 'hatchTool') ? Math.round(value) : value;
     }
   },
   savePostGroupDefault(group){
@@ -14525,11 +14771,12 @@ const App = {
     vig:0.0, chr:0.0, pix:0.0, mir:0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
     twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, slitScan:0.0, palette:8, paletteAmt:0,
-    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
+    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dOverscan:0,
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
+    hatch:0, hatchDensity:0.5, hatchFlow:0.8, hatchLength:0.5, hatchLayers:3, hatchWobble:0.3, hatchMix:0, hatchAngle:0.25, hatchInk:'#1e1e1e', hatchPaper:'#f2eee4', hatchTex:0, hatchTool:0, hatchGrain:0.5, hatchBreak:0.3,
     sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
@@ -14566,58 +14813,16 @@ const App = {
     LOAD('Initializing GPU…', 8);
     Diag.init();
     if(!GL.init()) return;
-    // モバイル(特に Chrome iOS の WKWebView)はメモリ制限が厳しく、起動時の一括画像ロード
-    // (Layer/Manga 合計 276 枚) で OOM クラッシュ ("このページを開けません") する。
-    // → モバイルでは Layer/Manga の autoLoad をスキップし、モード選択時に遅延ロードする。
-    this.isMobile = (navigator.maxTouchPoints > 1) || /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent || '');
     LOAD('Initializing engines…', 18);
     // Overlay エンジンを起動時に初期化 (Post FX 後段で重ね描き)
     if(typeof Overlay !== 'undefined') Overlay.init(GL.gl);
-    // Layer エンジンを起動時に初期化 + images/ から自動ロード
+    // Layer / Manga / Slicer の画像は起動時に読まず、そのスロットを最初に描くときに読む (App.ensureLazyImages)。
+    // 一括で読むと images/manga の原寸テクスチャだけで GPU に 1GB 超を常に抱え、Type Deformer など他の Visual のメモリを圧迫する
     Layer.init(GL.gl);
-    // Manga エンジン (panel collage, 画像ベース) + auto-load
     if(typeof Manga !== 'undefined') Manga.init(GL.gl);
-    if(!this.isMobile){
-      if(typeof Manga !== 'undefined'){
-        Manga.autoLoadFromFolder('images/manga').then(n=>{
-          if(n > 0){
-            const ls = $('#mangaStatus');
-            if(ls) ls.textContent = `${n} images auto-loaded from images/manga/`;
-            console.log(`Manga: auto-loaded ${n} images`);
-            if(GL.slots[App.activeSlot].kind === 'manga') UI.refreshManga();
-          } else {
-            const ls = $('#mangaStatus');
-            if(ls) ls.textContent = 'images/manga/ 未検出';
-          }
-        }).catch(()=>{});
-      }
-      Layer.autoLoadFromFolder('images/manga').then(n=>{
-        const ls = $('#layerStatus');
-        if(n > 0){
-          if(ls) ls.textContent = `${n} images auto-loaded from images/manga/`;
-          console.log(`Layer: auto-loaded ${n} images from images/manga/`);
-          if(GL.slots[App.activeSlot].kind === 'layer') UI.refreshLayerParams();
-        }else{
-          if(ls) ls.textContent = 'images/manga/ 未検出 — D&D or ボタンで読込';
-        }
-      }).catch(()=>{});
-    } else {
-      const lm = $('#mangaStatus'); if(lm) lm.textContent = 'mobile: 選択時に読込';
-      const ll = $('#layerStatus'); if(ll) ll.textContent = 'mobile: 選択時に読込';
-    }
-    // Slicer (デスクトップのみ自動ロード)
-    if(typeof Slicer !== 'undefined'){
-      Slicer.init(GL.gl);
-      if(!this.isMobile){
-        Slicer.scanFolder('images/slicer').then(list=>{
-          if(list.length > 0){
-            Slicer.loadFromUrl(list[0].url).then(()=>{
-              if(GL.slots[App.activeSlot].kind === 'slicer') UI.refreshSlicer && UI.refreshSlicer();
-            });
-          }
-        });
-      }
-    }
+    if(typeof Slicer !== 'undefined') Slicer.init(GL.gl);
+    { const lm = $('#mangaStatus'); if(lm) lm.textContent = '選択時に読込'; }
+    { const ll = $('#layerStatus'); if(ll) ll.textContent = '選択時に読込'; }
     Preview.init();
     // Built-in な特殊プリセットを先頭に追加
     PRESETS.unshift({ name:'★ TRANSMUTE FLOCK (錬成痕)', kind:'transflock', ch:[], src:'' });
@@ -14874,8 +15079,9 @@ const App = {
     const ownMatte = /@matte\s+\w+/.test(bgText) && /\buniform\s+float\s+uFx3dMatte\s*;/.test(bgText);
     const autoMatte = usesAlpha && !ownMatte && /\bvjDepth\s*=/.test(bgText);
     const matte = usesAlpha && (ownMatte || autoMatte);
+    const bgDefault = (/@bgdefault\s+(#[0-9a-fA-F]{6})/.exec(bgText) || [])[1] || '#000000';   // シェーダが指定する背景色の既定値 (無ければ黒)
     const bgColorDecl = usesAlpha ? `
-// @param uBgColor color = #000000 @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
+// @param uBgColor color = ${bgDefault} @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
 uniform vec3 uBgColor;    // 背景色 (bgAlpha<1 の領域に加算。既定=黒)
 ` + (autoMatte ? `// @matte uBgColor
 uniform float uFx3dMatte; // app が設定: 1 = 3D FX 中 (背景を透過で出す)
@@ -15189,7 +15395,7 @@ ${outBlock}
           // アクティブだと nextRandomMd が常に成功して timeDir が戻せず、拍が減り続けて
           // 自動サイクルが止まったままになる罠があった。
           if((this.timeDir || 1) < 0){ this.timeDir = 1; toast('▶ Forward'); }
-          else { const nm = this.nextRandomMd(); if(nm) toast('md: '+nm); else { this.timeDir = 1; toast('▶ Forward'); } }
+          else { const nm = this.nextRandomMd(); if(typeof nm === 'string') toast('md: '+nm); else if(!nm) { this.timeDir = 1; toast('▶ Forward'); } }
         }  e.preventDefault(); return; }  // 逆再生中=順再生へ / md系=次のランダムmd / それ以外=順再生
         // < / > : ズーム (単独タップ=ズーム / 高速ダブルタップ=×1 リセット / 長押し=連続ズーム)
         if(e.code === 'Comma'){  if(e.repeat) this.onZoomKeyDown('out'); else this.zoomTap('out'); e.preventDefault(); return; }
@@ -15608,6 +15814,23 @@ ${outBlock}
       const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[App.activeSlot] : null;
       return !!(sl && sl.kind === 'manga' && typeof Manga !== 'undefined' && Manga.initialized);
     };
+    // Type Deformer の Canvas: アクティブスロットが textdeform で Canvas が On のとき、ステージでスタンプを押す・動かす
+    let _tdcDrag = false;
+    const tdCanvasActive = ()=>{
+      const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[App.activeSlot] : null;
+      return !!(sl && sl.kind === 'textdeform' && typeof TDCanvas !== 'undefined' && TDCanvas.active());
+    };
+    const tdcUV = (e)=>{
+      const r = c.getBoundingClientRect();
+      let u = (e.clientX - r.left) / Math.max(1, r.width), v = 1 - (e.clientY - r.top) / Math.max(1, r.height);   // 画面 (下が 0)
+      // スロットのパン・ズーム (合成段: uv = (uv - 0.5) / zoom + 0.5 - pan) を戻す
+      const sl = GL.slots[App.activeSlot], z = (sl && sl.userZoom) || 1, pn = (sl && sl.userPan) || { x: 0, y: 0 };
+      u = (u - 0.5) / z + 0.5 - pn.x; v = (v - 0.5) / z + 0.5 - pn.y;
+      // Type Deformer の共通の縦横比 (GL で版面の中心から伸ばす) を戻す
+      const P = TextDeform.P, sx = Math.max(0.1, +P.comScaleX || 1), sy = Math.max(0.1, +P.comScaleY || 1);
+      u = (u - 0.5) / sx + 0.5; v = (v - 0.5) / sy + 0.5;
+      return [u, 1 - v];
+    };
     const mangaAim = (e)=>{
       const rect = c.getBoundingClientRect();
       const u = (e.clientX - rect.left) / Math.max(1, rect.width);
@@ -15621,7 +15844,11 @@ ${outBlock}
         e.preventDefault();
         return;
       }
-      if(e.button === 0 && mangaSlotActive()){
+      if(e.button === 0 && tdCanvasActive()){
+        _tdcDrag = true;
+        TDCanvas.pointerDown(...tdcUV(e), e);
+        e.preventDefault();
+      } else if(e.button === 0 && mangaSlotActive()){
         _mangaDrag = true;
         mangaAim(e);
         e.preventDefault();
@@ -15634,6 +15861,7 @@ ${outBlock}
     });
     c.addEventListener('mouseup',   (e)=>{
       if(_panDrag){ _panDrag = null; return; }
+      if(_tdcDrag){ _tdcDrag = false; TDCanvas.pointerUp(); }
       if(_dropDrag){ _dropDrag = false; App.balloonDropEnd(); }
       if(_mangaDrag){
         _mangaDrag = false;
@@ -15646,6 +15874,7 @@ ${outBlock}
     // 発火せずフラグが残り、ボタンを押していないのにカーソルを動かすだけで映像が
     // 勝手にパンし続け、iMouse も凍結していた (パンは画面端へ向かう操作なので頻発)。
     window.addEventListener('mouseup', ()=>{
+      if(_tdcDrag){ _tdcDrag = false; if(typeof TDCanvas !== 'undefined') TDCanvas.pointerUp(); }
       if(_dropDrag){ _dropDrag = false; App.balloonDropEnd(); }
       if(_mangaDrag){
         _mangaDrag = false;
@@ -15655,6 +15884,7 @@ ${outBlock}
       this.mouse.down = false;
     });
     c.addEventListener('mousemove', e=>{
+      if(_tdcDrag){ TDCanvas.pointerMove(...tdcUV(e)); return; }
       if(_mangaDrag && mangaSlotActive()){ mangaAim(e); this._mouse(e, true); return; }
       if(_dropDrag) App.balloonDropMove(...dropUV(e));
       if(_panDrag){
@@ -15698,7 +15928,10 @@ ${outBlock}
     c.addEventListener('contextmenu', e=>{ if(e.button===2 || _panDrag) e.preventDefault(); });
     // メインステージ (A+B) のホイールズームは無効。ズームは下段 A/B タイルのホイール
     // (そのスロットのみ) と `,` `.` キー (アクティブスロット) で行う。
-    c.addEventListener('wheel', e=>{ e.preventDefault(); }, { passive:false });
+    c.addEventListener('wheel', e=>{
+      e.preventDefault();
+      if(tdCanvasActive()) TDCanvas.wheel(...tdcUV(e), e.deltaY, e.shiftKey);   // Canvas のスタンプ: 大きさ / Shift で回転
+    }, { passive:false });
 
   },
   _mouse(e, moveOnly){
@@ -15867,6 +16100,42 @@ ${outBlock}
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix(true);
   },
 
+  // Layer / Manga / Slicer の画像は起動時に読まず、そのスロットを最初に描くときに読む (GL のスロット描画から毎フレーム呼ぶ。読み込み済み・読み込み中なら何もしない)。
+  //   loadPreset・状態の復元・Undo・入れ替えのどの経路でも描画は必ず通るので、ここ 1 か所で足りる
+  ensureLazyImages(kind){
+    // 復元・手動の読み込みなど、ここを通らない読み込みでもタイルの色を合わせる (状態が変わったときだけ更新)
+    const sig = ['layer', 'manga', 'slicer'].map(k => (UI._lazyLoaded(k) ? 1 : 0) + '' + (UI._lazyLoading(k) ? 1 : 0)).join('');
+    if(sig !== this._lazySig){ this._lazySig = sig; UI._refreshLazyTiles(); }
+    if(kind === 'layer'){
+      if(Layer.textures.length || Layer._autoLoading) return;
+      Layer._autoLoading = true;
+      UI._refreshLazyTiles();
+      Layer.autoLoadFromFolder('images/manga').then(n=>{
+        const ls = $('#layerStatus'); if(ls) ls.textContent = n > 0 ? `${n} images auto-loaded from images/manga/` : 'images/manga/ 未検出 — D&D or ボタンで読込';
+        if(GL.slots[App.activeSlot].kind === 'layer') UI.refreshLayerParams();
+      }).catch(()=>{}).finally(()=>{ Layer._autoLoading = false; UI._refreshLazyTiles(); });
+    } else if(kind === 'manga'){
+      if(Manga.images.length || Manga._autoLoading) return;
+      Manga._autoLoading = true;
+      UI._refreshLazyTiles();
+      Manga.autoLoadFromFolder('images/manga').then(n=>{
+        const ls = $('#mangaStatus'); if(ls) ls.textContent = n > 0 ? `${n} images auto-loaded from images/manga/` : 'images/manga/ 未検出';
+        if(GL.slots[App.activeSlot].kind === 'manga') UI.refreshManga();
+      }).catch(()=>{}).finally(()=>{ Manga._autoLoading = false; UI._refreshLazyTiles(); });
+    } else if(kind === 'slicer'){
+      // プリセット・状態の復元 (restoreImage) やランダム送りが読んでいる間は、そちらの画像を優先する
+      if(Slicer.imageReady || Slicer._imgLoading || Slicer._loads) return;
+      Slicer._imgLoading = true;
+      UI._refreshLazyTiles();
+      Slicer.scanFolder('images/slicer').then(list=>{
+        if(!list.length || Slicer.imageReady || Slicer._loads) return;
+        return Slicer.loadFromUrl(list[0].url).then(()=>{
+          if(GL.slots[App.activeSlot].kind === 'slicer') UI.refreshSlicer && UI.refreshSlicer();
+        });
+      }).catch(()=>{}).finally(()=>{ Slicer._imgLoading = false; UI._refreshLazyTiles(); });
+    }
+  },
+
   loadPreset(idx, slotKey, opts){
     opts = opts || {};
     if(PRESETS[idx] && PRESETS[idx].replacedBy) idx = this._presetIndexByName(PRESETS[idx].replacedBy);   // 旧版 → 新版
@@ -15882,7 +16151,7 @@ ${outBlock}
       s.renderScale=nextRenderScale;
       if(GL._resizeSlotBuffers) GL._resizeSlotBuffers(s,false);
     }
-    s.bKey = false; s.bKeyWhite = false;   // キー透過フラグを一旦リセット(@bkey シェーダ / ribbon で再設定)
+    s.bKey = false; s.bKeyWhite = false; s.blendOver = false;   // キー透過フラグを一旦リセット(@bkey シェーダ / ribbon で再設定)
     // 溶解FX(Boltzmann)中の切替: スイッチは維持し、新シェーダを数フレーム描画してから再捕獲して溶かし直す
     if(Math.abs(this.deadParam ? this.deadParam(this.post.boltz||0) : (this.post.boltz||0)) > 0.001){ GL._bzCaptureWait = 5; }
     { const pk = Math.max(this.post.pollockGloss||0, this.post.pollockMatt||0, this.post.pollockFlat||0);
@@ -15898,12 +16167,6 @@ ${outBlock}
       s.kind = 'layer';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'layer';
       if(!Layer.initialized) Layer.init(GL.gl);
-      // 遅延ロード (モバイル時): 選択した時に初めて画像を読み込む
-      if(this.isMobile && (!Layer.images || Layer.images.length === 0)){
-        Layer.autoLoadFromFolder('images/manga').then(n=>{
-          if(GL.slots[App.activeSlot].kind === 'layer') UI.refreshLayerParams();
-        }).catch(()=>{});
-      }
       if(!opts.skipEngineDefault) this.applyEngineDefault('layer');
       UI.activePresetIdx[slotKey] = idx;
       UI.refreshAll();
@@ -15915,12 +16178,6 @@ ${outBlock}
       s.kind = 'manga';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'manga';
       if(typeof Manga !== 'undefined' && !Manga.initialized) Manga.init(GL.gl);
-      // 遅延ロード (モバイル時)
-      if(this.isMobile && typeof Manga !== 'undefined' && (!Manga.images || Manga.images.length === 0)){
-        Manga.autoLoadFromFolder('images/manga').then(n=>{
-          if(GL.slots[App.activeSlot].kind === 'manga') UI.refreshManga();
-        }).catch(()=>{});
-      }
       if(!opts.skipEngineDefault) this.applyEngineDefault('manga');
       UI.activePresetIdx[slotKey] = idx;
       UI.refreshAll();
@@ -15933,7 +16190,7 @@ ${outBlock}
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'textdeform';
       if(typeof TextDeform !== 'undefined' && !TextDeform.initialized) TextDeform.init(GL.gl);
       if(!opts.skipEngineDefault) this.applyEngineDefault('textdeform');
-      if(typeof TextDeform !== 'undefined' && TextDeform.loadSelected) TextDeform.loadSelected();   // Mix の md 選択に従う
+      if(typeof TextDeform !== 'undefined') TextDeform.start();
       UI.activePresetIdx[slotKey] = idx;
       UI.refreshAll();
       toast(`Slot ${slotKey} ← ${p.name}`);
@@ -16370,6 +16627,7 @@ ${outBlock}
         Object.assign(P, d);
       }
     }
+    if(typeof TextDeform !== 'undefined' && (state.textdeform || opts.resetMissingDefaults)) TextDeform.applyP();
     if(state.pen && typeof Pen !== 'undefined' && Pen.P && Pen.strokes){
       while(Pen.strokes.length < Pen.P.count) Pen.strokes.push(Pen.makeRandomStroke((Pen.clock||0) - Pen._rand(0,1.5)));
       if(typeof UI !== 'undefined' && UI.refreshPenParams) UI.refreshPenParams();
@@ -16385,7 +16643,7 @@ ${outBlock}
     if(state.image && typeof ImageMode !== 'undefined' && ImageMode.applyState) ImageMode.applyState(state.image);
   },
   saveEngineDefault(kind){
-    const P = this._engineP(kind);
+    const P = (kind === 'textdeform' && typeof TextDeform !== 'undefined') ? TextDeform.stateP() : this._engineP(kind);
     if(!P){ toast('保存対象がありません'); return; }
     const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
     if(pd) Object.assign(pd, JSON.parse(JSON.stringify(P)));   // プリセット読込で欠けた項目を埋める値 (起動時に取った値) も保存値へ
@@ -16466,12 +16724,14 @@ ${outBlock}
     if(!P) return;
     let saved = null;
     try{ saved = JSON.parse(localStorage.getItem('vj.def.'+kind) || 'null'); }catch(e){}
-    if(!saved || typeof saved !== 'object') return;
+    // Type Deformer は保存値が無くても組み直す (工場値の Look は空 → applyP が既定の Look を当てる)
+    if(!saved || typeof saved !== 'object'){ if(kind === 'textdeform' && typeof TextDeform !== 'undefined') TextDeform.applyP(); return; }
     if(kind === 'spacetype'){   // サイクル運転系はランタイム設定: どの復元経路でも上書きしない
       saved = Object.assign({}, saved);
       for(const k of ['sceneMode','autoCycle','cycleReload','sceneBeats','scene']) delete saved[k];
     }
     Object.assign(P, saved);
+    if(kind === 'textdeform' && typeof TextDeform !== 'undefined') TextDeform.applyP();   // 文字と版面を組み直す (Surface / Composition は P.surf / P.comp への代入で反映済み)
     if(kind === 'pen' && typeof Pen !== 'undefined' && Pen.strokes){   // count 増加ぶんのストロークを追加
       while(Pen.strokes.length < (Pen.P.count||0)) Pen.strokes.push(Pen.makeRandomStroke((Pen.clock||0) - Pen._rand(0,1.5)));
     }
@@ -16855,7 +17115,7 @@ ${outBlock}
 	      chrometype: (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
-	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null,
+	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.stateP() : null,   // Canvas の焼き付け中も本体の Look を保存する
 	      ugomeki: (typeof Ugomeki !== 'undefined' && Ugomeki.P) ? Ugomeki.P : null,
 	      spacetype: (typeof SpaceType !== 'undefined' && SpaceType.P) ? SpaceType.P : null,
 	      video: (typeof Movie !== 'undefined' && Movie.P) ? Movie.P : null,
@@ -16871,7 +17131,16 @@ ${outBlock}
   //   操作後にデバウンスで _collectState() のスナップショットを取り、変化があれば履歴に積む。
   _undoStack: [], _redoStack: [], _undoLast: null, _undoBusy: false, _undoTimer: null,
   _delPresetStack: [],   // 削除したプリセット(戻るで復元)。{item, index}
-  _undoSnap(){ try{ return JSON.stringify(this._collectState()); }catch(e){ return null; } },
+  _undoSnap(){
+    try{
+      const st = this._collectState(), cf = this.autoCF;
+      if(cf && (cf.on || cf.tail)){   // Auto Crossfade の最中は動き続ける crossfade を履歴の差に数えない (数えると操作のたびに細切れに積まれる)。始まった時点の値で固定する
+        if(this._undoCfHold == null) this._undoCfHold = st.crossfade;
+        st.crossfade = this._undoCfHold;
+      } else this._undoCfHold = null;
+      return JSON.stringify(st);
+    }catch(e){ return null; }
+  },
   _undoCommit(force){
     if(this._undoBusy) return;
     // Param Fade 進行中は中間値を履歴に積まない (「個別の指示」だけを記録する)。
@@ -16927,22 +17196,49 @@ ${outBlock}
     toast('やり直す');
   },
   // ─── プリセットライブラリ (動的: 追加/削除可。先頭10件が 1〜0 キー) ───────
-  _presetLibKey: 'vj.presets',
+  // プリセット一覧の手元キャッシュは IndexedDB (gara.presets / kv の 'lib')。正はサーバー (presets/store.php)。
+  //   以前の localStorage (vj.presets) は thumb 抜きでも 450 万字あり、オリジン全体の上限 (約 10MB) をほぼ使い切って
+  //   vj.state・診断ログの保存まで黙って失敗させていた。初回に IndexedDB へ移して localStorage から消す。
   _presetLib: null,
+  _presetDB: null, _presetReady: null,
+  _presetDBOpen(){
+    return this._presetDB || (this._presetDB = new Promise((res, rej) => {
+      const r = indexedDB.open('gara.presets', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('kv');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    }));
+  },
+  async _presetDBGet(k){
+    const db = await this._presetDBOpen();
+    return new Promise((res, rej) => { const q = db.transaction('kv').objectStore('kv').get(k); q.onsuccess = () => res(q.result); q.onerror = () => rej(q.error); });
+  },
+  async _presetDBPut(k, v){
+    const db = await this._presetDBOpen();
+    return new Promise((res, rej) => { const t = db.transaction('kv', 'readwrite'); t.objectStore('kv').put(v, k); t.oncomplete = () => res(); t.onerror = t.onabort = () => rej(t.error); });
+  },
+  // 手元キャッシュを読む。IndexedDB に無ければ旧 localStorage の一覧を移し、localStorage からは消す
+  async _readPresetCache(){
+    let arr = await this._presetDBGet('lib');
+    if(!Array.isArray(arr)){
+      let old = null;
+      try{ old = JSON.parse(localStorage.getItem('vj.presets') || 'null'); }catch(e){}
+      arr = Array.isArray(old) ? old : [];
+      await this._presetDBPut('lib', arr);
+    }
+    try{ localStorage.removeItem('vj.presets'); }catch(e){}
+    return arr;
+  },
+  // 同期で返すのは同じ配列。キャッシュが届いたらその中身を先頭へ足し (読み込み中に足したプリセットは後ろに残る)、それからサーバーと同期する
   _loadPresetLib(){
     if(this._presetLib) return this._presetLib;
-    let arr = null;
-    try{ arr = JSON.parse(localStorage.getItem(this._presetLibKey)||'null'); }catch(e){}
-    if(!Array.isArray(arr)){
-      arr = [];                                          // 既存の vj.bank.1〜0 から移行
-      for(const n of ['1','2','3','4','5','6','7','8','9','0']){
-        let s=null; try{ s=JSON.parse(localStorage.getItem('vj.bank.'+n)||'null'); }catch(e){}
-        if(s) arr.push({ name:'Preset '+n, state:s });
-      }
-    }
-    this._presetLib = arr;
-    this._syncPresetsFromServer();   // 初回のみサーバー(presets/store.php)と同期
-    return this._presetLib;
+    const lib = this._presetLib = [];
+    this._presetReady = this._readPresetCache()
+      .then(arr => { lib.unshift(...arr); }, e => { console.warn('[presets] 手元キャッシュを読めません', e); });
+    this._presetReady
+      .then(() => this._syncPresetsFromServer())
+      .then(() => { if(typeof UI !== 'undefined' && UI.refreshPresetLib) UI.refreshPresetLib(); });
+    return lib;
   },
   // github.io 配信では共有ストアは読み取り専用 (閲覧者がサーバーデータを上書きできない)
   _storeWritable(){ try{ return !/\.github\.io$/.test(location.hostname); }catch(e){ return true; } },
@@ -16953,28 +17249,19 @@ ${outBlock}
     return 'presets/store.php';
   },
   _presetApiUrl(){ return this._storeBase(); },
-  // ローカルキャッシュへ保存。thumb(base64 GIF) はデータの ~88% を占め、
-  // 全体が localStorage の 5MB 上限を超えると setItem が QuotaExceededError で失敗する。
-  // 以前は握りつぶしていたため「ローカルには保存済み」と言いながら実際は何も残らず、
-  // サーバー保存に失敗した回のプリセットが復元不能になっていた。
-  // → 超過時は thumb を落とした軽量版で再試行する (thumb は次回描画で作り直せる)。
-  _savePresetLocal(json){
-    try{ localStorage.setItem(this._presetLibKey, json); return 'full'; }catch(e){}
-    try{
-      const slim = (this._presetLib||[]).map(p => { const q = Object.assign({}, p); delete q.thumb; return q; });
-      localStorage.setItem(this._presetLibKey, JSON.stringify(slim));
-      return 'slim';
-    }catch(e){}
-    if(!this._presetLocalWarned){
+  // 手元キャッシュ (IndexedDB) へ保存。thumb ごと残す (localStorage のような容量の取り合いはない)。
+  //   読み終える前に保存すると、読み込み中の空の一覧でキャッシュを上書きするので、読み終えてから書く
+  _savePresetLocal(){
+    (this._presetReady || Promise.resolve()).then(() => this._presetDBPut('lib', this._presetLib || [])).catch(e => {
+      if(this._presetLocalWarned) return;
       this._presetLocalWarned = true;
-      toast('ローカル保存が容量超過で失敗 — サーバー側の履歴から復元できます');
-    }
-    return 'failed';
+      toast('ローカル保存に失敗 — サーバー側の履歴から復元できます');
+      console.warn('[presets] 手元キャッシュへ保存できません', e);
+    });
   },
   _savePresetLib(){
-    const json = JSON.stringify(this._presetLib||[]);
-    this._savePresetLocal(json);
-    this._savePresetLibServer(json);
+    this._savePresetLocal();
+    this._savePresetLibServer(JSON.stringify(this._presetLib||[]));
   },
   // サーバー一覧の thumb を、手元の thumb 欠け分へ移す (キー一致)。
   //   ローカルキャッシュは容量超過対策で thumb 抜きになるため、同期前に保存が走ると
@@ -17199,7 +17486,7 @@ ${outBlock}
       this._presetLib.forEach(p => { const k = this._presetKey(p, seenM); if(p && !p.thumb && lmap[k]) p.thumb = lmap[k]; });
     }
     this._presetThumbMerged = true;
-    this._savePresetLocal(JSON.stringify(this._presetLib));
+    this._savePresetLocal();
     if((localOnly.length || remoteHadDead) && !offline){
       this._savePresetLibServer();   // ローカルにしか無い分の復元 / 墓標ぶんの削除を反映
       if(localOnly.length) toast('サーバーに無いプリセット ' + localOnly.length + ' 件を復元してアップロードしました');
@@ -17869,7 +18156,7 @@ ${outBlock}
     names.splice(before ? ti : ti + 1, 0, fromName);
     const key = this._orderKeys[cat];
     try{ localStorage.setItem('vj.def.' + key, JSON.stringify(names)); }catch(e){}
-    this._putServerDef(key, names);   // 並び順を全端末へ同期
+    this.uploadDefs();   // 並び順を全端末へ同期
     if(UI && UI.populatePresets) UI.populatePresets();
   },
   // Code / Shader のタイル (PRESETS の index) を同じ区分の中で動かす
@@ -18000,42 +18287,81 @@ ${outBlock}
     window.addEventListener('beforeunload', ()=>{ try{ this.saveLocal(); }catch(e){} });
   },
   // ─── 保存デフォルト (vj.def.*) のサーバー同期 ─────────────────────
-  //   localStorage は端末ローカルなので、モバイル等の別端末では「デフォルト保存」した値が
-  //   反映されない。起動時にサーバー store (?name=defs) から localStorage へ流し込み、
-  //   保存のたびに全キーをアップロードする。MIDI まわり (midiRelative / ctlDefaults) は
-  //   端末依存の設定なので同期しない。
+  //   各端末 (ブラウザ版・GARA.app) の Save はサーバー store (?name=defs) で共有し、Reset はその値を読む。
+  //   - 起動時: サーバーの値を localStorage へ流し込む (サーバーが正)。この端末にしか無いキーはサーバーへ足す
+  //   - Save: この端末で変えたキーだけを、送る直前に読んだサーバーの一式へ差し込んで送る (キーごとに後から Save した方が勝つ。
+  //     前は端末の一式でサーバー全体を置き換えていて、ほかの端末が後から Save した値を消していた)
+  //   - Reset: 読み直しを待たずに使えるよう、画面に戻ったとき・60 秒ごとにサーバーの値を取り込んでおく
+  //     (この端末で Save してまだ送っていないキーは上書きしない)
+  //   MIDI まわり (midiRelative / ctlDefaults) は端末依存の設定なので同期しない。
   _defsSyncSkip: ['midiRelative', 'ctlDefaults'],
   _defsUrl(){ return this._storeBase() + '?name=defs'; },
+  _defsBase: null,   // 最後にサーバーと揃えたときの値 (キー → JSON 文字列)。この端末で変えたキーの見分けに使う
+  _defsQ: null,      // 送受信を 1 本ずつ順に
+  _defsOn(){ return !Net.offline() && Prefs.on('shareDefaults', '1'); },
+  _localDefs(){
+    const out = {};
+    for(let i = 0; i < localStorage.length; i++){
+      const key = localStorage.key(i);
+      if(!key || key.indexOf('vj.def.') !== 0) continue;
+      const k = key.slice('vj.def.'.length);
+      if(this._defsSyncSkip.indexOf(k) < 0) out[k] = localStorage.getItem(key);
+    }
+    return out;
+  },
+  async _fetchServerDefs(){
+    const r = await Net.fetch(this._defsUrl(), {cache:'no-store'});
+    if(!r.ok) return null;
+    const d = await r.json();
+    return d && typeof d === 'object' && !Array.isArray(d) ? d : null;   // 形式不正 → 使わない (誤アップロードでサーバーを潰さない)
+  },
+  // サーバーの値を localStorage へ。この端末で変えてまだ送っていないキーはそのまま、サーバーから消えたキーは (変えていなければ) 消す
+  _applyServerDefs(server){
+    const base = this._defsBase, local = this._localDefs(), next = {};
+    for(const k in server){
+      if(this._defsSyncSkip.indexOf(k) >= 0) continue;
+      const sv = JSON.stringify(server[k]);
+      if(base && k in local && local[k] !== base[k]){ next[k] = sv; continue; }
+      if(local[k] !== sv){ try{ localStorage.setItem('vj.def.' + k, sv); }catch(e){} }
+      // 書き込めたキーだけを揃ったことにする (書けなかったキーを「この端末で消した」と取り違えてサーバーから消さない)
+      if(localStorage.getItem('vj.def.' + k) === sv) next[k] = sv;
+    }
+    if(base) for(const k in base) if(!(k in server) && local[k] === base[k]){ try{ localStorage.removeItem('vj.def.' + k); }catch(e){} }
+    this._defsBase = next;
+  },
+  _defsRun(fn){ return (this._defsQ = (this._defsQ || Promise.resolve()).then(fn).catch(()=>{})); },
   async _loadServerDefs(){
-    if(Net.offline() || !Prefs.on('shareDefaults', '1')) return;
-    try{
+    if(!this._defsOn()) return;
+    await this._defsRun(async ()=>{
       let server = null;
-      try{
-        const r = await Net.fetch(this._defsUrl(), {cache:'no-store'});
-        if(r.ok){ const d = await r.json(); if(d && typeof d === 'object' && !Array.isArray(d)) server = d; }
-      }catch(e){}
-      if(!server) return;   // 到達不可/形式不正 → 何もしない (誤アップロードでサーバーを潰さない)
-      // サーバー値を localStorage へ (キーの値はサーバーが正。明示的な「デフォルト保存」だけが値を更新する)
-      for(const k in server){
-        if(this._defsSyncSkip.indexOf(k) >= 0) continue;
-        try{ localStorage.setItem('vj.def.' + k, JSON.stringify(server[k])); }catch(e){}
-      }
-      // この端末にしか無いキーはサーバーへ追加する (既存キーの値は変えない)。
-      // 「サーバーが空のときだけ種まき」だと、別端末が先に少数キーを載せた時点で
-      // 本命端末の一式が永遠にアップロードされなくなるため、常に不足分をマージする。
-      let added = false;
-      for(let i = 0; i < localStorage.length; i++){
-        const key = localStorage.key(i);
-        if(!key || key.indexOf('vj.def.') !== 0) continue;
-        const k = key.slice('vj.def.'.length);
-        if(this._defsSyncSkip.indexOf(k) >= 0 || Object.prototype.hasOwnProperty.call(server, k)) continue;
-        try{ server[k] = JSON.parse(localStorage.getItem(key)); added = true; }catch(e){}
-      }
-      if(added){
-        if(this._storeWritable && !this._storeWritable()) return;
-        fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)}).catch(()=>{});
-      }
-    }catch(e){}
+      try{ server = await this._fetchServerDefs(); }catch(e){}
+      if(!server) return;
+      this._applyServerDefs(server);
+      // この端末にしか無いキーはサーバーへ追加する (既存キーの値は変えない)
+      const local = this._localDefs();
+      if(Object.keys(local).some(k => !(k in server))) await this._pushDefs();
+    });
+    if(!this._defsWatch){
+      this._defsWatch = true;
+      const pull = ()=>{ if(this._defsOn() && document.visibilityState === 'visible') this._defsRun(async ()=>{ const s = await this._fetchServerDefs(); if(s) this._applyServerDefs(s); }); };
+      window.addEventListener('focus', pull);
+      document.addEventListener('visibilitychange', pull);
+      setInterval(pull, 60000);
+    }
+  },
+  // この端末で変えたキー (と消したキー) だけを、今のサーバーの一式へ差し込んで送る
+  async _pushDefs(){
+    if(this._storeWritable && !this._storeWritable()) return;   // github.io の公開版は共有ストアへ書かない (読み取り専用)
+    const local = this._localDefs(), base = this._defsBase || {};
+    const changed = Object.keys(local).filter(k => local[k] !== base[k]);
+    const removed = this._defsBase ? Object.keys(base).filter(k => !(k in local)) : [];
+    if(!changed.length && !removed.length) return;
+    const server = await this._fetchServerDefs();
+    if(!server) return;
+    for(const k of changed){ try{ server[k] = JSON.parse(local[k]); }catch(e){} }
+    for(const k of removed) delete server[k];
+    const r = await fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)});
+    if(r.ok) this._applyServerDefs(server);
   },
   // S 番号の登録簿 shaders/sids.json ("S001" → プリセット名) を 名前 → 番号 にして持つ。
   //   追記のみ: シェーダを外しても番号は欠番として残し、再利用しない。
@@ -18051,33 +18377,8 @@ ${outBlock}
       this._shaderSids = m;
     }catch(e){ console.warn('shaders/sids.json not found or unreadable:', e); }
   },
-  // defs の 1 キーだけをサーバーへ反映する (GET → そのキーだけ差し替え → POST)。
-  //   uploadDefs はこの端末の vj.def.* 一式で全体を置き換えるため、読込後に別端末が保存した値を戻してしまう。
-  async _putServerDef(k, v){
-    if(Net.offline() || !Prefs.on('shareDefaults', '1')) return;
-    try{
-      const r = await fetch(this._defsUrl(), {cache:'no-store'});
-      if(!r.ok) return;
-      const server = await r.json();
-      if(!server || typeof server !== 'object' || Array.isArray(server)) return;   // 到達不可/形式不正 → 送らない
-      server[k] = v;
-      await fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(server)});
-    }catch(e){}
-  },
   uploadDefs(){
-    if(Net.offline() || !Prefs.on('shareDefaults', '1')) return;
-    try{
-      const out = {};
-      for(let i = 0; i < localStorage.length; i++){
-        const key = localStorage.key(i);
-        if(!key || key.indexOf('vj.def.') !== 0) continue;
-        const k = key.slice('vj.def.'.length);
-        if(this._defsSyncSkip.indexOf(k) >= 0) continue;
-        try{ out[k] = JSON.parse(localStorage.getItem(key)); }catch(e){}
-      }
-      if(!Object.keys(out).length) return;   // 何も無い端末が空でサーバーを潰さないように
-      fetch(this._defsUrl(), {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(out)}).catch(()=>{});
-    }catch(e){}
+    if(this._defsOn()) this._defsRun(()=>this._pushDefs());
   },
   // Visual ごとのデフォルト (Params のエンジン別パラメータ・Shader Params) を defaults_visual.json の基準値へ戻す。
   //   基準に無い Visual キーは削除 (= 工場出荷値)。Mix / Transition / Post / Audio / 並び順などは触らない。
@@ -18686,210 +18987,204 @@ void mainImage(out vec4 o, in vec2 f){
       const bgR = $('#slotABgReset');
       if(bgR) bgR.addEventListener('click', ()=>{ App.setSlotABg('#000000'); App._undoSchedule(); });
     }
-    const tdSel = $('#tdMdSelect');
-    if(tdSel){
-      tdSel.addEventListener('change', ()=>{
+    // ---- Type Deformer (mode/textdeform*.js) ----
+    //   data-tdp = TextDeform.P のキー。値は P に直接書く (Save = この Visual のデフォルト保存。Look 単位の保存は Save New)
+    const tdSec = document.querySelector('.section.textdeform-mode');
+    if(tdSec){
+      const tdVal = (el)=>{
+        const k = el.dataset.tdkind;
+        if(el.type === 'range' || k === 'num') return parseFloat(el.value);
+        if(k === 'bool') return el.value === '1';
+        if(k === 'pal') return el.value === '1' ? true : el.value === 'paper' ? 'paper' : false;   // 共通パレット (Off / On / Paper only)
+        return el.value;
+      };
+      const onTdp = (el)=>{
         if(typeof TextDeform === 'undefined') return;
-        if(!TextDeform.initialized && typeof GL !== 'undefined' && GL.gl) TextDeform.init(GL.gl);
-        if(TextDeform.setMdSelection) TextDeform.setMdSelection(tdSel.value);
+        const key = el.dataset.tdp, v = tdVal(el);
+        if(key === 'textMode' || key === 'textPool' || key === 'textEvery') TextDeform.setTextSource({ [key]: v });
+        else if(key === 'cvStretch' || key === 'cvTrack' || key === 'cvLeading'){ TextDeform.P[key] = v; if(typeof TDCanvas !== 'undefined') TDCanvas.rebuild(); }
+        else if(/^cv[A-Z]/.test(key)) TextDeform.P[key] = v;   // Canvas のばらつき (描くときに掛ける)
+        else if(key === 'canvasLayout'){ if(typeof TDCanvas !== 'undefined'){ TextDeform.P.canvasOn = true; TDCanvas.layout(v); } }
+        else if(key === 'canvasOn'){ TextDeform.P.canvasOn = v; if(v && typeof TDCanvas !== 'undefined') TDCanvas._emptyOk = false; }
+        else if(/^(typeOn|typeSpeed|typeHold|lookEvery|lookRand|compAudio|rhythmMotion|rhythmAudio|rhythmBpm|beatPulse|compRandEvery|compRandUnit|comScaleX|comScaleY|canvasOn|canvasSource|canvasMax|canvasAutoAdd|canvasAutoSwap|canvasAutoClear|canvasAutoLayout|canvasPlate|canvasMainFx|canvasMove|canvasJumpEvery|canvasFull|canvasFullEvery|canvasTiming|canvasGunDiv|canvasGunOrder|vecMode|vecSpin|vecTilt|vecWave|vecAudio|vecDepth|vecDetail|vecLine)$/.test(key)) TextDeform.P[key] = v;   // 組版に関係しない値
+        else TextDeform.setParams({ [key]: v });
         this.refreshTextDeform();
         App._undoSchedule();
-        const idx = TextDeform.currentMdIndex ? TextDeform.currentMdIndex() : -1;
-        const pr = TextDeform.presets && TextDeform.presets[idx];
-        toast('TYPE md: ' + (tdSel.value === 'random' ? 'Random' : (pr && pr.name || '')));
+      };
+      // id はダブルクリックで戻す値 (Save の控え) の鍵
+      tdSec.querySelectorAll('[data-tdp]').forEach(el=>{ if(!el.id) el.id = 'tdp-' + el.dataset.tdp; });
+      tdSec.addEventListener('input', e=>{ if(e.target.matches('input[data-tdp]')) onTdp(e.target); });
+      tdSec.addEventListener('change', e=>{ if(e.target.matches('select[data-tdp]')) onTdp(e.target); });
+      // 見出し (Type & Color / Motion / …) で畳む。開閉は端末ごとに覚える
+      // ホバー説明とグレー表示 (共通口 bindEngineHints)。行のキー = data-tdp、無い行は操作部品の id
+      tdSec.querySelectorAll('.row').forEach(r=>{
+        if(r.closest('#tdSurfParams')) return;
+        if(!r.dataset.pkey){
+          const c = r.querySelector('[data-tdp]') || r.querySelector('input[id], select[id], textarea[id]') || r.querySelector(':scope > button[id]');
+          if(c) r.dataset.pkey = c.dataset.tdp || c.id;
+        }
+        // 子の行は字下げ (親子 = TextDeform.PARAM_PARENT)
+        if(r.dataset.pkey && TextDeform.PARAM_PARENT && TextDeform.PARAM_PARENT[r.dataset.pkey]){
+          const lab = r.querySelector(':scope > label');
+          if(lab) lab.classList.add('sub-label'); else r.classList.add('td-sub');
+        }
+      });
+      this.bindEngineHints(tdSec, TextDeform);
+      // 初めて開くときは Live / Canvas / Look / Text を開き、ほか (文字組・Vector 3D・各詳細) は畳む。開閉は端末ごとに覚える
+      try{ for(const f of ['live', 'canvas', 'look', 'text']) if(localStorage.getItem('vj.fold.td.' + f) == null) localStorage.setItem('vj.fold.td.' + f, '1'); }catch(e){}
+      tdSec.querySelectorAll('.td-fold').forEach(h=>{
+        const rows = [];
+        for(let n = h.nextElementSibling; n && !n.classList.contains('td-fold') && !n.classList.contains('td-fold-end'); n = n.nextElementSibling) rows.push(n);
+        const tog = this.foldToggle(h, rows, 'td.' + h.dataset.tdFold);
+        h.addEventListener('click', ()=>{ if(tog) tog.click(); });
       });
     }
-    const tdApplyMdStyle = (over)=>{
-        if(typeof TextDeform === 'undefined' || !TextDeform.updateMdStyle) return;
-        const i = this._fixedTextDeformMdIndex ? this._fixedTextDeformMdIndex() : -1;
-        if(i < 0) return;
-        TextDeform.updateMdStyle(i, over);
-        this.refreshTextDeform();
-        App._undoSchedule();
-    };
-    const bindTdColor = (id, key)=>{
-      const el = $('#'+id);
-      if(el) el.addEventListener('input', ()=>tdApplyMdStyle({ [key]: el.value }));
-    };
-    const bindTdNumber = (id, key)=>{
-      const el = $('#'+id);
-      if(el) el.addEventListener('input', ()=>tdApplyMdStyle({ [key]: parseFloat(el.value) }));
-    };
-    bindTdColor('tdMdPaper', 'paper');
-    bindTdColor('tdMdInk', 'ink');
-    bindTdColor('tdMdAccent', 'accent');
-    bindTdNumber('tdMdAccentRatio', 'accentRatio');
-    bindTdNumber('tdMdFontSize', 'fontSize');
-    bindTdNumber('tdMdLineHeight', 'lineHeight');
-    bindTdNumber('tdMdLetterSpacing', 'letterSpacing');
-    bindTdNumber('tdMdZoom', 'zoom');
-    bindTdNumber('tdMdPanX', 'panX');
-    bindTdNumber('tdMdPanY', 'panY');
-    bindTdNumber('tdMdStageW', 'stageW');
-    bindTdNumber('tdMdMarginPct', 'marginPct');
-    bindTdNumber('tdMdRotation', 'rotation');
-    bindTdNumber('tdMdRandomness', 'randomness');
-    bindTdNumber('tdMdGeoRatio', 'geoRatio');
-    bindTdNumber('tdMdStretchX', 'stretchX');
-    bindTdNumber('tdMdStretchY', 'stretchY');
-    bindTdNumber('tdMdFlipRate', 'flipRate');
-    bindTdNumber('tdMdRotateAngle', 'rotateAngle');
-    bindTdNumber('tdMdSkewX', 'skewX');
-    bindTdNumber('tdMdSkewY', 'skewY');
-    bindTdNumber('tdMdBaselineShift', 'baselineShift');
-    bindTdNumber('tdMdMirrorX', 'mirrorX');
-    bindTdNumber('tdMdMirrorY', 'mirrorY');
-    bindTdNumber('tdMdMisregX', 'misregX');
-    bindTdNumber('tdMdMisregY', 'misregY');
-    bindTdColor('tdMdMisregColorA', 'misregColorA');
-    bindTdColor('tdMdMisregColorB', 'misregColorB');
-    bindTdNumber('tdMdConfuseDepth', 'confuseDepth');
-    bindTdNumber('tdMdOpChance', 'opChance');
-    bindTdNumber('tdMdGridCols', 'gridCols');
-    bindTdNumber('tdMdGridCell', 'gridCell');
-    bindTdNumber('tdMdGridGap', 'gridGap');
-    bindTdNumber('tdMdShowPct', 'showPct');
-    bindTdNumber('tdMdSizeVar', 'sizeVar');
-    bindTdNumber('tdMdScatter', 'scatter');
-    bindTdNumber('tdMdTremor', 'tremor');
-    bindTdNumber('tdMdWaveAmp', 'waveAmp');
-    bindTdNumber('tdMdWaveLen', 'waveLen');
-    bindTdNumber('tdMdLineStagger', 'lineStagger');
-    bindTdNumber('tdMdSlant', 'slant');
-    bindTdNumber('tdMdSwirl', 'swirl');
-    bindTdNumber('tdMdBulge', 'bulge');
-    bindTdNumber('tdMdViewAngle', 'viewAngle');
-    bindTdNumber('tdMdPivotX', 'pivotX');
-    bindTdNumber('tdMdPivotY', 'pivotY');
-    bindTdNumber('tdMdStepSize', 'stepSize');
-    bindTdNumber('tdMdMisregAlpha', 'misregAlpha');
-    bindTdNumber('tdMdMisregRatio', 'misregRatio');
-    bindTdNumber('tdMdTrailPct', 'trailPct');
-    bindTdNumber('tdMdAccentOnMove', 'accentOnMove');
-    bindTdNumber('tdMdRainbow', 'rainbow');
-    bindTdNumber('tdMdRainbowSpan', 'rainbowSpan');
-    bindTdNumber('tdMdVignette', 'vignette');
-    bindTdNumber('tdMdGrain', 'grain');
-    bindTdNumber('tdMdGrainSize', 'grainSize');
-    bindTdNumber('tdMdCompAudio', 'compAudio');
-    bindTdColor('tdMdVignetteColor', 'vignetteColor');
-    const tdGrid = $('#tdMdGrid');
-    if(tdGrid){
-      tdGrid.addEventListener('change', ()=>{
-        tdApplyMdStyle({ gridEnabled: tdGrid.value === 'on' });
-      });
-    }
-    // Composition Engine v6 (md 単位: live 適用 + 選択中 md へ書き込み → デフォルト保存で永続化)
-    const tdCompSet = (over)=>{
-      if(typeof TDComp === 'undefined') return;
-      TDComp.set(over);
-      const i = this._fixedTextDeformMdIndex ? this._fixedTextDeformMdIndex() : -1;
-      const pr = (i >= 0 && typeof TextDeform !== 'undefined') ? TextDeform.presets[i] : null;
-      if(pr) pr.p = Object.assign({}, pr.p || {}, { comp: TDComp.snapshot() });
-      this.refreshTextDeform();
+    // Look (mode/textdeform-looks.js)
+    if(typeof TDLooks !== 'undefined') TDLooks.onChange(()=>this.refreshTextDeformLooks());
+    const tdLookGrid = $('#tdLookGrid');
+    if(tdLookGrid) tdLookGrid.addEventListener('click', e=>{
+      const b = e.target.closest('[data-look]');
+      if(b) this.tdApplyLook(b.dataset.look);
+    });
+    const tdLookPool = $('#tdLookPool');
+    if(tdLookPool) tdLookPool.addEventListener('change', ()=>{
+      if(typeof TextDeform === 'undefined') return;
+      TextDeform.P.lookPool = tdLookPool.value;
+      this.refreshTextDeformLooks();
       App._undoSchedule();
+    });
+    const tdLookRand = $('#tdLookRand');
+    if(tdLookRand) tdLookRand.addEventListener('click', ()=>this.tdLookRandom());
+    const tdSavedIndex = ()=>{
+      const id = (typeof TextDeform !== 'undefined') ? String(TextDeform.P.look || '') : '';
+      return id.startsWith('s:') ? parseInt(id.slice(2), 10) : -1;
     };
-    const tdCompType = $('#tdCompType');
-    if(tdCompType){
-      tdCompType.addEventListener('change', ()=>{
-        tdCompSet(tdCompType.value === 'off' ? { enabled: false } : { enabled: true, type: tdCompType.value });
-        toast('TYPE Comp: ' + (tdCompType.value === 'off' ? 'Off' : tdCompType.options[tdCompType.selectedIndex].text));
+    const tdLookAdd = $('#tdLookAdd');
+    if(tdLookAdd) tdLookAdd.addEventListener('click', async ()=>{
+      if(typeof TDLooks === 'undefined') return;
+      await TDLooks.loadSaved();
+      App._prompt('Look の名前', 'Look ' + (TDLooks.saved.length + 1), (nn)=>{
+        TDLooks.add(String(nn || '').trim() || undefined).then(()=>toast('Look を保存: ' + TDLooks.label(TextDeform.P.look) + ' (' + TDLooks.saved.length + ' 件)'))
+          .catch(e=>toast('Look の保存に失敗: ' + e.message));
       });
-    }
-    const tdCompReseed = $('#tdCompReseed');
-    if(tdCompReseed) tdCompReseed.addEventListener('click', ()=>tdCompSet({ seed: Math.floor(Math.random()*1e6) }));
-    // Surface (上流 type-deformer 0.3 の Surface Operator。md 単位: live 適用 + 選択中 md へ書き込み → Save で永続化)
-    const tdSurfStore = ()=>{
-      const i = this._fixedTextDeformMdIndex ? this._fixedTextDeformMdIndex() : -1;
-      const pr = (i >= 0 && typeof TextDeform !== 'undefined') ? TextDeform.presets[i] : null;
-      if(pr) pr.p = Object.assign({}, pr.p || {}, { surf: TDSurf.snapshot() });
-      this.refreshTextDeform();
-      App._undoSchedule();
-    };
-    // Surface 欄は md が Random でも操作できる。触ったら、変更の前に表示中の md を固定にする
-    // (Surface の設定は md 単位で保存するため。後で固定にすると md の読み直しで変更が消える)
-    const tdSurfFixMd = ()=>{
-      if(typeof TextDeform === 'undefined' || TextDeform.P.mdMode === 'fixed') return;
-      const mi = TextDeform.currentMdIndex ? TextDeform.currentMdIndex() : -1;
-      if(mi >= 0){ TextDeform.setMdSelection(String(mi)); this.refreshTextDeform(); }
-    };
-    const tdSurfSet = (over)=>{
-      if(typeof TDSurf === 'undefined') return;
-      tdSurfFixMd();
-      TDSurf.set(over);
-      tdSurfStore();
-    };
-    if(typeof TDSurf !== 'undefined') TDSurf.onStatus(()=>this.refreshTextDeformSurface());
-    const tdSurfOn = $('#tdSurfOn');
-    if(tdSurfOn) tdSurfOn.addEventListener('change', ()=>tdSurfSet({ enabled: tdSurfOn.value === 'on' }));
-    const tdSurfOp = $('#tdSurfOp');
-    if(tdSurfOp){
-      const warmOp = ()=>{ if(typeof TDSurf !== 'undefined') TDSurf.ensure().catch(()=>{}); };
-      tdSurfOp.addEventListener('pointerdown', warmOp);
-      tdSurfOp.addEventListener('focus', warmOp);
-    }
-    if(tdSurfOp) tdSurfOp.addEventListener('change', ()=>{
-      tdSurfSet({ op: tdSurfOp.value, ops: [tdSurfOp.value], preset: '' });
-      toast('Surface: ' + tdSurfOp.options[tdSurfOp.selectedIndex].text);
     });
-    const tdSurfPreset = $('#tdSurfPreset');
-    if(tdSurfPreset){
-      // 一覧はエンジンと一緒に読み込む。Surface が Off でも、選択欄に触れた時点で読み込みを始める
-      const warm = ()=>{ if(typeof TDSurf !== 'undefined') TDSurf.ensure().catch(()=>{}); };
-      tdSurfPreset.addEventListener('pointerdown', warm);
-      tdSurfPreset.addEventListener('focus', warm);
-      tdSurfPreset.addEventListener('change', async ()=>{
-        if(typeof TDSurf === 'undefined') return;
-        if(!tdSurfPreset.value){ tdSurfSet({ preset: '' }); return; }
-        const id = tdSurfPreset.value, label = tdSurfPreset.options[tdSurfPreset.selectedIndex].text;
-        tdSurfFixMd();
-        if(!TDSurf.cfg.enabled) TDSurf.set({ enabled: true });   // プリセットを選んだら Surface を On に
-        try{ await TDSurf.ensure(); await TDSurf.loadPresets(); }catch(e){ return; }
-        TDSurf.applyPreset(id); tdSurfStore();
-        toast('Surface Preset: ' + label);
+    const tdLookOver = $('#tdLookOver');
+    if(tdLookOver) tdLookOver.addEventListener('click', ()=>{
+      const i = tdSavedIndex(), c = (typeof TDLooks !== 'undefined' && TDLooks.saved) ? TDLooks.saved[i] : null;
+      if(!c){ toast('上書きする保存 Look を選んでください'); return; }
+      App._confirm('いまの見た目で上書きしますか: ' + c.name, ()=>{
+        TDLooks.overwrite(i).then(()=>toast('Look を上書き: ' + c.name)).catch(e=>toast('Look の上書きに失敗: ' + e.message));
       });
+    });
+    const tdLookDel = $('#tdLookDel');
+    if(tdLookDel) tdLookDel.addEventListener('click', ()=>{
+      const i = tdSavedIndex(), c = (typeof TDLooks !== 'undefined' && TDLooks.saved) ? TDLooks.saved[i] : null;
+      if(!c){ toast('削除する保存 Look を選んでください'); return; }
+      App._confirm('保存 Look を削除しますか: ' + c.name, ()=>{
+        TDLooks.remove(i).then(()=>toast('Look を削除: ' + c.name)).catch(e=>toast('Look の削除に失敗: ' + e.message));
+      });
+    });
+    // Canvas (mode/textdeform-canvas.js): 消去・構成の保存 / 呼び出し / 削除
+    const tdCanvasSaved = $('#tdCanvasSaved');
+    const fillCanvasSaved = ()=>{
+      if(!tdCanvasSaved || typeof TDCanvas === 'undefined') return;
+      const esc = t=>String(t == null ? '' : t).replace(/[&<>"]/g, ch=>({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+      tdCanvasSaved.innerHTML = '<option value="">—</option>' + (TDCanvas.saved || []).map((cv, i)=>'<option value="' + i + '">' + esc(cv.name) + ' (' + (cv.stamps || []).length + ')</option>').join('');
+    };
+    if(typeof TDCanvas !== 'undefined'){
+      TDCanvas.loadSaved().then(fillCanvasSaved);
+      TDCanvas._onChange = ()=>this.refreshTextDeform();
     }
-    const tdSurfPresetRand = $('#tdSurfPresetRand');
-    if(tdSurfPresetRand) tdSurfPresetRand.addEventListener('click', async ()=>{
-      if(typeof TDSurf === 'undefined') return;
-      tdSurfFixMd();
-      if(!TDSurf.cfg.enabled) TDSurf.set({ enabled: true });
-      try{ await TDSurf.ensure(); await TDSurf.loadPresets(); }catch(e){ return; }
-      await this.guardedTextDeformRandom(()=>{ const id = TDSurf.randomPresetId(); if(id){ TDSurf.applyPreset(id); tdSurfStore(); } });
-      const p = TDSurf.presets && TDSurf.presets.presets.find(x=>x.id === TDSurf.cfg.preset);
-      if(p) toast('Surface Preset: ' + p.n + '. ' + p.name);
+    if(tdCanvasSaved) tdCanvasSaved.addEventListener('change', ()=>{
+      if(tdCanvasSaved.value === '' || typeof TDCanvas === 'undefined') return;
+      const i = +tdCanvasSaved.value;
+      TDCanvas.load(i).then(ok=>{ if(ok){ this.refreshTextDeform(); toast('Canvas を呼び出し: ' + TDCanvas.saved[i].name); } });
     });
-    const tdSurfPresetEvery = $('#tdSurfPresetEvery');
-    if(tdSurfPresetEvery) tdSurfPresetEvery.addEventListener('change', async ()=>{
-      const v = parseInt(tdSurfPresetEvery.value, 10) || 0;
-      if(v > 0 && typeof TDSurf !== 'undefined'){ if(!TDSurf.cfg.enabled){ tdSurfFixMd(); TDSurf.set({ enabled: true }); } TDSurf.ensure().then(()=>TDSurf.loadPresets()).catch(()=>{}); }
-      tdSurfSet({ presetEvery: v });
+    const tdCanvasSave = $('#tdCanvasSave');
+    if(tdCanvasSave) tdCanvasSave.addEventListener('click', async ()=>{
+      if(typeof TDCanvas === 'undefined') return;
+      await TDCanvas.loadSaved();
+      App._prompt('構成の名前', 'Canvas ' + (TDCanvas.saved.length + 1), (nn)=>{
+        TDCanvas.saveAs(String(nn || '').trim() || undefined).then(i=>{ fillCanvasSaved(); tdCanvasSaved.value = String(i); toast('Canvas を保存: ' + TDCanvas.saved[i].name); })
+          .catch(e=>toast('Canvas の保存に失敗: ' + e.message));
+      });
     });
-    // 文字の出どころ (TextDeform.textSrc。全 md 共通)
-    const tdText = (over)=>{ if(typeof TextDeform === 'undefined') return; TextDeform.setTextSource(over); this.refreshTextDeformText(); };
-    const tdTextMode = $('#tdTextMode');
-    if(tdTextMode) tdTextMode.addEventListener('change', ()=>tdText({ mode: tdTextMode.value }));
+    const tdCanvasDel = $('#tdCanvasDel');
+    if(tdCanvasDel) tdCanvasDel.addEventListener('click', ()=>{
+      const i = tdCanvasSaved ? tdCanvasSaved.value : '';
+      const cv = (i !== '' && typeof TDCanvas !== 'undefined' && TDCanvas.saved) ? TDCanvas.saved[+i] : null;
+      if(!cv){ toast('削除する構成を選んでください'); return; }
+      App._confirm('保存した構成を削除しますか: ' + cv.name, ()=>{
+        TDCanvas.removeSaved(+i).then(()=>{ fillCanvasSaved(); toast('Canvas を削除: ' + cv.name); }).catch(e=>toast('Canvas の削除に失敗: ' + e.message));
+      });
+    });
+    const tdCanvasClear = $('#tdCanvasClear');
+    if(tdCanvasClear) tdCanvasClear.addEventListener('click', ()=>{ if(typeof TDCanvas !== 'undefined'){ TDCanvas.clear(); App._undoSchedule(); } });
+    const tdRandGuard = $('#tdRandGuard');
+    if(tdRandGuard){
+      tdRandGuard.value = String(UI.tdRandGuardFps());
+      tdRandGuard.addEventListener('change', ()=>{ try{ localStorage.setItem('vj.textdeform.randGuardFps', tdRandGuard.value); }catch(e){} });
+    }
+    // Text
     const tdTextPool = $('#tdTextPool');
-    if(tdTextPool) tdTextPool.addEventListener('change', ()=>tdText({ pool: tdTextPool.value }));
-    const tdTextEvery = $('#tdTextEvery');
-    if(tdTextEvery) tdTextEvery.addEventListener('change', ()=>tdText({ every: parseFloat(tdTextEvery.value) || 4 }));
+    if(tdTextPool) tdTextPool.addEventListener('click', e=>{
+      const b = e.target.closest('[data-pool]');
+      if(!b || typeof TextDeform === 'undefined') return;
+      const g = b.dataset.pool;
+      let on = TextDeform.textPools().filter(x => x !== 'all');
+      if(g === 'all') on = ['all'];   // All はほかと排他
+      else on = on.includes(g) ? on.filter(x => x !== g) : on.concat(g);
+      if(!on.length) on = ['all'];    // 全部 Off にはしない
+      TextDeform.setTextSource({ textPool: on.join(',') });
+      this.refreshTextDeform();
+      App._undoSchedule();
+    });
     const tdTextNext = $('#tdTextNext');
     if(tdTextNext) tdTextNext.addEventListener('click', ()=>{
       if(typeof TextDeform === 'undefined') return;
-      if(TextDeform.textSrc.mode !== 'random') TextDeform.setTextSource({ mode: 'random' });
-      TextDeform.nextRandomText(); this.refreshTextDeformText();
+      if(TextDeform.P.textMode !== 'random') TextDeform.setTextSource({ textMode: 'random' });
+      TextDeform.nextRandomText();
+      this.refreshTextDeform();
     });
     const tdTextCustom = $('#tdTextCustom');
     if(tdTextCustom){
       let tm = null;
       tdTextCustom.addEventListener('input', ()=>{
         clearTimeout(tm);
-        tm = setTimeout(()=>tdText({ custom: tdTextCustom.value, mode: 'custom' }), 250);   // 入力すると Custom に切り替わる
+        tm = setTimeout(()=>{   // 入力すると Custom に切り替わる
+          if(typeof TextDeform === 'undefined') return;
+          TextDeform.setTextSource({ textCustom: tdTextCustom.value, textMode: 'custom' });
+          this.refreshTextDeform();
+          App._undoSchedule();
+        }, 250);
+      });
+    }
+    // Surface (上流 type-deformer 0.3 の Surface Operator)。状態は TextDeform.P.surf (アクセサ)
+    const tdSurfSet = (over)=>{
+      if(typeof TDSurf === 'undefined') return;
+      TDSurf.set(over);
+      this.refreshTextDeformSurface();
+      App._undoSchedule();
+    };
+    if(typeof TDSurf !== 'undefined') TDSurf.onStatus(()=>{ this.refreshTextDeformSurface(); this.refreshTextDeformLooks(); });
+    const tdSurfOn = $('#tdSurfOn');
+    if(tdSurfOn) tdSurfOn.addEventListener('change', ()=>{
+      tdSurfSet({ enabled: tdSurfOn.value === 'on' });
+      if(tdSurfOn.value === 'on' && typeof TDSurf !== 'undefined') TDSurf.ensure().catch(()=>{});
+    });
+    const tdSurfOp = $('#tdSurfOp');
+    if(tdSurfOp){
+      const warmOp = ()=>{ if(typeof TDSurf !== 'undefined') TDSurf.ensure().catch(()=>{}); };
+      tdSurfOp.addEventListener('pointerdown', warmOp);
+      tdSurfOp.addEventListener('focus', warmOp);
+      tdSurfOp.addEventListener('change', ()=>{
+        tdSurfSet({ enabled: true, op: tdSurfOp.value, ops: [tdSurfOp.value], preset: '' });
+        toast('Surface: ' + tdSurfOp.options[tdSurfOp.selectedIndex].text);
       });
     }
     const tdSurfEdit = $('#tdSurfEdit');
     if(tdSurfEdit) tdSurfEdit.addEventListener('change', ()=>tdSurfSet({ op: tdSurfEdit.value }));
-    [['tdSurfStrength','strength'],['tdSurfChance','chance'],['tdSurfSpeed','speed'],['tdSurfOpacity','opacity']].forEach(([id, key])=>{
+    [['tdSurfStrength','strength'],['tdSurfChance','chance'],['tdSurfSpeed','speed'],['tdSurfOpacity','opacity'],['tdSurfPixel','pixel']].forEach(([id, key])=>{
       const el = $('#'+id);
       if(el) el.addEventListener('input', ()=>tdSurfSet({ [key]: parseFloat(el.value) }));
     });
@@ -18908,66 +19203,65 @@ void mainImage(out vec4 o, in vec2 f){
       tdSurfParams.addEventListener('input', onParam);
       tdSurfParams.addEventListener('change', e=>{ if(e.target.tagName === 'SELECT') onParam(e); });
     }
-    const tdSurfSave = $('#tdSurfSave');
-    if(tdSurfSave) tdSurfSave.addEventListener('click', ()=>{ tdSurfFixMd(); this.saveTextDeformMdDefault(); });
     const tdSurfReset = $('#tdSurfReset');
     if(tdSurfReset) tdSurfReset.addEventListener('click', ()=>{
       if(typeof TDSurf === 'undefined') return;
-      tdSurfFixMd(); TDSurf.resetParams(TDSurf.cfg.op); tdSurfStore();
+      TDSurf.resetParams(TDSurf.cfg.op);
+      this.refreshTextDeformSurface();
+      App._undoSchedule();
     });
     const tdSurfRand = $('#tdSurfRand');
     if(tdSurfRand) tdSurfRand.addEventListener('click', ()=>{
       if(typeof TDSurf === 'undefined') return;
-      tdSurfFixMd(); this.tdComboRandom('surf');
+      this.guardedTextDeformRandom(()=>TDSurf.randomize(TDSurf.cfg.op));
     });
-    const tdRandOne = $('#tdMdRandOne');
-    if(tdRandOne) tdRandOne.addEventListener('click', ()=> UI.tdComboRandom('all'));
-    // 組み合わせリスト (mode/textdeform-combos.js)
-    if(typeof TDCombos !== 'undefined') TDCombos.onChange(()=>this.refreshTextDeformCombos());
-    const tdCombo = $('#tdCombo');
-    if(tdCombo){
-      const warmC = ()=>{ if(typeof TDCombos !== 'undefined') TDCombos.load(); };
-      tdCombo.addEventListener('pointerdown', warmC);
-      tdCombo.addEventListener('focus', warmC);
-      tdCombo.addEventListener('change', ()=>{
-        if(typeof TDCombos === 'undefined' || tdCombo.value === '') return;
-        const idx = parseInt(tdCombo.value, 10);
-        UI.guardedTextDeformRandom(()=>TDCombos.apply(idx, 'all'));
-        toast('Combo: ' + ((TDCombos.list[idx] || {}).name || ''));
+    // Composition (上流 0.3 の Compose)。状態は TextDeform.P.comp (アクセサ)
+    const tdCompSet = (over)=>{
+      if(typeof TDComp === 'undefined') return;
+      TDComp.set(over);
+      this.refreshTextDeform();
+      App._undoSchedule();
+    };
+    const tdCompType = $('#tdCompType');
+    if(tdCompType){
+      tdCompType.addEventListener('change', ()=>{
+        tdCompSet(tdCompType.value === 'off' ? { enabled: false } : { enabled: true, type: tdCompType.value });
+        toast('TYPE Comp: ' + (tdCompType.value === 'off' ? 'Off' : tdCompType.options[tdCompType.selectedIndex].text));
       });
     }
-    const tdComboAdd = $('#tdComboAdd');
-    if(tdComboAdd) tdComboAdd.addEventListener('click', async ()=>{
-      if(typeof TDCombos === 'undefined') return;
-      await TDCombos.load();
-      App._prompt('組み合わせの名前', 'Combo ' + (TDCombos.list.length + 1), (nn)=>{
-        TDCombos.add(String(nn || '').trim() || undefined).then(()=>toast('Combo を保存: ' + TDCombos.list[TDCombos.current].name + ' (' + TDCombos.list.length + ' 件)'))
-          .catch(e=>toast('Combo の保存に失敗: ' + e.message));
+    // 保存 Composition (TDComp の store「tdcomps」)
+    const tdCompSaved = $('#tdCompSaved');
+    const fillCompSaved = ()=>{
+      if(!tdCompSaved || typeof TDComp === 'undefined') return;
+      const esc = t=>String(t == null ? '' : t).replace(/[&<>"]/g, ch=>({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[ch]);
+      tdCompSaved.innerHTML = '<option value="">—</option>' + (TDComp.saved || []).map((c, i)=>'<option value="' + i + '">' + esc(c.name) + '</option>').join('');
+    };
+    if(typeof TDComp !== 'undefined') TDComp.loadSaved().then(fillCompSaved);
+    if(tdCompSaved) tdCompSaved.addEventListener('change', ()=>{
+      if(tdCompSaved.value === '' || typeof TDComp === 'undefined') return;
+      const i = +tdCompSaved.value;
+      TDComp.load(i).then(ok=>{ if(ok){ this.refreshTextDeform(); App._undoSchedule(); toast('Comp を呼び出し: ' + TDComp.saved[i].name); } });
+    });
+    const tdCompSave = $('#tdCompSave');
+    if(tdCompSave) tdCompSave.addEventListener('click', async ()=>{
+      if(typeof TDComp === 'undefined') return;
+      await TDComp.loadSaved();
+      App._prompt('Composition の名前', 'Comp ' + (TDComp.saved.length + 1), (nn)=>{
+        TDComp.saveAs(String(nn || '').trim() || undefined).then(i=>{ fillCompSaved(); tdCompSaved.value = String(i); toast('Comp を保存: ' + TDComp.saved[i].name); })
+          .catch(e=>toast('Comp の保存に失敗: ' + e.message));
       });
     });
-    const tdComboOver = $('#tdComboOver');
-    if(tdComboOver) tdComboOver.addEventListener('click', ()=>{
-      if(typeof TDCombos === 'undefined' || !TDCombos.list) return;
-      const idx = tdCombo ? parseInt(tdCombo.value, 10) : -1;
-      const c = TDCombos.list[idx]; if(!c){ toast('上書きする Combo を選んでください'); return; }
-      App._confirm('いまの見た目で上書きしますか: ' + c.name, ()=>{
-        TDCombos.overwrite(idx).then(()=>toast('Combo を上書き: ' + c.name)).catch(e=>toast('Combo の上書きに失敗: ' + e.message));
+    const tdCompDel = $('#tdCompDel');
+    if(tdCompDel) tdCompDel.addEventListener('click', ()=>{
+      const i = tdCompSaved ? tdCompSaved.value : '';
+      const c = (i !== '' && typeof TDComp !== 'undefined' && TDComp.saved) ? TDComp.saved[+i] : null;
+      if(!c){ toast('削除する Composition を選んでください'); return; }
+      App._confirm('保存した Composition を削除しますか: ' + c.name, ()=>{
+        TDComp.removeSaved(+i).then(()=>{ fillCompSaved(); toast('Comp を削除: ' + c.name); }).catch(e=>toast('Comp の削除に失敗: ' + e.message));
       });
     });
-    const tdComboDel = $('#tdComboDel');
-    if(tdComboDel) tdComboDel.addEventListener('click', ()=>{
-      if(typeof TDCombos === 'undefined' || !TDCombos.list) return;
-      const idx = tdCombo ? parseInt(tdCombo.value, 10) : -1;
-      const c = TDCombos.list[idx]; if(!c){ toast('削除する Combo を選んでください'); return; }
-      App._confirm('組み合わせを削除しますか: ' + c.name, ()=>{
-        TDCombos.remove(idx).then(()=>toast('Combo を削除: ' + c.name)).catch(e=>toast('Combo の削除に失敗: ' + e.message));
-      });
-    });
-    const tdRandGuard = $('#tdRandGuard');
-    if(tdRandGuard){
-      tdRandGuard.value = String(UI.tdRandGuardFps());
-      tdRandGuard.addEventListener('change', ()=>{ try{ localStorage.setItem('vj.textdeform.randGuardFps', tdRandGuard.value); }catch(e){} });
-    }
+    const tdCompReseed = $('#tdCompReseed');
+    if(tdCompReseed) tdCompReseed.addEventListener('click', ()=>tdCompSet({ seed: Math.floor(Math.random()*1e6) }));
     const bindComp = (id, fn)=>{
       const el = $('#'+id);
       if(el) el.addEventListener('input', ()=>fn(parseFloat(el.value)));
@@ -18982,30 +19276,6 @@ void mainImage(out vec4 o, in vec2 f){
     bindComp('tdCompFeedback', v=>tdCompSet({ fxRack: { feedback: { enabled: v > 0, amount: v } } }));
     bindComp('tdCompChroma', v=>tdCompSet({ fxRack: { chromaticSplit: { enabled: v > 0, amount: v } } }));
     bindComp('tdCompRaster', v=>tdCompSet({ fxRack: { rasterMaterial: { enabled: v > 0, amount: v } } }));
-    const tdLaw = $('#tdMdRandomLaw');
-    if(tdLaw){
-      tdLaw.addEventListener('change', ()=>{
-        tdApplyMdStyle({ randomLaw: tdLaw.value });
-      });
-    }
-    const tdDir = $('#tdMdDirection');
-    if(tdDir){
-      tdDir.addEventListener('change', ()=>{
-        tdApplyMdStyle({ vertical: tdDir.value === 'vertical' });
-      });
-    }
-    const tdFit = $('#tdMdFitMode');
-    if(tdFit){
-      tdFit.addEventListener('change', ()=>{
-        tdApplyMdStyle({ fitMode: tdFit.value });
-      });
-    }
-    const tdFont = $('#tdMdFont');
-    if(tdFont){
-      tdFont.addEventListener('change', ()=>{
-        tdApplyMdStyle({ fontFamily: tdFont.value });
-      });
-    }
     const tb = $('#mixTransBeats');
     if(tb){
       tb.value = String(App.transBeats || 0);
@@ -19438,6 +19708,7 @@ void mainImage(out vec4 o, in vec2 f){
       // 戻り先: 「デフォルト保存」した値 → 無ければ初期値
       const store = UI._loadCtlDefaults();
       const saved = (el.id && store[el.id] !== undefined) ? store[el.id] : undefined;
+      if(el.dataset.resetNull){ el.dispatchEvent(new Event('vj-reset-null')); return; }   // 既定が「なし (null)」の色は値を持たせず null に戻す
       if(saved === undefined && el.dataset.default === undefined) return;
       el.value = saved !== undefined ? saved : el.dataset.default;
       el.dispatchEvent(new Event('input', {bubbles:true}));
@@ -19509,7 +19780,7 @@ void mainImage(out vec4 o, in vec2 f){
         const kind = b.dataset.kind;
         const defaultScope = b.closest('.section');
         if(b.classList.contains('randDefBtn') && kind === 'overlay' && UI._overlayRandomize){ UI._overlayRandomize(); return; }
-        if(b.classList.contains('randDefBtn') && kind === 'textdeformMd'){ UI.tdComboRandom('all'); return; }   // Type Deformer は組み合わせリストから
+        if(b.classList.contains('randDefBtn') && kind === 'textdeform'){ UI.tdLookRandom(); return; }   // Type Deformer は Look を引き直す
         if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
           if(kind === 'overlay'){
@@ -19518,7 +19789,7 @@ void mainImage(out vec4 o, in vec2 f){
             Overlay.clear();
             if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
             toast('デフォルトをリセット: overlay (' + m + ')');
-          }else if(kind === 'textdeformMd') UI.resetTextDeformMdDefault();
+          }
           else if(kind === 'ugomekiMd') UI.resetUgomekiMdDefault();
           else if(kind === 'spacetypeMd') UI.resetSpaceTypeMdDefault();
           else if(kind === 'slicerImg') UI.resetSlicerImgDefault();
@@ -19540,7 +19811,6 @@ void mainImage(out vec4 o, in vec2 f){
         { const sec = defaultScope;
           if(sec) sec.querySelectorAll('input[type=range]').forEach(el=>{ el.dataset.defval = el.value; }); }
         if(kind === 'overlay'){ const m = Overlay.saveModeDefault(); toast('デフォルト保存: IMAGON ('+m+')'); }
-        else if(kind === 'textdeformMd') UI.saveTextDeformMdDefault();
         else if(kind === 'ugomekiMd') UI.saveUgomekiMdDefault();
         else if(kind === 'spacetypeMd') UI.saveSpaceTypeMdDefault();
         else if(kind === 'slicerImg') UI.saveSlicerImgDefault();
@@ -19944,7 +20214,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('mgPnlShadow',   'panelShadow',     pc);
     slid('mgPnlSat',      'panelSat',        pc);
     slid('mgViewRotate',  'viewRotate',      pd);
-    slid('mgTiles',       'pageTiles',       fi);
+    slid('mgTiles',       'pageTiles',       v=>Math.round(v / 100));
     slid('mgPixelate',    'pixelate',        ppx);
     slid('mgChroma',      'chromaSplit',     ppx);
     slid('mgWaveAmp',     'waveAmp',         pc);
@@ -20148,7 +20418,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Cam Az Offset', 'camAzOff',  -180, 180, 1,     v=>Math.round(v)+'°'],
     ];
     for(const [label, key, mi, ma, st, fmt, cb] of specs){
-      const row = document.createElement('div'); row.className = 'row';
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st; inp.value=Layer.P[key];
       // ダブルクリックで戻すデフォルト値 (Layer.PDefaults スナップショット)
@@ -20166,7 +20436,7 @@ void mainImage(out vec4 o, in vec2 f){
 
     // トグル系: チェックボックスで Post タブ (Invert 行と同じスタイル) に揃える
     const mkToggle = (label, key)=>{
-      const row = document.createElement('div'); row.className='row';
+      const row = document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='checkbox'; inp.checked = !!Layer.P[key];
       inp.addEventListener('change', ()=>{ Layer.P[key] = inp.checked; });
@@ -20178,7 +20448,7 @@ void mainImage(out vec4 o, in vec2 f){
     mkToggle('PNG α',  'pngAlpha');
 
     // BG Color (color picker を Post タブと同じ .row 構造で)
-    const bgRow = document.createElement('div'); bgRow.className='row';
+    const bgRow = document.createElement('div'); bgRow.className='row'; bgRow.dataset.pkey = 'bgColor';
     const bgLab = document.createElement('label'); bgLab.textContent = 'BG Color';
     const bgInp = document.createElement('input'); bgInp.type='color';
     const toHex = (rgb)=>'#'+rgb.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -20193,7 +20463,7 @@ void mainImage(out vec4 o, in vec2 f){
     root.appendChild(bgRow);
 
     for(const [label, key] of [['Frame Color','frameColor'], ['Tint Color','tintColor'], ['Rim Color','rimColor']]){
-      const cRow = document.createElement('div'); cRow.className='row';
+      const cRow = document.createElement('div'); cRow.className='row'; cRow.dataset.pkey = key;
       const cLab = document.createElement('label'); cLab.textContent = label;
       const cInp = document.createElement('input'); cInp.type='color';
       cInp.value = toHex(Layer.P[key]);
@@ -20205,6 +20475,7 @@ void mainImage(out vec4 o, in vec2 f){
       cRow.appendChild(cLab); cRow.appendChild(cInp);
       root.appendChild(cRow);
     }
+    this.bindEngineHints(root, Layer);
   },
 
   refreshPenParams(){
@@ -20255,7 +20526,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Depth Fog',      'depthFog',  0, 100, 1, v=>Math.round(v)+'%'],   // 奥の線ほど薄くする
     ];
     for(const [label, key, mi, ma, st, fmt, cb] of specs){
-      const row = document.createElement('div'); row.className = 'row';
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st; inp.value=Pen.P[key];
       inp.dataset.default = String(App.resetValueFor('pen', key, Pen._PDef[key] !== undefined ? Pen._PDef[key] : Pen.P[key]));
@@ -20264,7 +20535,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
       root.appendChild(row);
     }
-    { const row = document.createElement('div'); row.className = 'row';       // 紙 (Slot A の背景色)
+    { const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = 'bgColor';       // 紙 (Slot A の背景色)
       const lab = document.createElement('label'); lab.textContent = 'BG Color';
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       const col = document.createElement('input'); col.type='color'; col.value = toHex(Pen.P.bgColor);
@@ -20272,7 +20543,7 @@ void mainImage(out vec4 o, in vec2 f){
       col.addEventListener('input', ()=>{ const v = col.value; Pen.P.bgColor = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
     for(const [label, key, def] of [['Mono Ink', 'monoInk', [0,0,0]], ['Palette Tint', 'palTint', [1,1,1]]]){   // 線の色 (Mono = 墨に足す / Palette = パレット色に掛ける)
-      const row = document.createElement('div'); row.className = 'row';
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       const col = document.createElement('input'); col.type='color'; col.value = toHex(Pen.P[key] || def);
@@ -20280,6 +20551,7 @@ void mainImage(out vec4 o, in vec2 f){
       col.addEventListener('input', ()=>{ const v = col.value; Pen.P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row);
     }
+    this.bindEngineHints(root, Pen);
   },
 
   // MIDI Relative の UI を MIDI の現在値へ同期。
@@ -20333,10 +20605,22 @@ void mainImage(out vec4 o, in vec2 f){
     const mkColor = ([label, key, title])=>{
       const row = mkRow(label, key);
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
-      const col = document.createElement('input'); col.type='color'; col.value = toHex(P[key]);
+      const show = v => toHex(NovelTerminal.colorOf(key, v));   // HUD の色は null (従来どおり) なら従う色を出す
+      const col = document.createElement('input'); col.type='color'; col.value = show(P[key]);
       if(title) col.title = title;
-      col.dataset.default = toHex(App.resetValueFor('novel', key, NovelTerminal._PDef[key] || P[key]));
-      col.addEventListener('input', ()=>{ const v=col.value; P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const resetV = App.resetValueFor('novel', key, key in NovelTerminal._PDef ? NovelTerminal._PDef[key] : P[key]);
+      col.dataset.default = show(resetV);
+      const isHud = key in NovelTerminal.HUD_COLOR_BASE;
+      if(isHud){   // 既定が null (= Fluid Accent / Mono Ink に従う) の色: ダブルクリックでも null へ戻し、基準色の変更にスウォッチが追従する
+        col.dataset.hudKey = key;
+        if(!resetV) col.dataset.resetNull = '1';
+        col.addEventListener('vj-reset-null', ()=>{ P[key] = null; col.value = show(null); });
+      }
+      col.addEventListener('input', ()=>{
+        const v=col.value; P[key] = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255];
+        if(key in NovelTerminal.HUD_COLOR_BASE) return;
+        if(key === 'fluidAccent' || key === 'monoColor') root.querySelectorAll('input[type=color][data-hud-key]').forEach(c=>{ if(!P[c.dataset.hudKey]) c.value = toHex(NovelTerminal.colorOf(c.dataset.hudKey, null)); });
+      });
       row.appendChild(col);
     };
     const mkToggles = (label, list)=>{
@@ -20438,7 +20722,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Fluid Cycle', 'sceneSpeed', 0.2, 3.0, 0.05, v=>v.toFixed(2), 'Fluid 内部の構図サイクル速度'],
       ['Terminal Tint','tint',      0,   2.5, 0.05, v=>v.toFixed(2), '端末グリーンの混色量'],
       ['Beat Flash',  'beatFlash',  0,   3.0, 0.05, v=>v.toFixed(2), '拍頭フラッシュ量'],
-      ['Morph',       'morph',      0,   3.0, 0.05, v=>v.toFixed(2), '旧シーン間の変形トランジション秒数 (0=カット)'],
+      ['Morph',       'morph',      0,   3.0, 0.05, v=>v.toFixed(2), '場面が替わるときの変形・フェードの秒数 (0=カット)'],
     ];
     specs.forEach(mkSlider);
     {   // 背景 (文字列の値なので mkSelect とは別に作る。Option のスポイトは bgColor に色を入れ、bgMode を 'color' にする)
@@ -20458,6 +20742,8 @@ void mainImage(out vec4 o, in vec2 f){
       specs2.forEach(mkSlider);
       const sh = { fluidCircleMode:['Circle','fluidCircleEdge',null], fluidTriMode:['Tri','fluidTriEdge','fluidTriText'], fluidRectMode:['Rect','fluidRectEdge','fluidRectText'] }[key];
       if(sh) mkToggles(sh[0] + ' Options', [[sh[1], 'Outline', `${label} の輪郭を描く (OFF = 描かない)`]].concat(sh[2] ? [[sh[2], 'Text Spin', `${label} の中の字を${label}の向きにそろえて回す`]] : []));
+      const al = { fluidCircleMode:'fluidCircleAlign', fluidTriMode:'fluidTriAlign', fluidRectMode:'fluidRectAlign' }[key];
+      if(al) mkSelect([label + ' Stroke', al, [[0,'Inside'],[1,'Center'],[2,'Outside']], `Fluid: ${label} の輪郭線の位置 (Inside = 内 / Center = 中心 / Outside = 外)`]);
     }
     (NovelTerminal.SPECS || []).forEach(mkSlider);
     (NovelTerminal.COLORS || []).forEach(mkColor);
@@ -20495,9 +20781,7 @@ void mainImage(out vec4 o, in vec2 f){
       head.addEventListener('click', ()=> tog && tog.click());
     }
     // 今の Scene で使わないパラメータ (とグループ) をグレーにする (値は保持・Save の対象のまま)。見出しにホバーで説明
-    if(NovelTerminal.paramOn) this.bindParamWhen(root, key=>NovelTerminal.paramOn(key));
-    const HELP = NovelTerminal.PARAM_HELP || {};
-    this.bindParamHelp(root, key=>HELP[key]);
+    this.bindEngineHints(root, NovelTerminal);
   },
 
   refreshCyberParams(){
@@ -20550,7 +20834,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Icon Scale',     'iconScale',   30, 200, 1, v=>Math.round(v)+'%'],   // 右下の HUD アイコンの大きさ
     ];
     for(const [label, key, mi, ma, st, fmt] of sliders){
-      const row = document.createElement('div'); row.className = 'row';
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st; inp.value=P[key];
       inp.dataset.default = String(App.resetValueFor('cyberui', key, CyberUI._PDef[key] !== undefined ? CyberUI._PDef[key] : P[key]));
@@ -20569,7 +20853,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Console', 'console'],   // 端末ログ
     ];
     for(const [label, key] of toggles){
-      const row = document.createElement('div'); row.className = 'row';
+      const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const cbx = document.createElement('input'); cbx.type='checkbox'; cbx.checked = !!P[key];
       cbx.addEventListener('change', ()=>{ P[key] = cbx.checked ? 1 : 0; });
@@ -20577,13 +20861,14 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(wrap);
       root.appendChild(row);
     }
-    { const row = document.createElement('div'); row.className = 'row';       // 線の色 (白モードのみ。Black ON のときは黒のまま)
+    { const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = 'inkColor';       // 線の色 (白モードのみ。Black ON のときは黒のまま)
       const lab = document.createElement('label'); lab.textContent = 'Ink Color';
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       const col = document.createElement('input'); col.type='color'; col.value = toHex(P.inkColor || [1,1,1]);
       col.dataset.default = toHex(App.resetValueFor('cyberui', 'inkColor', CyberUI._PDef.inkColor || [1,1,1]));
       col.addEventListener('input', ()=>{ const v = col.value; P.inkColor = [parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
+    this.bindEngineHints(root, CyberUI);
   },
 
   // セクション見出し (h3) クリックで折りたたみ。状態は localStorage に保持。
@@ -21080,12 +21365,30 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxInkBleedEdge','inkBleedEdge', f2);
     slid('pxInkBleedNode','inkBleedNode', f2);
     slid('pxInkBleedSeed','inkBleedSeed', fi);
+    slid('pxHatch','hatch', f2);
+    slid('pxHatchDensity','hatchDensity', f2);
+    slid('pxHatchFlow','hatchFlow', f2);
+    slid('pxHatchLength','hatchLength', f2);
+    slid('pxHatchLayers','hatchLayers', fi);
+    slid('pxHatchAngle','hatchAngle', f2);
+    slid('pxHatchWobble','hatchWobble', f2);
+    slid('pxHatchMix','hatchMix', f2);
+    slid('pxHatchTex','hatchTex', f2);
+    slid('pxHatchGrain','hatchGrain', f2);
+    slid('pxHatchBreak','hatchBreak', f2);
+    for(const [id, key] of [['pxHatchInk','hatchInk'], ['pxHatchPaper','hatchPaper']]){
+      const el = $('#' + id); if(el) el.addEventListener('input', ()=>{ App.post[key] = el.value; });
+    }
+    { const el = $('#pxHatchTool'); if(el) el.addEventListener('change', ()=>{ App.post.hatchTool = parseInt(el.value)|0; }); }
     const inkBleedPaper = $('#pxInkBleedPaper');
     if(inkBleedPaper) inkBleedPaper.addEventListener('input', ()=>{ App.post.inkBleedPaper = inkBleedPaper.value; });
     slid('pxDither','dither', f2);
     slid('pxCandy','candy', f2);
     slid('pxOrigami','origami', f2);
     slid('pxNeedleScatter','needleScatter', f2);
+    slid('pxNeedleThick','needleThick', f2);
+    slid('pxNeedleLen','needleLen', f2);
+    slid('pxNeedleSides','needleSides', fi);
     slid('pxKaiser','kaiser', f2);
     slid('pxKaiserOld','kaiserOld', f2);
     slid('pxUzumaki','uzumaki', f2);
@@ -21127,6 +21430,7 @@ void mainImage(out vec4 o, in vec2 f){
     { const sb = $('#pxFx3dBg'); if(sb){ sb.value = App.post.fx3dBg === 'color' ? 'color' : 'auto'; sb.addEventListener('change', ()=>{ App.post.fx3dBg = sb.value; }); } }
     { const sp = $('#pxFx3dPop'); if(sp){ sp.value = App.post.fx3dPop || 'back'; sp.addEventListener('change', ()=>{ App.post.fx3dPop = sp.value; }); } }
     { const ss = $('#pxFx3dSlot'); if(ss){ ss.value = ['A','B'].includes(App.post.fx3dSlot) ? App.post.fx3dSlot : 'both'; ss.addEventListener('change', ()=>{ App.post.fx3dSlot = ss.value; }); } }
+    { const sm = $('#pxFx3dMix'); if(sm){ sm.value = App.post.fx3dMix === 'blend' ? 'blend' : 'front'; sm.addEventListener('change', ()=>{ App.post.fx3dMix = sm.value; }); } }
     { const st = $('#pxFx3dTarget'); if(st){ st.value = App.post.fx3dTarget === 'all' ? 'all' : 'object'; st.addEventListener('change', ()=>{ App.post.fx3dTarget = st.value; }); } }
     { const so = $('#pxFx3dOverscan'); if(so){ so.value = String(App.fx3dOverscanPct()); so.addEventListener('change', ()=>{ App.post.fx3dOverscan = +so.value; }); } }
     slid('pxShake','shake',f2);
@@ -21466,10 +21770,27 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxShock', p.shock || 0, f2);
     // Numeric sliders are refreshed by _postSlid above.
     set('pxInkBleedPaper', p.inkBleedPaper);
+    set('pxHatch', p.hatch || 0, f2);
+    set('pxHatchDensity', p.hatchDensity != null ? p.hatchDensity : 0.5, f2);
+    set('pxHatchFlow', p.hatchFlow != null ? p.hatchFlow : 0.8, f2);
+    set('pxHatchLength', p.hatchLength != null ? p.hatchLength : 0.5, f2);
+    set('pxHatchLayers', p.hatchLayers != null ? p.hatchLayers : 3, fi);
+    set('pxHatchAngle', p.hatchAngle != null ? p.hatchAngle : 0.25, f2);
+    set('pxHatchWobble', p.hatchWobble != null ? p.hatchWobble : 0.3, f2);
+    set('pxHatchMix', p.hatchMix || 0, f2);
+    set('pxHatchTex', p.hatchTex || 0, f2);
+    set('pxHatchGrain', p.hatchGrain != null ? p.hatchGrain : 0.5, f2);
+    set('pxHatchBreak', p.hatchBreak != null ? p.hatchBreak : 0.3, f2);
+    set('pxHatchInk', p.hatchInk || '#1e1e1e');
+    set('pxHatchPaper', p.hatchPaper || '#f2eee4');
+    if($('#pxHatchTool')) $('#pxHatchTool').value = String(p.hatchTool|0);
     set('pxDither', p.dither || 0, f2);
     set('pxCandy', p.candy || 0, f2);
     set('pxOrigami', p.origami || 0, f2);
     set('pxNeedleScatter', p.needleScatter != null ? p.needleScatter : 0.6, f2);
+    set('pxNeedleThick', p.needleThick || 0, f2);
+    set('pxNeedleLen', p.needleLen || 0, f2);
+    set('pxNeedleSides', p.needleSides != null ? p.needleSides : 5, fi);
     set('pxKaiser', p.kaiser || 0, f2);
     set('pxKaiserOld', p.kaiserOld || 0, f2);
     set('pxUzumaki', p.uzumaki || 0, f2);
@@ -21504,6 +21825,7 @@ void mainImage(out vec4 o, in vec2 f){
     if($('#pxFx3dBg')) $('#pxFx3dBg').value = p.fx3dBg === 'color' ? 'color' : 'auto';
     if($('#pxFx3dPop')) $('#pxFx3dPop').value = ['back','elastic','bounce','out','off'].includes(p.fx3dPop) ? p.fx3dPop : 'back';
     if($('#pxFx3dSlot')) $('#pxFx3dSlot').value = ['A','B'].includes(p.fx3dSlot) ? p.fx3dSlot : 'both';
+    if($('#pxFx3dMix')) $('#pxFx3dMix').value = p.fx3dMix === 'blend' ? 'blend' : 'front';
     if($('#pxFx3dTarget')) $('#pxFx3dTarget').value = p.fx3dTarget === 'all' ? 'all' : 'object';
     if($('#pxFx3dOverscan')) $('#pxFx3dOverscan').value = String(App.fx3dOverscanPct(p));
     set('pxShake', p.shake, f2);
@@ -21922,6 +22244,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(noneIdx >= 0) makeTile(noneIdx, 'movie');            // Movie セクションの先頭
     if(noneIdx >= 0) makeTile(noneIdx, 'shader');           // Shader セクションの先頭
     shaderIdx.forEach(i => makeTile(i));
+    UI._refreshLazyTiles();
 
     const cnt = $('#thumbCount');
     if(cnt) cnt.textContent = String(PRESETS.length);
@@ -21947,6 +22270,27 @@ void mainImage(out vec4 o, in vec2 f){
     })();
   },
 
+  // 選んだときに画像を読む Visual (Layer / Manga / Slicer) は、読み込むまでタイルをグレーにする (読み込み後に色が付く)
+  _lazyLoaded(kind){
+    if(kind === 'layer') return Layer.textures.length > 0;
+    if(kind === 'manga') return typeof Manga !== 'undefined' && Manga.images.length > 0;
+    if(kind === 'slicer') return typeof Slicer !== 'undefined' && !!Slicer.imageReady;
+    return true;
+  },
+  _lazyLoading(kind){
+    if(kind === 'layer') return !!Layer._autoLoading;
+    if(kind === 'manga') return typeof Manga !== 'undefined' && !!Manga._autoLoading;
+    if(kind === 'slicer') return typeof Slicer !== 'undefined' && !!(Slicer._imgLoading || Slicer._loads);
+    return false;
+  },
+  _refreshLazyTiles(){
+    document.querySelectorAll('.thumb-tile[data-idx]').forEach(t => {
+      const p = PRESETS[+t.dataset.idx];
+      const pending = !!p && !this._lazyLoaded(p.kind);
+      t.classList.toggle('lazy-pending', pending);
+      t.classList.toggle('lazy-loading', pending && this._lazyLoading(p.kind));   // 読み込み中は Loading… を出す
+    });
+  },
   // 画像 / 動画の読み込みタイル (欄の先頭 1 行、高さはサムネ 1 枚ぶん。クリックで file input を開き、ドロップと同じ MediaImport で取り込む)
   _importTile(what, inputSel, cat){
     const tile = document.createElement('div');
@@ -22270,6 +22614,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(out) out.textContent = App.effDisplay(v.P[key], fmt);
     }
     const mir = $('#vidMirror'); if(mir) mir.value = String(v.P.mirror);
+    this.bindEngineHints(document.querySelector('.video-mode'), Movie);
   },
 
   bindImage(){
@@ -22428,6 +22773,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const mir = $('#imgMirror'); if(mir) mir.value = String(P.mirror);
     const tmir = $('#imgTileMirror'); if(tmir) tmir.checked = !!P.tileMirror;
+    this.bindEngineHints(document.querySelector('.image-mode'), ImageMode);
     { const fsave = $('#imgFolderSave'), fclear = $('#imgFolderClear');
       const f = P.folder ? m._folderByDir(P.folder) : null;
       const saved = m.hasFolderParams ? m.hasFolderParams(P.folder) : false;
@@ -22536,7 +22882,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Seed','seed',1,999,1,v=>String(v|0),true],
     ];
     for(const [label,key,mi,ma,step,fmt,relayout] of specs){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey=key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
@@ -22544,14 +22890,14 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
     for(const [label,key,mi,ma,step,fmt] of (PhotoPlane.SPECS||[])){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey=key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
       inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
-    { const row=document.createElement('div'); row.className='row';          // 背景色 (Slot A で敷く / Slot B は透過)
+    { const row=document.createElement('div'); row.className='row'; row.dataset.pkey='bg';          // 背景色 (Slot A で敷く / Slot B は透過)
       const lab=document.createElement('label'); lab.textContent='BG Color';
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P.bg);
@@ -22559,7 +22905,7 @@ void mainImage(out vec4 o, in vec2 f){
       col.addEventListener('input', ()=>{ const v=col.value; P.bg=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row); }
     for(const [label,key] of (PhotoPlane.COLORS||[])){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey=key;
       const lab=document.createElement('label'); lab.textContent=label;
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key]);
@@ -22567,6 +22913,7 @@ void mainImage(out vec4 o, in vec2 f){
       col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
       row.appendChild(lab); row.appendChild(col); root.appendChild(row);
     }
+    this.bindEngineHints(root, PhotoPlane);
   },
   // すべてのスライダーに「ダブルクリックで既定値へ戻す」を付ける。
   //   既定値 = そのスライダーが最初に組まれた時点の値 (= Save/Reset が復元する値)。
@@ -22809,7 +23156,7 @@ void mainImage(out vec4 o, in vec2 f){
     ];
     root.innerHTML = '';
     for(const spec of specs){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey = (spec.sel || spec.color) ? spec.key : spec[1];
       if(spec.sel){                                   // 選択肢はプルダウン
         const lab=document.createElement('label'); lab.textContent=spec.label; if(spec.tip) lab.title = spec.tip;
         const sel=document.createElement('select');
@@ -22836,6 +23183,7 @@ void mainImage(out vec4 o, in vec2 f){
         if(rebuild && Shredder.rebuild) Shredder.rebuild(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+    this.bindEngineHints(root, Shredder);
   },
   refreshTransflockParams(){
     const root = document.getElementById('transflockParams'); if(!root) return;
@@ -22902,9 +23250,9 @@ void mainImage(out vec4 o, in vec2 f){
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
     for(const [label,key,mi,ma,step,fmt] of specs){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=disp(P[key], fmt);
@@ -22913,7 +23261,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Tail Color','tailColor']]){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
       col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
@@ -22934,6 +23282,7 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshTransflockParams();
       });
       row.appendChild(b); }
+    this.bindEngineHints(root, TransFlock);
   },
   // SPECS ([label, key, min, max, step, fmt] / 選択式 {sel}) を持つ kind エンジン
   _specEngine(kind){
@@ -22958,6 +23307,7 @@ void mainImage(out vec4 o, in vec2 f){
     root.innerHTML = '';
     for(const spec of RZ.SPECS){
       const row=document.createElement('div'); row.className='row'; root.appendChild(row);
+      row.dataset.pkey = spec.sel ? spec.key : spec[1];
       const lab=document.createElement('label'); lab.textContent=spec.label || spec[0];
       if(spec.sel){
         // 選択式 (Style)
@@ -22976,6 +23326,7 @@ void mainImage(out vec4 o, in vec2 f){
       inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
+    this.bindEngineHints(root, RZ);
   },
   refreshWindflockParams(){
     const root = document.getElementById('windflockParams'); if(!root) return;
@@ -23057,11 +23408,11 @@ void mainImage(out vec4 o, in vec2 f){
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
     const NO_DEAD = { seed:1, camYaw:1, camPitch:1, phase:1 };   // デッドゾーン表示をしない (設定値)
     for(const spec of specs){
       if(spec.sel){                                   // 選択肢はプルダウン
-        const row = mkRow();
+        const row = mkRow(spec.key);
         const lab=document.createElement('label'); lab.textContent=spec.label;
         const sel=document.createElement('select');
         spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
@@ -23071,7 +23422,7 @@ void mainImage(out vec4 o, in vec2 f){
         continue;
       }
       const [label,key,mi,ma,step,fmt] = spec;
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
@@ -23081,7 +23432,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Tail Color','tailCol']]){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
       col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
@@ -23104,6 +23455,7 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshWindflockParams();
       });
       row.appendChild(b); }
+    this.bindEngineHints(root, WindFlock);
   },
   refreshTower4149Params(){
     const root = document.getElementById('tower4149Params'); if(!root) return;
@@ -23119,10 +23471,10 @@ void mainImage(out vec4 o, in vec2 f){
     const specs = Tower4149.SPECS.map(([label,key,mi,ma,step,fmt])=>[label,key,mi,ma,step,formats[fmt]]);
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
     for(const spec of specs){
       const [label,key,mi,ma,step,fmt] = spec;
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const show = (v)=> key === 'seed' ? fmt(v) : disp(v, fmt);   // Seed はデッドゾーン表示をしない
@@ -23144,6 +23496,7 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshTower4149Params();
       });
       row.appendChild(b); }
+    this.bindEngineHints(root, Tower4149);
   },
   refreshChromeTypeParams(){
     const root = document.getElementById('chrometypeParams'); if(!root) return;
@@ -23158,9 +23511,9 @@ void mainImage(out vec4 o, in vec2 f){
     const NO_DEAD = { seed:1 };
     const NO_RAND = { size:1, posY:1, posX:1, lens:1, speed:1 };   // Random で変えない (画面から外れる・止まる)
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
-    const mkSel = (label, opts, value, onChange, noRand)=>{   // opts: [[value, name], ...]
-      const row = mkRow();
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
+    const mkSel = (label, opts, value, onChange, noRand, key)=>{   // opts: [[value, name], ...]
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const sel=document.createElement('select');
       opts.forEach(([v, name])=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=name; sel.appendChild(o); });
@@ -23172,7 +23525,7 @@ void mainImage(out vec4 o, in vec2 f){
     };
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     const mkColor = (label, key)=>{
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
       col.dataset.default = toHex((CT.PDefaults && CT.PDefaults[key]) || P[key]);
@@ -23186,7 +23539,7 @@ void mainImage(out vec4 o, in vec2 f){
       root.appendChild(h);
     };
     const stepped = (spec)=>{                         // 決まった値だけを取るスライダー
-      const row = mkRow();
+      const row = mkRow(spec.key);
       const lab=document.createElement('label'); lab.textContent=spec.label;
       const near = v=>spec.vals.reduce((b,x,i)=> Math.abs(x-v) < Math.abs(spec.vals[b]-v) ? i : b, 0);
       const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=spec.vals.length-1; inp.step=1; inp.value=near(P[spec.key]||0);
@@ -23195,7 +23548,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     };
     const slider = ([label, key, mi, ma, step, fmt])=>{
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       if(NO_RAND[key]) inp.dataset.norand = '1';
@@ -23215,21 +23568,21 @@ void mainImage(out vec4 o, in vec2 f){
       ta.addEventListener('change', ()=>{ P.text=ta.value; App._undoSchedule && App._undoSchedule(); });
       root.appendChild(ta);
     }
-    mkSel('Style', CT.STYLES.map((st, i)=>[i, st.name]), Math.round(P.style || 0), v=>{ CT.setStyle(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true);
+    mkSel('Style', CT.STYLES.map((st, i)=>[i, st.name]), Math.round(P.style || 0), v=>{ CT.setStyle(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true, 'style');
     const fonts = (typeof MT_FONTS !== 'undefined') ? MT_FONTS : [{name:'Sans', ff:'sans-serif'}];
-    mkSel('Font', fonts.map(f=>[f.ff, f.name]), P.font || fonts[Math.min(1, fonts.length - 1)].ff, v=>{ P.font = v; }, true);
-    mkSel('Weight', [[400, 'Regular'], [700, 'Bold'], [900, 'Black']], Math.round(P.weight || 900), v=>{ P.weight = parseInt(v, 10); });
+    mkSel('Font', fonts.map(f=>[f.ff, f.name]), P.font || fonts[Math.min(1, fonts.length - 1)].ff, v=>{ P.font = v; }, true, 'font');
+    mkSel('Weight', [[400, 'Regular'], [700, 'Bold'], [900, 'Black']], Math.round(P.weight || 900), v=>{ P.weight = parseInt(v, 10); }, false, 'weight');
     // タイピング: presets/chrometype.md の文字列を 1 字ずつ打つ。beat モードは拍で、drone モードは時間で (On の間は上の欄の文字を使わない)
     head('Typing');
     if(P.typing > 0 && !CT._words) (CT._wordsP || CT.loadWords()).then(()=>this.refreshChromeTypeParams());   // 保存値で On のまま開いたとき
     mkSel('Typing', [[0, 'Off'], [1, 'On (拍で打つ)'], [2, '全文 (一度に出す)']], Math.round(P.typing || 0), v=>{
       P.typing = parseInt(v, 10);
       if(P.typing > 0 && !CT._words) CT.loadWords().then(()=>this.refreshChromeTypeParams());
-    }, true);
+    }, true, 'typing');
     stepped({label:'Rate', key:'tyRate', vals:[0.25, 0.5, 1, 2], names:['1字/4拍', '1字/2拍', '1字/拍', '2字/拍']});
     stepped({label:'Hold', key:'tyHold', vals:[0, 1, 2, 4, 8, 16], names:['0拍', '1拍', '2拍', '4拍', '8拍', '16拍']});
-    mkSel('Order', [[0, '順番'], [1, 'ランダム']], P.tyOrder > 0 ? 1 : 0, v=>{ P.tyOrder = parseInt(v, 10); }, true);
-    mkSel('End', [[0, '一度に消す'], [1, '1字ずつ消す']], P.tyErase > 0 ? 1 : 0, v=>{ P.tyErase = parseInt(v, 10); });
+    mkSel('Order', [[0, '順番'], [1, 'ランダム']], P.tyOrder > 0 ? 1 : 0, v=>{ P.tyOrder = parseInt(v, 10); }, true, 'tyOrder');
+    mkSel('End', [[0, '一度に消す'], [1, '1字ずつ消す']], P.tyErase > 0 ? 1 : 0, v=>{ P.tyErase = parseInt(v, 10); }, false, 'tyErase');
     slider(['Morph', 'tyMorph', 0, 100, 1, pct]);
     {
       const row = mkRow();
@@ -23301,12 +23654,12 @@ void mainImage(out vec4 o, in vec2 f){
       head(title);
       for(const spec of specs){
         if(spec.steps){ stepped(spec); continue; }
-        if(spec.sel){ mkSel(spec.label, spec.opts, P[spec.key] > 0 ? 1 : 0, v=>{ P[spec.key] = parseInt(v, 10); }); continue; }
+        if(spec.sel){ mkSel(spec.label, spec.opts, P[spec.key] > 0 ? 1 : 0, v=>{ P[spec.key] = parseInt(v, 10); }, false, spec.key); continue; }
         slider(spec);
       }
     }
     head('Material');
-    mkSel('Material', CT.MATS.map((m, i)=>[i, m.name]), Math.round(P.mat || 0), v=>{ CT.setMat(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true);
+    mkSel('Material', CT.MATS.map((m, i)=>[i, m.name]), Math.round(P.mat || 0), v=>{ CT.setMat(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true, 'mat');
     for(const spec of [
       ['Metal',     'metal',    0,  100, 1, pct],
       ['Rough',     'rough',    0,  100, 1, pct],
@@ -23343,17 +23696,18 @@ void mainImage(out vec4 o, in vec2 f){
       P.texFolder = v; P.texImage = '';
       if(v && !(P.texAmt > 0)) P.texAmt = 100;
       this.refreshChromeTypeParams();
-    }, true);
+    }, true, 'texFolder');
     const fsel = folders.find(f=>f.dir === P.texFolder);
     if(fsel && !fsel.single){
-      mkSel('Image', (fsel.images || []).map(n=>[n, n]), P.texImage || ((fsel.images || [])[0] || ''), v=>{ P.texImage = v; }, true);
+      mkSel('Image', (fsel.images || []).map(n=>[n, n]), P.texImage || ((fsel.images || [])[0] || ''), v=>{ P.texImage = v; }, true, 'texImage');
     }
-    mkSel('Tex Mode', [[0, '正面に貼る'], [1, '三面から貼る'], [2, '映り込みに使う']], Math.round(P.texMode || 0), v=>{ P.texMode = parseInt(v, 10); }, true);
+    mkSel('Tex Mode', [[0, '正面に貼る'], [1, '三面から貼る'], [2, '映り込みに使う']], Math.round(P.texMode || 0), v=>{ P.texMode = parseInt(v, 10); }, true, 'texMode');
     slider(['Tex Amt',   'texAmt',   0,  100, 1, pct]);
     slider(['Tex Scale', 'texScale', 10, 400, 1, pct]);
     head('Background');
     mkColor('BG (Slot A)', 'bgColor');
-    mkSel('AA', [[0, 'Off'], [2, '2x'], [4, '4x']], Math.round(P.aa || 0), v=>{ P.aa = parseInt(v, 10); }, true);
+    mkSel('AA', [[0, 'Off'], [2, '2x'], [4, '4x']], Math.round(P.aa || 0), v=>{ P.aa = parseInt(v, 10); }, true, 'aa');
+    this.bindEngineHints(root, ChromeType);
   },
   refreshSurrealParams(){
     const root = document.getElementById('surrealParams'); if(!root) return;
@@ -23408,9 +23762,9 @@ void mainImage(out vec4 o, in vec2 f){
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { seed:1, count:1 };
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
     {   // 雰囲気 (Mood): 選ぶと 空・雲・砂・光・色調 がまとめて変わる (約 1 秒でなめらかに)。空と砂の色は下のピッカーで続けて調整できる
-      const row = mkRow();
+      const row = mkRow('mood');
       const lab=document.createElement('label'); lab.textContent='Mood';
       const sel=document.createElement('select'); sel.style.flex='1';
       (SurrealFloat.MOODS || []).forEach((m, i)=>{ const o=document.createElement('option'); o.value=String(i); o.textContent=m.name; sel.appendChild(o); });
@@ -23419,7 +23773,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(sel);
     }
     for(const [label,key,mi,ma,step,fmt] of specs){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
@@ -23429,7 +23783,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     for(const [label,key] of [['Sky Top','skyTop'],['Sky Low','skyLow'],['Sand','sand']]){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
       col.dataset.default = toHex((SurrealFloat.PDefaults && SurrealFloat.PDefaults[key]) || P[key]);
@@ -23437,6 +23791,7 @@ void mainImage(out vec4 o, in vec2 f){
       const val=document.createElement('div'); val.className='val'; val.textContent='';
       row.appendChild(lab); row.appendChild(col); row.appendChild(val);
     }
+    this.bindEngineHints(root, SurrealFloat);
   },
   refreshFudeParams(){
     const root = document.getElementById('fudeParams'); if(!root) return;
@@ -23608,7 +23963,7 @@ void mainImage(out vec4 o, in vec2 f){
       zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, seed:1, tracking:1, leading:1, taperPow:1,
       fineHair:1, rimDry:1, sheenAngle:1, sheenPower:1, inkGamma:1, bleedHalo:1, grainSize:1 };   // デッドゾーン表示をしない (設定値)
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
     // 文字入力。日本語の変換中は確定まで反映しない
     const mkText = (key, rows, hint)=>{
       const ta=document.createElement('textarea'); ta.value=P[key]; ta.rows=rows; ta.spellcheck=false; ta.placeholder=hint;
@@ -23621,7 +23976,7 @@ void mainImage(out vec4 o, in vec2 f){
       root.appendChild(ta);
     };
     mkText('text', 3, '書く文字');
-    { const row = mkRow();
+    { const row = mkRow('textPick');
       const lab=document.createElement('label'); lab.textContent='Text Pick';
       const sel=document.createElement('select');
       ['上の文字をそのまま', 'Word Set からランダム', 'Word Set から順番に'].forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
@@ -23629,14 +23984,14 @@ void mainImage(out vec4 o, in vec2 f){
       sel.addEventListener('change', ()=>{ P.textPick = parseInt(sel.value, 10); Fude._curText = null; App._undoSchedule && App._undoSchedule(); });
       row.appendChild(lab); row.appendChild(sel); }
     mkText('words', 4, 'Word Set: 1 行に 1 つの文字列。/ で改行。空なら既定のセットを読む');
-    { const row = mkRow();
+    { const row = mkRow('style');
       const lab=document.createElement('label'); lab.textContent='Style';
       const sel=document.createElement('select');
       Fude.STYLES.forEach((st,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=st.name; sel.appendChild(o); });
       sel.value = String(Math.round(P.style || 0));
       sel.addEventListener('change', ()=>{ Fude.applyStyle(parseInt(sel.value, 10)); App._undoSchedule && App._undoSchedule(); this.refreshFudeParams(); });
       row.appendChild(lab); row.appendChild(sel); }
-    { const row = mkRow();
+    { const row = mkRow('fontFamily');
       const lab=document.createElement('label'); lab.textContent='Font';
       const sel=document.createElement('select');
       Fude.fontList().forEach(f=>{ const o=document.createElement('option'); o.value=f.ff; o.textContent=f.name; sel.appendChild(o); });
@@ -23649,7 +24004,7 @@ void mainImage(out vec4 o, in vec2 f){
       root.appendChild(head);
       for(const spec of specs){
         if(spec.sel){                                 // 選択肢はプルダウン
-          const row = mkRow();
+          const row = mkRow(spec.key);
           const lab=document.createElement('label'); lab.textContent=spec.label;
           const sel=document.createElement('select');
           spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
@@ -23659,7 +24014,7 @@ void mainImage(out vec4 o, in vec2 f){
           continue;
         }
         if(spec.transStyle){                          // 演出の一覧は Mix タブの Transition と共通
-          const row = mkRow();
+          const row = mkRow('setTransStyle');
           const lab=document.createElement('label'); lab.textContent='Trans Style';
           const sel=document.createElement('select');
           const first=document.createElement('option'); first.value='-1'; first.textContent='Transition の設定'; sel.appendChild(first);
@@ -23671,7 +24026,7 @@ void mainImage(out vec4 o, in vec2 f){
           continue;
         }
         if(spec.steps){                               // 決まった値だけを取るスライダー
-          const row = mkRow();
+          const row = mkRow(spec.key);
           const lab=document.createElement('label'); lab.textContent=spec.label;
           const near = v=>spec.vals.reduce((b,x,i)=> Math.abs(x-v) < Math.abs(spec.vals[b]-v) ? i : b, 0);
           const inp=document.createElement('input'); inp.type='range'; inp.min=0; inp.max=spec.vals.length-1; inp.step=1; inp.value=near(P[spec.key]||0);
@@ -23681,7 +24036,7 @@ void mainImage(out vec4 o, in vec2 f){
           continue;
         }
         const [label,key,mi,ma,step,fmt] = spec;
-        const row = mkRow();
+        const row = mkRow(key);
         const lab=document.createElement('label'); lab.textContent=label;
         const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
         const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
@@ -23700,7 +24055,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     for(const [label,key] of [['Ink','ink'],['Ink 2','ink2'],['Paper','paper']]){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
       col.addEventListener('input', ()=>{
@@ -23731,6 +24086,7 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshFudeParams();
       });
       row.appendChild(b); }
+    this.bindEngineHints(root, Fude);
   },
   refreshLiquidPeelParams(){
     const root = document.getElementById('liquidpeelParams'); if(!root) return;
@@ -23810,10 +24166,10 @@ void mainImage(out vec4 o, in vec2 f){
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
-    const mkRow = ()=>{ const row=document.createElement('div'); row.className='row'; root.appendChild(row); return row; };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
     for(const spec of specs){
       if(spec.sel){                                   // 選択肢はプルダウン
-        const row = mkRow();
+        const row = mkRow(spec.key);
         const lab=document.createElement('label'); lab.textContent=spec.label;
         const sel=document.createElement('select');
         spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
@@ -23823,7 +24179,7 @@ void mainImage(out vec4 o, in vec2 f){
         continue;
       }
       const [label,key,mi,ma,step,fmt] = spec;
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=disp(P[key], fmt);
@@ -23832,7 +24188,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Body Color','bodyCol']]){
-      const row = mkRow();
+      const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
       col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
@@ -23855,6 +24211,7 @@ void mainImage(out vec4 o, in vec2 f){
         this.refreshLiquidPeelParams();
       });
       row.appendChild(b); }
+    this.bindEngineHints(root, LiquidPeel);
   },
   // ─── Ugomeki (文字アニメーション) ───────────────────────────────
   bindUgomeki(){
@@ -23998,26 +24355,26 @@ void mainImage(out vec4 o, in vec2 f){
     const excl = { beam:'echo', echo:'beam' };
     const dropOther = (key)=>{
       const other = excl[key];
-      if(!other || !(P[key] > 0)) return;
-      P[other] = 0;
+      if(!other || !(T.P[key] > 0)) return;
+      T.P[other] = 0;
       const s = sliderMap[other];
       if(s){ s.inp.value = 0; s.val.textContent = s.fmt(0); }
     };
     for(const [label,key,mi,ma,step,fmt,relayout] of specs){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
       sliderMap[key] = {inp, val, fmt};
-      inp.addEventListener('input', ()=>{
-        P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]);
+      inp.addEventListener('input', ()=>{   // T.P を毎回参照する (md の切り替えで Ugomeki.P が差し替わっても効く)
+        T.P[key]=parseFloat(inp.value); val.textContent=fmt(T.P[key]);
         dropOther(key);
         if(relayout) T._layout = null;
       });
       // ダブルクリックでデフォルト値へ戻す
       inp.addEventListener('dblclick', ()=>{
         const d = (T.PDefaults && T.PDefaults[key] !== undefined) ? T.PDefaults[key] : parseFloat(inp.min);
-        P[key]=d; inp.value=d; val.textContent=fmt(d);
+        T.P[key]=d; inp.value=d; val.textContent=fmt(d);
         dropOther(key);
         if(relayout) T._layout = null;
         App._undoSchedule();
@@ -24049,7 +24406,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Cut Slices', 'cutSlices',  2, 8,    1,   v=>String(v|0)],
     ];
     for(const [label,key,mi,ma,step,fmt] of specsX){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=Ugomeki.P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(Ugomeki.P[key]);
@@ -24065,6 +24422,7 @@ void mainImage(out vec4 o, in vec2 f){
       });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+    this.bindEngineHints(document.querySelector('.ugomeki-mode'), Ugomeki);
   },
 
   // ─── SpaceType (3D 空間タイポ) ───────────────────────────────
@@ -24227,7 +24585,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Seed',       'seed',       1, 999,  1,    v=>String(v|0), true],
     ];
     for(const [label,key,mi,ma,step,fmt,rebuild] of specs){
-      const row=document.createElement('div'); row.className='row';
+      const row=document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
@@ -24249,6 +24607,7 @@ void mainImage(out vec4 o, in vec2 f){
       this._stSliders.push({key, inp, val, fmt});
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
+    this.bindEngineHints(document.querySelector('.spacetype-mode'), SpaceType);
   },
 
   /* 自動サイクルからの軽量同期: セレクト/スウォッチ/スライダー値だけ更新し、DOM を作り直さない。
@@ -24276,6 +24635,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(P[s.key] === undefined) continue;
       s.inp.value = P[s.key]; s.val.textContent = s.fmt(P[s.key]);
     }
+    const hr = document.querySelector('.spacetype-mode'); if(hr) this.applyParamWhen(hr);
   },
 
   bindInkelly(){
@@ -24384,6 +24744,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('ikInkFill', P.inkFill, v=>String(Math.round(v)));
     set('ikWetShine', P.wetShine, v=>String(Math.round(v)));
     const et=$('#ikEdgeTint'); if(et) et.value=P.edgeTint||'#ffffff';
+    this.bindEngineHints(document.querySelector('.inkelly-mode'), Inkelly);
   },
   bindSlicer(){
     if(typeof Slicer === 'undefined') return;
@@ -24620,6 +24981,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const bm = $('#slBgMode'); if(bm) bm.value = S.bgMode || 'image';
     const bc = $('#slBgColor'); if(bc && S.bgColor) bc.value = '#' + S.bgColor.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    this.bindEngineHints(document.querySelector('.slicer-mode'), Slicer);
   },
 
 	  refreshManga(){
@@ -24656,7 +25018,7 @@ void mainImage(out vec4 o, in vec2 f){
       set('mgPanReach', M.dronePanReach, pc); set('mgZoomWobble', M.droneZoomWobble, pc); set('mgYRate', M.droneYRate, pc);
       set('mgPnlRotate', M.panelRotate, pd); set('mgPnlAspect', M.panelAspect, pc); set('mgPnlOpacity', M.panelOpacity, pc);
       set('mgBorder', M.borderWidth, pc); set('mgPnlShadow', M.panelShadow, pc); set('mgPnlSat', M.panelSat, pc);
-      set('mgViewRotate', M.viewRotate, pd); set('mgTiles', M.pageTiles, fi); set('mgPixelate', M.pixelate, ppx);
+      set('mgViewRotate', M.viewRotate, pd); set('mgTiles', M.pageTiles, v=>Math.round(v / 100)); set('mgPixelate', M.pixelate, ppx);
       set('mgChroma', M.chromaSplit, ppx); set('mgWaveAmp', M.waveAmp, pc); set('mgWaveFreq', M.waveFreq, fi);
       set('mgVignette', M.vignette, pc); set('mgGrain', M.grain, pc);
       const toHex2 = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -24671,19 +25033,13 @@ void mainImage(out vec4 o, in vec2 f){
       const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
       $('#mgBg').value = toHex(M.bgColor);
     }
+    this.bindEngineHintsSections('.manga-mode', Manga);
     if($('#mangaStatus')){
       $('#mangaStatus').textContent = Manga.images.length > 0
         ? `${Manga.images.length} images loaded`
         : 'no images';
 	    }
 	  },
-
-  _fixedTextDeformMdIndex(){
-    if(typeof TextDeform === 'undefined') return -1;
-    const T = TextDeform;
-    const P = T.P || {};
-    return (P.mdMode === 'fixed' && T.presets && T.presets[P.mdIndex]) ? P.mdIndex : -1;
-  },
 
   // Ugomeki の md別プリセット保存 (Type Deformer と同じ仕様)
   _fixedUgomekiMdIndex(){
@@ -24763,34 +25119,27 @@ void mainImage(out vec4 o, in vec2 f){
   },
 
   // ─── C003: 表示中の md にランダムスタイルを適用 (保存はセクション右上の Save で) ───────
-  // Type Deformer の Random (見出しの Random 🎲 / Random All / Surface の Random) の負荷ガード。
-  //   ① 適用前の試走: ランダムで決まった状態で Type Deformer の 1 フレームを画面外で描いて時間を測り、
-  //      規定 fps (Rand Guard、既定 30) の 1 フレーム分を超えたら元に戻して引き直す (最大 5 回。全部重ければ元のまま)
+  // Type Deformer の Look の Random / 選択と Surface の Random の負荷ガード。
+  //   ① 適用前の試走: 決まった状態で Type Deformer の 1 フレームを画面外で描いて時間を測り、
+  //      規定 fps (Rand Guard、既定 30) の 1 フレーム分を超えたら元に戻して引き直す (最大 tries 回。全部重ければ元のまま)
   //   ② 適用後の見張り: 3 秒間、毎フレームの描画時間 (TextDeform._renderMs) が予算の 1.5 倍を超えたら元に戻す
   //   Surface は Worker で描くので fps は止めない (ここで測るのはメインスレッドの組版・Compose・描画)。
-  //   元に戻すのは全 md の保存状態 (pr.p) と md の選択・Compose・Surface。
+  //   元に戻すのは TextDeform.P 一式 (P.surf / P.comp のアクセサで Surface と Composition も戻る)。
   tdRandGuardFps(){
     try{ const v = localStorage.getItem('vj.textdeform.randGuardFps'); if(v != null) return parseFloat(v) || 0; }catch(e){}
     return 30;
   },
-  async guardedTextDeformRandom(fn){
-    if(typeof TextDeform === 'undefined'){ fn(); return; }
+  async guardedTextDeformRandom(fn, tries){
+    const done = ()=>{ this.refreshTextDeform(); App._undoSchedule(); };
+    if(typeof TextDeform === 'undefined'){ await fn(); return; }
     const T = TextDeform, fps = this.tdRandGuardFps();
-    if(!(fps > 0) || !T.initialized){ fn(); return; }
+    if(!(fps > 0) || !T.initialized){ await fn(); done(); return; }
     if(this._tdRandBusy) return;
     this._tdRandBusy = true;
     const token = this._tdRandToken = (this._tdRandToken || 0) + 1;   // 新しい Random が始まったら前の見張りは止める
     const budget = 1000 / fps;
-    const snap = {
-      presets: (T.presets || []).map(pr => JSON.parse(JSON.stringify(pr.p || {}))),
-      mdMode: T.P.mdMode, mdIndex: T.P.mdIndex, cur: T.currentMdIndex ? T.currentMdIndex() : -1
-    };
-    const restore = ()=>{
-      (T.presets || []).forEach((pr, i)=>{ pr.p = JSON.parse(JSON.stringify(snap.presets[i] || {})); });
-      if(snap.mdMode === 'fixed') T.setMdSelection(String(snap.mdIndex));
-      else if(snap.cur >= 0){ T.P.mdMode = 'random'; T.loadPreset(snap.cur); T.P.mdMode = 'random'; T.P.mdIndex = -1; }
-      this.refreshTextDeform();
-    };
+    const snap = JSON.stringify(T.P);
+    const restore = ()=>{ Object.assign(T.P, JSON.parse(snap)); T.applyP(); this.refreshTextDeform(); };
     // 画面外で 1 フレームを描いて時間を測る (Compose のエンジンが読み込み中なら待つ)
     const trial = async ()=>{
       if(typeof TDComp !== 'undefined' && TDComp.enabled()){
@@ -24804,459 +25153,176 @@ void mainImage(out vec4 o, in vec2 f){
     };
     try{
       let ok = false, ms = 0;
-      for(let tries = 0; tries < 5 && !ok; tries++){
-        if(tries) restore();
-        fn();
+      for(let k = 0; k < (tries || 5) && !ok; k++){
+        if(k) restore();
+        if(await fn() === false){ restore(); return; }
         ms = await trial();
         ok = ms <= budget;
       }
-      if(!ok){ restore(); toast('Random: 重い組み合わせしか引けなかったので元に戻しました (' + Math.round(ms) + 'ms / 1 フレーム > ' + Math.round(budget) + 'ms)'); return; }
+      if(!ok){ restore(); toast('重いので元に戻しました (' + Math.round(ms) + 'ms / 1 フレーム > ' + Math.round(budget) + 'ms)'); return; }
       // 適用後の見張り
       const until = performance.now() + 3000;
       T._renderMs = null;
       const watch = ()=>{
         if(token !== this._tdRandToken || performance.now() > until) return;
-        if(T._renderMs != null && T._renderMs > budget*1.5){ restore(); toast('Random: 描画が重くなったので元に戻しました (' + Math.round(T._renderMs) + 'ms / 1 フレーム)'); return; }
+        if(T._renderMs != null && T._renderMs > budget*1.5){ restore(); toast('描画が重くなったので元に戻しました (' + Math.round(T._renderMs) + 'ms / 1 フレーム)'); return; }
         setTimeout(watch, 250);
       };
       setTimeout(watch, 400);
-    } finally { this._tdRandBusy = false; }
+    } finally { this._tdRandBusy = false; done(); }
   },
-  // Type Deformer の Random: 組み合わせリストから 1 件 (part = 'all' 見た目一式 / 'surf' Surface だけ)。
-  //   リストが空のときだけ従来の乱数 (Random All = randomizeTextDeformMd / Surface = Operator のパラメータ)。負荷ガードは共通
-  async tdComboRandom(part){
-    if(typeof TDCombos !== 'undefined'){
-      await TDCombos.load();
-      if(TDCombos.pickRandom(part) >= 0){
-        await this.guardedTextDeformRandom(()=>TDCombos.applyRandom(part));
-        const c = TDCombos.list[TDCombos.current];
-        if(c) toast('Combo: ' + c.name);
-        return;
-      }
-    }
-    if(part === 'surf'){ if(typeof TDSurf !== 'undefined') this.guardedTextDeformRandom(()=>{ TDSurf.randomize(TDSurf.cfg.op); }); return; }
-    this.guardedTextDeformRandom(()=>this.randomizeTextDeformMd());
+  // Look を当てる (一覧のクリック)
+  async tdApplyLook(id){
+    if(typeof TDLooks === 'undefined') return;
+    await this.guardedTextDeformRandom(()=>TDLooks.apply(id), 1);
+    if(TextDeform.P.look === id) toast('Look: ' + TDLooks.label(id));
   },
-  // Combo 行 (組み合わせリスト)
-  refreshTextDeformCombos(){
-    if(typeof TDCombos === 'undefined') return;
-    const sel = $('#tdCombo'); if(!sel) return;
-    const L = TDCombos.list || [];
-    const sig = L.length + ':' + L.map(c=>c.name).join('|');
-    if(sel.dataset.sig !== sig){
-      sel.innerHTML = '<option value="">—</option>' + L.map((c, i)=>'<option value="' + i + '">' + String(i + 1).padStart(3, '0') + ' ' + String(c.name).replace(/</g, '&lt;') + '</option>').join('');
-      sel.dataset.sig = sig;
-    }
-    sel.value = TDCombos.current >= 0 && TDCombos.current < L.length ? String(TDCombos.current) : '';
-  },
-  randomizeTextDeformMd(){
-    if(typeof TextDeform === 'undefined' || !TextDeform.updateMdStyle) return;
-    const T = TextDeform;
-    const i = T.currentMdIndex ? T.currentMdIndex() : -1;
-    if(i < 0){ toast('対象のmdがありません'); return; }
-    T.updateMdStyle(i, this._randomTextDeformStyle());   // 永続化はしない
-    this.refreshTextDeform();
-    App._undoSchedule();
-    toast('TYPE randomize: ' + ((T.presets && T.presets[i] && T.presets[i].name) || 'md'));
-  },
-  // TextDeform 用のランダムスタイル生成 (UI スライダーのレンジ内。レイアウト系 zoom/pan/stageW は触らない)
-  _randomTextDeformStyle(){
-    const R = (a,b)=> a + (b-a)*Math.random();
-    const chance = p=> Math.random() < p;
-    const hex = (h,s,l)=>{
-      const f = (n)=>{ const k=(n + h/30) % 12; const c = l - s*Math.min(l,1-l)*Math.max(-1, Math.min(Math.min(k-3, 9-k), 1)); return Math.round(c*255).toString(16).padStart(2,'0'); };
-      return '#' + f(0) + f(8) + f(4);
-    };
-    const baseH = Math.floor(Math.random()*360);
-    const inkH  = (baseH + (chance(0.3) ? 180 : 0)) % 360;
-    const accH  = (baseH + 90 + Math.floor(Math.random()*180)) % 360;
-    const dark = chance(0.5);
-    const over = {
-      paper: dark ? hex(baseH, R(0,0.25), R(0.04,0.16)) : hex(baseH, R(0,0.18), R(0.86,0.97)),
-      ink:   dark ? hex(inkH,  R(0,0.30), R(0.80,0.96)) : hex(inkH,  R(0,0.35), R(0.05,0.20)),
-      accent: hex(accH, R(0.6,0.95), R(0.48,0.62)),
-      accentRatio: +R(0, 0.3).toFixed(2),
-      vertical: chance(0.35),
-      fontSize: Math.round(R(30, 110)),
-      lineHeight: +R(0.8, 1.6).toFixed(2),
-      letterSpacing: +R(-0.15, 0.15).toFixed(2),
-      rotation: chance(0.5) ? +R(0, 14).toFixed(1) : 0,
-      randomness: +R(0.4, 1.6).toFixed(2),
-      geoRatio: +R(0, 0.8).toFixed(2),
-      stretchX: chance(0.4) ? +R(0.6, 2.2).toFixed(2) : 1,
-      stretchY: chance(0.4) ? +R(0.6, 2.2).toFixed(2) : 1,
-      flipRate: +R(0, 3.5).toFixed(2),
-      rotateAngle: chance(0.35) ? Math.round(R(10, 120)) : 0,
-      skewX: chance(0.35) ? Math.round(R(-45, 45)) : 0,
-      skewY: chance(0.25) ? Math.round(R(-30, 30)) : 0,
-      baselineShift: chance(0.3) ? +R(-1.2, 1.2).toFixed(2) : 0,
-      mirrorX: chance(0.25) ? +R(0.2, 1).toFixed(2) : 0,
-      mirrorY: chance(0.15) ? +R(0.2, 1).toFixed(2) : 0,
-      misregX: chance(0.3) ? +R(-20, 20).toFixed(1) : 0,
-      misregY: chance(0.2) ? +R(-14, 14).toFixed(1) : 0,
-      confuseDepth: chance(0.3) ? +R(0.1, 0.8).toFixed(2) : 0,
-      opChance: +R(0.3, 1).toFixed(2),
-    };
-    // 見た目の追加 param (控えめな範囲。使わないものは既定へ戻す)
-    Object.assign(over, {
-      showPct: chance(0.15) ? Math.round(R(55, 95)) : 100,
-      sizeVar: chance(0.3) ? Math.round(R(10, 50)) : 0,
-      scatter: chance(0.2) ? Math.round(R(5, 40)) : 0,
-      tremor: chance(0.1) ? Math.round(R(2, 12)) : 0,
-      waveAmp: chance(0.2) ? Math.round(R(10, 60)) : 0, waveLen: Math.round(R(4, 24)),
-      lineStagger: chance(0.2) ? Math.round(R(-60, 60)) : 0,
-      slant: chance(0.2) ? Math.round(R(-20, 20)) : 0,
-      swirl: chance(0.12) ? Math.round(R(-50, 50)) : 0,
-      bulge: chance(0.12) ? Math.round(R(-25, 25)) : 0,
-      viewAngle: chance(0.1) ? Math.round(R(-20, 20)) : 0,
-      pivotX: chance(0.25) ? Math.round(R(20, 80)) : 50, pivotY: chance(0.25) ? Math.round(R(20, 100)) : 75,
-      stepSize: chance(0.3) ? Math.round(R(50, 200)) : 100,
-      misregAlpha: chance(0.3) ? Math.round(R(40, 100)) : 72, misregRatio: chance(0.3) ? Math.round(R(0, 120)) : 65,
-      trailPct: chance(0.1) ? Math.round(R(30, 80)) : 0,
-      accentOnMove: chance(0.2) ? Math.round(R(40, 150)) : 0,
-      rainbow: chance(0.1) ? Math.round(R(30, 100)) : 0, rainbowSpan: Math.round(R(90, 540)/10)*10,
-      vignette: chance(0.2) ? Math.round(R(20, 70)) : 0, vignetteColor: '#000000',
-      grain: chance(0.2) ? Math.round(R(10, 50)) : 0, grainSize: Math.round(R(100, 300)/25)*25,
-    });
-    if(chance(0.3)) over.misregColorA = hex((accH+180)%360, R(0.6,0.9), R(0.45,0.6));
-    if(chance(0.3)) over.misregColorB = hex((accH+300)%360, R(0.6,0.9), R(0.45,0.6));
-    // 書体: UI の選択肢から
-    const fsel = document.getElementById('tdMdFont');
-    if(fsel && fsel.options.length) over.fontFamily = fsel.options[Math.floor(Math.random()*fsel.options.length)].value;
-    // グリッド組版はたまに
-    if(chance(0.25)){
-      over.gridEnabled = true;
-      over.gridCols = Math.round(R(4, 24));
-      over.gridGap  = chance(0.5) ? Math.round(R(0, 30)) : 0;
-    } else over.gridEnabled = false;
-    return over;
-  },
-
-  saveTextDeformMdDefault(){
-    if(typeof TextDeform === 'undefined' || !TextDeform.saveMdDefault) return;
-    const T = TextDeform;
-    const i = this._fixedTextDeformMdIndex();
-    if(i < 0){ toast('保存するmdを選択してください'); return; }
-    const over = this._readTextDeformMdControls();
-    T.saveMdDefault(i, over);
-    this.refreshTextDeform();
-    App._undoSchedule();
-    const pr = T.presets && T.presets[i];
-    toast('mdデフォルト保存: ' + (pr && pr.name || 'md'));
-  },
-
-  resetTextDeformMdDefault(){
-    if(typeof TextDeform === 'undefined' || !TextDeform.resetMdDefault) return;
-    const T = TextDeform;
-    const i = this._fixedTextDeformMdIndex();
-    if(i < 0){ toast('リセットするmdを選択してください'); return; }
-    T.resetMdDefault(i);
-    this.refreshTextDeform();
-    App._undoSchedule();
-    const pr = T.presets && T.presets[i];
-    toast('mdを保存値へ戻しました: ' + ((pr && pr.name) || 'md'));
-  },
-
-  _readTextDeformMdControls(){
-    const over = {};
-    const addColor = (id, key)=>{
-      const el = $('#'+id);
-      if(el && /^#[0-9a-f]{6}$/i.test(el.value)) over[key] = el.value;
-    };
-    const addNum = (id, key)=>{
-      const el = $('#'+id);
-      if(!el) return;
-      const v = parseFloat(el.value);
-      if(Number.isFinite(v)) over[key] = v;
-    };
-    addColor('tdMdPaper', 'paper');
-    addColor('tdMdInk', 'ink');
-    addColor('tdMdAccent', 'accent');
-    addNum('tdMdAccentRatio', 'accentRatio');
-    addNum('tdMdFontSize', 'fontSize');
-    addNum('tdMdLineHeight', 'lineHeight');
-    addNum('tdMdLetterSpacing', 'letterSpacing');
-    addNum('tdMdZoom', 'zoom');
-    addNum('tdMdPanX', 'panX');
-    addNum('tdMdPanY', 'panY');
-    addNum('tdMdStageW', 'stageW');
-    addNum('tdMdMarginPct', 'marginPct');
-    addNum('tdMdRotation', 'rotation');
-    addNum('tdMdRandomness', 'randomness');
-    addNum('tdMdGeoRatio', 'geoRatio');
-    addNum('tdMdStretchX', 'stretchX');
-    addNum('tdMdStretchY', 'stretchY');
-    addNum('tdMdFlipRate', 'flipRate');
-    addNum('tdMdRotateAngle', 'rotateAngle');
-    addNum('tdMdSkewX', 'skewX');
-    addNum('tdMdSkewY', 'skewY');
-    addNum('tdMdBaselineShift', 'baselineShift');
-    addNum('tdMdMirrorX', 'mirrorX');
-    addNum('tdMdMirrorY', 'mirrorY');
-    addNum('tdMdMisregX', 'misregX');
-    addNum('tdMdMisregY', 'misregY');
-    addColor('tdMdMisregColorA', 'misregColorA');
-    addColor('tdMdMisregColorB', 'misregColorB');
-    addNum('tdMdConfuseDepth', 'confuseDepth');
-    addNum('tdMdOpChance', 'opChance');
-    addNum('tdMdGridCols', 'gridCols');
-    addNum('tdMdGridCell', 'gridCell');
-    addNum('tdMdGridGap', 'gridGap');
-    addNum('tdMdShowPct', 'showPct');
-    addNum('tdMdSizeVar', 'sizeVar');
-    addNum('tdMdScatter', 'scatter');
-    addNum('tdMdTremor', 'tremor');
-    addNum('tdMdWaveAmp', 'waveAmp');
-    addNum('tdMdWaveLen', 'waveLen');
-    addNum('tdMdLineStagger', 'lineStagger');
-    addNum('tdMdSlant', 'slant');
-    addNum('tdMdSwirl', 'swirl');
-    addNum('tdMdBulge', 'bulge');
-    addNum('tdMdViewAngle', 'viewAngle');
-    addNum('tdMdPivotX', 'pivotX');
-    addNum('tdMdPivotY', 'pivotY');
-    addNum('tdMdStepSize', 'stepSize');
-    addNum('tdMdMisregAlpha', 'misregAlpha');
-    addNum('tdMdMisregRatio', 'misregRatio');
-    addNum('tdMdTrailPct', 'trailPct');
-    addNum('tdMdAccentOnMove', 'accentOnMove');
-    addNum('tdMdRainbow', 'rainbow');
-    addNum('tdMdRainbowSpan', 'rainbowSpan');
-    addNum('tdMdVignette', 'vignette');
-    addNum('tdMdGrain', 'grain');
-    addNum('tdMdGrainSize', 'grainSize');
-    addNum('tdMdCompAudio', 'compAudio');
-    addColor('tdMdVignetteColor', 'vignetteColor');
-    const gridSel = $('#tdMdGrid');
-    if(gridSel) over.gridEnabled = gridSel.value === 'on';
-    if(typeof TDComp !== 'undefined') over.comp = TDComp.snapshot();
-    if(typeof TDSurf !== 'undefined') over.surf = TDSurf.snapshot();
-    const fontSel = $('#tdMdFont');
-    if(fontSel) over.fontFamily = fontSel.value;
-    const lawSel = $('#tdMdRandomLaw');
-    if(lawSel) over.randomLaw = lawSel.value;
-    const dirSel = $('#tdMdDirection');
-    if(dirSel) over.vertical = dirSel.value === 'vertical';
-    const fitSel = $('#tdMdFitMode');
-    if(fitSel) over.fitMode = fitSel.value;
-    return over;
+  // Look を一覧 (Look の Pool) からランダムに (見出しの Random 🎲 / Look の 🎲 / → キー)
+  async tdLookRandom(){
+    if(typeof TDLooks === 'undefined') return;
+    if(TextDeform.P.lookRand === 'off'){ toast('L Random: Off'); return; }
+    await TDLooks.load();
+    await this.guardedTextDeformRandom(()=>TDLooks.applyRandom());
+    if(TextDeform.P.look) toast('Look: ' + TDLooks.label(TextDeform.P.look));
   },
 
   refreshTextDeform(){
     if(typeof TextDeform === 'undefined') return;
-    const T = TextDeform;
-    const P = T.P || {};
-    const sel = $('#tdMdSelect');
-    if(sel){
-      const count = T.presets ? T.presets.length : 0;
-      if(sel.dataset.count !== String(count)){
-        const cur = sel.value;
-        sel.innerHTML = '';
-        const any = document.createElement('option');
-        any.value = 'random';
-        any.textContent = 'Random';
-        sel.appendChild(any);
-        (T.presets || []).forEach((pr, i)=>{
-          const opt = document.createElement('option');
-          opt.value = String(i);
-          opt.textContent = pr.name || ('md ' + (i + 1));
-          sel.appendChild(opt);
-        });
-        sel.dataset.count = String(count);
-        if(cur) sel.value = cur;
-      }
-      sel.value = (P.mdMode === 'fixed' && T.presets && T.presets[P.mdIndex]) ? String(P.mdIndex) : 'random';
+    const P = TextDeform.P;
+    const sec = document.querySelector('.section.textdeform-mode'); if(!sec) return;
+    this.applyParamWhen(sec);   // Look の切り替えなどで効く行が変わる
+    // Canvas が Off のときは、Canvas の行 (canvas* / cv* / tdCanvas*) は On / Off の行だけ見せる。Composition の行は同じ段にあるが隠さない
+    const cvHead = sec.querySelector('[data-td-fold="canvas"]');
+    if(cvHead) for(let n = cvHead.nextElementSibling; n && n.dataset.tdFold !== 'look'; n = n.nextElementSibling){
+      if(n.classList.contains('td-fold') || !/^(canvas|cv[A-Z]|tdCanvas)/.test(n.dataset.pkey || '') || n.dataset.pkey === 'canvasOn') continue;
+      n.classList.toggle('td-off-hidden', !P.canvasOn);
     }
-    const fixed = !!(P.mdMode === 'fixed' && T.presets && T.presets[P.mdIndex]);
-    const idx = fixed ? P.mdIndex : (T.currentMdIndex ? T.currentMdIndex() : -1);
-    const pr = (T.presets && idx >= 0) ? T.presets[idx] : null;
-    const pp = (pr && pr.p) || {};
-    const valFor = (key, fallback)=> pp[key] !== undefined ? pp[key] : (P[key] !== undefined ? P[key] : fallback);
-    const colorFor = (key, fallback)=>{
-      const v = String(valFor(key, fallback) || '');
-      return /^#[0-9a-f]{6}$/i.test(v) ? v : fallback;
+    const pct = v=>Math.round(v * 100) + '%';
+    const FMT = {
+      pct, pcti: v=>Math.round(v) + '%', int: v=>String(Math.round(v)), f2: v=>v.toFixed(2), f3: v=>v.toFixed(3),
+      deg: v=>Math.round(v) + 'deg', deg1: v=>v.toFixed(1).replace(/\.0$/, '') + 'deg', px: v=>v.toFixed(1).replace(/\.0$/, '') + 'px',
+      em: v=>Math.round(v) + 'em', auto: v=>v > 0 ? String(Math.round(v)) : 'Auto',
+      dz: v=>Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2)   // デッドゾーン表示 (規約)
     };
-    const setColor = (id, valId, key, fallback)=>{
-      const v = colorFor(key, fallback);
-      const el = $('#'+id), out = $('#'+valId);
-      if(el){
-        el.value = v;
-        el.disabled = !fixed;
-        el.dataset.default = v;
+    // T Pool: 種類ごとのトグル (On の種類を混ぜて使う)
+    const pool = $('#tdTextPool');
+    if(pool && typeof TD_TEXT_PRESETS !== 'undefined'){
+      if(pool.dataset.filled !== '1'){
+        pool.innerHTML = '<button class="td-chip" data-pool="all" title="長文以外の全部">All</button>'
+          + TD_TEXT_PRESETS.map(g=>'<button class="td-chip" data-pool="' + g.group + '" title="' + g.label + ' (' + g.items.length + ')">' + g.label + '</button>').join('');
+        pool.dataset.filled = '1';
       }
-      if(out) out.textContent = fixed ? v : 'Random';
-    };
-    const setRange = (id, valId, key, fallback, fmt)=>{
-      const raw = parseFloat(valFor(key, fallback));
-      const v = Number.isFinite(raw) ? raw : fallback;
-      const el = $('#'+id), out = $('#'+valId);
-      if(el){
-        el.value = String(v);
-        el.disabled = !fixed;
-        el.dataset.default = String(v);
-      }
-      if(out) out.textContent = fixed ? fmt(v) : 'Random';
-    };
-    setColor('tdMdPaper', 'tdMdPaperVal', 'paper', '#050507');
-    setColor('tdMdInk', 'tdMdInkVal', 'ink', '#e8fff5');
-    setColor('tdMdAccent', 'tdMdAccentVal', 'accent', '#ff2b6d');
-    setRange('tdMdAccentRatio', 'tdMdAccentRatioVal', 'accentRatio', 0.06, v=>Math.round(v * 100) + '%');
-    setRange('tdMdFontSize', 'tdMdFontSizeVal', 'fontSize', 60, v=>String(Math.round(v)));
-    setRange('tdMdLineHeight', 'tdMdLineHeightVal', 'lineHeight', 1.15, v=>v.toFixed(2));
-    setRange('tdMdLetterSpacing', 'tdMdLetterSpacingVal', 'letterSpacing', -0.02, v=>v.toFixed(2));
-    setRange('tdMdZoom', 'tdMdZoomVal', 'zoom', 1, v=>v.toFixed(2));
-    setRange('tdMdPanX', 'tdMdPanXVal', 'panX', 0, v=>v.toFixed(2));
-    setRange('tdMdPanY', 'tdMdPanYVal', 'panY', 0, v=>v.toFixed(2));
-    setRange('tdMdStageW', 'tdMdStageWVal', 'stageW', 960, v=>String(Math.round(v)));
-    setRange('tdMdMarginPct', 'tdMdMarginPctVal', 'marginPct', 8, v=>String(Math.round(v)));
-    const dirSel = $('#tdMdDirection');
-    if(dirSel){
-      dirSel.value = valFor('vertical', false) ? 'vertical' : 'horizontal';
-      dirSel.disabled = !fixed;
+      const on = TextDeform.textPools();
+      pool.querySelectorAll('.td-chip').forEach(b=>b.classList.toggle('on', on.includes(b.dataset.pool)));
     }
-    const fitSel = $('#tdMdFitMode');
-    if(fitSel){
-      const fitMode = String(valFor('fitMode', 'fit'));
-      fitSel.value = Array.from(fitSel.options).some(o => o.value === fitMode) ? fitMode : 'fit';
-      fitSel.disabled = !fixed;
-    }
-    setRange('tdMdRotation', 'tdMdRotationVal', 'rotation', 0, v=>v.toFixed(1).replace(/\.0$/, '') + 'deg');
-    setRange('tdMdRandomness', 'tdMdRandomnessVal', 'randomness', 1, v=>v.toFixed(2));
-    setRange('tdMdGeoRatio', 'tdMdGeoRatioVal', 'geoRatio', 0.32, v=>Math.round(v * 100) + '%');
-    setRange('tdMdStretchX', 'tdMdStretchXVal', 'stretchX', 1, v=>v.toFixed(2));
-    setRange('tdMdStretchY', 'tdMdStretchYVal', 'stretchY', 1, v=>v.toFixed(2));
-    setRange('tdMdFlipRate', 'tdMdFlipRateVal', 'flipRate', 1.4, v=>v.toFixed(2));
-    setRange('tdMdRotateAngle', 'tdMdRotateAngleVal', 'rotateAngle', 0, v=>Math.round(v) + 'deg');
-    setRange('tdMdSkewX', 'tdMdSkewXVal', 'skewX', 0, v=>Math.round(v) + 'deg');
-    setRange('tdMdSkewY', 'tdMdSkewYVal', 'skewY', 0, v=>Math.round(v) + 'deg');
-    setRange('tdMdBaselineShift', 'tdMdBaselineShiftVal', 'baselineShift', 0, v=>v.toFixed(2));
-    setRange('tdMdMirrorX', 'tdMdMirrorXVal', 'mirrorX', 0, v=>Math.round(v * 100) + '%');
-    setRange('tdMdMirrorY', 'tdMdMirrorYVal', 'mirrorY', 0, v=>Math.round(v * 100) + '%');
-    setRange('tdMdMisregX', 'tdMdMisregXVal', 'misregX', 0, v=>v.toFixed(1).replace(/\.0$/, '') + 'px');
-    setRange('tdMdMisregY', 'tdMdMisregYVal', 'misregY', 0, v=>v.toFixed(1).replace(/\.0$/, '') + 'px');
-    setColor('tdMdMisregColorA', 'tdMdMisregColorAVal', 'misregColorA', '#c41f1f');
-    setColor('tdMdMisregColorB', 'tdMdMisregColorBVal', 'misregColorB', '#1767a6');
-    setRange('tdMdConfuseDepth', 'tdMdConfuseDepthVal', 'confuseDepth', 0, v=>Math.round(v * 100) + '%');
-    setRange('tdMdOpChance', 'tdMdOpChanceVal', 'opChance', 0.6, v=>Math.round(v * 100) + '%');
-    const gridSel = $('#tdMdGrid');
-    if(gridSel){
-      gridSel.value = valFor('gridEnabled', false) ? 'on' : 'off';
-      gridSel.disabled = !fixed;
-    }
-    setRange('tdMdGridCols', 'tdMdGridColsVal', 'gridCols', 12, v=>String(Math.round(v)));
-    setRange('tdMdGridCell', 'tdMdGridCellVal', 'gridCell', 0, v=>v > 0 ? String(Math.round(v)) : 'Auto');
-    setRange('tdMdGridGap', 'tdMdGridGapVal', 'gridGap', 0, v=>String(Math.round(v)));
-    setRange('tdMdShowPct', 'tdMdShowPctVal', 'showPct', 100, v=>Math.round(v) + '%');
-    setRange('tdMdSizeVar', 'tdMdSizeVarVal', 'sizeVar', 0, v=>Math.round(v) + '%');
-    setRange('tdMdScatter', 'tdMdScatterVal', 'scatter', 0, v=>Math.round(v) + '%');
-    setRange('tdMdTremor', 'tdMdTremorVal', 'tremor', 0, v=>Math.round(v) + '%');
-    setRange('tdMdWaveAmp', 'tdMdWaveAmpVal', 'waveAmp', 0, v=>Math.round(v) + '%');
-    setRange('tdMdWaveLen', 'tdMdWaveLenVal', 'waveLen', 10, v=>Math.round(v) + 'em');
-    setRange('tdMdLineStagger', 'tdMdLineStaggerVal', 'lineStagger', 0, v=>Math.round(v) + '%');
-    setRange('tdMdSlant', 'tdMdSlantVal', 'slant', 0, v=>Math.round(v) + 'deg');
-    setRange('tdMdSwirl', 'tdMdSwirlVal', 'swirl', 0, v=>Math.round(v) + 'deg');
-    setRange('tdMdBulge', 'tdMdBulgeVal', 'bulge', 0, v=>Math.round(v) + '%');
-    setRange('tdMdViewAngle', 'tdMdViewAngleVal', 'viewAngle', 0, v=>Math.round(v) + 'deg');
-    setRange('tdMdPivotX', 'tdMdPivotXVal', 'pivotX', 50, v=>Math.round(v) + '%');
-    setRange('tdMdPivotY', 'tdMdPivotYVal', 'pivotY', 75, v=>Math.round(v) + '%');
-    setRange('tdMdStepSize', 'tdMdStepSizeVal', 'stepSize', 100, v=>Math.round(v) + '%');
-    setRange('tdMdMisregAlpha', 'tdMdMisregAlphaVal', 'misregAlpha', 72, v=>Math.round(v) + '%');
-    setRange('tdMdMisregRatio', 'tdMdMisregRatioVal', 'misregRatio', 65, v=>Math.round(v) + '%');
-    setRange('tdMdTrailPct', 'tdMdTrailPctVal', 'trailPct', 0, v=>Math.round(v) + '%');
-    setRange('tdMdAccentOnMove', 'tdMdAccentOnMoveVal', 'accentOnMove', 0, v=>Math.round(v) + '%');
-    setRange('tdMdRainbow', 'tdMdRainbowVal', 'rainbow', 0, v=>Math.round(v) + '%');
-    setRange('tdMdRainbowSpan', 'tdMdRainbowSpanVal', 'rainbowSpan', 360, v=>Math.round(v) + 'deg');
-    setRange('tdMdVignette', 'tdMdVignetteVal', 'vignette', 0, v=>Math.round(v) + '%');
-    setColor('tdMdVignetteColor', 'tdMdVignetteColorVal', 'vignetteColor', '#000000');
-    setRange('tdMdGrain', 'tdMdGrainVal', 'grain', 0, v=>Math.round(v) + '%');
-    setRange('tdMdGrainSize', 'tdMdGrainSizeVal', 'grainSize', 100, v=>Math.round(v) + '%');
-    setRange('tdMdCompAudio', 'tdMdCompAudioVal', 'compAudio', 0, v=> Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2));
-    const lawSel = $('#tdMdRandomLaw');
-    if(lawSel){
-      const law = String(valFor('randomLaw', 'scatter'));
-      lawSel.value = Array.from(lawSel.options).some(o => o.value === law) ? law : 'scatter';
-      lawSel.disabled = !fixed;
-    }
-    const fontSel = $('#tdMdFont');
-    if(fontSel){
-      const font = pp.fontFamily || P.fontFamily || fontSel.options[0].value;
-      if(!Array.from(fontSel.options).some(o => o.value === font)){
-        const opt = document.createElement('option');
-        opt.value = font;
-        opt.textContent = font.replace(/"/g, '').split(',')[0];
-        fontSel.appendChild(opt);
-      }
-      fontSel.value = font;
-      fontSel.disabled = !fixed;
-    }
-    const saveBtn = $('#tdMdSaveDefault');
-    const resetBtn = $('#tdMdResetDefault');
-    if(saveBtn) saveBtn.disabled = !fixed;
-    if(resetBtn) resetBtn.disabled = !fixed;
-    // Composition Engine v6 (md 単位 — 他の md コントロール同様、固定 md 選択時のみ編集可)
+    sec.querySelectorAll('[data-tdp]').forEach(el=>{
+      const key = el.dataset.tdp, v = P[key], k = el.dataset.tdkind;
+      if(v === undefined) return;
+      if(el.tagName === 'INPUT') el.dataset.default = String(App.resetValueFor('textdeform', key, (TextDeform.PDefaults || {})[key]));   // ダブルクリックで戻す値
+      if(el.type === 'color'){
+        if(/^#[0-9a-f]{6}$/i.test(String(v))) el.value = v;
+      } else if(k === 'pal'){
+        el.value = v === true ? '1' : v === 'paper' ? 'paper' : '0';
+      } else if(k === 'bool'){
+        el.value = v ? '1' : '0';
+      } else if(el.tagName === 'SELECT'){
+        if(k === 'font' && !Array.from(el.options).some(o => o.value === v)){
+          const o = document.createElement('option');   // Look の書体 (選択肢に無いもの) は名前を足して出す
+          o.value = v; o.textContent = String(v).replace(/"/g, '').split(',')[0];
+          el.appendChild(o);
+        }
+        if(k === 'num'){   // 選択肢に無い値は近いものへ
+          const opts = [...el.options].map(o=>parseFloat(o.value));
+          el.value = String(opts.reduce((a, x)=>Math.abs(x - v) < Math.abs(a - v) ? x : a, opts[0]));
+        } else el.value = String(v);
+      } else el.value = String(v);
+      const out = el.nextElementSibling;
+      if(out && out.classList.contains('val')) out.textContent = el.type === 'color' ? el.value : (FMT[el.dataset.fmt] || String)(+v);
+    });
+    const ta = $('#tdTextCustom');
+    if(ta && document.activeElement !== ta) ta.value = P.textCustom || '';
     if(typeof TDComp !== 'undefined'){
       const c = TDComp.get();
       const compSel = $('#tdCompType');
-      if(compSel){ compSel.value = c.enabled ? c.type : 'off'; compSel.disabled = !fixed; }
-      const reseedBtn = $('#tdCompReseed');
-      if(reseedBtn) reseedBtn.disabled = !fixed;
-      const setComp = (id, valId, v, fmt)=>{
-        const el = $('#'+id), out = $('#'+valId);
-        if(el){ el.value = String(v); el.disabled = !fixed; }
+      if(compSel) compSel.value = c.enabled ? c.type : 'off';
+      const setComp = (id, v, fmt)=>{
+        const el = $('#'+id), out = $('#'+id+'Val');
+        if(el) el.value = String(v);
         if(out) out.textContent = fmt(v);
       };
-      const pct = v=>Math.round(v * 100) + '%';
       const offPct = v=>v > 0 ? pct(v) : 'Off';
-      setComp('tdCompSpeed', 'tdCompSpeedVal', c.speed, v=>v.toFixed(2));
-      setComp('tdCompIntensity', 'tdCompIntensityVal', c.macros.intensity, pct);
-      setComp('tdCompDensity', 'tdCompDensityVal', c.macros.density, pct);
-      setComp('tdCompInstability', 'tdCompInstabilityVal', c.macros.instability, pct);
-      setComp('tdCompDepth', 'tdCompDepthVal', c.macros.depth, pct);
-      setComp('tdCompLegibility', 'tdCompLegibilityVal', c.macros.legibility, pct);
-      setComp('tdCompEcho', 'tdCompEchoVal', c.fxRack.echo.enabled ? c.fxRack.echo.amount : 0, offPct);
-      setComp('tdCompFeedback', 'tdCompFeedbackVal', c.fxRack.feedback.enabled ? c.fxRack.feedback.amount : 0, offPct);
-      setComp('tdCompChroma', 'tdCompChromaVal', c.fxRack.chromaticSplit.enabled ? c.fxRack.chromaticSplit.amount : 0, offPct);
-      setComp('tdCompRaster', 'tdCompRasterVal', c.fxRack.rasterMaterial.enabled ? c.fxRack.rasterMaterial.amount : 0, offPct);
+      setComp('tdCompSpeed', c.speed, v=>v.toFixed(2));
+      setComp('tdCompIntensity', c.macros.intensity, pct);
+      setComp('tdCompDensity', c.macros.density, pct);
+      setComp('tdCompInstability', c.macros.instability, pct);
+      setComp('tdCompDepth', c.macros.depth, pct);
+      setComp('tdCompLegibility', c.macros.legibility, pct);
+      setComp('tdCompEcho', c.fxRack.echo.enabled ? c.fxRack.echo.amount : 0, offPct);
+      setComp('tdCompFeedback', c.fxRack.feedback.enabled ? c.fxRack.feedback.amount : 0, offPct);
+      setComp('tdCompChroma', c.fxRack.chromaticSplit.enabled ? c.fxRack.chromaticSplit.amount : 0, offPct);
+      setComp('tdCompRaster', c.fxRack.rasterMaterial.enabled ? c.fxRack.rasterMaterial.amount : 0, offPct);
     }
+    this.refreshTextDeformLooks();
     this.refreshTextDeformSurface();
-    this.refreshTextDeformText();
   },
 
-  // Text 欄 (文字の出どころ。全 md 共通なので固定 md でなくても編集できる)
-  refreshTextDeformText(){
-    if(typeof TextDeform === 'undefined') return;
-    const T = TextDeform; T._ensureTextSrc();
-    const s = T.textSrc;
-    const mode = $('#tdTextMode'); if(mode) mode.value = s.mode;
-    const pool = $('#tdTextPool');
+  // Look 欄: Pool の選択肢・一覧 (Featured = サムネ / 保存 Look = 紙とインクの色の札)・選んでいる Look の説明
+  refreshTextDeformLooks(){
+    if(typeof TDLooks === 'undefined' || typeof TextDeform === 'undefined') return;
+    const L = TDLooks, P = TextDeform.P, D = TextDeform.PDefaults || {};
+    const tdSecW = document.querySelector('.section.textdeform-mode'); if(tdSecW) this.applyParamWhen(tdSecW);
+    const esc = s=>String(s == null ? '' : s).replace(/[&<>"]/g, c=>({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
+    const hex = (v, f)=>/^#[0-9a-f]{6}$/i.test(String(v)) ? v : f;
+    const pool = $('#tdLookPool');
     if(pool){
-      if(pool.dataset.filled !== '1' && typeof TD_TEXT_PRESETS !== 'undefined'){
-        pool.innerHTML = '<option value="all">All</option>' + TD_TEXT_PRESETS.map(g=>'<option value="' + g.group + '">' + g.label + ' (' + g.items.length + ')</option>').join('');
-        pool.dataset.filled = '1';
+      const fams = L.families(), saved = L.saved || [];
+      const all = L.featured(), rec = all.filter(p=>p.featured).length;
+      const sig = fams.length + ':' + all.length + ':' + saved.length;
+      if(pool.dataset.sig !== sig){
+        pool.innerHTML = '<option value="all">All</option><option value="recommended">★ Recommended (' + rec + ')</option><option value="presets">All presets (' + all.length + ')</option>'
+          + fams.map(f=>'<option value="' + esc(f.id) + '">' + esc(f.en + ' ' + f.jp) + '</option>').join('')
+          + '<option value="saved">Saved (' + saved.length + ')</option>';
+        pool.dataset.sig = sig;
       }
-      pool.value = s.pool;
+      pool.value = P.lookPool === 'featured' ? 'recommended' : P.lookPool;   // 前の保存データの featured はオススメ
+      if(!pool.value) pool.value = 'all';
     }
-    const ev = $('#tdTextEvery');
-    if(ev){
-      // 選択肢 (1/4〜16 拍) に無い古い保存値は近いものへ
-      const opts = [...ev.options].map(o=>parseFloat(o.value));
-      const near = opts.reduce((a, v)=>Math.abs(v - s.every) < Math.abs(a - s.every) ? v : a, opts[0]);
-      ev.value = String(near);
+    const grid = $('#tdLookGrid');
+    if(grid){
+      const ids = L.ids();
+      const sig = P.lookPool + ':' + ids.length + ':' + (L.saved || []).map(c=>c.name + (c.thumb ? c.thumb.length : '')).join('|');
+      if(grid.dataset.sig !== sig){
+        grid.innerHTML = ids.map(id=>{
+          const x = L.get(id);
+          if(x.kind === 'f'){
+            const p = x.item;
+            return '<button class="td-look' + (L.heavy(p) ? ' heavy' : '') + (p.featured ? ' rec' : '') + '" data-look="' + esc(id) + '" title="' + esc(L.label(id) + (p.featured ? ' ★ オススメ' : '') + ' — ' + p.description + (L.heavy(p) ? ' (重い)' : '')) + '">'
+              + '<img loading="lazy" decoding="async" alt="" src="' + esc(L.thumb(id)) + '"><span class="n">' + p.n + '</span></button>';
+          }
+          const st = x.item.style || {}, t = L.thumb(id);
+          if(t) return '<button class="td-look" data-look="' + esc(id) + '" title="' + esc(x.item.name + ' (保存 Look)') + '">'
+            + '<img loading="lazy" decoding="async" alt="" src="' + esc(t) + '"><span class="n nt">' + esc(x.item.name) + '</span></button>';
+          return '<button class="td-look" data-look="' + esc(id) + '" title="' + esc(x.item.name + ' (保存 Look)') + '">'
+            + '<span class="nm" style="background:' + hex(st.paper, D.paper) + ';color:' + hex(st.ink, D.ink) + '">' + esc(x.item.name) + '</span></button>';
+        }).join('');
+        grid.dataset.sig = sig;
+      }
+      grid.querySelectorAll('.td-look').forEach(b=>b.classList.toggle('on', b.dataset.look === P.look));
     }
-    const ta = $('#tdTextCustom');
-    if(ta && document.activeElement !== ta) ta.value = s.custom || '';
+    const saved = String(P.look || '').startsWith('s:');
+    ['tdLookOver', 'tdLookDel'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !saved; });
   },
 
-  // Surface 欄 (md 単位 — 固定 md 選択時のみ編集可)。Operator のパラメータ行は選んだ Operator の表から作り直す
+  // Surface 欄。Operator のパラメータ行は選んだ Operator の表から作り直す
   refreshTextDeformSurface(){
     if(typeof TDSurf === 'undefined') return;
     const S = TDSurf, c = S.cfg;
-    // md が Random でも操作できる (触ると表示中の md を固定にする = tdSurfFixMd)
+    const tdSecW = document.querySelector('.section.textdeform-mode'); if(tdSecW) this.applyParamWhen(tdSecW);
     const dz = v=> Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2);   // デッドゾーン表示 (規約)
-    const setSel = (id, v)=>{ const el = $('#'+id); if(el){ el.value = String(v); el.disabled = false; } };
+    const setSel = (id, v)=>{ const el = $('#'+id); if(el) el.value = String(v); };
     const setRange = (id, v, fmt)=>{
       const el = $('#'+id), out = $('#'+id+'Val');
-      if(el){ el.value = String(v); el.disabled = false; }
+      if(el) el.value = String(v);
       if(out) out.textContent = fmt(v);
     };
     setSel('tdSurfOn', c.enabled ? 'on' : 'off');
@@ -25264,34 +25330,9 @@ void mainImage(out vec4 o, in vec2 f){
     setRange('tdSurfChance', c.chance, dz);
     setRange('tdSurfSpeed', c.speed, dz);
     setRange('tdSurfOpacity', c.opacity, v=>v.toFixed(2));
+    setRange('tdSurfPixel', c.pixel || 1, v=>String(Math.round(v)));
     setSel('tdSurfSource', c.source); setSel('tdSurfBlend', c.blend); setSel('tdSurfColor', c.color);
-    setSel('tdSurfPresetEvery', +c.presetEvery || 0);
-    ['tdSurfSave','tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !S.meta; });
-    const preSel = $('#tdSurfPreset');
-    if(preSel){
-      if(S.presets && preSel.dataset.filled !== '1'){
-        preSel.innerHTML = '<option value="">Custom</option>';
-        for(const f of S.presets.families){
-          const og = document.createElement('optgroup'); og.label = f.jp;
-          for(const p of S.presets.presets) if(p.family === f.id){
-            const opt = document.createElement('option');
-            opt.value = p.id; opt.title = p.description;
-            opt.textContent = p.n + '. ' + p.name + (p.operators.some(o=>S.HEAVY.includes(o)) ? ' (重い)' : '');
-            og.appendChild(opt);
-          }
-          if(og.children.length) preSel.appendChild(og);
-        }
-        preSel.dataset.filled = '1';
-      }
-      if(c.preset && !preSel.querySelector('option[value="' + c.preset + '"]')){ const o = document.createElement('option'); o.value = c.preset; o.textContent = c.preset; preSel.appendChild(o); }
-      // md が Random でも選べる (選ぶと表示中の md を固定にして適用)。エンジン未読み込みでも触れれば読み込みが始まる
-      preSel.value = c.preset || ''; preSel.disabled = false;
-    }
-    const thumbRow = $('#tdSurfThumbRow'), thumb = $('#tdSurfThumb');
-    if(thumbRow && thumb){
-      thumbRow.style.display = c.preset ? '' : 'none';
-      if(c.preset && thumb.dataset.id !== c.preset){ thumb.dataset.id = c.preset; thumb.src = S.presetThumb(c.preset); }
-    }
+    ['tdSurfReset','tdSurfRand'].forEach(id=>{ const b = $('#'+id); if(b) b.disabled = !S.meta; });
     const ops = S.meta ? S.activeOps() : [];
     const editRow = $('#tdSurfEditRow'), editSel = $('#tdSurfEdit');
     if(editRow && editSel){
@@ -25341,7 +25382,10 @@ void mainImage(out vec4 o, in vec2 f){
           } else {
             el = document.createElement('input'); el.type = 'range'; el.min = k.min; el.max = k.max; el.step = k.step;
           }
-          el.dataset.surfKey = k.key; el.dataset.norand = '1'; el.title = k.key;
+          el.dataset.surfKey = k.key; el.dataset.norand = '1';
+          // ホバー説明 (上流の Operator パラメータは英語の名前だけなので、Operator 名・項目名・範囲を出す)
+          const help = meta.label + ' (Surface Operator) の ' + k.label + (k.kind === 'range' ? ' (' + k.min + '〜' + k.max + ')' : '') + '。上流 type-deformer の ' + k.key;
+          lab.dataset.help = help; el.dataset.help = help; lab.removeAttribute('title'); lab.classList.add('param-help');
           row.appendChild(el);
           if(k.kind === 'range'){ const v = document.createElement('div'); v.className = 'val'; row.appendChild(v); }
           box.appendChild(row);
@@ -25488,6 +25532,30 @@ void mainImage(out vec4 o, in vec2 f){
       const targets = el.tagName === 'LABEL' ? [el] : [lab, ...el.querySelectorAll(':scope > input, :scope > select, :scope > .colorbar, :scope > div > input')];
       targets.forEach(t=>{ t.dataset.help = h; t.removeAttribute('title'); });
       lab.classList.add('param-help');
+    });
+  },
+  // Code エンジンの Params パネル用 (共通): エンジンが PARAM_HELP (キー → 説明) と paramOn(key) (効くとき true) を持っていれば付ける
+  bindEngineHints(root, mod){
+    if(!root || !mod) return;
+    const need = mod.PARAM_NEEDS;   // キー → そのキー (複数ならどれか) が 0 のときは効かない
+    if(need || mod.paramOn){
+      const dz = v => (App.deadParam && typeof v === 'number') ? App.deadParam(v) : v;
+      this.bindParamWhen(root, key=>{
+        if(need && need[key] && ![].concat(need[key]).some(k => { const v = dz((mod.P || {})[k]); return v !== 0 && v !== false; })) return false;
+        return mod.paramOn ? mod.paramOn(key) : true;
+      });
+    }
+    const HELP = mod.PARAM_HELP || {};
+    this.bindParamHelp(root, key=>HELP[key]);
+  },
+  // 複数の .section に分かれた静的パネル用: 各 section に bindEngineHints し、どれかの操作で全 section を付け直す (ボタンの click も拾う)
+  bindEngineHintsSections(selector, mod){
+    const roots = [...document.querySelectorAll(selector)];
+    roots.forEach(r=>this.bindEngineHints(r, mod));
+    roots.forEach(r=>{
+      if(r._hintSync) return;
+      r._hintSync = true;
+      ['input','change','click'].forEach(t=>r.addEventListener(t, ()=>roots.forEach(x=>this.applyParamWhen(x))));
     });
   },
   _initParamTip(){

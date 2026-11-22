@@ -150,7 +150,7 @@ Fx3d.EXTRA.globe = {
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'globeNeedle', NV_VS, FS) : null;
     if(nvp){
       // Needle: 球を針の面で覆う (ウニ)。面は角張らせる (uFacet = 1)
-      const gy = 14, gx = Math.round(14 * asp);
+      const gy = Math.round(Fx3d.nvScale(14)), gx = Math.round(Fx3d.nvScale(14 * asp));
       setU(nvp);
       gl.uniform1f(uloc(gl, nvp, 'uFacet'), 1);
       gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);

@@ -975,3 +975,80 @@ void main(){
 Ugomeki.PDefaults = JSON.parse(JSON.stringify(Ugomeki.P));   // 素のデフォルトを確定(汚染前)
 Ugomeki.FONTS = MT_FONTS;   // UI の書体プルダウン生成に使う
 if(typeof window !== 'undefined') window.Ugomeki = Ugomeki;
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Ugomeki.PARAM_HELP = {
+  lineLen:'1 行の最大字数。0 で折り返しなし',
+  lineCount:'表示領域の行数。超過分はタイピング表示',
+  letterSpace:'字送り (トラッキング)',
+  lineSpace:'行送り (リーディング)',
+  fontScale:'文字サイズの倍率 (%)',
+  marginPct:'周囲の余白 (%)',
+  typeCps:'タイプ速度 (字/秒)。0 でカット表示',
+  typeHold:'1 ページ書き切ってからの保持秒数',
+  cutBeats:'カット表示で 1 ページを見せる拍数',
+  amp:'文字ごとの揺れ (Sway) の振れ幅',
+  rot:'文字ごとの回転の揺れ幅 (度)',
+  scale:'文字ごとの拡縮の揺れ幅',
+  blink:'文字の明滅の強さ',
+  cutV:'縦の切れ目で文字をずらす量',
+  cutH:'横の切れ目で文字をずらす量',
+  cutD:'斜めの切れ目で文字をずらす量',
+  float:'下へ漂う多層の残像の強さ',
+  beam:'ランダムな方向へ引く尾の強さ',
+  beamDist:'ビームの尾の長さ (px)',
+  echo:'過去のフレームを薄く重ねる残像',
+  echoLen:'残像の時間間隔',
+  aspect:'文字の縦横比の揺れ幅',
+  dbl:'二重 (ゴースト) のずれ幅',
+  glitch:'横スライスのずれとジャンプ',
+  wave:'文字を波打たせる振れ幅',
+  hue:'色相回転の揺れ幅',
+  blur:'ぼかしの揺れ幅',
+  flipH:'左右反転する文字の割合',
+  flipV:'上下反転する文字の割合',
+  mix:'Serial / Parallel: 効果を重ねる割合',
+  tame:'動きの緩急 (ツメ・タメ)',
+  dur:'揺れが 1 周する秒数 (ループ長)',
+  fps:'コマ送りの fps (DRONE 時)',
+  bodyKanji:'漢字の字面の大きさ (%)',
+  bodyHira:'ひらがなの字面の大きさ (%)',
+  bodyKana:'カタカナの字面の大きさ (%)',
+  bodyLatin:'英数字の字面の大きさ (%)',
+  beatPulse:'拍で文字が脈動する量',
+  textAngle:'文章ブロック全体の回転 (度)',
+  slope:'字の向きは保ち、行の基線を傾ける',
+  shear:'字の向きは保ち、列をずらす',
+  arc:'基線を弓なりに曲げる',
+  stagger:'1 字おきに上下へずらす',
+  sizeRampX:'横位置による大きさの傾斜',
+  sizeRampY:'縦位置による大きさの傾斜',
+  sizeVar:'文字ごとの大きさのばらつき',
+  tiltVar:'文字ごとの傾きのばらつき (度)',
+  fadeVar:'文字ごとの濃さのばらつき',
+  opacity:'文字の不透明度 (%)',
+  strokeW:'縁取りの太さ (字の大きさ比)',
+  fillPct:'縁取り時の塗りの濃さ',
+  shadowDist:'ドロップシャドウの距離',
+  shadowAngle:'ドロップシャドウの向き (度)',
+  shadowBlur:'ドロップシャドウのぼかし',
+  vignette:'周辺減光の強さ',
+  ampX:'Sway の横方向の振れ幅 (%)',
+  ampY:'Sway の縦方向の振れ幅 (%)',
+  charDelay:'文字ごとの時間のずれ (ms/字)',
+  cutSlices:'Cut V / H / Diag の分割数',
+  fontFamily:'文字の書体',
+  vertical:'縦組みと太字の切り替え (Vertical / Bold)',
+  align:'行の揃え: 左 / 中央 / 右 / 均等',
+  spacing:'字送り: 等幅 / 字幅メトリクス (横組のみ)',
+  overflow:'あふれ時: Page は次ページ、Scroll は 1 行ずつ',
+  paper:'紙色 (右の Ink は文字色)',
+};
+Ugomeki.PARAM_NEEDS = {ampX:'amp', ampY:'amp', beamDist:'beam', echoLen:'echo', cutSlices:['cutV', 'cutH', 'cutD'], fillPct:'strokeW', shadowAngle:'shadowDist'};
+Ugomeki.paramOn = function(key){
+  const P = this.P;
+  if(key === 'cutBeats' && P.typeCps > 0) return false;
+  if((key === 'typeHold' || key === 'overflow') && !(P.typeCps > 0)) return false;
+  if(key === 'spacing' && P.vertical) return false;
+  return true;
+};

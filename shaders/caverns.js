@@ -508,3 +508,43 @@ void main(){ vec4 c; mainImage(c, gl_FragCoord.xy); _o = c; }
   }
 };
 Caverns.PDefaults = JSON.parse(JSON.stringify(Caverns.P));   // 既定値はスクリプト読込時に確定 (state 復元より先)
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Caverns.PARAM_HELP = {
+  caveScale:'洞窟全体の起伏の大きさ。柱・丘の間隔と高さ',
+  floorHills:'床の丘の高さ',
+  stalactites:'天井から垂れる鍾乳石の長さ',
+  ceilFreq:'鍾乳石の細かさ',
+  ceiling:'天井の高さ',
+  tunnel:'飛行経路にくり抜くトンネルの太さ',
+  rough:'岩肌のざらつき',
+  grain:'ざらつきの細かさ',
+  lookAhead:'カメラが進行方向のどれだけ先を見るか。上げるとカーブの内側を向く',
+  beam:'ヘッドライトの絞り。上げると細いスポットに',
+  falloff:'ヘッドライトの減衰。下げると奥まで届く',
+  gloss:'岩の艶。鏡面ハイライトの鋭さ',
+  fog:'霧の濃さ',
+  fov:'画角。上げると広角',
+  camRoll:'カメラの傾き',
+  lookYaw:'進行方向からの視線の左右の振り。ヘッドライトも一緒に向く',
+  lookPitch:'進行方向からの視線の上下の振り',
+  lightX:'鏡面ハイライトの光の向き 横',
+  lightY:'鏡面ハイライトの光の向き 上下',
+  specular:'鏡面ハイライトの強さ',
+  ambient:'ヘッドライトの外の岩肌を照らす環境光',
+  ao:'岩の凹みの影',
+  lightHue:'ヘッドライトの色相',
+  lightTint:'ヘッドライトの色づき',
+  hazeGlow:'霧の色の明るさ',
+  hazeHue:'霧の色相のずれ',
+  fogStart:'霧が始まる距離',
+  strata:'岩の地層の縞の濃さ',
+  strataFreq:'地層の縞の細かさ',
+  filmNoise:'フィルムのざらつき',
+  renderRes:'描画の細かさ。下げると粗く柔らかい',
+  caveStretch:'洞窟の模様の縦横比。柱の並びが縦長・横長に',
+  caveRot:'洞窟の模様の回転',
+  shiftX:'洞窟の模様の横ずらし',
+  shiftZ:'洞窟の模様の奥行きずらし',
+};
+Caverns.PARAM_NEEDS = {lightHue:'lightTint', strataFreq:'strata'};

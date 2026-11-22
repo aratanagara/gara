@@ -208,6 +208,7 @@ vec3 bg_rainbowWater(vec2 fc){
     g += (gh - 0.5) * (uGrain / 100.0) * 0.4;
   }
   bgAlpha = clamp(g * 0.8, 0.0, 0.78);                     // 半透明の水(暗い谷ほど透ける)
+  vjDepth = bgAlpha;                                       // 深度 (水の濃さ=明るい山ほど手前)
   vec3 outc = vec3(clamp(g, 0.0, 1.0));
   if(tinted){
     outc = clamp((gBase * uWaterColor + gCau * uCausticColor + gSpk * uSparkleColor) * (g / max(gBase + gCau + gSpk, 1e-4)), 0.0, 1.0);

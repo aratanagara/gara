@@ -26,6 +26,7 @@ vec3 bg_inkelly(vec2 fc){
   vec3 inkCol = vec3(0.02);
   vec3 col = paper;
   col = mix(col, inkCol, ink);
+  vjDepth = max(m * 0.5, ink);   // 深度 (人物のマスク=中間 / 墨の輪郭線=手前 / 紙 0)
   return col;
 }
 

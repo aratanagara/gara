@@ -87,8 +87,12 @@ const Fx3d = {
   //   VS で fx3dNeedleH (と fx3dNeedleVert) を呼ぶと prog() がその GLSL を差し込む。uniform は spikeUniforms(gl, pr [, frame])
   spikeFrame: null,
   canSpike(name){ const x = this.EXTRA[name]; return name === 'slicer' || name === 'photo' || !!(x && x.spikes); },
+  // Needle の太さ: 面分割の格子数・間隔の基準値 (従来の値) を太さで割る。太さ 1 = そのまま
+  nvScale(x){ const k = this.spikeFrame && this.spikeFrame.thick; return k && k !== 1 ? x / k : x; },
   spikeUniforms(gl, pr, frame){
     const s = frame || this.spikeFrame || { a: 0, beat: 0, bm: 0, hit: 0, t: 0, scat: 0 };
+    gl.uniform1f(gl.getUniformLocation(pr, 'uSpLen'), (s.len != null ? s.len : 1) / (s.thick || 1));   // 高さは面の大きさ (太さ) に比例するので、長さは太さで割って独立にする
+    gl.uniform1f(gl.getUniformLocation(pr, 'uSpTri'), s.sides != null && s.sides < 4 ? 1 : 0);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpA'), s.a);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpBeat'), s.beat);
     gl.uniform1f(gl.getUniformLocation(pr, 'uSpBM'), s.bm);
@@ -356,7 +360,7 @@ vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : cl
       P.reshuffle = 100 * k;
       // 組み直し (CPU でジオメトリ生成) は量を 1/512 刻みにして、変化したときだけ
       const wq = Math.round(k * 512);
-      const sig = [pieces, asp.toFixed(3)].join('|');
+      const nm = GL.needleMods(App.post), sig = [pieces, asp.toFixed(3), nm.thick.toFixed(3), nm.sides].join('|');   // Needle の太さ・最大辺数も断片の針の組み直しの条件
       if(o.imgAsp !== asp){ o.imgAsp = asp; o._needsRebuild = true; }
       if(sig !== o._sig){ o._sig = sig; o._needsRebuild = true; }
       if(wq !== o._wq){

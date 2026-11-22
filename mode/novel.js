@@ -537,7 +537,7 @@ const NovelTerminal = {
     holeLayer:true,    // Fluid: 黒抜きレイヤー
     cursor:true,       // Fluid: 走査カーソル
     clash:true,        // Fluid: 横組みと重なる縦書きの字を抜く
-    morph:1.2,         // 旧シーン間の変形トランジション秒数 (0=カット)
+    morph:1.2,         // Scene 切替の変形・フェード秒数 (0=カット)
     // ── 第 2 弾 (既定値 = 従来の見た目。% は 100 が従来値) ──
     leading:100, tracking:100, rowWave:100, colWave:100, waveFreq:100,
     shapeScale:100, lineWidth:100, rhythmAmt:100,
@@ -563,6 +563,12 @@ const NovelTerminal = {
     fluidCircleEdge:true, fluidTriEdge:true, fluidRectEdge:true,   // 図形の輪郭を描くか (OFF = 輪郭を描かない。Auto は塗りだけ、Edge は出さない)
     sceneVals:null,    // Scene ごとの保存値 { fluid:{...}, editorial:{...}, _common:{...} } (snapScene / applyScene)
     fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
+    fluidCircleAlign:1, fluidTriAlign:1, fluidRectAlign:0,   // 輪郭線の位置 0 = 内 / 1 = 中心 / 2 = 外 (既定 = 従来: 円と三角は中心、矩形は内)
+    // Fluid の HUD の各部の色。null = 従来どおり Fluid Accent か Mono Ink に従う (HUD_COLOR_BASE)
+    hudAimColor:null, hudRingColor:null, hudTickColor:null, hudBracketColor:null, hudCrossColor:null, hudCoordColor:null, hudLabelColor:null, hudInfoColor:null, hudBarColor:null,
+    // 品詞カラーの色 (Ink = 品詞カラー と Meltdown / Columns / Vertical / Typer の字)
+    posPunct:[150/255,150/255,160/255], posKata:[0,210/255,1], posKanji:[1,238/255,190/255], posParticle:[1,30/255,30/255],
+    posInflect:[1,230/255,0], posHira:[0,235/255,80/255], posOther:[235/255,70/255,1],
     bgMode:'none', bgColor:[0,0,0],   // Fluid の背景: 'none' = 透明 (従来) / 'color' = bgColor で塗る。Option のスポイトもここに入れる (bgColor + bgMode)
     fluidRunCaret:false,   // 字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける
     fluidBigFont:0,    // Big Glyph の書体 (0 = Fluid Font と同じ / 1〜 = FLUID_FONTS の番号)
@@ -691,11 +697,25 @@ const NovelTerminal = {
     ['Render Freq','renderFreq',30,300,5,v=>v.toFixed(0)+'%','ASCII Render: 波の細かさ'],
   ],
   // 色 param の UI 定義 [label,key,title]
-  COLORS:[['Bg Color','bgColor','Fluid: 背景の色 (Background = Color のとき)'],['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色']],
+  COLORS:[['Bg Color','bgColor','Fluid: 背景の色 (Background = Color のとき)'],['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色'],
+    ['HUD Aim','hudAimColor','Fluid HUD: 円の中心を通る照準線'],['HUD Ring','hudRingColor','Fluid HUD: 円周の弧'],['HUD Ticks','hudTickColor','Fluid HUD: 円周の目盛り'],
+    ['HUD Brackets','hudBracketColor','Fluid HUD: 矩形の角のブラケット'],['HUD Tri Cross','hudCrossColor','Fluid HUD: 三角の中心の十字'],['HUD Coord','hudCoordColor','Fluid HUD: 円の座標 (X Y)'],
+    ['HUD R / θ','hudLabelColor','Fluid HUD: 円の半径と矩形の角度'],['HUD Corner Text','hudInfoColor','Fluid HUD: 四隅の場面番号と時刻'],['HUD Corner Bar','hudBarColor','Fluid HUD: 左上の線'],
+    ['POS Punct','posPunct','品詞カラー: 約物'],['POS Katakana','posKata','品詞カラー: カタカナ'],['POS Kanji','posKanji','品詞カラー: 漢字'],['POS Particle','posParticle','品詞カラー: 助詞'],
+    ['POS Inflection','posInflect','品詞カラー: 活用・語尾'],['POS Hiragana','posHira','品詞カラー: ひらがな'],['POS Other','posOther','品詞カラー: その他 (欧文・記号など)']],
+  HUD_COLOR_BASE: { hudAimColor:'fluidAccent', hudRingColor:'monoColor', hudTickColor:'fluidAccent', hudBracketColor:'monoColor', hudCrossColor:'fluidAccent',
+    hudCoordColor:'fluidAccent', hudLabelColor:'monoColor', hudInfoColor:'monoColor', hudBarColor:'fluidAccent' },
+  POS_KEYS: ['posPunct','posKata','posKanji','posParticle','posInflect','posHira','posOther'],
+  // 色 param の表示用の値 (0..1)。HUD の色が null (従来どおり) なら従う色を返す
+  colorOf(key, v){
+    if(v) return v;
+    const base = this.HUD_COLOR_BASE[key];
+    return base ? ((this.P && this.P[base]) || this._PDef[base]) : v;
+  },
   _k(key){ const v=this.P && this.P[key]; if(v==null) return 1; return ((typeof App!=='undefined' && App.deadParam) ? App.deadParam(v) : v)/100; },
   _rgb(key,def){ const c=this.P && this.P[key]; return c ? [Math.round(c[0]*255),Math.round(c[1]*255),Math.round(c[2]*255)] : def; },
   novMode: 0, _novT0: 0,
-  MORPH: 1.2, MORPH_CAP: 600, _emit: null, _mA: null, _mB: null, _morphKey: -1,   // モード境界の変形トランジション用
+  MORPH_CAP: 600, _emit: null, _mA: null, _mB: null, _morphKey: -1,   // モード境界の変形トランジション用
   GLITCH: "ｱｲｳｴｵｶｷｸｹｺｻｼｽｾｿﾀﾁﾂﾃﾄﾅﾆﾇﾈﾉ0123456789#$%&*+=<>?/\\|".split(""),
   _palettes: [
     [[20,10,4],   [255,176,64]],    // AMBER
@@ -714,16 +734,18 @@ const NovelTerminal = {
 
   _chars(){ const f=this.PARAS.join(""), o=(this._off||0)%f.length; if(this._ccOff!==o){ this._cc=(f.slice(o)+f.slice(0,o)).split(""); this._ccOff=o; } return this._cc; },
   _isKana(ch){ const c = ch.charCodeAt(0); return (c>=0x3041 && c<=0x30FF); },
+  _posPalette(){ return (this._posPal = this.POS_KEYS.map(k => this._rgb(k, this._rgb.call({P:this._PDef}, k)))); },   // 品詞カラーを 0..255 で (draw の頭で 1 回)
   _posCol(ch){
     const c = ch.charCodeAt(0);
-    if("、。「」『』！？・…ー".includes(ch)) return [150,150,160];  // 約物 グレー
+    const pc = this._posPal || this._posPalette();
+    if("、。「」『』！？・…ー".includes(ch)) return pc[0];  // 約物
     if(ch === this.INDENT || ch === " ") return [0,0,0];
-    if(c>=0x30A0 && c<=0x30FF)  return [0,210,255];    // カタカナ シアン
-    if(c>=0x4E00 && c<=0x9FFF)  return [255,238,190];   // 漢字 生成り(明るめ)
-    if("はがをにへとでやのもからまでよりねよぞぜわかなのにをば".includes(ch)) return [255,30,30];   // 助詞 赤(原色)
-    if("だですますたぬずべきましでしょうない".includes(ch))                 return [255,230,0];   // 活用 黄(原色)
-    if(c>=0x3041 && c<=0x309F)  return [0,235,80];     // ひらがな 緑(原色)
-    return [235,70,255];                               // その他 マゼンタ
+    if(c>=0x30A0 && c<=0x30FF)  return pc[1];    // カタカナ
+    if(c>=0x4E00 && c<=0x9FFF)  return pc[2];    // 漢字
+    if("はがをにへとでやのもからまでよりねよぞぜわかなのにをば".includes(ch)) return pc[3];   // 助詞
+    if("だですますたぬずべきましでしょうない".includes(ch))                 return pc[4];   // 活用
+    if(c>=0x3041 && c<=0x309F)  return pc[5];    // ひらがな
+    return pc[6];                                // その他
   },
   _setFont(p, f){ if(f !== this._lastFont){ p.textFont(f); this._lastFont = f; } },   // textFont は重いので変化時のみ呼ぶ
   _gly(p, ch, x, y, cs){
@@ -906,23 +928,35 @@ const NovelTerminal = {
     this._emit=null; this.novMode=saveMode; this._lastFont=saveLF;
     return buf;
   },
-  _dMorph(p, u, cell, A, B){   // 変形トランジション: 前モードの終端配置 → 次モードの開始配置 を1字ずつ補間(フェードでなく字が移動・再構成して繋ぐ)
+  _dMorph(p, u, cell, A, B, tA, tB, fade=1){   // 変形トランジション: 前モードの最後に映った配置 (時刻 tA) → 変形が終わる時刻 tB の次モードの配置 を1字ずつ補間(フェードでなく字が移動・再構成して繋ぐ)
     if(this._morphKey!==this.novMode){
-      this._mA=this._sample(p,cell,A,10);            // A(前モード)の終端ポーズ
-      this._mB=this._sample(p,cell,B,this.MORPH);    // B(次モード)の定常開始ポーズ
+      this._mBg0 = this._mStart ? this._mBg0 : (A===0 ? 1 : 0);   // 変形途中から始めるときは、画面に出ていた Meltdown の地の濃さから
+      this._mA=this._mStart || this._sample(p,cell,A,tA); this._mStart=null;   // 変形の途中で次へ替わるときの起点 = 画面に出ていた変形途中の字 (alpha つき)
+      this._mB=this._sample(p,cell,B,tB);
       this._morphKey=this.novMode;
       p.clear();                                // _sample がキャンバスに残した描画を消してからトークンを描く
     }
     const TA=this._mA, TB=this._mB, n=Math.max(TA.length,TB.length); if(!n) return;
-    const cap=Math.min(this.MORPH_CAP,n), e=this._easeOutQuint(u);
+    let idxs=null, cap=Math.min(this.MORPH_CAP,n); const e=this._easeOutQuint(u);
+    if(TA.big){   // 変形途中から始めるときは起点の字を間引かず全部残す。足りない B 側の字だけ上限 (1500) まで間引いて足す
+      const nA=TA.length, extra=Math.max(0,TB.length-nA), m=Math.min(extra,Math.max(0,1500-nA)); idxs=[];
+      for(let i=0;i<nA;i++) idxs.push(i);
+      for(let k=0;k<m;k++) idxs.push(nA+Math.floor(k*extra/m));
+      cap=idxs.length;
+    }
+    const bgA=this._mBg0*(1-e)+(B===0?e:0);
+    const tok=this._mTok||(this._mTok=[]); tok.length=0; this._lastBg=bgA;        // Meltdown の地 (変形の間は出入りに合わせて濃さを補間)
+    if(bgA>0.01){ p.noStroke(); p.fill(9,9,11,255*bgA); p.rect(0,0,p.width,p.height); }
     p.textAlign(p.LEFT,p.TOP);
     for(let j=0;j<cap;j++){
-      const i = (cap===n) ? j : Math.floor(j*n/cap);
+      const i = idxs ? idxs[j] : (cap===n) ? j : Math.floor(j*n/cap);
       const a=TA[i], b=TB[i]; let x,y,s,r,g,bl,al,ch;
-      if(a&&b){ x=a.x+(b.x-a.x)*e; y=a.y+(b.y-a.y)*e; s=a.s+(b.s-a.s)*e; r=a.r+(b.r-a.r)*e; g=a.g+(b.g-a.g)*e; bl=a.b+(b.b-a.b)*e; al=255; ch=(e<0.5)?a.ch:b.ch; }
-      else if(a){ x=a.x;y=a.y;s=a.s;r=a.r;g=a.g;bl=a.b; al=255*(1-e); ch=a.ch; }      // 余ったAは消えていく
+      const aA=(a&&a.a!==undefined)?a.a:255;
+      if(a&&b){ x=a.x+(b.x-a.x)*e; y=a.y+(b.y-a.y)*e; s=a.s+(b.s-a.s)*e; r=a.r+(b.r-a.r)*e; g=a.g+(b.g-a.g)*e; bl=a.b+(b.b-a.b)*e; al=aA+(255-aA)*e; ch=(e<0.5)?a.ch:b.ch; }
+      else if(a){ x=a.x;y=a.y;s=a.s;r=a.r;g=a.g;bl=a.b; al=aA*(1-e); ch=a.ch; }      // 余ったAは消えていく
       else { x=b.x;y=b.y;s=b.s;r=b.r;g=b.g;bl=b.b; al=255*Math.max(0,(e-0.6)/0.4); ch=b.ch; }   // 足りない分のBは後半で現れる
-      if(al<8) continue;
+      al*=fade; if(al<8) continue;
+      tok.push({ch,x,y,s,r,g,b:bl,a:al});
       p.fill(r,g,bl,al); p.textSize(s); this._gly(p,ch,x,y,s);
     }
     this._lastFont=null;
@@ -1206,6 +1240,7 @@ const NovelTerminal = {
     const kCS=this._k('fluidCircleSize'), kTS=this._k('fluidTriSize'), kRS=this._k('fluidRectSize');
     const kTSpin=dz(this._k('fluidTriSpin')), kRSpin=dz(this._k('fluidRectSpin'));
     const kCL=this._k('fluidCircleLine'), kTL=this._k('fluidTriLine'), kRL=this._k('fluidRectLine');
+    const PP = this.P || {}, aCircle = PP.fluidCircleAlign ?? 1, aTri = PP.fluidTriAlign ?? 1, aRect = PP.fluidRectAlign ?? 0;
     const shapeMode = k=>(this.P && this.P[k]|0) || 0;
     const mCircle=shapeMode('fluidCircleMode'), mTri=shapeMode('fluidTriMode'), mRect=shapeMode('fluidRectMode');
     // 構図の時計: 整数で場面が替わる。Scene Beats > 0 なら拍で回す (切替の跳ねが拍頭に来る)
@@ -1268,10 +1303,11 @@ const NovelTerminal = {
         const q = rot(x-cx, y-cy, -a);
         const bx = Math.abs(q[0])-w*0.5;
         const by = Math.abs(q[1])-h*0.5;
-        const edge = Math.min(Math.abs(bx), Math.abs(by));
-        const inside = Math.max(bx, by) < 0 ? 1 : 0;
-        return inside ? 1 - edge/(0.052*kRL) : -1;
+        const d = Math.max(bx, by) < 0 ? Math.max(bx, by) : Math.hypot(Math.max(bx, 0), Math.max(by, 0));   // 符号付き距離 (内側が負)
+        return band(d, 0.052*kRL, aRect);
       };
+      // 輪郭の帯: d = 輪郭からの符号付き距離 (内側が負)、T = 線の太さ、pos = 0 内 / 1 中心 / 2 外
+      const band = (d, T, pos) => pos === 1 ? 1 - Math.abs(d)/(T*0.5) : pos === 0 ? (d <= 0 ? 1 + d/T : -1) : (d >= 0 ? 1 - d/T : -1);
       const line = (x, y, a, d, width) => {
         return 1 - Math.abs(x*Math.cos(a)+y*Math.sin(a)-d) / width;
       };
@@ -1334,14 +1370,14 @@ const NovelTerminal = {
         const side = (rr(16) < 0.5 ? -1 : 1)*0.62;   // 余白: 軸から外れた側
         voidX = fx + Math.cos(mainA)*side; voidY = fy + Math.sin(mainA)*side;
       }
-      const circleRing = 1 - Math.abs(Math.hypot(nx-circleX, ny-circleY) - circleRadius) / (0.070*kCL);
+      const circleRing = band(Math.hypot(nx-circleX, ny-circleY) - circleRadius, 0.140*kCL, aCircle);
       const circleFill = 1 - Math.hypot(nx-circleX, ny-circleY) / circleRadius;
       let triFill = tri(nx, ny, triX, triY, triSize, triAngle);
-      let triEdge = triOutline(nx, ny, triX, triY, triSize, triAngle);
+      let triEdge = aTri === 1 ? triOutline(nx, ny, triX, triY, triSize, triAngle) : band((1 - tri(nx, ny, triX, triY, triSize, triAngle))*0.10, 0.100*kTL, aTri);
       if(kSharp > 0){
         const d = eqTri(nx, ny, triX, triY, triSize, triAngle), w = Math.min(1, kSharp*3);
         triFill += (1 - d/0.10 - triFill)*w;
-        triEdge += (1 - Math.abs(d)/(0.050*kTL) - triEdge)*w;
+        triEdge += (band(d, 0.100*kTL, aTri) - triEdge)*w;
       }
       const squareFill = rect(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
       const squareEdge = rectOutline(nx, ny, rectX, rectY, rectW, rectH, rectAngle);
@@ -1650,24 +1686,25 @@ const NovelTerminal = {
     const W = p.width, H = p.height, dc = p.drawingContext, M = Math.min(W, H);
     const hair = Math.max(1, Math.round(M/900)), sfs = Math.max(7, Math.round(fs*0.62));
     const A = (c, a)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a*k))})`;
+    const C = key => this._rgb(key, this.HUD_COLOR_BASE[key] === 'fluidAccent' ? acc : ink);   // HUD の各部の色 (null = 従来どおり)
     const snap = 1 - g.jolt/0.42;   // 0 (切替の瞬間) → 1
     dc.save();
     dc.lineWidth = hair;
     // 照準線 (切替のたびに中心から外へ伸びる)
     const [cx, cy] = toPx(g.circleX, g.circleY), ext = 0.25 + 0.75*snap;
     if(g.circleOn){
-    dc.strokeStyle = A(acc, 0.38);
+    dc.strokeStyle = A(C('hudAimColor'), 0.38);
     dc.beginPath(); dc.moveTo(cx - W*ext, cy); dc.lineTo(cx + W*ext, cy); dc.moveTo(cx, cy - H*ext); dc.lineTo(cx, cy + H*ext); dc.stroke();
     // 円周の目盛り
     const rpx = g.circleRadius*H*0.5;
-    dc.strokeStyle = A(ink, 0.30);
+    dc.strokeStyle = A(C('hudRingColor'), 0.30);
     dc.beginPath(); dc.arc(cx, cy, rpx, -Math.PI*0.5, -Math.PI*0.5 + Math.PI*2*snap); dc.stroke();
-    dc.strokeStyle = A(acc, 0.8);
+    dc.strokeStyle = A(C('hudTickColor'), 0.8);
     for(let i=0;i<12;i++){ const a = i/12*Math.PI*2 + t*0.15, r0 = rpx*(i%3===0 ? 0.92 : 0.96); dc.beginPath(); dc.moveTo(cx + Math.cos(a)*r0, cy + Math.sin(a)*r0); dc.lineTo(cx + Math.cos(a)*rpx, cy + Math.sin(a)*rpx); dc.stroke(); }
     }
     // 矩形の角のブラケット (回転に追従)
     const [rx, ry] = toPx(g.rectX, g.rectY), hw = g.rectW*H*0.25, hh = g.rectH*H*0.25, ca = Math.cos(g.rectAngle), sa = Math.sin(g.rectAngle), L = Math.min(hw, hh)*0.28;
-    dc.strokeStyle = A(ink, 0.62);
+    dc.strokeStyle = A(C('hudBracketColor'), 0.62);
     if(g.rectOn) for(const [sx, sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
       const P = (u, v)=>[rx + (u*ca - v*sa), ry + (u*sa + v*ca)];
       const c0 = P(sx*hw, sy*hh), c1 = P(sx*hw - sx*L, sy*hh), c2 = P(sx*hw, sy*hh - sy*L);
@@ -1675,25 +1712,25 @@ const NovelTerminal = {
     }
     // 三角の中心の十字
     const [tx, ty] = toPx(g.triX, g.triY), cr = sfs*0.9;
-    dc.strokeStyle = A(acc, 0.7);
+    dc.strokeStyle = A(C('hudCrossColor'), 0.7);
     if(g.triOn){ dc.beginPath(); dc.moveTo(tx - cr, ty); dc.lineTo(tx + cr, ty); dc.moveTo(tx, ty - cr); dc.lineTo(tx, ty + cr); dc.stroke(); }
     // 座標ラベル
     dc.font = `${sfs}px ${this.ED_GOTHIC}`; dc.textBaseline = 'alphabetic';
     try{ dc.letterSpacing = (sfs*0.12).toFixed(1)+'px'; }catch(e){}
     const f2 = v=>(v>=0?'+':'−') + Math.abs(v).toFixed(3);
-    dc.fillStyle = A(acc, 0.95); dc.textAlign = 'left';
+    dc.fillStyle = A(C('hudCoordColor'), 0.95); dc.textAlign = 'left';
     if(g.circleOn) dc.fillText(`X${f2(g.circleX)}  Y${f2(g.circleY)}`, cx + sfs*0.8, cy - sfs*0.7);
-    dc.fillStyle = A(ink, 0.75);
+    dc.fillStyle = A(C('hudLabelColor'), 0.75);
     if(g.circleOn) dc.fillText(`R ${(g.circleRadius).toFixed(3)}`, cx + sfs*0.8, cy + sfs*1.5);
     if(g.rectOn) dc.fillText(`θ ${((g.rectAngle*180/Math.PI)%360).toFixed(1)}°`, rx + hw*0.0 + sfs*0.6, ry - sfs*0.6);
     // 四隅: シーン番号 / 時刻
     const m = Math.round(M*0.045);
-    dc.fillStyle = A(ink, 0.78); dc.textAlign = 'left';
+    dc.fillStyle = A(C('hudInfoColor'), 0.78); dc.textAlign = 'left';
     dc.fillText(`FLUID  ${String(g.scene+1).padStart(2,'0')} / 06   VAR ${variant+1}`, m, m + sfs);
     dc.textAlign = 'right';
     const tt = Math.max(0, t), mm = Math.floor(tt/60), ss = Math.floor(tt%60), ff = Math.floor((tt%1)*100);
     dc.fillText(`${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(ff).padStart(2,'0')}`, W - m, H - m);
-    dc.fillStyle = A(acc, 0.95);
+    dc.fillStyle = A(C('hudBarColor'), 0.95);
     dc.fillRect(m, m + sfs*1.6, sfs*6*snap, hair*2);
     try{ dc.letterSpacing = '0px'; }catch(e){}
     dc.restore();
@@ -2103,14 +2140,15 @@ const NovelTerminal = {
   // パネルのグループ (見出しで畳む)。ここに無い行 (Scene・Speed・Char Size・Randomize) は先頭に残る。toggle の行は最初のキーで探す
   PARAM_GROUPS: [
     ['Composition', ['fluidLayout','sceneSpeed','fluidBeats','shapeScale','split','fluidSharp','fluidCrisp','edgeNoise','rhythmAmt','lineWidth']],
-    ['Circle', ['fluidCircleMode','fluidCircleSize','fluidCircleEdge','fluidCircleLine']],
-    ['Triangle', ['fluidTriMode','fluidTriSize','fluidTriSpin','fluidTriEdge','fluidTriLine']],
-    ['Rect', ['fluidRectMode','fluidRectSize','fluidRectSpin','fluidRectEdge','fluidRectLine']],
+    ['Circle', ['fluidCircleMode','fluidCircleSize','fluidCircleEdge','fluidCircleLine','fluidCircleAlign']],
+    ['Triangle', ['fluidTriMode','fluidTriSize','fluidTriSpin','fluidTriEdge','fluidTriLine','fluidTriAlign']],
+    ['Rect', ['fluidRectMode','fluidRectSize','fluidRectSpin','fluidRectEdge','fluidRectLine','fluidRectAlign']],
     ['Type', ['fluidFont','fluidAspect','density','leading','tracking','alpha','fluidContrast','glitch']],
     ['Layers', ['vertLayer','vertSize','vertGap','vertCut','cursorSize']],
     ['Motion', ['drift','rowWave','colWave','waveFreq','flicker','beatFlash','morph']],
     ['Color', ['bgMode','bgColor','inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
-    ['HUD', ['fluidHud','fluidBig','fluidBigFont','fluidBigAspect']],
+    ['Parts of Speech', ['posPunct','posKata','posKanji','posParticle','posInflect','posHira','posOther']],
+    ['HUD', ['fluidHud','hudAimColor','hudRingColor','hudTickColor','hudBracketColor','hudCrossColor','hudCoordColor','hudLabelColor','hudInfoColor','hudBarColor','fluidBig','fluidBigFont','fluidBigAspect']],
     ['Editorial', ['edLayout','edSize','edLeading','edTracking','edMargin','edJump','edCols','edGrid','edReveal','edTurnBeats','edFolio','edInk','edAccent']],
     ['Meltdown', ['meltDepth','dripLen','meltFade','meltGhost','meltLeading','meltSize']],
     ['Columns', ['colCount','colGutter','colLeading','colMargin']],
@@ -2121,7 +2159,7 @@ const NovelTerminal = {
   // 表示名の付け替え (キーと保存値はそのまま)
   PARAM_LABELS: { sceneSpeed:'Cycle Speed', fluidBeats:'Cycle Beats', split:'Panel Split', rhythmAmt:'Grid Rhythm', edgeNoise:'Edge Grain', lineWidth:'Axis Width',
     fluidCircleLine:'Circle Outline', fluidTriLine:'Tri Outline', fluidRectLine:'Rect Outline', vertSize:'Vertical Size', vertGap:'Vertical Gap', vertCut:'Vertical Cut', tint:'Tint',
-    fluidCircleMode:'Circle Mode', fluidTriMode:'Tri Mode', fluidRectMode:'Rect Mode' },
+    fluidCircleMode:'Circle Mode', fluidTriMode:'Tri Mode', fluidRectMode:'Rect Mode', fluidCircleAlign:'Circle Stroke', fluidTriAlign:'Tri Stroke', fluidRectAlign:'Rect Stroke' },
   // ホバーで出る説明 (何が・どちらへ変わるか)
   PARAM_HELP: {
     scene:'表示する場面。Random = Scene Beats 拍ごとに場面を引き直す (beat モードのみ)',
@@ -2152,6 +2190,7 @@ const NovelTerminal = {
     fluidRectSpin:'矩形の回る速さ。0 = 場面ごとの向きで止まる',
     fluidRectEdge:'矩形の輪郭を描く。OFF なら輪郭を描かず、Auto は塗りだけ・Edge は出さない', fluidRectText:'矩形の中の字を矩形の向きにそろえて回す',
     fluidRectLine:'矩形の輪郭の太さ',
+    fluidCircleAlign:'円の輪郭線の位置 (Inside = 内 / Center = 中心 / Outside = 外)', fluidTriAlign:'三角の輪郭線の位置 (Inside = 内 / Center = 中心 / Outside = 外)', fluidRectAlign:'矩形の輪郭線の位置 (Inside = 内 / Center = 中心 / Outside = 外)',
     fluidFont:'書体。Default = リュウミン + MS ゴシック。ほかは設定画面の和文書体と同じ一覧',
     fluidAspect:'字の縦横比。100 = 正体 / 小さいほど長体 (幅を詰める) / 大きいほど平体 (高さを詰める)',
     density:'字の詰まり具合。大きいほど図形の外まで字が出る',
@@ -2174,7 +2213,7 @@ const NovelTerminal = {
     waveFreq:'うねりの細かさ',
     flicker:'行ごとの明滅の強さ',
     beatFlash:'拍頭に画面が光る量 (全場面)',
-    morph:'Meltdown〜ASCII Render の場面が替わるとき、字が移動してつながる秒数 (0 = カット)',
+    morph:'Scene が替わるときにつなぐ秒数 (0 = カット)。Meltdown〜ASCII Render どうしは字が移動してつながり、Fluid / Editorial が絡むときは直前の画面がフェードアウトする',
     inkMode:'字の色の決め方。Variant = 構図ごと / 品詞カラー = 字の種類ごと / Mono = Mono Ink / Terminal = 緑 / Duotone = 横組みは Mono Ink・縦書きは Fluid Accent',
     tint:'Tint Color を字に混ぜる量',
     tintColor:'Tint で混ぜる色',
@@ -2200,7 +2239,8 @@ const NovelTerminal = {
     fluid: ['alpha','colWave','cursorSize','density','drift','edgeNoise','flicker','fluidAccent','fluidAspect','fluidBeats','fluidBig',
       'fluidCircleMode','fluidCircleLine','fluidCircleSize','fluidTriMode','fluidTriLine','fluidTriSize','fluidTriSpin','fluidRectMode','fluidRectLine','fluidRectSize','fluidRectSpin',
       'fluidContrast','fluidCrisp','fluidFont','fluidHud','fluidLayout','fluidSharp','glitch','inkMode','leading','lineWidth','monoColor','rhythmAmt','rowWave',
-      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect','fluidRunCaret','bgMode','bgColor'],
+      'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect','fluidRunCaret','bgMode','bgColor','fluidCircleAlign','fluidTriAlign','fluidRectAlign',
+      'hudAimColor','hudRingColor','hudTickColor','hudBracketColor','hudCrossColor','hudCoordColor','hudLabelColor','hudInfoColor','hudBarColor'],
     editorial: ['edAccent','edCols','edFolio','edGrid','edInk','edJump','edLayout','edLeading','edMargin','edMarks','edReveal','edSize','edTracking','edTurnBeats'],
     melt: ['dripLen','meltDepth','meltFade','meltGhost','meltLeading','meltSize'],
     columns: ['colCount','colGutter','colLeading','colMargin'],
@@ -2214,14 +2254,16 @@ const NovelTerminal = {
     const sc = P.scene === 'random' ? this.SCENES : [this.SCENES.includes(P.scene) ? P.scene : 'fluid'];
     if(key.startsWith('group:')){ const g = this.PARAM_GROUPS.find(x => x[0] === key.slice(6)); return !g || g[1].some(k => this.paramOn(k)); }
     if(key === 'sceneBeats') return P.scene === 'random';
-    if(key === 'morph') return sc.some(s => s in this._LEGACY);
     const use = this._paramUse || (this._paramUse = Object.entries(this.PARAM_SCENES).reduce((m, [s, ks]) => { ks.forEach(k => (m[k] = m[k] || []).push(s)); return m; }, {}));
     if(use[key] && !sc.some(s => use[key].includes(s))) return false;
     const off = { fluidCircleSize:'fluidCircleMode', fluidCircleLine:'fluidCircleMode', fluidTriSize:'fluidTriMode', fluidTriSpin:'fluidTriMode', fluidTriLine:'fluidTriMode',
       fluidRectSize:'fluidRectMode', fluidRectSpin:'fluidRectMode', fluidRectLine:'fluidRectMode', fluidTriText:'fluidTriMode', fluidRectText:'fluidRectMode',
-      fluidCircleEdge:'fluidCircleMode', fluidTriEdge:'fluidTriMode', fluidRectEdge:'fluidRectMode' }[key];
+      fluidCircleEdge:'fluidCircleMode', fluidTriEdge:'fluidTriMode', fluidRectEdge:'fluidRectMode',
+      fluidCircleAlign:'fluidCircleMode', fluidTriAlign:'fluidTriMode', fluidRectAlign:'fluidRectMode' }[key];
     if(off && (P[off]|0) === 3) return false;
-    const edge = { fluidCircleLine:'fluidCircleEdge', fluidTriLine:'fluidTriEdge', fluidRectLine:'fluidRectEdge' }[key];
+    const edge = { fluidCircleLine:'fluidCircleEdge', fluidTriLine:'fluidTriEdge', fluidRectLine:'fluidRectEdge', fluidCircleAlign:'fluidCircleEdge', fluidTriAlign:'fluidTriEdge', fluidRectAlign:'fluidRectEdge' }[key];
+    if(key in this.HUD_COLOR_BASE && (P.fluidHud ?? 100) < 10) return false;
+    if(this.POS_KEYS.includes(key)) return sc.some(s => s in this._LEGACY) || (sc.includes('fluid') && (P.inkMode|0) === 1);
     if(edge && P[edge] === false) return false;
     if(['vertSize','vertGap','vertCut','clash'].includes(key) && P.vertLayer === false) return false;
     if(key === 'cursorSize' && P.cursor === false && P.fluidRunCaret !== true) return false;
@@ -2255,27 +2297,65 @@ const NovelTerminal = {
     const csMul = Math.max(0.4, Math.min(2.5, P.charSize || 1));
     const cell = Math.max(12, Math.round(Math.min(p.width, p.height)/40 * csMul));
     this._lastFont = null;                                               // resizeCanvas 後の font 状態ずれを無効化
-    p.clear(); p.noStroke(); p.textSize(cell); p.textAlign(p.LEFT, p.TOP);
     this._emit = null;
+    this._posPalette();
     let scene = this._pickScene();
+    // 変形の終盤 (本来の場面が重なっている間) に次へ替わるとき、画面に出ていた本来の場面の字は切替前の保存値で採る (applyScene で値が替わる前に)
+    const tailTok = (scene !== this._sceneApplied && this._morphLive && this._lastK > 0 && !this._xf && (scene in this._LEGACY)) ? this._sample(p, cell, this._lastIdx, this._lastDT) : null;
     if(scene !== this._sceneApplied){ this._sceneApplied = scene; this.applyScene(scene); }   // Scene が替わったらその Scene の保存値を戻す
     const t = this._now() * (P.speed || 1);
+    const md = Math.max(0, P.morph || 0);
+    // Scene の切替: 直前に映っていた場面から繋ぐ。両方が字を出す場面 (_LEGACY) なら字の変形、それ以外 (Fluid / Editorial が絡む) は直前の画面をフェードアウト
+    const nowMs = performance.now(), live = nowMs - (this._drawMs || 0) < 500; this._drawMs = nowMs;   // しばらく描いていなかった (スロットから外れていた) ときは繋がずに切り替える
+    if(scene !== this._shown || !live){
+      const prev = live ? this._shown : null, both = (prev in this._LEGACY) && (scene in this._LEGACY) && !this._xf;   // フェード (Fluid / Editorial 絡み) の途中は、画面をスナップショットしたフェードで繋ぐ
+      this._mStart = null;
+      if(both && this._morphLive){   // 字の変形の途中で次へ替わる: 画面に出ていた変形途中の字の配置から次の変形を始める (古い配置から始めると絵が跳ぶ)
+        const st = this._mTok.slice();
+        if(this._lastK > 0) for(const o of (tailTok || this._sample(p, cell, this._lastIdx, this._lastDT))) st.push({ch:o.ch, x:o.x, y:o.y, s:o.s, r:o.r, g:o.g, b:o.b, a:255*this._lastK});   // 終盤は本来の絵が重なっていた分も起点に含める
+        st.big = true; this._mStart = st; this._mBg0 = this._lastBg;
+      }
+      this._sceneT0 = t; this._morphKey = -1;
+      this._prevScene = both ? this._LEGACY[prev] : null;
+      this._xf = null;
+      if(prev != null && !both && md > 0.01 && this.canvasEl){
+        const c = this._xfCv || (this._xfCv = document.createElement('canvas'));
+        c.width = this.canvasEl.width; c.height = this.canvasEl.height;
+        const cx = c.getContext('2d'); cx.clearRect(0, 0, c.width, c.height); cx.drawImage(this.canvasEl, 0, 0);
+        this._xf = c;
+      }
+      this._shown = scene;
+    }
+    p.clear(); p.noStroke(); p.textSize(cell); p.textAlign(p.LEFT, p.TOP);
+    const u = md > 0.01 ? (t - this._sceneT0) / md : 1;
     if(scene === 'fluid'){
       this._dNovelFullText(p, t);
     } else if(scene === 'editorial'){
       this._dEditorial(p, t);
     } else {
       const idx = this._LEGACY[scene];
-      if(this._curScene !== idx){ this._prevScene = this._curScene; this._curScene = idx; this._sceneT0 = t; this._morphKey = -1; }
-      const md = Math.max(0, P.morph || 0);
-      const u = md > 0.01 ? (t - this._sceneT0) / md : 1;
       this.novMode = idx;
       if(this._prevScene != null && u < 1 && u >= 0){
-        this._dMorph(p, u, cell, this._prevScene, idx);
+        const k = Math.max(0, (u - 0.6) / 0.4);   // 変形の終盤は本来の絵を重ねて溶かす (変形の字は MORPH_CAP 字に間引いてあるので、そのまま終えると密度が跳ねる)
+        this._lastK = k; this._lastIdx = idx; this._lastDT = t;
+        this._dMorph(p, u, cell, this._prevScene, idx, this._lastT, this._sceneT0 + md, 1 - k);
+        if(k > 0){
+          const dc = p.drawingContext; dc.save(); dc.globalAlpha = k;
+          [this._dMelt, this._dColumns, this._dVert, this._dTyper, this._dRender][idx].call(this, p, t, cell);
+          dc.restore(); this._lastFont = null;
+        }
       } else {
         [this._dMelt, this._dColumns, this._dVert, this._dTyper, this._dRender][idx].call(this, p, t, cell);
       }
     }
+    if(this._xf){
+      if(u < 1 && u >= 0){
+        const dc = p.drawingContext; dc.save(); dc.setTransform(1, 0, 0, 1, 0, 0);
+        dc.globalAlpha = 1 - this._easeOutQuint(u); dc.drawImage(this._xf, 0, 0); dc.restore();
+      } else this._xf = null;
+    }
+    this._morphLive = this._prevScene != null && u < 1 && u >= 0;
+    if(this._prevScene == null || u >= 1 || u < 0) this._lastT = t;   // 次の切替で変形の起点にする時刻 (最後に映った場面の時刻)
     // beat 同期: 拍頭の淡いフラッシュ(端末色)
     if(typeof BPM !== 'undefined' && BPM.beatCount){
       const bc = (typeof this._slotBeat === 'number') ? this._slotBeat

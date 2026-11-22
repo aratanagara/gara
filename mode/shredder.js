@@ -919,3 +919,102 @@ Shredder.PDefaults = JSON.parse(JSON.stringify(Shredder.P));
 
 // aratanagara.com など単体ページから参照できるように明示エクスポート (const は window に載らない)
 if (typeof window !== 'undefined') window.Shredder = Shredder;
+
+Shredder.PARAM_HELP = {
+  grid:'粒の数。1 辺の個数で、総数はその 2 乗',
+  scale:'破片全体の大きさ',
+  spike:'刃の伸び。流れ方向への尖りの長さ',
+  blades:'1 粒あたりの刃 (三角形) の枚数',
+  twist:'刃ごとの捻り。個体ごとの位相のばらつき',
+  shapeRand:'角の数・長さ・幅・非対称さのランダムさ',
+  bend:'先端ほど反る曲げ量。負で逆向き',
+  bendTurn:'曲げの向き。0 は個体ごと固定、1 は実際の旋回方向',
+  speed:'流れの速さ',
+  evolution:'流れ場そのものが変化していく速さ',
+  turbulence:'カールノイズの空間周波数。大きいほど細かい渦',
+  radius:'中心の空洞の半径。この内側へは入らない',
+  outflow:'外へ吹き出す量。0 でカールのみ (球殻に張り付く)',
+  flock:'群れ感。0 で個々バラバラの細かい渦、1 で全員が同じ大きな流れ',
+  cohesion:'凝集。大きいほど固まりを保ち、0 でどこまでも散る',
+  speedVar:'個体ごとの速度のばらつき。0 で全員同速',
+  inertia:'旋回の滑らかさ。0 で急旋回、1 で大きく緩やかに曲がる',
+  aim:'尖りの向き。進行方向・後ろ・外向き・中心向き・画面内・個体固定',
+  shape:'刃の形。三角・矢・針・薄片・十字',
+  colorMode:'配色。aratanagara・モノクローム・表裏同色・速度で色相',
+  camPath:'カメラの経路。周回・螺旋・静止・ドリフト',
+  path:'群れの中心が描く軌跡。なし・円・∞・リサージュ・結び目・8 の字',
+  emitter:'湧き直す位置。空間全体・中心の球殻・外殻から中へ・中心の点',
+  nearMode:'カメラ至近の処理。透明度・ディザ・背景へ溶かす・なし',
+  life:'寿命のフレーム数。短いと絶えず湧き直す',
+  fov:'画角。広いほど遠近が強調される',
+  fisheye:'樽型歪み。0 で直線的な広角、1 で強い魚眼',
+  dist:'カメラの距離',
+  camEl:'カメラの仰角',
+  autorot:'カメラの自動公転の速さ',
+  spinRate:'破片の自転の速さ',
+  spinVar:'自転速度の個体差',
+  pathSize:'軌跡の大きさ',
+  pathRate:'軌跡を進む速さ',
+  pathPull:'移動する中心へ引き寄せる強さ',
+  camFollow:'カメラが群れの中心を追う量。0 で原点固定',
+  swirl:'中心まわりの粒の周回。負で逆回転',
+  swirlTilt:'周回軸の傾き',
+  orbitTilt:'カメラ仰角の首振り幅',
+  orbitTiltRate:'カメラ仰角の首振りの速さ',
+  orbitEllip:'楕円軌道。カメラ距離の変化幅',
+  hue:'表面色の色相回転。1 で一周',
+  sat:'表面色の彩度。0 でグレー',
+  chrome:'裏面のクローム量。0 で表と同じ色',
+  blueLight:'表面 (ブルー) の明度',
+  chromeLight:'裏面 (クローム) の明度',
+  chromeCon:'クロームのコントラスト',
+  chromeFloor:'クロームの黒つぶれを持ち上げる下限の明るさ',
+  stripeFreq:'反射帯の周波数 (面の向きに対する細かさ)',
+  stripeScale:'反射帯の空間周期の倍率。下げると帯が太く大きい',
+  stripeAmt:'反射帯の濃さ',
+  stripeW:'反射帯の幅。0 で極細、1 でぼんやり広い',
+  glintAmt:'グリント (帯の芯の白い抜け) の量',
+  glintSharp:'グリントの鋭さ。大きいほど細く鋭い',
+  specAmt:'スペキュラと縁光りの量 (裏面)',
+  nearFade:'カメラ至近を透明化する距離。0 で無効',
+  nearCull:'カメラ至近の破片を縮めて消す距離',
+  bgColor:'背景色。空気遠近の溶け先 (Slot A で敷く、Slot B は透過)',
+  fog:'空気遠近の強さ',
+  fogNear:'霞み始める距離 (カメラ距離に対する比率)',
+  fogFar:'完全に霞む距離 (カメラ距離に対する比率)',
+  beatKick:'拍での流速と刃の伸びのキック量',
+  bladeW:'刃の幅',
+  tipSkew:'刃の先端を横へずらす量。正負で向きが逆',
+  tail:'原点の裏へ突き抜ける長さ',
+  sizeVar:'大きさの個体差。0 で全員同サイズ',
+  lenVar:'刃の長さの個体差。0 で全員同じ長さ',
+  radialSize:'中心からの距離で大きさを変える。正で外ほど大、負で外ほど小',
+  pop:'湧く・消えるときの膨らみ方。小さいとすぐ最大、大きいと最後まで小さい',
+  lightAng:'光源の向き。表面の陰影と反射が回る',
+  ambient:'面の底上げの明るさ',
+  rim:'縁の明るさ',
+  chromeHue:'クロームの色相',
+  chromeSat:'クロームの彩度',
+  tipLight:'刃の先端の明暗。正で白く光り、負で黒く沈む',
+  camRoll:'カメラの傾き',
+  camShake:'カメラの手ぶれ',
+  seed:'初期配置の乱数シード',
+};
+Shredder.paramOn = function(key){
+  const P = this.P, cm = Math.round(P.colorMode || 0);
+  const chromeKeys = ['chromeLight','chromeCon','chromeFloor','stripeFreq','stripeScale','stripeAmt','stripeW','glintAmt','glintSharp','specAmt','chromeHue','chromeSat'];
+  if(chromeKeys.indexOf(key) >= 0 && (cm === 2 || ((cm === 0 || cm === 3) && !(P.chrome > 0)))) return false;
+  if(key === 'chrome' && (cm === 1 || cm === 2)) return false;
+  if(key === 'hue' && cm === 1) return false;
+  if(key === 'stripeW' && !(P.stripeAmt > 0)) return false;
+  if(key === 'glintSharp' && !(P.glintAmt > 0)) return false;
+  if((key === 'stripeFreq' || key === 'stripeScale') && !(P.stripeAmt > 0) && !(P.glintAmt > 0)) return false;
+  if(key === 'nearFade' && Math.round(P.nearMode || 0) === 3) return false;
+  if(key === 'bendTurn' && !P.bend) return false;
+  if(key === 'swirlTilt' && !P.swirl) return false;
+  if(key === 'spinVar' && !(P.spinRate > 0)) return false;
+  if((key === 'fogNear' || key === 'fogFar') && !(P.fog > 0)) return false;
+  if(key === 'autorot' && Math.round(P.camPath || 0) === 2) return false;
+  if((key === 'pathSize' || key === 'pathRate' || key === 'camFollow') && Math.round(P.path || 0) === 0) return false;
+  return true;
+};

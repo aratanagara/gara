@@ -529,3 +529,44 @@ void main(){
 // PDefaults はスクリプト読込時に確定する (state 復元が init より先に走っても汚染されないように)
 ImageMode.PDefaults = JSON.parse(JSON.stringify(ImageMode.DEFAULTS));
 if(typeof window !== 'undefined') window.ImageMode = ImageMode;
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+ImageMode.PARAM_HELP = {
+  order:'Sequential / Random は自動送り、Single は固定',
+  everyBeats:'BEAT モードで何拍ごとに次の画像へ送るか',
+  fit:'Contain 全体 / Cover 全面 / Drone 寄り引き',
+  transBeats:'画像切替の長さ。連動は Timing の Trans',
+  transStyle:'画像切替の演出。連動は Timing の Style',
+  rotate:'画像の回転 (度)。外側は透明',
+  sway:'回転の揺れ幅 (度)。左右にゆっくり揺れる',
+  skewX:'画像の横の傾き (度)',
+  skewY:'画像の縦の傾き (度)',
+  keystone:'台形ゆがみ。+ で上が狭く、- で下が狭く',
+  stretch:'画像の横幅の比率 (%)',
+  mirror:'中心線で折り返す鏡像',
+  tiles:'敷き詰め: 1 辺に足す枚数 (0 で 1 枚)',
+  tileMirror:'敷き詰めを交互に裏返す (継ぎ目がつながる)',
+  kaleido:'万華鏡の分割数 (0 でなし)',
+  bulge:'樽型 / 糸巻き型のゆがみ (%)',
+  twirl:'中心のねじれ (度)',
+  waveAmp:'波ゆがみの振れ幅 (%)',
+  waveCount:'波ゆがみの山の数',
+  pixelate:'モザイクの粗さ (%)',
+  chroma:'色ずれ (RGB の分離幅 %)',
+  chromaAngle:'色ずれの向き (度)',
+  corner:'画像の角丸 (%)。外側は透明',
+  edgeFade:'画像の縁のぼかし (%)。外側は透明',
+  droneBase:'Drone の基本ズーム (%)',
+  droneDepth:'Drone の寄り引きの振れ幅 (%)',
+  droneDrift:'Drone の漂いの大きさ (%)',
+  fadeMs:'画像切替の内蔵クロスフェードの長さ (ms)',
+};
+ImageMode.PARAM_NEEDS = {tileMirror:'tiles', waveCount:'waveAmp', chromaAngle:'chroma'};
+ImageMode.paramOn = function(key){
+  const P = this.P;
+  if(key === 'everyBeats' && P.order === 'single') return false;
+  if((key === 'droneBase' || key === 'droneDepth' || key === 'droneDrift') && P.fit !== 'drone') return false;
+  if(key === 'transStyle' && P.transBeats === 0) return false;
+  if(key === 'fadeMs' && P.transBeats > 0) return false;
+  return true;
+};

@@ -187,7 +187,7 @@ Fx3d.EXTRA.blinds = {
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'blindsNeedle', NV_VS, FS) : null;
     if(nvp){
       // Needle: 帯ごとに長さ方向は画面の高さを 14 分割した間隔、幅方向は 2
-      const len = vert ? 2 : 2 * asp, gx = Math.max(2, Math.round(len / (2 / 14))), gy = 2;
+      const len = vert ? 2 : 2 * asp, gx = Math.max(2, Math.round(Fx3d.nvScale(len / (2 / 14)))), gy = 2;
       setU(nvp);
       gl.uniform1f(uloc(gl, nvp, 'uNv'), 1);
       gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);

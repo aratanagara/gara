@@ -4,8 +4,10 @@
 //   (3lByWh と同じフラクタル SDF。Webby blobs では camera 経路で連結したノード網に見える)
 //   表面マテリアルだけ骨らしい温白エナメルに変更。構造はオリジナルのまま。
 // =====================================================
+// @mattealpha  3D FX の紙抜きは深度ではなく透過で行う (背景は紙の色だけ。深度で抜くと物体の元の位置に影が残る)
 
 // ─── 負荷調整パラメータ (既定値は従来と同一の描画) ─────────────────────────
+// @bgdefault #383838
 // @param uSteps 12..40 = 32 @desc レイマーチのステップ数。下げると軽いが遠景の細部が溶ける
 // @param uRibs  bool   = true @desc ON で肋骨 (尖って湾曲する骨) を生やす。OFF で SDF 評価が減って軽い
 // @param uSize   40..300 = 100.0 @desc 骨幹の太さ (%)
@@ -374,7 +376,9 @@ vec3 bg_bonetunnel(vec2 fc){
   float dist = bt_shortestDistance(eye, worldDir, BT_MIN_DIST, BT_MAX_DIST);
 
   // 背景(非ヒット=空洞の奥)= グレーの霞。真っ黒の空洞を避け奥行きを出す。
+  //   3D FX 中 (紙抜き) だけ空洞を透過にして、骨だけを 3D FX に乗せる。空洞の色は背景色 (uBgColor、既定 = 従来の霞の灰色) を最後に敷く
   if(dist > BT_MAX_DIST - BT_EPSILON){
+    if(uFx3dMatte > 0.5){ bgAlpha = 0.0; return vec3(0.0); }
     return vec3(0.22) * uVoidColor;
   }
   vec3 p = eye + dist * worldDir;

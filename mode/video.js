@@ -1325,3 +1325,18 @@ void main(){
     }
   },
 };
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Movie.PARAM_HELP = {
+  fit:'動画の収め方。Auto は縦長 Contain / 横長 Cover',
+  rate:'動画の再生速度の倍率 (全体 Speed に掛かる)',
+  rotate:'画面の回転 (度)',
+  mirror:'折り返し: 左右 / 上下 / 両方',
+  tile:'敷き詰め数 (%。200 で 2×2)',
+  aspect:'画面の横の伸縮 (%)',
+  wave:'画面の波打ちの振れ幅',
+  waveFreq:'波の本数 (画面あたり)',
+  vignette:'周辺の暗さ',
+  bars:'上下の黒帯 (レターボックス) の太さ',
+};
+Movie.PARAM_NEEDS = {waveFreq:'wave'};

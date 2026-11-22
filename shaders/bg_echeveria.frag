@@ -7,6 +7,7 @@
 //   iTime,iResolution → time,resolution / bgZoom・bgCamPx でズーム/パン。
 //   ヘルパ/グローバルは ec_ で名前空間化。
 // =====================================================
+// @mattealpha  3D FX の紙抜きは深度ではなく透過で行う (背景は紙の色だけ。深度で抜くと物体の元の位置に影が残る)
 uniform sampler2D backbuffer;   // 前フレームのスロット出力(残像フィードバック用)
 #define EC_PI 3.14159265359
 

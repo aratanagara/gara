@@ -6,7 +6,9 @@
  *     (上流の UI パネルから scripts/gen_td_params.py で生成)
  *   - プリセット = 上流の「厳選」147 案 (作者の許諾を得て同梱。mode/typedeformer/vj-presets.json と presets/*.jpg、
  *     scripts/gen_td_presets.py で生成)。1 案に Operator が最大 3 つあり、プリセットの surfaceOrder の順に重ねる。
- *   - 状態は md 単位 (pr.p.surf)。loadPreset が TDSurf.applyMd() で適用し、保存の無い md では Off。
+ *   - 状態は TextDeform.P.surf (末尾のアクセサ)。Look の一部として保存デフォルト・状態の復元・Undo・保存 Look と
+ *     一緒に読み書きする。プリセットの選択・Auto は mode/textdeform-looks.js (TDLooks)。
+ *   - エンジンは On の状態で描画が始まった時点 (advance) で読み込む。状態の復元だけでは読み込まない。
  *   - Worker が描いている間は位相を止め、描き終えたら次のフレームを頼む (上流 editor の clock hold と同じ)。
  *     届いた効果レイヤーは自前のキャンバスへ写してから使う (キューは次の結果で古いビットマップを閉じるため)。
  * ===================================================================================== */
@@ -17,15 +19,20 @@ const TD = TextDeform;
 const UP = globalThis.TDUpstream;   // 共通部 (mode/textdeform-upstream.js)
 const SCRIPTS = ['operator-registry.js', 'editor-model.js', 'surface-state.js', 'render-jobs.js'];
 const BLENDS = ['source-over', 'multiply', 'screen', 'overlay', 'difference', 'lighter'];
+// 半透明そのものが表現の Operator (版ずれ・重ね刷り・光の重なり・残像や時間の蓄積・掠れ・透過開口)。これ以外は Look の値に関係なく効果を不透明で描く
+// (全体の透明度は Surface の Opacity と Canvas の Opacity で決める)
+const KEEP_ALPHA = new Set(['misregistration', 'risoSeparation', 'causticGlass', 'copyDecay', 'dataMosh', 'slitSweep', 'diffractiveGlyph', 'plotterTrace', 'blobTrack', 'softBlob', 'ligatureCrypt', 'naveCutter']);
+// 共通パレットで役割を固定する色 (版ずれは A = Accent / B = Key。ほかはいちばん近い役割)
+const MISREG_ROLE = { misregColorA: 'accent', misregColorB: 'ink' };
 const DEFAULTS = {
   enabled: false,
   op: 'plotterTrace',      // パラメータを編集している Operator
   ops: [],                 // 重ねる Operator (空なら [op])。プリセットを選ぶと最大 3 つ
   preset: '',              // 選んだプリセットの id ('' = Custom)
-  presetEvery: 0,          // S Auto: この拍数ごとにプリセットをランダムに切り替える (0 = Off)
   strength: 1, chance: 1, speed: 0.25,
   source: 'op',            // op = Operator の既定 / keep / ghost / hide (元の文字の見せ方)
   opacity: 1, blend: 'op', // blend: op = Operator の既定
+  pixel: 1,                // 粗さ: 効果をこの倍率で粗く描き、ドットのまま拡大する (1 = 従来の解像度)
   color: 'op',             // op = Operator の既定色 / ink / accent
   params: {}               // Operator id → { key: value } (既定値との差分)。'*' = Operator に属さない共通の値
 };
@@ -42,7 +49,7 @@ function merge(base, over){
 }
 
 const TDSurf = {
-  // 1 フレームが 1.5 秒を超える Operator (約 25 字の md・MacBook で計測)。一覧で (重い) と表示する
+  // 1 フレームが 1.5 秒を超える Operator (約 25 字の文章・MacBook で計測)。一覧で (重い) と表示する
   HEAVY: ['counterformEngine','sinewTorque','hyperbolicAtlas','loadpathFoundry','tensionMembrane','differentialType','diffractiveGlyph','hopfLoom',
     'ornamentReserve','vortexBath','gillArray','screwExtrusion','harmonicCage','enneperBody','nibRecast','growthBuckle','inversionBody','gravityLens',
     'repulsiveCurves','wassersteinLetters','gyroidSculpture','causticGlass','riemannRamification'],
@@ -55,11 +62,11 @@ const TDSurf = {
 
   get(){ return this.cfg; },
   snapshot(){ return clone(this.cfg); },
-  applyMd(saved){
+  // 保存値を当てる (P.surf への代入)。エンジンの読み込みは advance で
+  apply(saved){
     this.cfg = merge(DEFAULTS, saved);
-    this.layers = [];   // 別の md (別の文字) に前の効果を重ねない
+    this.layers = []; this._fresh = !!this.cfg.enabled;
     this._reset();
-    if(this.cfg.enabled) this.ensure();
   },
   set(over){
     const prev = this.activeOps().join();
@@ -114,7 +121,7 @@ const TDSurf = {
       });
       this.status = 'ready';
       this._notify();
-      this.loadPresets();   // 一覧は後から届けばよい (保存済みの md はプリセットの値を cfg に持っている)
+      this.loadPresets();   // 一覧は後から届けばよい (保存済みの Surface はプリセットの値を cfg に持っている)
       return this;
     })().catch(e=>{
       this.status = 'error'; this.error = e.message || String(e); this._loading = null;
@@ -135,25 +142,10 @@ const TDSurf = {
     }).catch(e=>{ this._presetsLoading = null; console.warn('[TDSurf]', e); });
     return this._presetsLoading;
   },
-  // ランダムに選ぶプリセット (重い Operator を含むものと、いまのものは除く)
-  randomPresetId(){
-    const L = this.presets ? this.presets.presets.filter(p => p.id !== this.cfg.preset && !p.operators.some(o => this.HEAVY.includes(o))) : [];
-    return L.length ? L[Math.floor(Math.random()*L.length)].id : '';
-  },
-  // S Auto: TextDeform.update から毎フレーム。presetEvery 拍ごとにプリセットを切り替える (md へは書かない = ライブだけ)
-  beatTick(beat){
-    const every = +this.cfg.presetEvery || 0;
-    if(!(every > 0) || !this.active() || !this.presets){ this._autoSlot = null; return; }
-    const slot = Math.floor((beat || 0) / every + 1e-6);
-    if(this._autoSlot == null || slot < this._autoSlot){ this._autoSlot = slot; return; }
-    if(slot === this._autoSlot) return;
-    this._autoSlot = slot;
-    const id = this.randomPresetId();
-    if(id){ const ev = this.cfg.presetEvery; this.applyPreset(id); this.cfg.presetEvery = ev; this._notify(); }
-  },
   presetThumb(id){ return UP.BASE + 'presets/' + id + '.jpg' + UP.q; },
-  // プリセットを適用: Operator を差し替え、値を Operator ごと (属さないものは '*') に振り分ける。
-  // 書体・組版・紙とインクの色は md 側の値のまま (Operator の色はプリセットの値)
+  // プリセットの Surface を適用: Operator を差し替え、値を Operator ごと (属さないものは '*') に振り分ける。
+  // 色・書体・文字は TDLooks が TextDeform.P へ当てる (Operator の色はプリセットの値)。
+  // 前の Look の絵はすぐ捨てる (新しい色・書体の上に前の Look の効果が残らないように)。新しい絵が届くまでの元の字は新しい Look の sourceAlpha で描く
   applyPreset(id){
     const p = this.presets && this.presets.presets.find(x=>x.id === id);
     if(!p || !this.meta) return;
@@ -169,11 +161,12 @@ const TDSurf = {
       const op = owner[k] || '*';
       (params[op] || (params[op] = {}))[k] = p.params[k];
     }
-    this.layers = [];
     this.cfg = merge(this.cfg, {});
+    this.cfg.enabled = true;
     this.cfg.preset = id; this.cfg.ops = p.operators.slice(); this.cfg.op = p.operators[0];
     this.cfg.params = params;
-    this.cfg.source = 'op'; this.cfg.blend = 'op'; this.cfg.color = 'op'; this.cfg.opacity = 1;
+    this.cfg.source = 'op'; this.cfg.blend = 'op'; this.cfg.color = 'op'; this.cfg.opacity = 1; this.cfg.pixel = 1;
+    this.layers = []; this._fresh = true;
     this._reset();
     if(this.cfg.enabled) this.ensure();
   },
@@ -198,6 +191,7 @@ const TDSurf = {
       }
       // 描画範囲を広げすぎて作業上限を超えたときは、拡張をやめて元の範囲で描き直す (はみ出しは切れる)
       if(this.envelopeScale > 1 || !this._noEnvelope){ this.envelopeScale = 1; this._noEnvelope = true; this._dirty = true; return; }
+      this._fresh = false;
       if(!this._errShown){ this._errShown = true; this.error = s.error; console.warn('[TDSurf]', s.error); this._notify(); }
       return;
     }
@@ -212,21 +206,29 @@ const TDSurf = {
     req.ops.forEach((o, i)=>{
       const bmp = r.layers && r.layers[o.id];
       if(!bmp) return;
-      const c = (this.layers[i] && this.layers[i].canvas) || document.createElement('canvas');
+      const c = (this.layers[i] && this.layers[i].canvas) || this._takeCanvas();
       if(c.width !== req.w || c.height !== req.h){ c.width = req.w; c.height = req.h; }
       const x = c.getContext('2d');
       x.setTransform(1,0,0,1,0,0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
       x.clearRect(0, 0, c.width, c.height);
       x.drawImage(bmp, 0, 0);
-      next.push({ canvas: c, w: req.w, h: req.h, k: req.k || 1, opacity: o.opacity, blend: o.blend });
+      next.push({ canvas: c, w: req.w, h: req.h, k: req.k || 1, px: req.px || 1, opacity: o.opacity, blend: o.blend, under: !!o.under });
     });
     if(!next.length) return;
-    this.layers = next;
+    this.layers = next; this._fresh = false;
     this.lastMs = r.duration || 0;
     this.error = ''; this._errShown = false; this._workerRetry = 0;
     this._notify();
   },
 
+  // 効果の絵のキャンバスの使い回し (Canvas の焼き付けで毎回作り捨てると GPU 側の描画メモリが溜まる)
+  _pool: [],
+  _takeCanvas(){ return this._pool.pop() || document.createElement('canvas'); },
+  _giveCanvas(c){
+    if(!c) return;
+    const px = this._pool.reduce((a, x) => a + x.width*x.height, 0);
+    if(this._pool.length < 8 && px + c.width*c.height <= 8e6) this._pool.push(c); else { c.width = 0; c.height = 0; }   // 合計 8M 画素まで
+  },
   _dp(v){ return TD._dp(v); },
   strength(){ return Math.max(0, Math.min(1, this._dp(+this.cfg.strength || 0))); },
   chance(){ return Math.max(0, Math.min(1, this._dp(+this.cfg.chance || 0))); },
@@ -235,8 +237,20 @@ const TDSurf = {
     return c > 0 && TD._h(i, 731.17 + (TD.P.seed || 0)*3.1) < c;
   },
   // 元の文字の不透明度 (効果が掛かっている文字だけに使う)。重ねた Operator のうち一番小さい値
+  // Look では半透明だった効果を不透明で描いている (KEEP_ALPHA に無い Operator の Opacity が 1 未満) なら true。
+  // そのときは元の字を効果の上にもう一度描く (効果が不透明になって文字を隠さないように)
+  textOnTop(){
+    if(!this.layers.length) return false;
+    const P = this._params();
+    return this.activeOps().some(op => this._forcedOpaque(op, P));
+  },
+  // Look では半透明 (Opacity < 1) なのに、表現上必要な Operator ではないので不透明で描いている効果か
+  _forcedOpaque(op, params){
+    const k = !KEEP_ALPHA.has(op) && this.registry.tables.SURFACE_OPACITY_KEYS[op];
+    return !!k && Number(params[k]) < 1;
+  },
   sourceAlpha(){
-    if(!this.layers.length) return 1;   // 最初の絵が届くまでは元の字を隠さない
+    if(!this.layers.length && !this._fresh) return 1;   // Surface を手で入れたときは最初の絵が届くまで元の字を隠さない (Look の切り替えでは隠す)
     const P = this._params(), reg = this.registry.tables;
     let a = 1;
     for(const op of this.activeOps()){
@@ -253,6 +267,7 @@ const TDSurf = {
     return a;
   },
   advance(dt, pulse){
+    if(this.cfg.enabled && this.status === 'idle') this.ensure().catch(()=>{});
     if(!this.active()) return;
     // Worker が描いている間は進めない (届く絵と位相を揃える)
     if(this.jobs && this.jobs.status().busy) return;
@@ -285,28 +300,45 @@ const TDSurf = {
     this._reset();
   },
 
-  // cfg と md の書体・色が変わったときだけ作り直す (描画のたびに上流の全既定値を複製しない)
+  // cfg と TextDeform の書体・色が変わったときだけ作り直す (描画のたびに上流の全既定値を複製しない)
   _params(){
     const P = TD.P, ops = this.activeOps();
     const key = JSON.stringify(this.cfg) + UP.paramsKey();
     if(this._paramsCache && this._paramsKey === key) return this._paramsCache;
-    const out = Object.assign(UP.params(), this.cfg.params['*'] || {});
+    const out = UP.params();
+    if(P.palOn && this.cfg.color === 'op' && ops.includes('misregistration')){
+      if(P.misregColorA) out.misregColorA = P.misregColorA;
+      if(P.misregColorB) out.misregColorB = P.misregColorB;
+    }
+    Object.assign(out, this.cfg.params['*'] || {});
     for(const op of ops) Object.assign(out, this.cfg.params[op] || {});
     out.activeOperator = this.cfg.op;
     const reg = this.registry.tables;
+    // 共通パレットは Operator の色も近い役割へ色差を保って移す。Paper only は Base の役割だけ
+    const palAll = P.palOn === true, colMode = this.cfg.color;
+    if(P.palOn) out.paper = TD.color('paper');
+    if(palAll){ out.ink = TD.color('ink'); out.accent = TD.color('accent'); }
     for(const op of ops){
       const ck = reg.SURFACE_COLOR_KEYS[op], sk = (this.meta.ops[op] && this.meta.ops[op].surfaceKeys) || {};
-      if(this.cfg.color !== 'op'){
-        const main = this.cfg.color === 'accent' ? P.accent : P.ink;
+      if(colMode !== 'op'){
+        const main = TD.color(colMode === 'accent' ? 'accent' : 'ink');
         if(ck) out[ck] = main;
-        if(sk.secondaryColor) out[sk.secondaryColor] = this.cfg.color === 'accent' ? P.ink : P.accent;
+        if(sk.secondaryColor) out[sk.secondaryColor] = TD.color(colMode === 'accent' ? 'ink' : 'accent');
+      } else if(P.palOn){
+        // 2 色目が 1 色目と同じ役割になったら、もう一方 (Key ⇄ Accent) へ回して 2 色刷りを保つ
+        const sc = sk.secondaryColor, has = k=>k && typeof out[k] === 'string';
+        const r1 = has(ck) && (MISREG_ROLE[ck] || TD.colorRole(out[ck]));
+        let r2 = has(sc) && (MISREG_ROLE[sc] || TD.colorRole(out[sc]));
+        if(r2 && r2 === r1) r2 = r1 === 'accent' ? 'ink' : 'accent';
+        if(r1) out[ck] = TD.roleColor(out[ck], r1);
+        if(r2) out[sc] = TD.roleColor(out[sc], r2);
       }
     }
     this._paramsCache = out; this._paramsKey = key;
     return out;
   },
   _opOpacity(op, params){
-    const k = this.registry.tables.SURFACE_OPACITY_KEYS[op];
+    const k = KEEP_ALPHA.has(op) && this.registry.tables.SURFACE_OPACITY_KEYS[op];
     const v = k ? Number(params[k]) : 1;
     return (isFinite(v) ? Math.max(0, Math.min(1, v)) : 1) * Math.max(0, Math.min(1, +this.cfg.opacity));
   },
@@ -357,7 +389,7 @@ const TDSurf = {
     if(this.jobs.status().busy && !this._dirty) return;
     this._dirty = false;
     const ops = this.activeOps(), str = this.strength();
-    if(str <= 0) return;
+    if(str <= 0){ this._fresh = false; return; }
     const f = TD._fit;
     if(!f) return;
     const params = this._params();
@@ -369,11 +401,13 @@ const TDSurf = {
       u.surface = this.glyphActive(g.i) ? surface : null;
       up.push(u);
     }
-    if(!up.some(g => g.surface)) return;
+    if(!up.some(g => g.surface)){ this._fresh = false; return; }
     const packed = globalThis.TypeDeformerSurfaceState.pack(up, params);
-    // 字を大きく拡大した md (fit.s > 1) は効果を縮小解像度で描いて引き伸ばす
-    // (等倍以上で描くと作業キャンバスが上限を超えやすく、時間も拡大率に比例して延びる)
-    const k = Math.max(1, f.s), rw = Math.max(1, Math.ceil(w/k)), rh = Math.max(1, Math.ceil(h/k));
+    // 字を大きく拡大した版面 (fit.s > 2) は効果を拡大率の半分の縮小解像度で描いて引き伸ばす
+    // (等倍で描くと作業キャンバスが上限を超えやすく、時間も拡大率に比例して延びる。拡大率そのままでは 1 語の Look がぼやける)
+    // Pixel (粗さ) > 1 はさらにその倍率で粗く描き、draw でドットのまま拡大する
+    const px = Math.max(1, Math.min(16, Math.round(+this.cfg.pixel || 1)));
+    const k = Math.max(1, f.s / 2) * px, rw = Math.max(1, Math.ceil(w/k)), rh = Math.max(1, Math.ceil(h/k));
     this.moshFrame++;
     const frame = {
       kind: 'frame', purpose: 'edit', mobile: false,
@@ -388,7 +422,7 @@ const TDSurf = {
     const key = this._paramsKey + JSON.stringify(frame);
     frame.params = params;
     frame.fontCss = this._collectFontCss(params.fontFamily, frame.text + glyphs.map(g=>g.ch).join(''));
-    this._pending = { key, w: rw, h: rh, k, ops: ops.map(op=>({ id: op, opacity: this._opOpacity(op, params), blend: this._opBlend(op, params) })) };
+    this._pending = { key, w: rw, h: rh, k, px, ops: ops.map(op=>({ id: op, opacity: this._opOpacity(op, params), blend: this._opBlend(op, params), under: this._forcedOpaque(op, params) })) };
     this.jobs.request(key, frame);
   },
 
@@ -398,13 +432,20 @@ const TDSurf = {
     ctx.save();
     ctx.setTransform(1,0,0,1,0,0);
     if(va){ ctx.translate(w/2, h/2); ctx.rotate(va); ctx.translate(-w/2, -h/2); }
-    for(const L of this.layers){
+    // 半透明から不透明にした効果 (under) を先に下へ敷き、字の形を描く効果をその上に重ねる (不透明になった効果が文字を隠さないように)
+    for(const under of [true, false]) for(const L of this.layers){
+      if(!!L.under !== under) continue;
       ctx.globalAlpha = L.opacity;
       ctx.globalCompositeOperation = L.blend;
+      ctx.imageSmoothingEnabled = L.px <= 1;
       ctx.drawImage(L.canvas, 0, 0, L.w, L.h, 0, 0, L.w*L.k, L.h*L.k);
     }
     ctx.restore();
   }
 };
 globalThis.TDSurf = TDSurf;
+// P.surf = Surface の保存値。JSON 化・Object.assign がこのアクセサを通る
+Object.defineProperty(TD.P, 'surf', { enumerable: true, configurable: true,
+  get(){ return TDSurf.snapshot(); },
+  set(v){ TDSurf.apply(v); } });
 })();

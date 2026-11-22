@@ -227,6 +227,11 @@ input[type=color]{background:transparent;border:1px solid var(--line);width:34px
 @media (hover:hover){ .thumb-tile:hover{border-color:var(--acc2);transform:scale(1.02);z-index:1} }
 .thumb-tile.on{border-color:var(--acc)}
 .thumb-tile canvas{width:100%;height:100%;display:block;object-fit:cover}
+/* 選んだときに画像を読む Visual (Layer / Manga / Slicer): 読み込むまでグレー、読み込むと色が付く */
+.thumb-tile canvas,.thumb-tile img{transition:filter .4s}
+.thumb-tile.lazy-pending canvas,.thumb-tile.lazy-pending img{filter:grayscale(1) opacity(.35)}
+.thumb-tile.lazy-loading::after{content:'Loading…';position:absolute;inset:0;z-index:4;display:flex;align-items:center;justify-content:center;font:11px var(--mono);color:#fff;letter-spacing:1px;text-shadow:0 0 3px #000;background:rgba(0,0,0,.35);pointer-events:none;animation:lazyBlink 1s ease-in-out infinite alternate}
+@keyframes lazyBlink{from{opacity:.55}to{opacity:1}}
 .thumb-tile .label{position:absolute;left:4px;bottom:2px;z-index:3;font:10px/1 var(--mono);color:#fff;text-shadow:0 0 3px #000,0 0 2px #000,0 1px 0 #000;pointer-events:none;letter-spacing:.2px;max-width:calc(100% - 8px);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .thumb-tile .placeholder{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font:10px var(--mono);color:#555;pointer-events:none}
 /* 遅延ロード中のダミー箱: シマー(スケルトン)で「読込中」を示す */
@@ -569,6 +574,23 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 #side .row > select{min-width:0}
 #side #cfAutoMode{flex:1 1 72px;min-width:72px}
 
+/* Type Deformer の Look 一覧 (mode/textdeform-looks.js)。Featured はサムネ、保存 Look は紙とインクの色の札 */
+.td-look-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(72px,1fr));gap:4px;max-height:264px;overflow-y:auto;margin:2px 0 4px;padding:1px}
+.td-look{position:relative;display:block;width:100%;height:auto;min-height:0;padding:0;border:1px solid var(--line2);border-radius:var(--radius);overflow:hidden;aspect-ratio:600/370;background:var(--surface);cursor:pointer}
+.td-look img{display:block;width:100%;height:100%;object-fit:cover}
+.td-look .n{position:absolute;left:2px;bottom:1px;font:600 var(--fs-xs)/1 var(--mono);color:#fff;text-shadow:0 0 2px #000,0 0 2px #000}
+.section.textdeform-mode .row.td-sub{padding-left:20px}
+.section.textdeform-mode .td-off-hidden{display:none !important}
+.td-chips{display:flex;flex-wrap:wrap;gap:3px;flex:1;min-width:0}
+.td-chip{height:auto;min-height:0;padding:2px 7px;font-size:var(--fs-xs);line-height:1.3;color:var(--dim);background:transparent;border:1px solid var(--line2);border-radius:var(--radius)}
+.td-chip.on{color:var(--acc-fg,#fff);background:var(--acc,#3f00ff);border-color:transparent}
+.td-look.rec .n::before{content:'★';margin-right:2px;color:#ffd84a}
+.td-look .nt{right:2px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;font-family:inherit;font-weight:400}
+.td-look .nm{display:flex;align-items:center;justify-content:center;width:100%;height:100%;padding:2px;box-sizing:border-box;font-size:var(--fs-sm);line-height:1.15;text-align:center;overflow:hidden;word-break:break-all}
+.td-look.heavy::after{content:'重';position:absolute;right:2px;top:1px;font-size:var(--fs-xs);color:#fff;text-shadow:0 0 2px #000}
+.td-look:hover{border-color:var(--fg)}
+.td-look.on{outline:2px solid var(--fg);outline-offset:-2px}
+
 /* パラメータの折りたたみ (› で詳細行 / カテゴリを開閉)。行は .fold-hidden で隠す */
 .fold-hidden{display:none !important}
 .fold-tog{display:inline-flex;align-items:center;justify-content:center;flex:none;width:12px;height:12px;margin-right:2px;cursor:pointer;color:var(--dim);vertical-align:middle}
@@ -591,3 +613,12 @@ html[data-theme="light"] #helpPane .help-qa dt::before{color:var(--acc)}
 .pane:has(.fold-tog) .section .row > label.sub-label{padding-left:20px}
 .pane:has(.fold-tog) .section .row > label:not(.sub-label):not(:has(> .fold-tog))::after{content:"";position:absolute;left:5px;top:50%;width:3px;height:3px;margin-top:-1.5px;border-radius:50%;background:currentColor;opacity:.55}
 .row > label > .fold-tog{position:absolute;left:1px;top:50%;margin:0;transform:translateY(-50%)}
+
+/* 代理モードのバッジ (操作画面側のみ。ステージ / 録画 / Projector の絵には入らない) */
+#apBadge{position:fixed;left:50%;top:9px;transform:translateX(-50%);z-index:9000;white-space:nowrap;padding:5px 10px;border:1px solid var(--line);border-radius:var(--radius);background:var(--on-bg);color:var(--on-fg,#111);font:600 11px/1.3 var(--sans);letter-spacing:.02em;cursor:pointer;box-shadow:0 4px 14px rgba(0,0,0,.35);user-select:none}
+#apBadge[hidden]{display:none}
+@media (hover:hover){ #apBadge:hover{filter:brightness(1.25)} }
+@media (max-width:700px){ #apBadge{top:auto;bottom:10px;left:10px;transform:none} }
+
+/* Type Deformer の Composition は UI から隠す (2026-11-21。コードと保存値は残す。戻すときは index.html の td-comp-hidden を外す) */
+.td-comp-hidden{ display:none !important; }

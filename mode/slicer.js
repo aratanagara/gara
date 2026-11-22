@@ -537,10 +537,11 @@ void main(){
     //   頂点 = 底の位置 (世界)・法線・uv・(w = 頂点 1 → 底 0, 面の種, 格子 1 つぶんの世界の長さ, 断片番号)。高さは VS (fx3dNeedleH)
     const spk = this._fx ? [] : null;
     let fragTris = [];
-    const SP = 2/14;   // 重ねたときの紙と同じ間隔 (画面の高さを 14 分割)
+    const NM = GL.needleMods(App.post);
+    const SP = 2/14 * NM.thick;   // 重ねたときの紙と同じ間隔 (画面の高さを 14 分割) × Needle の太さ (次の組み直しで反映)
     const JW = 0.35 + 0.5 * Math.max(0, Math.min(1, App.deadParam(App.post && App.post.needleScatter != null ? +App.post.needleScatter : 0.6)));   // Scatter: 種の揺らし幅 (次の組み直しで反映)
     const nvSeed=(cx,cy)=>[(cx+0.5+(rnd(cx*1.37+cy*2.11+0.5)-0.5)*JW)*SP, (cy+0.5+(rnd(cx*1.37+cy*2.11+9.6)-0.5)*JW)*SP];
-    const nvSplit=(cx,cy)=>{ const h=rnd(cx*2.71+cy*1.93+17.3); return h<0.5 ? 0 : (h<0.75 ? 1 : 2); };
+    const nvSplit=(cx,cy)=>{ const h=rnd(cx*2.71+cy*1.93+17.3); if(NM.sides<4) return h<0.5 ? 1 : 2; return h<0.5 ? 0 : (h<0.75 ? 1 : 2); };
     function clipTri(poly, t){   // 凸の三角形 t で多角形を切る (Sutherland–Hodgman)
       const o = (t[2]-t[0])*(t[5]-t[1])-(t[4]-t[0])*(t[3]-t[1]) >= 0 ? 1 : -1;
       for(let e=0;e<3 && poly.length;e++){
@@ -764,7 +765,9 @@ void main(){
   async loadFromUrl(url){
     if(!url) return false;
     const safe = /^(blob:|data:|https?:|file:)/i.test(url) ? url : url.split('/').map(encodeURIComponent).join('/');
-    return new Promise((res)=>{
+    this._loads = (this._loads || 0) + 1;   // 読み込み中の数 (App.ensureLazyImages が既定の画像で割り込まないように)
+    return new Promise((res0)=>{
+      const res = (v)=>{ this._loads--; res0(v); };
       const img = new Image();
       if(/^https?:/i.test(safe)){ try{ img.crossOrigin = 'anonymous'; }catch(e){} }
       img.onload = ()=>{
@@ -913,7 +916,10 @@ void main(){
       this.loadFromUrl(it.url).then(()=>{ this._skipImgParams = false; applyParams(); });
     };
     if(this.library && this.library.length) pick();
-    else this.scanFolder('images/slicer').then(list=>{ this.library = list; pick(); });
+    else{
+      this._loads = (this._loads || 0) + 1;   // 一覧を取る間も読み込み中として数える
+      this.scanFolder('images/slicer').then(list=>{ this.library = list; this._loads--; pick(); });
+    }
   },
   // Auto モードのドリフト中心を現在値で更新 (画像ロード・スライダー操作・保存時に呼ぶ)
   noteAutoBase(){
@@ -1178,4 +1184,63 @@ void main(){
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.activeTexture(gl.TEXTURE0);
   },
+};
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Slicer.PARAM_HELP = {
+  imgBeats:'Random 時に画像を切り替える拍数 (0 でなし)',
+  pieces:'断片の数 (多いほど重い)',
+  sides:'断片の頂点数の下限',
+  maxSides:'断片の頂点数の上限 (0 で Points 固定)',
+  seed:'断片配置の乱数シード',
+  explode:'断片が散らばる距離',
+  bend:'断片の反りの強さ',
+  curl:'断片のうねり (カール) の強さ',
+  warpAmp:'空間全体を波打たせる振れ幅 (アニメ)',
+  warpFreq:'空間の波打ちの細かさ',
+  shardScale:'断片の大きさ (%)',
+  smallShare:'小さい断片の割合',
+  largeShare:'大きい断片の割合',
+  scatterX:'断片を撒く幅 (画像幅比)',
+  scatterY:'断片を撒く高さ',
+  polyBoost:'多角形の断片へ置き換える割合',
+  sliverBoost:'細い針の断片へ置き換える割合',
+  alignPull:'断片の向きを揃える量',
+  alignAngle:'揃える向き (度)',
+  tiltAmt:'断片の傾き',
+  depthAmt:'断片の奥行きの散らばり',
+  curlFreqAmt:'Curl のうねりの細かさ',
+  texZoom:'断片に写る画像の拡大',
+  texRotate:'断片に写る画像の回転 (度)',
+  drift:'断片の浮遊の振れ幅',
+  autoMode:'パラメータとカメラを自動で変調',
+  autoRebuildBeats:'Auto 時にシーンを組み直す周期',
+  autoZoomAmp:'Auto のズームの呼吸の振れ幅',
+  autoElAmp:'Auto の仰角のドリフトの振れ幅',
+  autorot:'カメラの自動回転の速さ',
+  reshuffle:'Auto: 組み直しで配置を変える割合',
+  camEl:'カメラの仰角',
+  fov:'カメラの画角 (度)',
+  camRoll:'カメラの回転 (度)',
+  camAz:'カメラの方位のずれ (度)',
+  lookX:'注視点の横ずれ',
+  lookY:'注視点の縦ずれ',
+  overlapShadow:'断片の重なりに落ちる影を出す',
+  shadowStr:'重なりの影の濃さ',
+  shadowRadius:'重なりの影の長さ',
+  shadowBias:'影の奥行きのバイアス (浮きを抑える)',
+  pieceTint:'断片に掛ける色',
+  pieceSat:'断片の彩度 (背景には掛けない)',
+  depthShade:'奥の断片を暗くする',
+  bgMode:'背景: 黒 / 白 / 画像の平均色 / 指定色',
+  postScale:'描画解像度の比。低いほど軽い',
+};
+Slicer.PARAM_NEEDS = {alignAngle:'alignPull'};
+Slicer.paramOn = function(key){
+  const P = this.P;
+  if(key === 'imgBeats' && P.imgMode !== 'random') return false;
+  if(key === 'warpFreq' && !((P.warpAmp || 0) > 0.0001)) return false;   // warpAmp はデッドゾーンを通さない (シェーダは u_warpAmp > 0.0001 で効く)
+  if((key === 'autoRebuildBeats' || key === 'autoZoomAmp' || key === 'autoElAmp' || key === 'reshuffle') && !P.autoMode) return false;
+  if((key === 'shadowStr' || key === 'shadowRadius' || key === 'shadowBias') && !P.overlapShadow) return false;
+  return true;
 };

@@ -1,0 +1,482 @@
+[
+ {
+  "name": "Compose: Flux Rows",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.34,
+   "macros": {
+    "intensity": 0.88,
+    "density": 0.73,
+    "instability": 0.51,
+    "depth": 0.21,
+    "legibility": 0.64
+   }
+  }
+ },
+ {
+  "name": "Compose: Cascade",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "cascade",
+   "speed": 0.15,
+   "macros": {
+    "intensity": 0.82,
+    "density": 0.75,
+    "instability": 0.29,
+    "depth": 0.45,
+    "legibility": 0.88
+   }
+  }
+ },
+ {
+  "name": "Compose: Type Matrix",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "typeMatrix",
+   "speed": 0.34,
+   "macros": {
+    "intensity": 0.4,
+    "density": 0.55,
+    "instability": 0.18,
+    "depth": 0.64,
+    "legibility": 0.89
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.09,
+   "macros": {
+    "intensity": 0.43,
+    "density": 0.77,
+    "instability": 0.32,
+    "depth": 0.24,
+    "legibility": 0.85
+   }
+  }
+ },
+ {
+  "name": "Compose: Field",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.33,
+   "macros": {
+    "intensity": 0.75,
+    "density": 0.3,
+    "instability": 0.54,
+    "depth": 0.56,
+    "legibility": 0.86
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 2",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.34,
+   "macros": {
+    "intensity": 0.56,
+    "density": 0.61,
+    "instability": 0.12,
+    "depth": 0.42,
+    "legibility": 0.94
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 2",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.23,
+   "macros": {
+    "intensity": 0.58,
+    "density": 0.69,
+    "instability": 0.27,
+    "depth": 0.55,
+    "legibility": 0.8
+   }
+  }
+ },
+ {
+  "name": "Compose: Type Matrix 2",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "typeMatrix",
+   "speed": 0.24,
+   "macros": {
+    "intensity": 0.7,
+    "density": 0.61,
+    "instability": 0.21,
+    "depth": 0.27,
+    "legibility": 0.94
+   }
+  }
+ },
+ {
+  "name": "Compose: Type Matrix 3",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "typeMatrix",
+   "speed": 0.13,
+   "macros": {
+    "intensity": 0.8,
+    "density": 0.61,
+    "instability": 0.57,
+    "depth": 0.69,
+    "legibility": 0.89
+   }
+  }
+ },
+ {
+  "name": "Compose: Cascade 2",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "cascade",
+   "speed": 0.22,
+   "macros": {
+    "intensity": 0.56,
+    "density": 0.48,
+    "instability": 0.37,
+    "depth": 0.4,
+    "legibility": 0.82
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 2",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.3,
+   "macros": {
+    "intensity": 0.8,
+    "density": 0.64,
+    "instability": 0.13,
+    "depth": 0.66,
+    "legibility": 0.77
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 3",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.12,
+   "macros": {
+    "intensity": 0.62,
+    "density": 0.39,
+    "instability": 0.49,
+    "depth": 0.49,
+    "legibility": 0.92
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 3",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.28,
+   "macros": {
+    "intensity": 0.83,
+    "density": 0.49,
+    "instability": 0.24,
+    "depth": 0.67,
+    "legibility": 0.65
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 3",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.3,
+   "macros": {
+    "intensity": 0.64,
+    "density": 0.7,
+    "instability": 0.15,
+    "depth": 0.47,
+    "legibility": 0.91
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 4",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.22,
+   "macros": {
+    "intensity": 0.5,
+    "density": 0.53,
+    "instability": 0.32,
+    "depth": 0.6,
+    "legibility": 0.64
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 5",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.25,
+   "macros": {
+    "intensity": 0.44,
+    "density": 0.5,
+    "instability": 0.47,
+    "depth": 0.69,
+    "legibility": 0.71
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 4",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.33,
+   "macros": {
+    "intensity": 0.47,
+    "density": 0.42,
+    "instability": 0.1,
+    "depth": 0.63,
+    "legibility": 0.62
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 4",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.35,
+   "macros": {
+    "intensity": 0.42,
+    "density": 0.47,
+    "instability": 0.14,
+    "depth": 0.28,
+    "legibility": 0.77
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 5",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.11,
+   "macros": {
+    "intensity": 0.51,
+    "density": 0.67,
+    "instability": 0.32,
+    "depth": 0.39,
+    "legibility": 0.84
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 6",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.23,
+   "macros": {
+    "intensity": 0.78,
+    "density": 0.52,
+    "instability": 0.2,
+    "depth": 0.64,
+    "legibility": 0.69
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 5",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.28,
+   "macros": {
+    "intensity": 0.71,
+    "density": 0.38,
+    "instability": 0.54,
+    "depth": 0.37,
+    "legibility": 0.66
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 6",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.25,
+   "macros": {
+    "intensity": 0.62,
+    "density": 0.6,
+    "instability": 0.38,
+    "depth": 0.61,
+    "legibility": 0.9
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 6",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.22,
+   "macros": {
+    "intensity": 0.64,
+    "density": 0.74,
+    "instability": 0.19,
+    "depth": 0.57,
+    "legibility": 0.62
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 7",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.34,
+   "macros": {
+    "intensity": 0.75,
+    "density": 0.49,
+    "instability": 0.49,
+    "depth": 0.23,
+    "legibility": 0.7
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 8",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.34,
+   "macros": {
+    "intensity": 0.72,
+    "density": 0.54,
+    "instability": 0.58,
+    "depth": 0.59,
+    "legibility": 0.76
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 7",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.17,
+   "macros": {
+    "intensity": 0.88,
+    "density": 0.75,
+    "instability": 0.42,
+    "depth": 0.46,
+    "legibility": 0.6
+   }
+  }
+ },
+ {
+  "name": "Compose: Field 9",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "field",
+   "speed": 0.28,
+   "macros": {
+    "intensity": 0.76,
+    "density": 0.49,
+    "instability": 0.19,
+    "depth": 0.38,
+    "legibility": 0.68
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 7",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.35,
+   "macros": {
+    "intensity": 0.72,
+    "density": 0.68,
+    "instability": 0.36,
+    "depth": 0.44,
+    "legibility": 0.83
+   }
+  }
+ },
+ {
+  "name": "Compose: Flux Rows 8",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "fluxRows",
+   "speed": 0.34,
+   "macros": {
+    "intensity": 0.8,
+    "density": 0.54,
+    "instability": 0.58,
+    "depth": 0.57,
+    "legibility": 0.91
+   }
+  }
+ },
+ {
+  "name": "Compose: Path Loom 8",
+  "comp": {
+   "schemaVersion": 10,
+   "enabled": true,
+   "type": "pathLoom",
+   "speed": 0.28,
+   "macros": {
+    "intensity": 0.8,
+    "density": 0.44,
+    "instability": 0.22,
+    "depth": 0.4,
+    "legibility": 0.66
+   }
+  }
+ }
+]

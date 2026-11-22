@@ -202,5 +202,6 @@ vec3 bg_nebula(vec2 fc){
     color += (gn - 0.5) * uGrainAmt / 100.0 * 0.15 * (0.3 + layers.a);
   }
   bgAlpha = clamp(layers.a, 0.0, 1.0);  // Slot B はブロブ部分のみ
+  vjDepth = smoothstep(0.08, 0.6, max(l0.a, max(l1.a, l2.a))) * (0.35 + 0.65 * clamp(l0.a + 0.5 * l1.a, 0.0, 1.0));   // 深度 (星雲の層の濃さ。芯 (内側の層) ほど手前 / 薄い外側と地は 0)
   return color;
 }

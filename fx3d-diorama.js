@@ -55,13 +55,56 @@ void main(){
   frag = vec4(fx3dFoldShade(c) * a, a);
 }`;
 
+  // Needle (最後に掛かる): 各層を GL.needleCellGLSL の針の面で覆い、層の法線 (手前 +z) へ突起 / 凹み。元の層の代わりに描く。
+  //   切り抜きは元と同じ (明るさ >= 層の閾値の画素だけ)。針が上下の層を突き抜けるので、深度テストありの不透明で描く
+  const NV_VS = `#version 300 es
+precision highp float;
+uniform mat4 uView, uProj;
+uniform float uAsp, uN, uGap, uDist, uMargin;
+uniform vec2 uNvGrid;
+uniform float uNvSub;
+out vec2 vUv; out vec3 vW;
+flat out int vLayer;
+void main(){
+  int per = (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * int(uNvSub) * int(uNvSub);
+  int layer = gl_VertexID / per, vid = gl_VertexID - layer * per;
+  vec2 u; float w; vec2 key;
+  fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(float(layer) * 3.7 + 0.3, 2.9), u, w, key);
+  float z = (float(layer) - (uN - 1.0) * 0.5) * uGap;
+  float sc = (uDist - z) / 1.35 * uMargin;
+  vUv = 0.5 + (u - 0.5) * uMargin;
+  float cl = 0.6 * 2.0 * sc / uNvGrid.y;                      // 格子 1 つぶんの長さ。カメラが近く層が画面より広いぶん、見かけを Layers の針にそろえて 0.6 倍
+  float pp = fx3dPop(float(layer));
+  vec3 P = vec3((u - 0.5) * 2.0 * vec2(uAsp, 1.0) * sc * pp, z + w * fx3dNeedleH(key, vUv * vec2(uAsp, 1.0) * 3.2) * cl * pp);
+  vLayer = layer;
+  vW = P;
+  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+}`;
+  const NV_FS = `#version 300 es
+precision highp float;
+uniform sampler2D uTex;
+uniform float uN;
+uniform vec3 uEye;
+in vec2 vUv; in vec3 vW;
+flat in int vLayer;
+out vec4 frag;
+${Fx3d.GLSL_LIT}
+void main(){
+  vec4 t0 = texture(uTex, fx3dSrc(vUv));
+  if(t0.a < 0.5) discard;
+  if(vLayer > 0 && dot(t0.rgb, vec3(0.299, 0.587, 0.114)) < float(vLayer) / uN) discard;
+  frag = vec4(fx3dFoldShade(fx3dLit(t0.rgb, vW, uEye, 1.0)), 1.0);
+}`;
+
   const hash = (n)=>{ const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
 
   Fx3d.EXTRA.diorama = {
     ov: true,
     foldHook: true,
+    spikes: true,
     render(gl, o){
-      const p = Fx3d.prog(gl, 'diorama', VS, FS);
+      const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'dioramaNeedle', NV_VS, NV_FS) : null;
+      const p = nvp || Fx3d.prog(gl, 'diorama', VS, FS);
       if(!p) return false;
       const N = Fx3d.popCount('diorama', Math.max(2, Math.min(24, Math.round(+(o.post && o.post.fx3dDioramaLayers) || 8))), false);   // 層数を変えると区切りが全部変わる = 全層が縮んでから出直す
       const k = o.k, t = o.clock;
@@ -78,6 +121,8 @@ void main(){
       const dist = 1.35 + 0.35 * k;
       const gap = (0.6 * k + 0.25 * o.hit * k) / N;
       const cam = Fx3d.camera(o.asp, az, el, dist);
+      const margin = 1 + 3.5 * k;
+      if(nvp) return this._needle(gl, o, nvp, N, gap, dist, margin, cam);
       const wasCull = gl.isEnabled(gl.CULL_FACE);
       gl.bindFramebuffer(gl.FRAMEBUFFER, o.fbo);
       gl.viewport(0, 0, o.w, o.h);
@@ -97,7 +142,7 @@ void main(){
       gl.uniform1f(u('uN'), N);
       gl.uniform1f(u('uGap'), gap);
       gl.uniform1f(u('uDist'), dist);
-      gl.uniform1f(u('uMargin'), 1 + 3.5 * k);
+      gl.uniform1f(u('uMargin'), margin);
       gl.uniform1f(u('uK'), k);
       const so = 0.03 * k * (1 + o.hit);
       gl.uniform2f(u('uShadowOff'), so, -so * 1.3);
@@ -110,6 +155,45 @@ void main(){
       gl.drawArrays(gl.TRIANGLES, 0, N * 12 * 12 * 6);
       gl.disable(gl.BLEND);
       if(wasCull) gl.enable(gl.CULL_FACE);
+      return true;
+    },
+    _needle(gl, o, p, N, gap, dist, margin, cam){
+      // 層は画面の margin 倍の広さ。格子の細かさは画面に対して Layers と同じ (画面の高さの 1/14 が目安)、頂点数が多すぎれば粗くする
+      let gy = Math.max(Math.round(Fx3d.nvScale(6)), Math.round(Fx3d.nvScale(14 * margin))), gx = Math.max(1, Math.round(gy * o.asp));
+      let sub = Fx3d.foldFrame ? 2 : 1;
+      while(sub > 1 && N * GL.needleCellVerts(gx, gy, sub) > 1500000) sub--;
+      while(gy > 6 && N * GL.needleCellVerts(gx, gy, sub) > 1500000){ gy--; gx = Math.max(1, Math.round(gy * o.asp)); }
+      const M = Fx3d.msaa(gl, o.w, o.h);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
+      gl.viewport(0, 0, o.w, o.h);
+      gl.disable(gl.SCISSOR_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
+      gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
+      gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+      gl.useProgram(p);
+      if(!GL._emptyVAO) GL._emptyVAO = gl.createVertexArray();
+      gl.bindVertexArray(GL._emptyVAO);
+      const u = (n)=>gl.getUniformLocation(p, n);
+      gl.uniformMatrix4fv(u('uView'), false, cam.view);
+      gl.uniformMatrix4fv(u('uProj'), false, cam.proj);
+      gl.uniform3fv(u('uEye'), cam.eye);
+      gl.uniform1f(u('uAsp'), o.asp);
+      gl.uniform1f(u('uN'), N);
+      gl.uniform1f(u('uGap'), gap);
+      gl.uniform1f(u('uDist'), dist);
+      gl.uniform1f(u('uMargin'), margin);
+      gl.uniform2f(u('uNvGrid'), gx, gy);
+      gl.uniform1f(u('uNvSub'), sub);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
+      gl.uniform1i(u('uTex'), 0);
+      Fx3d.popUniforms(gl, p, 'diorama');
+      Fx3d.ovUniforms(gl, p, o);
+      Fx3d.spikeUniforms(gl, p);
+      Fx3d.fold(gl, p, cam.proj, 1.35);
+      gl.drawArrays(gl.TRIANGLES, 0, N * GL.needleCellVerts(gx, gy, sub));
+      gl.bindVertexArray(null);
+      Fx3d.resolve(gl, o.fbo, o.w, o.h);
       return true;
     },
   };

@@ -188,6 +188,7 @@ layout(location=0) in vec2 aCorner;
 layout(location=1) in vec4 iA;   // 線・色鉛筆の帯: 両端 / 楕円・点: 中心 xy と半径 zw / 四角形: 1・2 番目の角
 layout(location=2) in vec4 iB;   // 種類, 回転 (線: 全体の両端あり / 四角形: 塗りの濃さ / 帯: 帯に沿った位置), 線の半幅, 不透明度
 layout(location=3) in vec4 iC;   // 色, 手描きのばらつきの種 (0..1。帯は区間の地面での長さ px)
+layout(location=5) in float iZ;   // 奥行き (視点からの距離 / 4D。3D FX 用の深度。紙は 1)
 layout(location=4) in vec4 iD;   // 線: 全体の両端 / 楕円: 縁の色と地面の x 軸の画面での向き / 四角形: 3・4 番目の角 / 帯: 両端の継ぎ目の向き
 uniform vec2 uCam;               // 画面の中心
 uniform vec2 uHalf;              // 画面の半幅・半高
@@ -221,7 +222,7 @@ void main(){
     w = iA.xy + (aCorner * 2.0 - 1.0) * R;
   }
   vW = w;
-  gl_Position = vec4((w - uCam) / uHalf, 0.0, 1.0);
+  gl_Position = vec4((w - uCam) / uHalf, iZ * 2.0 - 1.0, 1.0);
 }`,
 
   FS:`#version 300 es
@@ -240,6 +241,7 @@ uniform float uFill;             // 楕円の塗りの濃さ (既定 0.74)
 uniform float uShade;            // 楕円の片側の影 (既定 1)
 uniform float uBlot;             // インクだまりの大きさ (既定 1)
 uniform float uGrainP;           // 紙の目 (既定 1)
+uniform float uDepthPass;        // 1 = 深度だけ書く (ほぼ透明の画素は捨てる)
 out vec4 o;
 float h2(vec2 p){
   vec3 q = fract(vec3(p.xyx) * 0.1031);
@@ -271,7 +273,7 @@ vec2 stroke(vec2 w, vec2 a, vec2 b, vec2 S, vec2 E, float sd, float bowK){
   float wig = (vn(vec2(sp / 34.0 + sd * 91.0, sd * 7.0)) - 0.5) * 1.5 * uPx;
   return vec2(seg(w - nf * (bow + wig) * uHand * bowK, a, b), sp);
 }
-void main(){
+void main0(){
   float type = vB.x;
   float px = uPx;
   vec2 w = vW;
@@ -417,6 +419,10 @@ void main(){
   }
   a *= vB.w;
   o = vec4(col * a, a);
+}
+void main(){
+  main0();
+  if(uDepthPass > 0.5 && o.a < 0.12) discard;
 }`,
 
 
@@ -444,7 +450,7 @@ void main(){
     this.ok = !!this.prog;
     if(this.ok){
       const U = (n)=>gl.getUniformLocation(this.prog, n);
-      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), boil:U('uBoil'), sqFill:U('uSqFill'), fill:U('uFill'), shade:U('uShade'), blot:U('uBlot'), grainP:U('uGrainP') };
+      this.U = { cam:U('uCam'), half:U('uHalf'), px:U('uPx'), pencil:U('uPencil'), hand:U('uHand'), boil:U('uBoil'), sqFill:U('uSqFill'), fill:U('uFill'), shade:U('uShade'), blot:U('uBlot'), grainP:U('uGrainP'), depthPass:U('uDepthPass') };
       this.vao = gl.createVertexArray();
       gl.bindVertexArray(this.vao);
       this.cornerVBO = gl.createBuffer();
@@ -456,9 +462,12 @@ void main(){
       gl.bindBuffer(gl.ARRAY_BUFFER, this.instVBO);
       for(let k = 0; k < 4; k++){
         gl.enableVertexAttribArray(1 + k);
-        gl.vertexAttribPointer(1 + k, 4, gl.FLOAT, false, 64, k * 16);
+        gl.vertexAttribPointer(1 + k, 4, gl.FLOAT, false, 68, k * 16);
         gl.vertexAttribDivisor(1 + k, 1);
       }
+      gl.enableVertexAttribArray(5);
+      gl.vertexAttribPointer(5, 1, gl.FLOAT, false, 68, 64);
+      gl.vertexAttribDivisor(5, 1);
       gl.bindVertexArray(null);
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
     }
@@ -1207,12 +1216,13 @@ void main(){
     const sd2 = (x, y)=>{ const v = Math.sin(x * 127.1 + y * 311.7) * 43758.5453; return v - Math.floor(v); };
     const fr = (v)=> v - Math.floor(v);
 
-    const inst = (arr, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3, sd)=>{
-      arr.push(a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], sd || 0, d0, d1, d2, d3);
+    const zN = (d)=> Math.max(0.001, Math.min(0.99, d / (4 * D)));   // 深度 (視点からの距離) → 0..1。紙だけ 1 (= 外れ)
+    const inst = (arr, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3, sd, z)=>{
+      arr.push(a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], sd || 0, d0, d1, d2, d3, z == null ? 1 : z);
     };
     const lines = [], arcs = [], figs = [], back = [], fills = [];   // fills: [奥行き, 層, インスタンス 16 個] (奥から重ねる。同じ奥行きは四角 → 楕円・菱形)
     const fill = (depth, a0, a1, a2, a3, b0, b1, b2, b3, col, d0, d1, d2, d3, sd)=>{
-      fills.push([depth, (b0 === 3 && b1 > 0) ? 0 : 1, [a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], sd || 0, d0, d1, d2, d3]]);
+      fills.push([depth, (b0 === 3 && b1 > 0) ? 0 : 1, [a0, a1, a2, a3, b0, b1, b2, b3, col[0], col[1], col[2], sd || 0, d0, d1, d2, d3, zN(depth)]]);
     };
     // 地面/空中の線分 (3D の両端) を画面へ。full = その線の全体の両端 (3D の 6 数)。あれば手描きのたわみとインクだまりを全体で測る
     const seg3 = (arr, ax, ay, az, bx, by, bz, hw, al, col, sd, full)=>{
@@ -1220,8 +1230,8 @@ void main(){
       if(!pa || !pb || al <= 0.002) return;
       if(!onScreen(pa) && !onScreen(pb) && Math.hypot(pa[0] - pb[0], pa[1] - pb[1]) < 0.3) return;
       const fa = full ? P3(full[0], full[1], full[2]) : null, fb = full ? P3(full[3], full[4], full[5]) : null;
-      if(fa && fb) inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 1, hw, al, col, fa[0], fa[1], fb[0], fb[1], sd);
-      else inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 0, hw, al, col, 0, 0, 0, 0, sd);
+      if(fa && fb) inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 1, hw, al, col, fa[0], fa[1], fb[0], fb[1], sd, zN(0.5 * (pa[2] + pb[2])));
+      else inst(arr, pa[0], pa[1], pb[0], pb[1], 0, 0, hw, al, col, 0, 0, 0, 0, sd, zN(0.5 * (pa[2] + pb[2])));
     };
     // 3D の点 a→b の 1 本の手描きの線のうち [0, g] (伸びる途中も、たわみは全体で測る)
     const line3 = (arr, a, b, hw, al, col, sd, g)=>{
@@ -1269,7 +1279,7 @@ void main(){
       for(const sg of [1, -1]){
         const Lk = L * (0.8 + 0.4 * this._hash(hs, sg, 52)), ok = 0.55 * (0.75 + 0.5 * this._hash(hs, sg, 53));
         const bx = pt[0] - ux * Lk + sg * nx * Lk * ok, by = pt[1] - uy * Lk + sg * ny * Lk * ok;
-        inst(arr, pt[0], pt[1], bx, by, 0, 1, hw, al, col, pt[0], pt[1], bx, by, fr((sd || 0) + 0.3 * sg));
+        inst(arr, pt[0], pt[1], bx, by, 0, 1, hw, al, col, pt[0], pt[1], bx, by, fr((sd || 0) + 0.3 * sg), zN(pt[2]));
       }
     };
     // 地面 (高さ z) の楕円 (中心・半径・向き) を画面の楕円へ (共役半径から主軸を求める)
@@ -1299,7 +1309,7 @@ void main(){
     const pushDot = (x, y, r0, col, sc, sd)=>{
       const p = P3(x, y, 0);
       if(!p || !onScreen(p)) return;
-      inst(dots, p[0], p[1], r0 * Math.min(sc, 1.3), 0, 2, 0, 0, 1, col, 0, 0, 0, 0, sd);
+      inst(dots, p[0], p[1], r0 * Math.min(sc, 1.3), 0, 2, 0, 0, 1, col, 0, 0, 0, 0, sd, zN(p[2]));
     };
     // 線の出方: start から dur で伸び、end の rd 前から縮む。縮む向きは先に消える側へ
     const span = (start, dur, end, rd, shrinkToStart)=>{
@@ -1538,7 +1548,7 @@ void main(){
           const d = dirOf(a, b);
           const mA = (j > 0 && ctr[j - 1]) ? bis(dirOf(ctr[j - 1], a), d) : d;
           const mB = (j + 2 <= M && ctr[j + 2]) ? bis(d, dirOf(b, ctr[j + 2])) : d;
-          inst(back, a[0], a[1], b[0], b[1], 5, j * dS, 0.5 * (bhw[j] + bhw[j + 1]), alB, C.band, mA[0], mA[1], mB[0], mB[1], dS);
+          inst(back, a[0], a[1], b[0], b[1], 5, j * dS, 0.5 * (bhw[j] + bhw[j + 1]), alB, C.band, mA[0], mA[1], mB[0], mB[1], dS, zN(0.5 * (a[2] + b[2])));
         }
         for(const k of [4, 11]){
           const f = (v)=>{
@@ -1561,14 +1571,18 @@ void main(){
     const fl = [];
     for(const f of fills) for(const v of f[2]) fl.push(v);
     const all = bg.concat(back, lines, arcs, figs, dots, fl);
-    const count = all.length / 16;
+    const count = all.length / 17;
     const data = new Float32Array(all);
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo);
     gl.viewport(0, 0, w, h);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth) ? GL.kindKeepsDepth(opts.fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
+    this.depthInfo = { near:0.05, far:200, cam:0.25, R:0.2, linear:true };   // 深度 = 視点からの距離 / 4D (紙 = 1 = 外れ)
     gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.clearDepth(1);
+    gl.depthMask(true);
+    gl.clear(gl.COLOR_BUFFER_BIT | (kd ? gl.DEPTH_BUFFER_BIT : 0));
     if(count > 0){
       gl.useProgram(this.prog);
       gl.uniform2f(this.U.cam, cx, cy);
@@ -1594,7 +1608,18 @@ void main(){
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
       gl.bindVertexArray(this.vao);
+      gl.uniform1f(this.U.depthPass, 0);
       gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+      if(kd){   // 深度だけ同じ順に書き直す (後から描いたものが勝つ = 重なりの順のまま。ほぼ透明の画素は捨てる)
+        gl.disable(gl.BLEND);
+        gl.colorMask(false, false, false, false);
+        gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.ALWAYS);
+        gl.uniform1f(this.U.depthPass, 1);
+        gl.drawArraysInstanced(gl.TRIANGLE_STRIP, 0, 4, count);
+        gl.uniform1f(this.U.depthPass, 0);
+        gl.colorMask(true, true, true, true);
+        gl.disable(gl.DEPTH_TEST);
+      }
       gl.bindVertexArray(null);
       gl.disable(gl.BLEND);
       gl.bindBuffer(gl.ARRAY_BUFFER, null);
@@ -1603,6 +1628,66 @@ void main(){
   },
 };
 Rhizome.PDefaults = JSON.parse(JSON.stringify(Rhizome.P));
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)。別の図 (_variant) は PARAM_HELP を引き継ぎ、自分のキーを足す
+Rhizome.PARAM_HELP = {
+  style:'網 (図 1) / 面と流れ (図 2) / 両方。図 2 は菱形が主で、面と矢印が常に出る',
+  speed:'時間の速さ',
+  life:'ノードが生まれてから消えるまでの目安 (拍または秒)',
+  nodes:'ノードの枠の数。同時に見えるのは 6〜7 割',
+  links:'近くのノードへ伸ばす線の量',
+  size:'楕円・四角・菱形の大きさ',
+  tendrils:'端に点のある線 (巻きひげ) の量',
+  squares:'茶色の四角の量。図 2 では出ない',
+  arcs:'青い弧 (図 1) と流れる矢印 (図 2) の量',
+  planes:'縦に立つ面の量',
+  figures:'面に人の輪郭が切り抜かれている割合',
+  meander:'うねる赤い線の量',
+  band:'手前の色鉛筆の緑の帯の濃さ。0 で出さない',
+  planeSize:'縦に立つ面の大きさ',
+  meanderWave:'うねる赤い線の波の振れ',
+  squareSize:'茶色の四角の大きさ',
+  diamonds:'菱形の割合。図 2 では菱形が主になる',
+  diamondFlat:'菱形のつぶれ具合',
+  spread:'子が親から離れて生まれる距離',
+  linkRange:'近くのノードへ線を伸ばす範囲',
+  lean:'楕円・菱形の傾きのばらつき。0 で全部が横向き',
+  sizeMix:'楕円の大小の差。0 でそろう',
+  dotSize:'巻きひげの端の点の大きさ',
+  line:'線の太さ',
+  markerFill:'楕円の塗りの濃さ。下げると透けて縁の線が主になる',
+  rim:'楕円の縁のペン線の太さ (Line とは別)',
+  markerFlat:'楕円のつぶれ。下げると細く、上げると丸い',
+  shade:'楕円の片側の影の濃さ',
+  markerHue:'楕円 (黄緑のマーカー) の色相の回し',
+  lineHue:'緑・灰茶の線とノードの点・帯の色相の回し',
+  arrowHue:'青い弧・矢印・扇の線の色相の回し',
+  arrowhead:'矢印の頭の大きさ',
+  inkPool:'ペン先を置いた両端と四角の角にたまるインクの大きさ',
+  paperGrain:'紙の目の濃さ (Slot A のみ)',
+  pencil:'色鉛筆のかすれと塗りむら',
+  hand:'手描きの揺れ。線のたわみと太さのむらが出る',
+  boil:'手描きのばらつきを引き直す速さ (線の震え)。0 で止まる',
+  pop:'ノードが現れるときの弾み',
+  kick:'拍でノードがふくらむ量',
+  drift:'画面がゆっくり流れる量',
+  rise:'地面が斜めに立ち上がる量。0 で平らのまま',
+  cycle:'平ら → 立ち上がり → 平ら の周期 (拍または秒)',
+  tilt:'立ち上がったときの地面の倒れ角',
+  yaw:'立ち上がったときの地面の回りの振れ幅',
+  camDist:'立ち上がったときの遠近の強さ。下げるほど強い遠近',
+  seed:'配置の乱数シード',
+};
+Rhizome.paramOn = function(key){
+  const P = this.P, dz = v => (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : v;
+  const flat = !(dz(P.rise) > 0);
+  if(flat && (key === 'tilt' || key === 'yaw' || key === 'cycle')) return false;
+  if(!this.draw){
+    if(key === 'squares' && Math.round(P.style) === 1) return false;
+    if(flat && Math.round(P.style) === 0 && ['planes', 'planeSize', 'figures', 'meander', 'meanderWave', 'band'].includes(key)) return false;
+  }
+  return true;
+};
 
 // 別の図 (扇 / 群れの輪 / 積層 / 筒と網) は同じエンジンの別の実体にして、それぞれ独立した mode (kind) にする。
 // 描き方は Rhizome と共通で、パラメータ・GL の資源・記憶は実体ごとに持つ (Slot A と B で別の図を同時に出せる)。
@@ -1682,4 +1767,61 @@ const RhizomeTube = Rhizome._variant('_tube', {launches:2, cluster:10, curves:10
   ['Disc Size', 'discSize', 20, 300, 1, 'pct'],   // 遠くの円盤の大きさ (%)
   ['Tail Length', 'tailLen', 30, 300, 1, 'pct'],   // 円盤の緑の尾の長さ (%)
 ]);
+RhizomeFan.PARAM_HELP = Object.assign({}, Rhizome.PARAM_HELP, {
+  curves:'扇 1 つの線の数',
+  fans:'同時に出る扇の枠の数',
+  open:'扇の開き',
+  swirl:'線の巻き',
+  seeds:'先が黒い種になる線の割合',
+  coil:'線の根元のバネの大きさ',
+  discSize:'先の円盤の大きさ',
+  seedSize:'黒い種の大きさ',
+  aim:'扇が向く方向のばらつき。0 で全部が画面の中心へ向く',
+  stagger:'線が順に伸び始めるずれ。0 で一斉',
+  lenMix:'線の長さのばらつき。0 でそろう',
+  scatter:'線の向きのばらつき',
+  greenShare:'青でなく緑になる線の割合',
+  dashed:'破線になる線の割合',
+});
+RhizomePacks.PARAM_HELP = Object.assign({}, Rhizome.PARAM_HELP, {
+  rings:'同時に出る輪の枠の数',
+  members:'輪 1 つの楕円の数',
+  hub:'宙に浮く一点の高さ',
+  float:'宙に浮く輪の割合',
+  ringSize:'輪の半径',
+  chain:'隣どうしを結ぶ短い線の割合',
+  runaway:'輪を離れて逃げる楕円の割合 (Links に掛かる)',
+  cross:'別の輪へ渡る長い線の量 (Links に掛かる)',
+  hubSize:'宙の一点の楕円の大きさ',
+  memberMix:'輪の楕円の大小の差',
+  ringJitter:'輪の上の並びの乱れ',
+});
+RhizomeStack.PARAM_HELP = Object.assign({}, Rhizome.PARAM_HELP, {
+  columns:'同時に立つ柱の枠の数',
+  layers:'柱 1 本に積み重なる楕円の数',
+  height:'柱と青い軸の高さ',
+  axes:'網の楕円を青い縦の両矢印が貫く割合',
+  arrows:'網の楕円から伸びる矢印付きの線の量',
+  colWidth:'柱の太さ (楕円の半径)',
+  unravel:'ほどけるときの傾き・うねり・離れ',
+  colSpread:'柱どうしの横の間隔',
+  tubeWidth:'赤い筒の幅',
+  burst:'根元の楕円から地面に放射する矢印の本数。100 で 4 本',
+});
+RhizomeTube.PARAM_HELP = Object.assign({}, Rhizome.PARAM_HELP, {
+  launches:'同時に出る「網 → 筒 → 扇」の枠の数',
+  cluster:'網の楕円の数',
+  curves:'扇の青い線の数',
+  discs:'扇の線に円盤が付く割合',
+  rings:'曲がる筒の輪の数',
+  trails:'円盤が緑の尾を引く割合',
+  netSize:'網の楕円が散らばる広さ',
+  tubeWidth:'筒の太さ',
+  tubeBend:'曲がる筒の曲がり。0 でまっすぐ後ろへ',
+  ringOpen:'筒の輪の開き (短い半径の比)',
+  fanAngle:'扇の開き',
+  fanLen:'扇の線の長さ',
+  discSize:'遠くの円盤の大きさ',
+  tailLen:'円盤の緑の尾の長さ',
+});
 const RhizomeKinds = { rhizome:Rhizome, rzfan:RhizomeFan, rzpacks:RhizomePacks, rzstack:RhizomeStack, rztube:RhizomeTube };

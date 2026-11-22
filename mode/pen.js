@@ -554,3 +554,51 @@ void main(){
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 };
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Pen.PARAM_HELP = {
+  count:'同時に描かれる線の数',
+  width:'線の太さ',
+  len:'線の長さ',
+  bleed:'インクのにじみ。縁の膨らみが増える',
+  kasure:'筆のかすれの量 (G ペンで強く、ミリペンで弱く出る)',
+  peak:'G ペンの線の中央の膨らみ',
+  depth:'奥行き方向へ伸びる線の割合 (残りは弧)',
+  speed:'線を描く速さ',
+  color:'線の色。Mono = 墨 / Random = 線ごとのパレット / Shared = 全線が同じパレット',
+  persp:'遠近感。小さいほどカメラが近く歪む (見かけの大きさは保つ)',
+  camPitch:'カメラの仰角に足す角度',
+  camYaw:'カメラの方位に足す角度',
+  camRoll:'画面の傾き',
+  camWander:'カメラが振れる大きさ。0 で固定',
+  spread:'線を散らす球の大きさ',
+  arcBow:'弧の膨らみ',
+  zigRate:'多段カーブになる線の割合',
+  zigAmp:'多段カーブの振れ幅',
+  milliRate:'細いミリペンと G ペンの比率',
+  jumpRate:'線幅が段差で跳ぶ線の割合',
+  jumpPow:'段差の太細の差。0 で段差なし',
+  blotSize:'ミリペンのインクだまり (ダマ) の大きさ',
+  waver:'ミリペンの線幅のうねり',
+  taper:'線の入りと抜きの長さ',
+  grain:'かすれの粒の細かさ',
+  edgeF:'縁のゆらぎの細かさ',
+  edgeSoft:'縁のぼかし',
+  palRun:'1 本の線の中で色が巡る量。負で逆向き',
+  edgeShade:'パレット色の縁の暗がり',
+  opacity:'インクの濃さ。下げると重なりが透ける',
+  hold:'描き終えてから残る時間',
+  fade:'消えるまでの時間',
+  spawnDiv:'1 拍を何分割して線を入れ替えるか',
+  depthFog:'奥の線ほど薄くする量',
+  bgColor:'紙の色 (Slot A の背景。Slot B は透過)',
+  monoInk:'Mono のときの墨に足す色',
+  palTint:'パレットの色に掛ける色',
+};
+Pen.PARAM_NEEDS = {zigAmp:'zigRate', jumpPow:'jumpRate', blotSize:'milliRate', waver:'milliRate'};
+Pen.paramOn = function(key){
+  const c = Math.round(this.P.color);
+  if((key === 'palRun' || key === 'edgeShade' || key === 'palTint') && c === 0) return false;
+  if(key === 'monoInk' && c > 0) return false;
+  return true;
+};

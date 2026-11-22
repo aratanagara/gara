@@ -2,7 +2,7 @@
  * mode/typedeformer/ (synomare/type-deformer 0.3 の描画エンジン、MIT) を
  * Surface (textdeform-surface.js) と Composition (textdeform-comp.js) で共有する。
  *   - load(): スクリプトを 1 回だけ読み込む (両方が同じファイルを頼んでも二重に実行しない)
- *   - params(): 上流の既定 params に、vj の md の書体・組版・色を上書きしたもの
+ *   - params(): 上流の既定 params に、TextDeform の書体・組版・色を上書きしたもの
  * ============================================================================ */
 (function(){
 'use strict';
@@ -47,18 +47,18 @@ const TDUpstream = {
   },
   params(){
     const P = TD.P, out = Object.assign({}, this.model().PARAM_DEFAULTS);
-    out.fontFamily = TD._fontStack(P.fontFamily);
-    out.fontWeight = P.fontWeight; out.fontSize = P.fontSize; out.lineHeight = P.lineHeight;
+    out.fontFamily = TD._fontStack(TD.family());
+    out.fontWeight = TD.weight(); out.fontSize = P.fontSize; out.lineHeight = TD.leading();
     out.vertical = !!P.vertical;
-    out.ink = P.ink; out.paper = P.paper; out.accent = P.accent;
-    if(P.misregColorA) out.misregColorA = P.misregColorA;
-    if(P.misregColorB) out.misregColorB = P.misregColorB;
+    out.ink = TD.color('ink'); out.paper = TD.color('paper'); out.accent = TD.color('accent');
+    if(P.misregColorA) out.misregColorA = TD.roleColor(P.misregColorA, 'accent');
+    if(P.misregColorB) out.misregColorB = TD.roleColor(P.misregColorB, 'ink');
     return out;
   },
   // params() のキャッシュキー (md の書体・組版・色が変わったら作り直す)
   paramsKey(){
     const P = TD.P;
-    return JSON.stringify([P.fontFamily, P.fontWeight, P.fontSize, P.lineHeight, P.vertical, P.ink, P.paper, P.accent, P.misregColorA, P.misregColorB]);
+    return JSON.stringify([TD.family(), TD.weight(), P.fontSize, TD.leading(), P.fontOver, P.vertical, String(P.palOn), TD.color('ink'), TD.color('paper'), TD.color('accent'), P.paper, P.ink, P.accent, P.misregColorA, P.misregColorB]);
   }
 };
 globalThis.TDUpstream = TDUpstream;

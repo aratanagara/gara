@@ -1382,3 +1382,68 @@ SpaceType.PDefaults = JSON.parse(JSON.stringify(SpaceType.P));   // 素のデフ
 SpaceType.FONTS = (typeof MT_FONTS !== 'undefined') ? MT_FONTS : [{name:'Sans', ff:'sans-serif'}];
 SpaceType.SCENES = ST_SCENES;
 if(typeof window !== 'undefined') window.SpaceType = SpaceType;
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+SpaceType.PARAM_HELP = {
+  size:'文字の大きさ (ワールド単位)',
+  density:'行・リング・文字の密度倍率',
+  depth:'空間の奥行き・広がり',
+  waveAmp:'波・うねりの振幅',
+  waveFreq:'波の周波数',
+  speed:'流れ・落下・前進の速さ',
+  spin:'回転の速さ',
+  jitter:'文字ごとの揺らぎ',
+  tiltX:'文字面を天地方向へ倒す (度)',
+  tiltY:'文字面を左右へ振る (度)。厚みが見える',
+  roll:'文字の面内回転 (度)',
+  extrude:'輪郭に沿った側壁で厚みをつける',
+  sideShade:'押し出し側面の明るさの下限',
+  fold:'中央の縦線で観音開きに折る',
+  lag:'進行方向の後ろへ引かれて弓なりにしなる',
+  faceVel:'進行方向へ文字を正対させる度合い',
+  swayAmp:'旗のようになびく量',
+  swayFreq:'なびきの波数',
+  droop:'左右の端が重力で垂れ下がる量',
+  twist:'字面の左右で軸をねじる (度)',
+  glyphW:'字幅の伸縮 (字送りは変えない)',
+  sizeVar:'文字ごとの大きさのばらつき',
+  weight:'線の太さ。+ で太く、- で細く',
+  opacity:'文字の不透明度 (%)',
+  spreadX:'配置の横の広がり (大きさは変えない)',
+  spreadY:'配置の縦の広がり (大きさは変えない)',
+  spreadZ:'配置の奥行きの広がり (大きさは変えない)',
+  fog:'奥の文字ほど透ける霞の濃さ',
+  farTint:'奥ほど Accent 色へ寄せる',
+  fogDist:'霞・色寄せが 0 から 100% になる奥行き幅',
+  waveSkew:'wave: 行ごとの位相ずれ',
+  ringTwist:'tunnel: リングごとのねじれ',
+  counterSpin:'cylinder / rings: 奇数段の逆回転の強さ',
+  radius:'tunnel / cylinder / sphere などの半径倍率',
+  rowGap:'行間倍率 (wave / wall / arc / cylinder など)',
+  tracking:'字送り倍率。リング系は角度間隔',
+  accentRatio:'Accent 色を付ける文字の割合',
+  fov:'カメラの画角 (度)',
+  dist:'カメラの距離',
+  camEl:'カメラの仰角',
+  camAz:'カメラの方位のずれ (tunnel 以外)',
+  camRoll:'カメラの傾き (度)',
+  lookX:'注視点の横ずれ',
+  lookY:'注視点の縦ずれ',
+  orbitSpeed:'カメラの周回速度',
+  sceneBeats:'何拍ごとにシーンと md を送るか',
+  beatPulse:'拍で文字が脈動する量',
+  seed:'配置の乱数シード',
+};
+SpaceType.PARAM_NEEDS = {sideShade:'extrude', swayFreq:'swayAmp', fogDist:['fog', 'farTint']};
+SpaceType.paramOn = function(key){
+  const P = this.P, sc = P.scene;
+  if(key === 'waveSkew' && sc !== 'wave') return false;
+  if(key === 'ringTwist' && sc !== 'tunnel') return false;
+  if(key === 'counterSpin' && sc !== 'cylinder' && sc !== 'rings') return false;
+  if(key === 'radius' && ['wave', 'wall', 'arc', 'ribbon', 'scatter', 'fall'].includes(sc)) return false;
+  if(key === 'rowGap' && !['wave', 'wall', 'arc', 'cylinder', 'helix', 'lissajous'].includes(sc)) return false;
+  if((key === 'camEl' || key === 'dist' || key === 'camAz' || key === 'orbitSpeed') && sc === 'tunnel') return false;
+  if(key === 'orbitSpeed' && !P.camOrbit) return false;
+  if(key === 'sceneBeats' && !P.autoCycle) return false;
+  return true;
+};

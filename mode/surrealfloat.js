@@ -59,6 +59,7 @@ const SurrealFloat = {
     cloudSoft:100, // 雲の縁のやわらかさ (%)
     brushScale:100,// 筆ムラの大きさ (%。大きいほど細かい)
     weave:100,     // キャンバス目の濃さ (%)
+    gloss:100,     // つや (物の鏡面反射の強さ, %。100 = 従来)
     mood:0,        // 雰囲気 (MOODS の番号。選ぶと空・砂の色もその雰囲気の色に入れ替わる)
     skyTop:[0x75/255, 0x70/255, 0x7a/255],
     skyLow:[0xdc/255, 0xc3/255, 0xc6/255],
@@ -157,6 +158,7 @@ float sf_fbm(vec2 p){
   _glslSky(){ return `
 // 雰囲気 (Mood): 雲・地平の光・光の色と向き・環境光・砂の色味・色調
 uniform vec3 uCloudA, uCloudB, uGlow, uKeyCol, uAmbCol, uGroundTint, uL, uLd;
+uniform float uGloss;  // つや: 物の鏡面反射に掛ける倍率 (1 = 従来)
 uniform vec4 uGrade;   // 彩度, コントラスト, 明るさ, 星
 vec3 sf_grade(vec3 c){
   float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -632,7 +634,7 @@ void main(){
   vec3 skyF   = uAmbCol*(0.5 + 0.5*nw.y)*0.55;
   vec3 bounce = uSand*vec3(0.85, 0.80, 0.84)*(0.5 - 0.5*nw.y)*0.45;
   vec3 col = alb*(key*0.85 + skyF + bounce);
-  col += spec*pow(max(dot(nw, normalize(L + V)), 0.0), shin)*uKeyCol*vec3(1.0, 1.01, 1.03);
+  col += spec*uGloss*pow(max(dot(nw, normalize(L + V)), 0.0), shin)*uKeyCol*vec3(1.0, 1.01, 1.03);
   if(mat > 5.5 && mat < 6.5) col += vec3(0.95, 0.90, 0.88)*0.22*max(dot(-nw, L), 0.0);   // 布の透け
   col += sheen*pow(1.0 - max(dot(nw, V), 0.0), 3.0)*mix(uSkyTop, vec3(1.0), 0.6);   // 布・フェルトの縁の艶
   vec2 uv = sf_uv();
@@ -1529,6 +1531,7 @@ void main(){
       gl.uniform1f(p.U('uCloudSoft'), 0.10*Math.max(0.1, dz(P.cloudSoft)*0.01));
       gl.uniform1f(p.U('uBrushScale'), Math.max(0.1, dz(P.brushScale)*0.01));
       gl.uniform1f(p.U('uWeave'), Math.max(0, dz(P.weave)*0.01));
+      gl.uniform1f(p.U('uGloss'), Math.max(0, dz(P.gloss != null ? P.gloss : 100)*0.01));
       gl.uniform2f(p.U('uRollCS'), Math.cos(rollA), Math.sin(rollA));
       gl.uniform3fv(p.U('uSkyTop'), MS.sky); gl.uniform3fv(p.U('uSkyLow'), MS.low); gl.uniform3fv(p.U('uSand'), MS.sand);
       gl.uniform3fv(p.U('uCloudA'), MS.cA); gl.uniform3fv(p.U('uCloudB'), MS.cB); gl.uniform3fv(p.U('uGlow'), MS.glow);
@@ -1612,3 +1615,51 @@ void main(){
 
 // PDefaults はスクリプト読込時に確定させる (init より先に state 復元が走るため)
 SurrealFloat.PDefaults = JSON.parse(JSON.stringify(SurrealFloat.P));
+
+// Params パネルのホバー説明・効かないパラメータのグレー表示
+SurrealFloat.PARAM_HELP = {
+  mood:'雰囲気。空・雲・砂・光・色調がまとめて変わる',
+  speed:'全体の時間の速さ',
+  depth:'物が近づいたり遠ざかったりする速さ',
+  drift:'物の漂い',
+  spin:'物の揺れ・回転',
+  morph:'部品の組み替えの速さ',
+  count:'構造物の数',
+  size:'構造物の大きさ',
+  sizeVar:'物ごとの大きさのばらつき。上げるほど巨大な物と小さな物が混ざる',
+  weird:'変さ。大半は少し変で、ごく一部が極端に変で巨大',
+  debris:'単体で浮かぶ球・板の量',
+  oddity:'マグリット的な変なもの (巨大な岩・山高帽・林檎) の量',
+  tanguy:'単体で漂うイヴ・タンギー風の不定形の量',
+  pan:'カメラの横回転',
+  cloud:'雲の量',
+  cloudSpd:'雲の流れる速さ',
+  dunes:'砂丘の起伏と風紋。0 で砂漠を描かない',
+  haze:'大気の霞',
+  shadow:'稜線の影と、構造物が砂に落とす影',
+  brush:'油彩の筆ムラ・キャンバス目',
+  kick:'拍・音の効き',
+  pitch:'カメラの上下の向き。プラスで見上げて地平線が下がる',
+  roll:'カメラの傾き。水平線ごと傾く',
+  eyeH:'カメラの高さ。砂漠から離れる・近づく',
+  lane:'物が通る進路の左右の広がり',
+  floatH:'物が浮かぶ高さ',
+  sunAz:'光の向き。物の光と砂丘の影が同じく回る',
+  sunEl:'光の高さ',
+  keyGain:'主光の強さ',
+  ambient:'環境光 (空からの回り込み)',
+  duneScale:'砂丘の大きさ (波長)。高さは Dunes',
+  speckle:'砂のざらつきと白黒の粒',
+  shadeFloor:'砂の影側の明るさ。高いと影が浅い',
+  cloudScale:'雲の大きさ。大きいほど細かい',
+  cloudBase:'雲が出始める高さ (地平線から)',
+  cloudSoft:'雲の縁のやわらかさ',
+  brushScale:'筆ムラの大きさ。大きいほど細かい',
+  weave:'キャンバス目の濃さ',
+  gloss:'物のつや (鏡面反射の強さ)',
+  seed:'配置と形の乱数シード',
+  skyTop:'空の上側の色',
+  skyLow:'空の地平線側の色',
+  sand:'砂の色',
+};
+SurrealFloat.PARAM_NEEDS = {cloudSpd:'cloud', cloudScale:'cloud', cloudBase:'cloud', cloudSoft:'cloud', brushScale:'brush', weave:'brush', duneScale:'dunes'};

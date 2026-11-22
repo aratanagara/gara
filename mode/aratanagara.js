@@ -698,3 +698,22 @@ void main(){
 };
 
 window.Aratanagara = Aratanagara;
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Aratanagara.PARAM_HELP = {
+  pieces:'紙片の数',
+  shardSize:'紙片の大きさ',
+  spread:'群れの広がり',
+  drift:'流れ場に流される量',
+  flutter:'紙片のはためき',
+  tumble:'紙片の回転 (タンブル)',
+  twist:'紙片のねじれ',
+  curl:'紙片の反り (カール)',
+  camDist:'カメラの距離。下げると紙片に寄る',
+  eyeHeight:'カメラの高さ',
+  roam:'群れ全体の大きな回遊',
+  haze:'奥の紙片が背景に溶ける空気遠近の強さ',
+  flatBlue:'表面の青を影なしのフラットにする量',
+  chrome:'裏面クロームの縞とぎらつき',
+  frontHue:'表面の青の色相の回し',
+};

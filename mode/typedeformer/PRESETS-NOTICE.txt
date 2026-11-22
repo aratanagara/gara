@@ -1,5 +1,7 @@
-vj-presets.json と presets/*.jpg は synomare/type-deformer の「厳選」プリセット (featured、148 案) です。
+vj-presets.json は synomare/type-deformer のプリセット全件 (436 案。作者のオススメ = featured の 148 案には "featured": true) のデータです。
 上流ではプリセットのレシピ・データと画像は All rights reserved (ASSETS_LICENSE.md) ですが、
-2026-11-19 に作者の許諾を得て vj (vj.aratanagara.com) と公開版 gara (github.com/aratanagara/gara) に同梱しています。
+作者の許諾を得て vj (vj.aratanagara.com) と公開版 gara (github.com/aratanagara/gara) に同梱しています
+(2026-11-19 にオススメ 148 案、2026-11-21 に全 436 案の許諾)。
 上流のコード (MIT、LICENSE) とは条件が異なるため、このフォルダから再配布するときは注意してください。
-生成: python3 scripts/gen_td_presets.py <上流チェックアウト> mode/typedeformer/vj-presets.json
+presets/*.jpg (一覧のサムネ) は上流の画像ではなく、vj の描画 (vj の書体) で撮り直したものです。
+書体・文字・組版の値は vj の基本の書体へ置き換えてあります (明朝 = Garamond + にじみ明朝、ゴシック = Aratana + 秀英角ゴ銀)。

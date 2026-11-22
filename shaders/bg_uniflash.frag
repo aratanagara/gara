@@ -767,5 +767,6 @@ vec3 bg_uniflash(vec2 fc){
   }
 
   bgAlpha = a;
+  vjDepth = a;   // 深度 (線と吹き出し=手前 1 / 背景 0)
   return rgb;
 }

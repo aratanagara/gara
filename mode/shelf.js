@@ -403,3 +403,29 @@ void main(){
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
   }
 };
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Shelf.PARAM_HELP = {
+  camDist:'カメラの距離。下げると塔の中心へ寄る',
+  fovScale:'画角。上げると広角になる',
+  camSwing:'カメラの仰角が上下にゆれる幅',
+  camHeight:'カメラと注視点の高さ',
+  camRoll:'画面の傾き',
+  lightAz:'光の向きの水平方向の回し',
+  lightElev:'光の向きの高さの回し',
+  keyLight:'主光源の強さ',
+  ambient:'環境光の強さ',
+  stairGlow:'階段を上る暖色の光の帯の強さ',
+  fogDensity:'奥が霧で背景に溶ける濃さ',
+  spineColors:'本ごとに背表紙の色と明るさをずらす量',
+  bookGaps:'本どうしの隙間',
+  bookWidth:'本の幅',
+  bookHeight:'本の高さ',
+  shelfPitch:'棚の段の間隔',
+  helixPitch:'らせん階段の 1 周の高さ',
+  poleThick:'中央の柱の太さ',
+};
+Shelf.paramOn = function(key){   // Dark ON (と Slot B) はワイヤーフレームで、照明・色・霧は効かない
+  if(['lightAz', 'lightElev', 'keyLight', 'ambient', 'stairGlow', 'fogDensity', 'spineColors'].includes(key)) return !(this.P && this.P.dark);
+  return true;
+};

@@ -3147,6 +3147,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     if(uCornerFade != 0.0){ vec2 q = fragCoord.xy / iResolution.xy - 0.5; col *= 1.0 - uCornerFade / 100.0 * clamp(dot(q, q) * 2.0, 0.0, 1.0); }
     if(uGrainAmount != 0.0){ col += (fract(sin(dot(fragCoord.xy, vec2(12.9898, 78.233)) + iTime) * 43758.5453) - 0.5) * uGrainAmount / 100.0 * 0.4; }
 
+    vjDepth = 0.25 + 0.75*fract(sin(hv.x*91.7 + 3.1)*43758.5453); // 深度 (手前 1 → 奥 0)。領域ごとの高さ。3D FX がこれで持ち上げる
     fragColor = vec4(col.xyz,1.);
 }`
 }
@@ -3877,15 +3878,6 @@ vec3 envAt(vec3 dir){
   return sky * uSkyColor + hl * 0.6 * uEnv * uHighlightColor;
 }
 
-float heightBlur_d(vec2 c, float lod){
-  float r = pow(2.0, lod);
-  float s = heightAt_d(c);
-  s += heightAt_d(c+vec2(r,0.0));  s += heightAt_d(c+vec2(-r,0.0));
-  s += heightAt_d(c+vec2(0.0,r));  s += heightAt_d(c+vec2(0.0,-r));
-  s += heightAt_d(c+vec2(r,r));    s += heightAt_d(c+vec2(-r,-r));
-  return s / 7.0;
-}
-
 vec2 fieldXf(vec2 fc){
   if(uFieldRotate != 0.0){ vec2 c = iResolution.xy*0.5; float a = uFieldRotate*0.0174533; fc = c + mat2(cos(a), -sin(a), sin(a), cos(a))*(fc - c); }
   if(uFieldShiftX != 0.0 || uFieldShiftY != 0.0){ fc += vec2(uFieldShiftX, uFieldShiftY)*iResolution.y*0.01; }
@@ -3912,40 +3904,56 @@ vec3 goopFinish(vec3 col, vec3 normal, vec2 fc){
   return applied;
 }
 
-vec3 shade_d(vec2 fragCoord){
-  vec2 fc = fragCoord.xy;
-  vec2 fh = fieldXf(fc);
-  float height = heightAt_d(fh);
+// 高さ場 (既定の式 / param 版) の切り替え
+float HH(vec2 c){ return gCustom ? heightAt(c) : heightAt_d(c); }
+// 影と法線のぼかしは同じ格子 (間隔 r = 2^lod) の点を何度も読むので、重複を 1 回にまとめる。
+// 7 点平均 x (影 1 + 法線 4) = 35 回 → 16 回 (さらに隣の lod の格子と共有)。値は従来と同じ。
+vec3 shadeDedup(vec2 fh, vec2 fc){
+  float bump = 5.0*(uBumpStrength/100.0);
+  float occK = 4.0*(uOccAmount/100.0);
+  float height = HH(fh);
   vjDepth = clamp(height, 0.0, 1.0); // 深度 (高さ場 0..1 → 3D FX がこれで持ち上げる)
   float occlusion = 0.0;
-  for(float i=2.0;i<=5.0;i++){
-    float mh = heightBlur_d(fh, i);
-    occlusion += 4.0 * (uOccAmount/100.0) * max(mh - height, 0.0) * (1.0 / i);
+  {
+    float r = 4.0;
+    float s = height + HH(fh+vec2(r,0.0)) + HH(fh+vec2(-r,0.0)) + HH(fh+vec2(0.0,r)) + HH(fh+vec2(0.0,-r)) + HH(fh+vec2(r,r)) + HH(fh+vec2(-r,-r));
+    occlusion += occK * max(s/7.0 - height, 0.0) * 0.5;
   }
-  vec3 col = goopBase(height, occlusion);
   vec3 totalNormal = vec3(0.0);
+  // 前の lod の格子 (間隔 r/2) の (±2,0)(0,±2) が今の lod の (±1,0)(0,±1) と同じ点
+  float p10 = 0.0, m10 = 0.0, p01 = 0.0, m01 = 0.0;
   for(float i=3.0;i<=5.0;i++){
-    float texelStep = pow(2.0, i);
-    vec3 n = normalize(vec3(
-      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fh+vec2(texelStep,0.0), i) - heightBlur_d(fh-vec2(texelStep,0.0), i)),
-      (5.0*(uBumpStrength/100.0)) * (heightBlur_d(fh+vec2(0.0,texelStep), i) - heightBlur_d(fh-vec2(0.0,texelStep), i)),
-      1.0));
-    totalNormal += n;
+    float r = pow(2.0, i);
+    float h10, hm10, h01, h0m1;
+    if(i == 3.0){
+      h10 = HH(fh+vec2(r,0.0)); hm10 = HH(fh+vec2(-r,0.0)); h01 = HH(fh+vec2(0.0,r)); h0m1 = HH(fh+vec2(0.0,-r));
+    } else { h10 = p10; hm10 = m10; h01 = p01; h0m1 = m01; }
+    float h11 = HH(fh+vec2(r,r)), hm1m1 = HH(fh+vec2(-r,-r)), h1m1 = HH(fh+vec2(r,-r)), hm11 = HH(fh+vec2(-r,r));
+    float h20 = HH(fh+vec2(2.0*r,0.0)), hm20 = HH(fh+vec2(-2.0*r,0.0)), h02 = HH(fh+vec2(0.0,2.0*r)), h0m2 = HH(fh+vec2(0.0,-2.0*r));
+    float h21 = HH(fh+vec2(2.0*r,r)), hm2m1 = HH(fh+vec2(-2.0*r,-r)), h12 = HH(fh+vec2(r,2.0*r)), hm1m2 = HH(fh+vec2(-r,-2.0*r));
+    float mh = (height + h10 + hm10 + h01 + h0m1 + h11 + hm1m1) / 7.0;
+    float bPX = (h10 + h20 + height + h11 + h1m1 + h21 + h0m1) / 7.0;
+    float bMX = (hm10 + height + hm20 + hm11 + hm1m1 + h01 + hm2m1) / 7.0;
+    float bPY = (h01 + h11 + hm11 + h02 + height + h12 + hm10) / 7.0;
+    float bMY = (h0m1 + h1m1 + hm1m1 + height + h0m2 + h10 + hm1m2) / 7.0;
+    occlusion += occK * max(mh - height, 0.0) * (1.0 / i);
+    totalNormal += normalize(vec3(bump*(bPX - bMX), bump*(bPY - bMY), 1.0));
+    p10 = h20; m10 = hm20; p01 = h02; m01 = h0m2;
   }
-  return goopFinish(col, normalize(totalNormal), fc);
+  return goopFinish(goopBase(height, occlusion), normalize(totalNormal), fc);
 }
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord){
   // 高さ場に効く param が既定なら元の高さ場の式で描く (陰影の param 4 つは既定の経路の中で効く)
   gCustom = (uBlobScale != 100.0 || uCoarseScale != 100.0 || uBlobDetail != 3.0 || uGoopLevel != 0.0 || uRampSharp != 0.0 || uBlurReach != 100.0);
-  if(!gCustom){ fragColor = vec4(shade_d(fragCoord.xy), 1.0); return; }
   gK1 = 0.001*(uBlobScale/100.0); gK2 = 0.0001*(uCoarseScale/100.0);
   gDetail = int(uBlobDetail + 0.5);
   gGoopOn = (uGoopLevel != 0.0); gGoop = uGoopLevel/100.0;
   gRampOn = (uRampSharp != 0.0); gRampK = clamp(uRampSharp/100.0, 0.0, 1.0);
-  float bump = 5.0*(uBumpStrength/100.0);
   vec2 fc = fragCoord.xy;
   vec2 fh = fieldXf(fc);
+  if(uBlurReach == 100.0){ fragColor = vec4(shadeDedup(fh, fc), 1.0); return; }
+  float bump = 5.0*(uBumpStrength/100.0);
   float height = heightAt(fh);
   vjDepth = clamp(height, 0.0, 1.0); // 深度 (高さ場 0..1 → 3D FX がこれで持ち上げる)
   float occlusion = 0.0;
@@ -4728,10 +4736,31 @@ float sdBox(vec3 p, vec3 b) {
     vec3 q = abs(p) -b;
     return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0);
 }
-float sdTetrahedron( vec3 p, float g ) {
+float gTc, gTs;           // 四面体の回転 (T だけで決まる = 1 画素 1 回)
+vec3 gCtr[15];            // 塊の中心 (T だけで決まる)
+vec4 gRot[15];            // 塊の回転 (cos, sin, cos*0.7, sin*0.7)
+int gN;
+void setupBlobs() {
+    gN = int(uBlobCount + 0.5);
     float angle = 2.86 + T * 0.75;
-    float c = cos(angle);
-    float s = sin(angle);
+    gTc = cos(angle);
+    gTs = sin(angle);
+    for (int i = 0; i < 15; i++) {
+        if (i >= gN) break;
+        float fi = float(i);
+        float time = T * (0.5 + fi * 0.1);
+        gCtr[i] = vec3(
+            sin(time + fi * 1.57*(uBlobPhase/100.0)),
+            cos(time * 0.8 + fi * 2.0*(uBlobPhase/100.0))*(uOrbitFlatten/100.0),
+            sin(time * 1.2 - fi * 1.0*(uBlobPhase/100.0))*(uOrbitDepth/100.0)
+        ) * 1.5*(uBlobSpread/100.0);
+        float rot_angle = T * (1.0 + fi * 0.3);
+        gRot[i] = vec4(cos(rot_angle), sin(rot_angle), cos(rot_angle*0.7), sin(rot_angle*0.7));
+    }
+}
+float sdTetrahedron( vec3 p, float g ) {
+    float c = gTc;
+    float s = gTs;
     mat2 rot = mat2(c, -s, s, c);
     p.xz = rot * p.xz;
     const vec3 n1 = normalize(vec3( 1.0, 1.0, 1.0));
@@ -4747,18 +4776,11 @@ float opSmoothUnion(float d1, float d2, float k) {
 float map(vec3 p) {
     float res = 1e9;
     for (int i = 0; i < 15; i++) {
-        if (i >= int(uBlobCount + 0.5)) break;
-        float fi = float(i);
-        float time = T * (0.5 + fi * 0.1);
-        vec3 center = vec3(
-            sin(time + fi * 1.57*(uBlobPhase/100.0)),
-            cos(time * 0.8 + fi * 2.0*(uBlobPhase/100.0))*(uOrbitFlatten/100.0),
-            sin(time * 1.2 - fi * 1.0*(uBlobPhase/100.0))*(uOrbitDepth/100.0)
-        ) * 1.5*(uBlobSpread/100.0);
-        vec3 p_local = p - center;
-        float rot_angle = T * (1.0 + fi * 0.3);
-        p_local.xz *= mat2(cos(rot_angle), -sin(rot_angle), sin(rot_angle), cos(rot_angle));
-        p_local.xy *= mat2(cos(rot_angle*0.7), -sin(rot_angle*0.7), sin(rot_angle*0.7), cos(rot_angle*0.7));
+        if (i >= gN) break;
+        vec4 rc = gRot[i];
+        vec3 p_local = p - gCtr[i];
+        p_local.xz *= mat2(rc.x, -rc.y, rc.y, rc.x);
+        p_local.xy *= mat2(rc.z, -rc.w, rc.w, rc.z);
         float shape_dist;
         if(i<int(uOctCount + 0.5)){
             shape_dist = max(sdOctahedron(p_local, 0.7*(uOctSize/100.0)), -sdBox(p_local, vec3(0.2, 0.3, 0.5)*(uHoleSize/100.0)));
@@ -4773,7 +4795,8 @@ float map(vec3 p) {
 }
 vec4 hexatunnel(vec2 r, vec2 f ) {
     vec4 o = vec4(0.0);
-    for(float i=0.; i<2.5; i+=.01) {
+    float iEnd = 2.5 + step(0.0, -uBlobCount)*0.0001;
+    for(float i=0.; i<iEnd; i+=.01) {
         float z;
         vec2 p = (f.xy*2.-r)/r.y*i, v;
         p /= .2+sqrt(z=max(1.-dot(p,p),0.))*.63*(uTunnelCurve/100.0);
@@ -4785,16 +4808,13 @@ vec4 hexatunnel(vec2 r, vec2 f ) {
     return o;
 }
 vec3 calcNormal(vec3 p) {
-    vec2 e = vec2 (0.001, 0.0);
-    return normalize(vec3(
-        map(p + e.xyy) - map(p - e.xyy),
-        map(p + e.yxy) - map(p - e.yxy),
-        map(p + e.yyx) - map(p - e.yyx)
-    ));
+    const vec2 k = vec2(1.0, -1.0);
+    return normalize(k.xyy*map(p + k.xyy*0.001) + k.yyx*map(p + k.yyx*0.001) + k.yxy*map(p + k.yxy*0.001) + k.xxx*map(p + k.xxx*0.001));
 }
 float calcShadow(vec3 p, vec3 lightDir) {
     float t = 0.01;
-    for (int i = 0; i < 50; i++) {
+    int nS = 49 + int(step(1.0, uBlobCount));
+    for (int i = 0; i < nS; i++) {
         float d = map(p + lightDir * t);
         if (d < 0.001) return 0.3;
         t += d;
@@ -4805,6 +4825,7 @@ float calcShadow(vec3 p, vec3 lightDir) {
 
 void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     T = iTime * uSpeed;
+    setupBlobs();
     vec2 uv = (fragCoord * 2.0 - iResolution.xy) / iResolution.y;
 
     float angle = T * 0.15;
@@ -4822,7 +4843,18 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
     float alpha = 0.0;        // 背景=透過 / ヒット=不透明
 
     float t = 0.0;
-    for (int i = 0; i < 100; i++) {
+    int nSteps = 100;
+    {   // 塊の群れを囲む球に当たらない光線は、march せず背景 (球の中は面が出来ない)
+        float sOct = 0.7*(uOctSize/100.0);
+        float sTet = max(0.9*(uTetSize/100.0), 0.7071068*(uTetCore/100.0));
+        float sTor = 0.3*(uTorusRadius/100.0) + 0.2*(uTorusTube/100.0);
+        float Rb = 1.5*(uBlobSpread/100.0)*length(vec3(1.0, uOrbitFlatten/100.0, uOrbitDepth/100.0))
+                 + max(sOct, max(sTet, sTor)) + 0.1875*(uBlend/100.0) + 0.02;
+        float bq = dot(ro, rd);
+        float disc = bq*bq - (dot(ro, ro) - Rb*Rb);
+        if (disc < 0.0) { nSteps = 0; } else { t = max(0.0, -bq - sqrt(disc)); }
+    }
+    for (int i = 0; i < nSteps; i++) {
         vec3 p = ro + rd * t;
         float d = map(p);
         if(d < 0.001) {
@@ -6816,7 +6848,7 @@ void mainImage(out vec4 O, in vec2 U){
         d += dot(-.0215 * (uSpread / 100.0) * dc, 2. * d) * dc;
       }
     }
-    vjDepth = (ringAlpha > 0.) ? clamp(.5 - ringZ * .28, 0., 1.) : 0.; // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
+    vjDepth = (ringAlpha > 0.) ? clamp(.5 - ringZ * .28, .02, 1.) : 0.; // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     c = uPaperColor - dot(vec3(.2, .5, 1), c) * vec3(.9 * (uInkDepth / 100.0)) * uInkColor;
     if(uVignette != 0.0) c *= 1. - (uVignette / 100.0) * clamp(dot(q0, q0) * 1.6, 0., 1.);
     if(uGrain != 0.0){ vec2 gp = floor(U); c += (fract(sin(dot(gp, vec2(12.9898, 78.233)) + iTime) * 43758.5453) - .5) * (uGrain / 100.0) * .5; }
@@ -7668,6 +7700,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 // @param uFogDist 0..300 = 0 @desc 奥ほど暗くなる霞の濃さ (%)
 // @param uVignette 0..100 = 0 @desc 周辺減光 (%)
 // @param uGrain 0..100 = 0 @desc 粒状のざらつき (%)
+// @param uBrighten 0..100 = 50 @desc 明るさの持ち上げ (%)。暗部を中心に上げて白飛びを抑える。0 で元の暗さ
 // @param uLeafColor color = #ffffff @desc 葉の色への掛け (白で元と同じ)
 // @param uSpecColor color = #ffffff @desc ハイライトの色。白で元と同じ
 // @param uLightColor color = #ffffff @desc 光源の色への掛け (白で元と同じ)
@@ -7701,6 +7734,7 @@ uniform float uColorShift; // 葉の色の縞のずれ (度)
 uniform float uFogDist; // 奥ほど暗くなる霞の濃さ (%)
 uniform float uVignette; // 周辺減光 (%)
 uniform float uGrain; // 粒状のざらつき (%)
+uniform float uBrighten; // 明るさの持ち上げ (%)。0 で元の暗さ
 uniform vec3 uLeafColor; // 葉の色のティント
 uniform vec3 uSpecColor; // ハイライトの色のティント
 uniform vec3 uLightColor; // 光源の色のティント
@@ -7731,7 +7765,7 @@ const float scale = EPSILON*10.0; //to prevent rendering artifacts
 
 vec3 warp(vec3 p){
     vec3 a = p.zxy;
-    return (sin(a)+cos(a))*500.0;
+    return sin(a+0.78539816)*707.10678;
 }
 
 float planet_surface(vec3 p){
@@ -7757,7 +7791,7 @@ float sceneSDF2(vec3 p) {
     p /= scale;
     float result = 0.0;
     p = sin(p/(500000.0*(uDomainPeriod/100.0)))*50000.0;
-    for(float i = 1.0; i < 9.0; i *= (uLayerRatio/100.0)){
+    for(float i = 1.0; i < 9.0; i *= max(uLayerRatio/100.0, 1.5)){   // 倍率が 0 や 1 以下でも必ず終わる (範囲 300〜800% では従来と同じ)
         float w = 1.0;
         if(i > 1.5){ w = uSecondLayer/100.0; }
         result += planet_surface2(p*i)/(i*i)*w;
@@ -7783,7 +7817,8 @@ float sceneSDF(vec3 p) {
 vec3 surface_color(vec3 p)
 {
     p /= scale*500.0;
-    return sin(vec3(sceneSDF(p)+.5,sceneSDF(p),sceneSDF(p*10.0)))/4.0+vec3(.6,.5,.2)*1.3;
+    float s0 = sceneSDF(p);
+    return sin(vec3(s0+.5,s0,sceneSDF(p*10.0)))/4.0+vec3(.6,.5,.2)*1.3;
 }
 
 
@@ -7800,7 +7835,8 @@ vec3 surface_color(vec3 p)
 float shortestDistanceToSurface(vec3 eye, vec3 marchingDirection, float start, float end) {
     float depth = start;
     float eps = EPSILON;
-    for (int i = 0; i < MAX_MARCHING_STEPS; i++) {
+    int maxSteps = MAX_MARCHING_STEPS - 1 + int(step(-1.0, speed));
+    for (int i = 0; i < maxSteps; i++) {
         float dist = sceneSDF(eye + depth * marchingDirection);
         if (dist < eps*(1.0+depth)) {
 			return depth;
@@ -8038,6 +8074,7 @@ void mainImage2( out vec4 fragColor, in vec2 fragCoord )
     if(uFogDist != 0.0){ color *= exp(-dist * uFogDist * 0.00003); }
     if(uVignette != 0.0){ vec2 vq = (fragCoord - 0.5*iResolution.xy)/iResolution.y; color *= 1.0 - (uVignette/100.0)*clamp(dot(vq,vq)*1.6, 0.0, 1.0); }
     if(uGrain != 0.0){ color += (fract(sin(dot(floor(fragCoord), vec2(12.9898,78.233)) + iTime)*43758.5453) - 0.5)*(uGrain/100.0)*0.4; }
+    if(uBrighten != 0.0){ float bk = uBrighten/100.0; color = pow(max(color, 0.0), vec3(1.0/(1.0 + 0.9*bk))) * (1.0 + 0.25*bk); color = color/(1.0 + max(color - 0.85, 0.0)*0.9); }
     fragColor = vec4(color, 1.0);
 }
 
@@ -8075,6 +8112,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     float shininess = 100.0;
     
     vec3 color = phongIllumination(K_a, K_d, K_s, shininess, p, eye);
+    if(uBrighten != 0.0){ float bk = uBrighten/100.0; color = pow(max(color, 0.0), vec3(1.0/(1.0 + 0.9*bk))) * (1.0 + 0.25*bk); color = color/(1.0 + max(color - 0.85, 0.0)*0.9); }
     
     fragColor = vec4(color, 1.0);
 }`
@@ -8423,6 +8461,7 @@ void mainImage(out vec4 fragColor, in vec2 _fragCoord) {
     }
   }
   if(uHaloCurve != 100.0){ l2Inf = pow(l2Inf, uHaloCurve/100.0); }
+  vjDepth = l2Inf; // 深度 (手前 1 → 奥 0)。背景 = 0、筋の濃さ = 高さ。3D FX がこれで持ち上げる
   if(uBackGlow != 0.0){ c = uBackTint * vec3(.15, .18, .36) * uBackGlow/100.0; }
   c = mix(c, l2Col, l2Inf);
 

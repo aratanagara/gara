@@ -200,6 +200,7 @@ vec3 st_out(vec3 col, float cov){
   col = mix(st_palette(col, pi), st_palette(col, pi + 1.0), pf);
   float paperOn = step(max(uBgColor.r, max(uBgColor.g, uBgColor.b)), 0.004);
   bgAlpha = cov;
+  vjDepth = cov;   // 深度 (塗られた帯=手前 1 / 紙 0)
   return col*cov + (vec3(0.784)*uPaperTint + stGrain)*paperOn*uSlotIsA*(1.0 - cov);
 }
 

@@ -1428,6 +1428,7 @@ uniform vec2  uRes;
 uniform vec3  uInk, uInk2, uPaper;
 uniform float uDensity, uOverlap, uBleed, uBleedS, uFiber, uGrain, uSheen, uFade, uOpaque, uPaperAlpha;
 uniform float uSheenAng, uSheenPow, uGamma, uRing, uHalo, uGrainS, uMottle, uVig;
+uniform float uDepthOut;   // 1 = 墨のある所だけ一定の深度を書く (紙 = 外れ)
 uniform int   uTaps;
 out vec4 frag;
 ${NOISE}
@@ -1484,6 +1485,7 @@ void main(){
     vec3  c = (a*ink + (1.0 - a)*uPaperAlpha*paper)/max(o, 1e-5);
     frag = vec4(c, o);
   }
+  gl_FragDepth = (uDepthOut > 0.5 && a > 0.12) ? 0.5 : 1.0;
 }`;
     const link = (vsrc, fsrc, tag)=>{
       const sh = (type, src)=>{
@@ -1766,6 +1768,12 @@ void main(){
     // 合成
     gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo || null);
     gl.viewport(0, 0, w, h);
+    const kd = (typeof GL !== 'undefined' && GL.kindKeepsDepth && opts.fbo) ? GL.kindKeepsDepth(opts.fbo) : false;   // GL が共通の深度を付けている (Code の 3D 深度)
+    this.depthInfo = { near:0.05, far:200, cam:0.5, R:0.4, linear:true };   // 墨 = 一定の深度 0.5 (紙は 1 = 外れ)
+    if(kd){
+      gl.depthMask(true); gl.clearDepth(1); gl.clear(gl.DEPTH_BUFFER_BIT);
+      gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.ALWAYS);
+    }
     const cp = this.compProg;
     gl.useProgram(cp);
     gl.activeTexture(gl.TEXTURE0);
@@ -1781,10 +1789,12 @@ void main(){
     c('uRing', dz(P.edgeRing)); c('uHalo', Math.max(0, +P.bleedHalo)/100); c('uGrainS', Math.max(0.1, +P.grainSize)/100);
     c('uMottle', dz(P.paperMottle)); c('uVig', dz(P.paperVignette));
     gl.uniform1i(U(cp,'uTaps'), taps);
+    c('uDepthOut', kd ? 1 : 0);
     gl.bindVertexArray(this.emptyVAO);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.disable(gl.DEPTH_TEST);
     gl.depthMask(true);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
@@ -1794,3 +1804,163 @@ void main(){
 Fude.PDefaults = JSON.parse(JSON.stringify(Fude.P));
 Fude.STYLES = FUDE_STYLES;
 Fude.COLORS = FUDE_COLORS;
+Fude.PARAM_HELP = {
+  textPick:'書く文字列の選び方。Text のまま / Word Set からランダム / 順番',
+  style:'書の書体。選ぶと筆・骨格のスライダーに値が入る',
+  fontFamily:'骨格を取る元のフォント',
+  beatMode:'Beat ごとの書き方。Off / A 1 筆ずつ / B 1 文字ずつ / C 全文字列',
+  beatBar:'beat モードで全部を書き切る拍数。この長さごとに次のセットへ',
+  beatRate:'A / B で 1 単位進む拍数',
+  penTime:'1 単位のうち筆で書く割合。0 で一気に表示',
+  beatHold:'A / B で全部出たあと止まる拍数',
+  setTrans:'セットが変わるときの Transition の拍数。Off で切替のみ',
+  setTransStyle:'セット切替の Transition の演出',
+  reseed:'Seed を固定するか、周回・読込ごとに引き直すか',
+  seed:'配置・字形・筆致の乱数の種',
+  vary:'Seed で変わる字形・筆致の幅。0 で毛の模様と飛沫だけ変わる',
+  styleRand:'書体を変える単位。固定 / 1 文字ごと / 1 セットごと',
+  fontRand:'フォントを変える単位。固定 / 1 文字ごと / 1 セットごと',
+  brushRand:'筆の値を揺らす単位。固定 / 1 文字ごと / 1 セットごと',
+  brushAmt:'筆の値の揺れ幅',
+  layoutRand:'位置・傾き・大きさを引く単位。1 文字ごと / 1 セットごと',
+  layout:'文字組。横組 / 縦組 / ランダム配置 / 毎回ランダム',
+  align:'行の揃え。中央 / 先頭 / 末尾',
+  bold:'標準か太字か。骨格の取れ方が変わる',
+  tracking:'字間 (em)',
+  leading:'行間 (em)',
+  wrap:'1 行の文字数で折り返す。Off で改行のみ',
+  scatter:'1 文字ごとの位置のランダム (全方向、em)',
+  shift:'組の方向と直交にずらすランダム (基線のばらつき)',
+  stagger:'1 文字おきに互い違いにずらす量',
+  stair:'1 文字ごとに階段状にずらす量',
+  scatterRot:'1 文字ごとの傾きのランダム (度)',
+  sizeMin:'大きさのランダムの下限 (倍)',
+  sizeMax:'大きさのランダムの上限 (倍)',
+  sizeSkew:'大きさの偏り。大きいほど小さい字が多く、たまに大きい字',
+  aspect:'文字の縦横比。大きいほど横長',
+  aspectRand:'縦横比のランダム',
+  slantRand:'傾斜のランダム',
+  compose:'ランダム配置の方式。完全に乱数 / ポスターの型',
+  even:'完全に乱数のときの散らばりの均等さ。0 で純粋な乱数',
+  area:'ランダム配置の広さ',
+  smooth:'骨格の平滑化の回数',
+  spur:'刈るヒゲの長さ (局所の太さ比)',
+  merge:'交点をまっすぐ通過させる角度の許容 (度)',
+  hane:'下へ止まる線に「はね」を付ける確率',
+  haraiLen:'斜めの線を「はらい」として延ばす長さ',
+  hataku:'波磔。右へ走る横画の終わりを跳ね上げる (隷書)',
+  link:'連綿。1 文字内の画と画を筆脈でつなぐ確率 (行書・草書)',
+  linkThin:'連綿の線の細さ',
+  width:'筆の太さ',
+  fontWidth:'元の書体の太さをどれだけ引き継ぐか',
+  nib:'筆の向きによる太細 (明朝の縦太横細)',
+  nibAngle:'筆の向き (度)',
+  pressure:'筆圧のゆらぎ',
+  pressFreq:'筆圧のゆらぎの細かさ',
+  entry:'打ち込みのふくらみ',
+  taperIn:'書き出しの細り (筆幅の倍数)',
+  taperOut:'はらいの長さ (筆幅の倍数)',
+  taperPow:'はらいの細り方',
+  harai:'はらいの強さ。0 で全部止め',
+  tome:'止めのふくらみ',
+  corner:'曲がり角の溜め',
+  wobble:'手ぶれ',
+  wobbleFreq:'手ぶれの細かさ',
+  edgeSoft:'線の縁のぼけ',
+  bristles:'毛の本数',
+  streak:'筋の長さ (筆幅の倍数)',
+  bristleContrast:'筋のコントラスト',
+  kasure:'かすれの量',
+  dryStart:'かすれ始める位置 (墨の残量)',
+  speedDry:'曲がり角でのかすれにくさ (筆が遅い)',
+  refill:'墨継ぎの間隔 (画数)',
+  splay:'毛先の割れ',
+  rough:'縁の荒れ',
+  bristleLean:'毛の筋の傾き。線に対して斜めの筋',
+  fineHair:'細い毛の筋の割合',
+  rimDry:'線の縁のかすれやすさ',
+  density:'墨の濃さ。低いと Ink 2 へ寄る淡墨',
+  tone:'濃淡のむら',
+  pool:'墨溜まり',
+  overlap:'線が交わる所の濃さ',
+  bleed:'にじみの量',
+  bleedScale:'にじみの模様の細かさ',
+  bleedFiber:'にじみが紙の繊維に沿う度合い',
+  bleedTaps:'にじみのサンプル数 (負荷)',
+  splatter:'飛沫の量',
+  splatSize:'飛沫の大きさ',
+  splatSpread:'飛沫の飛距離',
+  sheen:'濡れた墨の艶',
+  sheenAngle:'艶の光の向き (度)',
+  sheenPower:'艶の締まり。大きいほど細く鋭い',
+  inkGamma:'墨の濃淡のカーブ。大きいと淡い部分が増える',
+  edgeRing:'縁だけ濃く残す。中が抜けて輪郭になる',
+  bleedHalo:'にじみの滲み出し',
+  grain:'紙の目',
+  grainSize:'紙の目の粗さ',
+  paperMottle:'紙の雲むら (低周波の濃淡)',
+  paperVignette:'紙の四隅の焼け',
+  paperAlpha:'Slot B での紙の不透明度',
+  write:'書き順の再生。全表示 / Loop / Once',
+  writeBeats:'書き上げるまでの拍数',
+  holdBeats:'書いた後に止まる拍数',
+  exit:'消え方。フェード / 一気に消える / 1 筆・1 文字ずつ',
+  fadeBeats:'フェードの拍数',
+  ease:'1 画の速度カーブ',
+  easeAll:'文章全体の速度カーブ',
+  easePow:'速度カーブの強さ',
+  strokeGap:'画と画の間 (筆を運ぶ時間)',
+  speedVar:'画ごとの速さのばらつき',
+  flow:'毛の筋が線に沿って流れる量。負で逆向き',
+  boil:'コマごとに毛を引き直す量 (手描きのガタつき)',
+  boilRate:'毛を引き直す回数 / 秒。beat モードでは拍ごと',
+  sway:'文字のゆれ',
+  pulse:'拍で筆が太る / 飛沫が跳ねる量',
+  audio:'音の効き',
+  hold:'静止。Phase の時刻で固定',
+  phase:'Hold 時に固定する時刻 (秒)',
+  zoom:'拡大',
+  posX:'横位置',
+  posY:'縦位置',
+  rotate:'回転 (度)',
+  slant:'傾き',
+  stretch:'縦の伸び',
+  colorMode:'色の決め方。指定色 / セット / セットからランダム / 完全ランダム',
+  colorSet:'Color が「セットから選ぶ」のときのセット',
+  ink:'濃い墨の色',
+  ink2:'淡い墨の色。Density が低いほど寄る',
+  paper:'紙の色。Slot A では背景に敷く',
+};
+Fude.PARAM_NEEDS = {boilRate:'boil', bleedScale:'bleed', bleedFiber:'bleed', bleedTaps:'bleed', bleedHalo:'bleed', splatSize:'splatter', splatSpread:'splatter', sheenAngle:'sheen', sheenPower:'sheen', grainSize:'grain'};
+Fude.paramOn = function(key){
+  const P = this.P, r = k=> Math.round(P[k] || 0);
+  const beatMode = (typeof App !== 'undefined') && App.beatMode === 'beat';
+  const beatM = r('hold') === 1 ? 0 : (r('beatMode') || (beatMode ? 3 : 0));
+  const pick = r('layout'), composed = r('compose') === 1;
+  const styleFixed = r('styleRand') === 0, weak = k=> styleFixed && !(Math.abs(P[k]) >= 0.1);
+  if((key === 'beatRate' || key === 'beatHold') && beatM !== 1 && beatM !== 2) return false;
+  if((key === 'write' || key === 'writeBeats') && beatM !== 0) return false;
+  if(key === 'writeBeats' && r('write') === 0) return false;
+  if(key === 'holdBeats' && (beatM !== 0 || r('write') !== 1)) return false;
+  if(key === 'fadeBeats' && (r('exit') === 1 || +P.setTrans > 0 || (beatMode && r('exit') === 0))) return false;
+  if(key === 'easeAll' && (beatM === 1 || beatM === 2 || (beatM === 0 && r('write') === 0))) return false;
+  if(key === 'setTransStyle' && !(+P.setTrans > 0)) return false;
+  if(key === 'phase' && r('hold') !== 1) return false;
+  if(key === 'words' && r('textPick') === 0) return false;
+  if(key === 'fontFamily' && r('fontRand') !== 0) return false;
+  if(key === 'brushAmt' && r('brushRand') === 0) return false;
+  if(key === 'colorSet' && r('colorMode') !== 1) return false;
+  if((key === 'ink' || key === 'ink2' || key === 'paper') && r('colorMode') !== 0) return false;
+  if((key === 'tracking' || key === 'leading' || key === 'align') && pick === 2) return false;
+  if(key === 'wrap' && pick === 2) return false;
+  if((key === 'compose' || key === 'area') && pick <= 1) return false;
+  if(key === 'even' && (pick <= 1 || composed)) return false;
+  if((key === 'sizeMin' || key === 'sizeMax' || key === 'sizeSkew') && pick === 2 && composed) return false;
+  if((key === 'sizeMin' || key === 'sizeMax' || key === 'sizeSkew' || key === 'scatter' || key === 'shift' || key === 'stagger' || key === 'stair'
+      || key === 'scatterRot' || key === 'aspectRand' || key === 'slantRand' || key === 'align' || key === 'wrap') && pick === 4) return false;
+  if(key === 'linkThin' && weak('link')) return false;
+  if(key === 'pressFreq' && weak('pressure')) return false;
+  if(key === 'wobbleFreq' && weak('wobble')) return false;
+  if((key === 'dryStart' || key === 'speedDry' || key === 'refill' || key === 'rimDry') && weak('kasure')) return false;
+  return true;
+};

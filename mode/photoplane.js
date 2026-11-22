@@ -453,7 +453,7 @@ void main(){
     const nvOn = !!(this._fx && typeof Fx3d!=='undefined' && Fx3d.spikeFrame);
     gl.uniform1f(this.loc.uNvOn, nvOn ? 1 : 0);
     if(nvOn){ gl.uniform1f(this.loc.uNvSub, 1); Fx3d.spikeUniforms(gl, this.prog); gl.bindVertexArray(GL._emptyVAO || (GL._emptyVAO = gl.createVertexArray())); }
-    const nvCell = fxH / 14;
+    const nvK = nvOn ? (Fx3d.spikeFrame.thick || 1) : 1, nvCell = fxH / 14 * nvK;   // Needle の太さ = 針の面の大きさの倍率
     gl.uniform1i(this.loc.uTex,0);
     gl.activeTexture(gl.TEXTURE0);
 
@@ -495,7 +495,7 @@ void main(){
       if(nvOn){
         const pa = aspSq===1 ? pl.aspect : Math.pow(pl.aspect,aspSq);
         // 格子: 画面基準の間隔 (大きな板) / 短辺方向は最低 6 (小さな板でも針が板に見合った大きさ)
-        const sh = Math.min(plScale*pa, plScale), cpl = Math.min(nvCell, sh / 6);
+        const sh = Math.min(plScale*pa, plScale), cpl = Math.min(nvCell, sh / 6 * nvK);
         const gx = Math.max(1, Math.min(64, Math.round(plScale*pa/cpl))), gy = Math.max(1, Math.min(64, Math.round(plScale/cpl)));
         gl.uniform2f(this.loc.uNvGrid, gx, gy);
         gl.uniform2f(this.loc.uNvSalt, pi*3.7+0.3, 4.9);
@@ -511,3 +511,62 @@ void main(){
 };
 
 if(typeof window!=='undefined') window.PhotoPlane = PhotoPlane;
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+PhotoPlane.PARAM_HELP = {
+  count:'写真のプレーンの枚数',
+  size:'プレーンの大きさ',
+  sizeVar:'プレーンの大きさのばらつき',
+  spread:'プレーンが散らばる空間の広がり',
+  cropMin:'トリミング矩形の長辺の最小値 (元画像比)',
+  cropMax:'トリミング矩形の長辺の最大値 (元画像比)',
+  stretch:'矩形の長細さ。1 に近いほど極端に長い矩形が増える',
+  spin:'各プレーンの自転の速さ',
+  autorot:'カメラが次の位置へ移る速さ',
+  bend:'プレーンの端の反りの強さ',
+  warpAmp:'プレーン面のうねりの振れ幅',
+  warpFreq:'プレーン面のうねりの細かさ',
+  fov:'カメラの画角',
+  dist:'カメラの距離',
+  camEl:'カメラの仰角の基準',
+  ambient:'環境光。上げるほど陰影が消えて写真そのままになる',
+  beatPulse:'拍での回転とうねりの弱いキック',
+  seed:'配置とトリミングの乱数シード',
+  bg:'背景色。Slot B では透過になる',
+  cornerRound:'写真の角の丸み',
+  frameW:'写真の縁取りの太さ',
+  aspectSq:'写真の縦横比のつぶれ。100 で元のまま',
+  twist:'プレーンのねじれ角',
+  fold:'プレーンを中央で V 字に折る量。負で逆向き',
+  cropZoom:'トリミング範囲の拡大。上げると写真の一部が大きく出る',
+  clX:'プレーン群の横方向の広がり',
+  clY:'プレーン群の縦方向の広がり',
+  clZ:'プレーン群の奥行きの広がり',
+  hollow:'プレーンを中心から外の球殻へ寄せる量',
+  lookY:'カメラの注視点の高さ',
+  camRoll:'画面の傾き',
+  roamEl:'カメラが移る先の仰角の振れ幅',
+  roamDist:'カメラが移る先の距離の振れ幅',
+  spinVar:'自転の速さのプレーンごとのばらつき',
+  axisLock:'自転の軸を縦にそろえる量',
+  swirl:'プレーン群が中心まわりを渦巻く速さ。負で逆回り',
+  floatAmp:'プレーンが上下にふわふわ漂う幅',
+  warpYRatio:'うねりの縦方向の細かさの比',
+  lightAz:'光の向きの水平方向の回し',
+  lightEl:'光の向きの高さの回し',
+  spec:'鏡面ハイライトの強さ',
+  specShine:'鏡面ハイライトの鋭さ',
+  rim:'縁が光るリムライトの強さ',
+  fog:'奥が霧で沈む濃さ',
+  fogStart:'霧が始まる距離',
+  hueVar:'プレーンごとの色相のばらつき',
+  brightVar:'プレーンごとの明るさのばらつき',
+  softFocus:'写真をぼかす量',
+  fringe:'色収差のにじみ',
+  mosaic:'モザイクの粗さ',
+  edgeFade:'写真の縁を透明にぼかす量',
+  tint:'写真全体にかける色',
+  frameColor:'縁取りの色',
+  rimColor:'リムライトの色',
+};
+PhotoPlane.PARAM_NEEDS = {specShine:'spec', rimColor:'rim', frameColor:'frameW', fogStart:'fog'};

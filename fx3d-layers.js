@@ -168,7 +168,7 @@ Fx3d.EXTRA.layer = {
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'layersNeedle', NV_VS, FS) : null;
     if(nvp){
       // Needle: 板ごとに針の面で覆う。短辺は最低 6 格子 (画面の高さの 1/14 が目安)
-      const gy = Math.max(6, Math.round(14 * size)), gx = Math.max(1, Math.round(gy * asp));
+      const gy = Math.max(Math.round(Fx3d.nvScale(6)), Math.round(Fx3d.nvScale(14 * size))), gx = Math.max(1, Math.round(gy * asp));
       let sub = Fx3d.foldFrame ? 2 : 1;
       while(sub > 1 && n * GL.needleCellVerts(gx, gy, sub) > 1500000) sub--;
       setU(nvp);

@@ -956,3 +956,89 @@ void main(){
 LiquidPeel.PDefaults = JSON.parse(JSON.stringify(LiquidPeel.P));
 
 if (typeof window !== 'undefined') window.LiquidPeel = LiquidPeel;
+LiquidPeel.PARAM_HELP = {
+  shape:'本体の形。液体 (2D) / 球 / 縦の面 / 円柱 / 立方体',
+  reveal:'皮を常に表示するか、めくれる破片だけ表示するか',
+  appear:'Reveal 時の破片の出現色。本体の色から / 紙色から',
+  order:'自動剥がれの順。ノイズ順 / 下から上 / 上から下',
+  peelMode:'剥がれ方。自動 (周期) / マウス (クリック・ドラッグ)',
+  bodyLink:'本体色。Body Color を使うか、インクと連動',
+  edgeOn:'破片の縁の線の有無',
+  lit:'本体の陰影の有無',
+  speed:'全体の速さ',
+  morph:'形が変わる速さ (液体の円の動き / Deform の流れ)',
+  blobs:'液体の円の数 / Deform のこぶの数',
+  size:'本体の大きさ',
+  wobble:'細かい揺らぎ (液体の輪郭 / Deform の高周波)',
+  deform:'本体を法線方向にノイズで押し出す量。不定形の塊',
+  cells:'破片の分割数。多いほど小さい破片',
+  jitter:'破片の大きさ・位置のばらつき',
+  overlap:'破片の大きさ。1 より大きいと鱗のように重なる',
+  aspect:'破片の細長さ (長辺 / 短辺)',
+  rotate:'破片の向き。0 で縦、90 で横',
+  rotVar:'破片ごとの向きのばらつき。1 で ±90 度',
+  peel:'液体の輪郭で剥がれ始める帯の幅 (液体のみ)',
+  peelRate:'剥がれ周期の速さ。マウス剥がれでは進む速さ',
+  peelScale:'剥がれるまとまりの大きさ。小さいほど大きな塊',
+  peelVar:'剥がれる速さの破片ごとのムラ',
+  peelAmt:'剥がれる量。下げると剥がれない破片が塊で残る',
+  brush:'マウスで剥がす半径 (画面高さ比)',
+  lift:'折り返しのきつさ',
+  fall:'落ちる距離 (本体サイズ比)',
+  drift:'落ちながら横へ流れる量',
+  tumble:'落ちながら揺れる量',
+  tilt:'本体の傾き (rad)。面は ±0.35 まで',
+  spin:'本体の回転の速さ。面は左右の首振り',
+  swell:'beat モードで拍ごとに本体が膨らむ量',
+  depth:'奥行きによる減衰',
+  persp:'遠近の強さ',
+  fill:'塗りつぶし。0 で輪郭だけ',
+  body:'本体の中の色。0 で紙色、1 で本体色',
+  line:'輪郭線の太さ (px)',
+  lineSkip:'縁の線を描かない破片の割合',
+  detail:'一部の破片に出る内側の線の濃さ',
+  audio:'音で本体が膨らむ量',
+  paperAlpha:'Slot B での紙の不透明度。0 で線だけ残して透ける',
+  posX:'本体の横位置 (画面高さ比)。正で右',
+  posY:'本体の縦位置 (画面高さ比)。正で上',
+  roll:'画面全体の回転 (度)。重力の向きも回る',
+  lens:'画角。小さいと広角、大きいと望遠',
+  yaw:'本体の向き (度)。回転の初期位相',
+  lightA:'光の向き (度)',
+  lightZ:'光の手前っぽさ。小さいと真横からの光',
+  pShade:'破片の向きに応じた陰影',
+  rim:'本体の縁の光。負で縁を暗く',
+  round:'破片の角丸',
+  taper:'破片の先細り。負で先が広がる',
+  twist:'めくれるときの破片のひねり',
+  gap:'破片が本体から浮く高さ',
+  lenVar:'破片の長さのばらつき',
+  widVar:'破片の幅のばらつき',
+  fallCurve:'落ち方の曲線。大きいとためてから落ちる',
+  fallDir:'落ちる向き (度)。0 で真下',
+  fadeStart:'落ちながら薄れ始める位置',
+  peelSpan:'破片 1 枚がめくれて落ちきるまでの長さ (周期比)',
+  liftShare:'1 枚の動きのうちめくれに使う時間の割合',
+  peelPhase:'剥がれ周期の位相。Peel Rate 0 でこの位置で止まる',
+  toneVar:'破片ごとの明るさのばらつき',
+  hueVar:'破片ごとの色相のばらつき (度)',
+  bodyLine:'本体の線の太さ (Line に対する倍率)',
+  noiseY:'Deform のノイズの縦の伸び。大きいと縦縞状',
+  ink:'インク (破片) の色',
+  paper:'下地 (紙) の色。Slot A では背景にも敷く',
+  bodyCol:'本体の色 (Body Link が Body Color のとき)',
+};
+LiquidPeel.PARAM_NEEDS = {noiseY:'deform'};
+LiquidPeel.paramOn = function(key){
+  const P = this.P;
+  const mouse = Math.round(P.peelMode || 0) === 1;
+  const deformOff = Math.abs(P.deform) < 0.1;
+  if(key === 'peel' && Math.round(P.shape || 0) !== 0) return false;
+  if((key === 'blobs' || key === 'wobble' || key === 'morph') && Math.round(P.shape || 0) !== 0 && deformOff) return false;
+  if((key === 'order' || key === 'peelSpan' || key === 'liftShare' || key === 'peelPhase') && mouse) return false;
+  if(key === 'brush' && !mouse) return false;
+  if(key === 'appear' && Math.round(P.reveal || 0) !== 1) return false;
+  if(key === 'bodyCol' && Math.round(P.bodyLink == null ? 1 : P.bodyLink) === 1) return false;
+  if((key === 'lightA' || key === 'lightZ') && Math.round(P.lit == null ? 1 : P.lit) === 0 && !(Math.abs(P.pShade) >= 0.1)) return false;
+  return true;
+};

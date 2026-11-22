@@ -124,6 +124,7 @@ vec3 bg_discharge(vec2 fc){
     O = mix(O, cosGradColor(lum) * (0.2 + 1.4*lum), abs(uCosGrad));
   }
   O *= uBoltColor;
+  vjDepth = clamp(max(O.r, max(O.g, O.b)), 0.0, 1.0);   // 深度 (電撃の明るさ=手前 / 暗い地 0)
   O += uVoidColor;
   if(uVignette != 0.0){
     vec2 vq = (fc / resolution - 0.5) * 2.0;

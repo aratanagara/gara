@@ -481,3 +481,61 @@ void main(){
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
 };
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Inkelly.PARAM_HELP = {
+  beatSync:'インク場の切替を拍に同期',
+  spawnBeats:'何拍ごとにインク場を切り替えるか',
+  delay:'インク場を切り替える周期 (秒)',
+  spawnR:'インク発生リングの半径',
+  spawnW:'インク発生リングの太さ',
+  size:'形の大きさ (大きいほど弧が長い)',
+  sharp:'形の尖り具合',
+  curlScale:'発生形状の歪み (カール)',
+  displace:'フィードバックの変位 (流れの強さ)',
+  fade:'軌跡が消える速さ',
+  flow:'インク場の連続ドリフト (0 で段階切替のみ)',
+  breathBars:'ブリージング (密度の増減) の周期 (小節)',
+  feather:'エッジ検出の柔らかさ',
+  line:'Slot B の輪郭線の太さ (px)',
+  black:'濃い黒の絵の具版。低明度で反射が鈍い',
+  autoHue:'Slot A の支配的な色相を Hue に自動適用',
+  bgHue:'色味。0 で白 / 黒、上げると色相環で着色',
+  ringX:'インク発生リングの中心 X (%)',
+  ringY:'インク発生リングの中心 Y (%)',
+  ringStretch:'リングの横幅比。100 で真円',
+  ringAngle:'楕円リングの回転 (度)',
+  ringLobes:'リングの花弁数 (0 で真円)',
+  lobeDepth:'リングの花弁の深さ (%)',
+  ringEdge:'リング断面の鋭さ。大きいほど芯だけ残る',
+  swell:'場全体の大きなうねりの振れ幅',
+  bandDensity:'帯の数 (%)',
+  bandShear:'帯の位相の傾き量 (%)',
+  bandAngle:'帯の位相の傾きの向き (度)',
+  curlDetail:'渦を拾う間隔 (px)。小さいほど細かい渦',
+  flowAngle:'流れの向き (度)。90 で外へ広がる',
+  fbZoom:'フィードバックの拡大縮小。+ で吸い込み',
+  fbSpin:'フィードバックの回転 (%)',
+  chromeScale:'クロームの流れ場の大きさ',
+  chromeRefresh:'クロームの流れ場の入れ替わる速さ',
+  breathFloor:'ブリージングで密度が下がる下限',
+  reflBend:'反射の曲がり量',
+  reflDetail:'反射の滑らかさの幅',
+  reflSky:'反射の上下グラデの強さ',
+  edgeShade:'暗い境目の濃さ',
+  edgeSense:'境目を拾う感度',
+  edgeTint:'暗い境目に掛ける色 (白でそのまま)',
+  tintStrength:'Hue の色の濃さ',
+  inkFill:'Slot B: インクの塊を塗りつぶす濃さ',
+  wetShine:'Black のウェット反射の強さ',
+};
+Inkelly.PARAM_NEEDS = {lobeDepth:'ringLobes'};
+Inkelly.paramOn = function(key){
+  const P = this.P;
+  if(key === 'spawnBeats' && !P.beatSync) return false;
+  if(key === 'delay' && P.beatSync) return false;
+  if(key === 'bgHue' && P.autoHue) return false;
+  if(key === 'tintStrength' && !(P.bgHue > 0) && !P.autoHue) return false;   // bgHue はデッドゾーンを通さずに uniform へ渡る (シェーダは uBgHue > 0 で着色)
+  if(key === 'wetShine' && !P.black) return false;
+  return true;
+};

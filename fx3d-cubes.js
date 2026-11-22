@@ -181,7 +181,7 @@ Fx3d.EXTRA.cubes = {
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;
     if(nvp){
       // Needle: 全キューブの 6 面とも針の面で描く (元の面は描かない = 凹みが面に隠れない)。1 面の格子は max(2, round(14 / N))、頂点が多すぎるときは分割を粗くする
-      const g = Math.max(2, Math.round(14 / N));
+      const g = Math.max(2, Math.round(Fx3d.nvScale(14 / N)));
       let sub = Fx3d.foldFrame ? 3 : 2;
       while(sub > 1 && cubes * 6 * GL.needleCellVerts(g, g, sub) > 1500000) sub--;
       setU(nvp);

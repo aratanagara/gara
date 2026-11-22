@@ -914,3 +914,67 @@ void main(){
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   }
 };
+
+// パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+Layer.PARAM_HELP = {
+  count:'プレーンの枚数。0 で画像数と 8 の大きい方',
+  bg:'背景の明るさ。下げると Grad Map や陰影が効きやすい',
+  bgColor:'背景色。明るさは BG で決まる',
+  size:'プレーンの大きさ',
+  sizeVar:'プレーンの大きさのばらつき',
+  spread:'プレーンが散らばる球の半径',
+  seed:'配置の乱数シード',
+  spin:'各プレーンの自転の速さ',
+  float:'プレーンが上下に漂う幅',
+  autorot:'カメラが自動で公転する速さ',
+  curvature:'プレーンの反りの強さ',
+  ambient:'環境光。下げると陰影が強くなる',
+  rim:'縁が光るリムライトの強さ',
+  fog:'奥が背景色に沈む霧の濃さ',
+  lightAz:'光の向きの水平方向の回し',
+  fov:'カメラの画角',
+  dist:'カメラの距離',
+  camEl:'カメラの仰角',
+  shadowOn:'プレーンの影を落とす',
+  shadowStr:'影の濃さ',
+  shadowSoft:'影のぼけ',
+  showGround:'床を出す',
+  groundMult:'床の高さ (広がりに対する比。負で下)',
+  groundBrt:'床の明るさ (背景色に対する比)',
+  pngAlpha:'キー色のある画像で、キー色を透明にする',
+  aspect:'プレーンの横幅の倍率 (画像の縦横比に掛ける)',
+  corner:'プレーンの角の丸み',
+  frame:'プレーンの縁取りの太さ',
+  frameColor:'縁取りの色',
+  texZoom:'画像の拡大。上げると中央が大きく出る',
+  opacity:'プレーンの不透明度',
+  tintColor:'画像にかける色',
+  shadeVar:'プレーンごとの暗さのばらつき',
+  backDim:'裏面の暗さ。下げると裏が暗くなる',
+  gloss:'ツヤのハイライトの強さ',
+  glossPow:'ツヤのハイライトの鋭さ',
+  lightH:'光の高さ。上げると真上から当たる',
+  rimColor:'リムライトの色',
+  bend2:'2 つ目の反りの強さ (Curvature に掛かる)',
+  layoutX:'配置の横方向の広がり',
+  layoutY:'配置の縦方向の広がり',
+  layoutZ:'配置の奥行きの広がり',
+  hollow:'プレーンを中心から外の球殻へ寄せる量',
+  sizeGrad:'中心と外側の大きさの差。負で外側ほど大きい',
+  pulse:'プレーンの大きさが脈打つ量',
+  drift:'プレーンが横へゆらゆら流れる幅',
+  swirl:'中心まわりに渦巻く速さ。負で逆回り',
+  axisLock:'自転の軸を縦にそろえる量',
+  tilt:'プレーンごとに傾きをずらす量',
+  faceCam:'プレーンをカメラの方へ向ける量',
+  camRoll:'画面の傾き',
+  camAzOff:'カメラの水平角の基準のずれ',
+};
+Layer.PARAM_NEEDS = {frameColor:'frame', glossPow:'gloss'};
+Layer.paramOn = function(key){
+  const P = this.P;
+  if((key === 'shadowStr' || key === 'shadowSoft') && !P.shadowOn) return false;
+  if((key === 'groundMult' || key === 'groundBrt') && !P.showGround) return false;
+  if(key === 'rimColor' && !(P.rim > 0)) return false;
+  return true;
+};
