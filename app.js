@@ -17240,8 +17240,9 @@ ${outBlock}
       .then(() => { if(typeof UI !== 'undefined' && UI.refreshPresetLib) UI.refreshPresetLib(); });
     return lib;
   },
-  // github.io 配信では共有ストアは読み取り専用 (閲覧者がサーバーデータを上書きできない)
-  _storeWritable(){ try{ return !/\.github\.io$/.test(location.hostname); }catch(e){ return true; } },
+  // github.io 配信では共有ストアは読み取り専用 (閲覧者がサーバーデータを上書きできない)。
+  //   書き込み鍵 (localStorage gara.storeToken) を入れた端末 = 作者の端末だけ書ける (サーバーの store.php が鍵を照合する)
+  _storeWritable(){ try{ return !/\.github\.io$/.test(location.hostname) || !!localStorage.getItem('gara.storeToken'); }catch(e){ return true; } },
   _storeBase(){
     // 本番(同一オリジン)は相対 / ローカル・file:// 等は本番サーバーを参照して同期(store.php が CORS 許可)
     // github.io (静的ホスティング) では PHP が動かないため、共有ストアへ保存する
@@ -18351,7 +18352,7 @@ ${outBlock}
   },
   // この端末で変えたキー (と消したキー) だけを、今のサーバーの一式へ差し込んで送る
   async _pushDefs(){
-    if(this._storeWritable && !this._storeWritable()) return;   // github.io の公開版は共有ストアへ書かない (読み取り専用)
+    if(this._storeWritable && !this._storeWritable()) return;   // github.io の公開版は、書き込み鍵のない端末からは共有ストアへ書かない
     const local = this._localDefs(), base = this._defsBase || {};
     const changed = Object.keys(local).filter(k => local[k] !== base[k]);
     const removed = this._defsBase ? Object.keys(base).filter(k => !(k in local)) : [];
