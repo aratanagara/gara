@@ -335,6 +335,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 // @param uLensZoom 60..200 = 100 @desc レンズの倍率 (%)。上げると望遠
 // @param uFlightRadius 40..200 = 100 @desc 飛行ルートの旋回半径 (%)
 // @param uVignetteAmt 0..160 = 100 @desc 周辺減光の強さ (%)。100 で元の強さ
+uniform float uSlotIsA;   // 1=Slot A / 0=Slot B (B では背景を透過)
+// @param uBgColor color = #000000 @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
+uniform vec3 uBgColor;
 uniform float rollSpeed; uniform float speed;
 uniform float uDuneHeight;  // 砂丘の高さ (%)
 uniform float uDuneFreq;    // 砂丘の波長の細かさ (%)。上げると畝が密になる
@@ -532,7 +535,9 @@ void mainImage(out vec4 fragColour, in vec2 fragCoord){
   colour = clamp(colour,0.0,1.0);
   colour = 1.7*colour/(1.0+colour);
   colour = colour*colour*(3.0-2.0*colour);
-  fragColour = vec4(colour,1.0);
+  float mask = hit.materialId == MAT_SKY ? 0.0 : 1.0;
+  if(mask < 0.5){ colour = (colour + uBgColor) * uSlotIsA; }
+  fragColour = vec4(colour, mix(mask, 1.0, uSlotIsA));
 }`
 }
 ,
@@ -743,6 +748,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 // @param uGrainAmt 0..100 = 0 @desc フィルムグレインの量 (%)
 // @param uLineTint color = #ffffff @desc 縁線へ掛けるティント色
 // @param uFillTint color = #ffffff @desc 塗りへ掛けるティント色
+uniform float uSlotIsA;   // 1=Slot A / 0=Slot B (B では背景を透過)
+// @param uBgColor color = #000000 @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
+uniform vec3 uBgColor;
 uniform float speed; uniform float colShift; uniform float colSpeed;
 uniform float uWaveFreq; // 波の細かさ (%)
 uniform float uWaveHeight; // 波の振れ幅 (%)
@@ -791,6 +799,7 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
   float T = iTime*speed, TC = iTime*colSpeed;
   vec2 uv = (fragCoord - 0.5*iResolution.xy)/iResolution.y;
   vec3 col = vec3(0);
+  float coverage = 0.0;
   float pixelSize = dFdx(uv.x)*1.25*(uEdgeSoft/100.0);
   vec2 uv0 = uv;
   if(uCenterX != 0.0 || uCenterY != 0.0){ uv -= vec2(uCenterX, uCenterY)/100.0; }
@@ -810,13 +819,16 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float gLine = graph(p.y, f0, f1, pixelSize);
     col = mix(col, c*c*0.7*(uFillAmount/100.0)*uFillTint, gFill);   // 塗り(粘り)
     col = mix(col, c*2.0*(uLineBright/100.0)*uLineTint,  gLine);    // 縁(したたる線)
+    coverage = mix(coverage, 1.0, gFill);
+    coverage = mix(coverage, 1.0, gLine);
     vjDepth = mix(vjDepth, (i + 1.0)/slices, clamp(max(gFill, gLine), 0.0, 1.0)); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
     col = max(col, 0.);
   }
   col = pow(col, vec3(0.4545));
   if(uVignetteAmt != 0.0){ col *= 1.0 - uVignetteAmt/100.0*clamp(dot(uv0, uv0)*1.6, 0.0, 1.0); }
-  if(uGrainAmt != 0.0){ col += (fract(sin(dot(fragCoord, vec2(12.9898, 78.233)) + iTime)*43758.5453) - 0.5)*uGrainAmt/100.0*0.25; }
-  fragColor = vec4(col, 1.0);
+  if(uGrainAmt != 0.0){ col += (fract(sin(dot(fragCoord, vec2(12.9898, 78.233)) + iTime)*43758.5453) - 0.5)*uGrainAmt/100.0*0.25 * mix(coverage, 1.0, uSlotIsA); }
+  col += uBgColor * (1.0 - coverage) * uSlotIsA;
+  fragColor = vec4(col, mix(coverage, 1.0, uSlotIsA));
 }`
 }
 ,
@@ -1970,6 +1982,9 @@ void mainImage(out vec4 color, in vec2 coord){
 // @param uSunTint color = #ffffff @desc ハイライト (光源) の色。掛け算
 // @param uSkyTint color = #ffffff @desc (未使用) 環境光 (空) の色味
 // @param uBgTint color = #ffffff @desc (未使用) 背景の色味
+uniform float uSlotIsA;   // 1=Slot A / 0=Slot B (B では背景を透過)
+// @param uBgColor color = #000000 @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
+uniform vec3 uBgColor;
 uniform float uInvRadius; // 反転球の半径 (%)
 uniform float uInvLimit; // 反転の最大倍率 (%)
 uniform float uBlockSize; // 太い柱の断面の大きさ (%)
@@ -2254,6 +2269,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec3 p = ro + rd * t;
     float tHit = t;
     vec3 n = normal(p);
+    float mask = (t < tmax && d < dmin) ? 1.0 : 0.0;
     if (t < tmax && d < dmin) {
       vjDepth = clamp(1.0 - (tHit - (length(ro) - 15.0)) / 30.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
       vec3 albedo = mix(vec3(1., .5, .1), vec3(1.0), surface);
@@ -2299,7 +2315,9 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     
 	if(uVignetteAmt != 0.0){ color *= 1.0 - uVignetteAmt/100.0*clamp(dot(uv*2.0-1.0, uv*2.0-1.0)*0.5, 0.0, 1.0); }
 	if(uGrainAmt != 0.0){ color += (fract(sin(dot(fragCoord, vec2(12.9898, 78.233)) + iTime)*43758.5453) - 0.5)*uGrainAmt/100.0*0.2; }
-	fragColor = vec4(sqrt(max(color, 0.0)),1.0);
+	vec3 col = sqrt(max(color, 0.0));
+	if(mask < 0.5){ col = (col + uBgColor) * uSlotIsA; }
+	fragColor = vec4(col, mix(mask, 1.0, uSlotIsA));
 }`
 }
 
@@ -2336,6 +2354,9 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
 // @param uVignetteAmount 0..100 = 0 @desc 周辺減光の強さ (%)
 // @param uCubeTintA color = #ffffff @desc 赤紫側の色への掛け算。白で元と同じ
 // @param uCubeTintB color = #ffffff @desc 青側の色への掛け算。白で元と同じ
+uniform float uSlotIsA;   // 1=Slot A / 0=Slot B (B では背景を透過)
+// @param uBgColor color = #4d4d4d @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
+uniform vec3 uBgColor;
 uniform float uCubeSize;     // 立方体の大きさ (%)
 uniform float uCubeHeight;   // 立方体の縦の長さ (%)。上げると柱状、下げると板状
 uniform float uCubeRound;    // 立方体の角の丸み (%)。100 で球に近づく
@@ -2569,7 +2590,8 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
     vec2 rayResult = rayMarching( eye, dir, 2.0, clip_far );
 	float depth = rayResult.x;
 	if ( depth >= clip_far ) {        
-		fragColor = vec4(0.3,0.3,0.3,depth);//Background color
+		vec3 bg = uBgColor == vec3(77.0 / 255.0) ? vec3(0.3) : uBgColor; // 既定色は元の精度を保つ
+		fragColor = vec4(bg * uSlotIsA, mix(0.0, 1.0, uSlotIsA));
         return;
 	}
 	
@@ -2582,7 +2604,7 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord )
    	vec3 shaded = material( pos, n, eye,rayResult.y );
     if(uFog != 0.0) shaded = mix(shaded, fogColor, 1.0 - exp(-depth*uFog/2000.0));
     if(uVignetteAmount != 0.0){ vec2 vq = fragCoord.xy/iResolution.xy - 0.5; shaded *= 1.0 - uVignetteAmount/100.0*smoothstep(0.2, 0.75, length(vq)); }
-   	fragColor = vec4(shaded, depth);
+   	fragColor = vec4(shaded, 1.0);
     
 }`
 }
@@ -8291,6 +8313,9 @@ void mainImage( out vec4 fragColor, in vec2 fragCoord ){
 // @param uVignetteAmt 0..100 = 0 @desc 周辺減光 (%)
 // @param uStreakTint color = #ffffff @desc 光の尾の色味。掛け算 (白で元と同じ)
 // @param uBackTint color = #ffffff @desc 背景の色味。掛け算 (白で元と同じ)
+uniform float uSlotIsA;   // 1=Slot A / 0=Slot B (B では背景を透過)
+// @param uBgColor color = #000000 @desc 背景色。透ける部分 (Slot B で下が見える所) に敷く色
+uniform vec3 uBgColor;
 uniform float speed;
 uniform float radiusPct;   // 0..1 だと deadParam に潰されるため % 指定
 uniform float glowPct;
@@ -8463,6 +8488,7 @@ void mainImage(out vec4 fragColor, in vec2 _fragCoord) {
   if(uHaloCurve != 100.0){ l2Inf = pow(l2Inf, uHaloCurve/100.0); }
   vjDepth = l2Inf; // 深度 (手前 1 → 奥 0)。背景 = 0、筋の濃さ = 高さ。3D FX がこれで持ち上げる
   if(uBackGlow != 0.0){ c = uBackTint * vec3(.15, .18, .36) * uBackGlow/100.0; }
+  c *= uSlotIsA;
   c = mix(c, l2Col, l2Inf);
 
   // hash effect
@@ -8470,7 +8496,8 @@ void mainImage(out vec4 fragColor, in vec2 _fragCoord) {
   c *= exp(-grain*h/max(c,1e-3))*(1.0+sin(iTime*100.0*speed*h)*(uTwinkle/100.0))/2.0+1.0;
 
   if(uVignetteAmt != 0.0){ vec2 vv = pS*2.0; c *= 1.0 - uVignetteAmt/100.0*clamp(dot(vv, vv)*0.4, 0.0, 1.0); }
-  fragColor = vec4(c, 1);
+  c += uBgColor * (1.0 - l2Inf) * uSlotIsA;
+  fragColor = vec4(c, mix(l2Inf, 1.0, uSlotIsA));
 }`
 }
 ,

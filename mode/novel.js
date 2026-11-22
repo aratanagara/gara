@@ -564,11 +564,11 @@ const NovelTerminal = {
     sceneVals:null,    // Scene ごとの保存値 { fluid:{...}, editorial:{...}, _common:{...} } (snapScene / applyScene)
     fluidLayout:0,     // Fluid の構図 (0 = Classic = 場面ごとの座標表 / 1 = Kandinsky = S126 の骨格: 斜めの主軸と対軸・焦点・大円・楔)
     fluidCircleAlign:1, fluidTriAlign:1, fluidRectAlign:0,   // 輪郭線の位置 0 = 内 / 1 = 中心 / 2 = 外 (既定 = 従来: 円と三角は中心、矩形は内)
-    // Fluid の HUD の各部の色。null = 従来どおり Fluid Accent か Mono Ink に従う (HUD_COLOR_BASE)
-    hudAimColor:null, hudRingColor:null, hudTickColor:null, hudBracketColor:null, hudCrossColor:null, hudCoordColor:null, hudLabelColor:null, hudInfoColor:null, hudBarColor:null,
+    hudColor:null,   // Fluid の HUD の色 (全部品で 1 色)。null = 従来どおり、部品ごとに Fluid Accent か Mono Ink に従う
     // 品詞カラーの色 (Ink = 品詞カラー と Meltdown / Columns / Vertical / Typer の字)
     posPunct:[150/255,150/255,160/255], posKata:[0,210/255,1], posKanji:[1,238/255,190/255], posParticle:[1,30/255,30/255],
     posInflect:[1,230/255,0], posHira:[0,235/255,80/255], posOther:[235/255,70/255,1],
+    cursorMode:'auto', cursorColor:[96/255,1,142/255],   // Fluid のカーソル・キャレットの色: 'auto' = 従来 (Duotone は差し色、他は薄い緑) / 'color' = cursorColor
     bgMode:'none', bgColor:[0,0,0],   // Fluid の背景: 'none' = 透明 (従来) / 'color' = bgColor で塗る。Option のスポイトもここに入れる (bgColor + bgMode)
     fluidRunCaret:false,   // 字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける
     fluidBigFont:0,    // Big Glyph の書体 (0 = Fluid Font と同じ / 1〜 = FLUID_FONTS の番号)
@@ -697,14 +697,11 @@ const NovelTerminal = {
     ['Render Freq','renderFreq',30,300,5,v=>v.toFixed(0)+'%','ASCII Render: 波の細かさ'],
   ],
   // 色 param の UI 定義 [label,key,title]
-  COLORS:[['Bg Color','bgColor','Fluid: 背景の色 (Background = Color のとき)'],['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色'],
-    ['HUD Aim','hudAimColor','Fluid HUD: 円の中心を通る照準線'],['HUD Ring','hudRingColor','Fluid HUD: 円周の弧'],['HUD Ticks','hudTickColor','Fluid HUD: 円周の目盛り'],
-    ['HUD Brackets','hudBracketColor','Fluid HUD: 矩形の角のブラケット'],['HUD Tri Cross','hudCrossColor','Fluid HUD: 三角の中心の十字'],['HUD Coord','hudCoordColor','Fluid HUD: 円の座標 (X Y)'],
-    ['HUD R / θ','hudLabelColor','Fluid HUD: 円の半径と矩形の角度'],['HUD Corner Text','hudInfoColor','Fluid HUD: 四隅の場面番号と時刻'],['HUD Corner Bar','hudBarColor','Fluid HUD: 左上の線'],
+  COLORS:[['Bg Color','bgColor','Fluid: 背景の色 (Background = Color のとき)'],['Cursor Color','cursorColor','Fluid: カーソルとキャレットの色 (Cursor Ink = Color のとき)'],['Tint Color','tintColor','Fluid: Terminal Tint の混ぜる色'],['Flash Color','flashColor','拍頭フラッシュの色'],['Mono Ink','monoColor','Ink=Mono / Duotone の文字色'],['Fluid Accent','fluidAccent','Fluid: Duotone の縦書き・HUD・大きな字の差し色'],
+    ['HUD Color','hudColor','Fluid HUD: 照準線・弧・目盛り・ブラケット・十字・座標・四隅の文字と線の色 (未設定なら従来どおり Fluid Accent と Mono Ink)'],
     ['POS Punct','posPunct','品詞カラー: 約物'],['POS Katakana','posKata','品詞カラー: カタカナ'],['POS Kanji','posKanji','品詞カラー: 漢字'],['POS Particle','posParticle','品詞カラー: 助詞'],
     ['POS Inflection','posInflect','品詞カラー: 活用・語尾'],['POS Hiragana','posHira','品詞カラー: ひらがな'],['POS Other','posOther','品詞カラー: その他 (欧文・記号など)']],
-  HUD_COLOR_BASE: { hudAimColor:'fluidAccent', hudRingColor:'monoColor', hudTickColor:'fluidAccent', hudBracketColor:'monoColor', hudCrossColor:'fluidAccent',
-    hudCoordColor:'fluidAccent', hudLabelColor:'monoColor', hudInfoColor:'monoColor', hudBarColor:'fluidAccent' },
+  HUD_COLOR_BASE: { hudColor:'fluidAccent' },   // null (従来どおり) の色 → スウォッチに出す色
   POS_KEYS: ['posPunct','posKata','posKanji','posParticle','posInflect','posHira','posOther'],
   // 色 param の表示用の値 (0..1)。HUD の色が null (従来どおり) なら従う色を返す
   colorOf(key, v){
@@ -1667,14 +1664,16 @@ const NovelTerminal = {
 
     if(kHud > 0 && !ext) this._fluidHud(p, geoA, toPx, t, fs, accRGB, monoRGB, kHud, variant);
 
+    const curRGB = (this.P && this.P.cursorMode === 'color') ? this._rgb('cursorColor',[96,255,142]) : null;
+    const curFill = ()=>{ if(curRGB) p.fill(curRGB[0], curRGB[1], curRGB[2], 230); else if(inkMode === 4) p.fill(accRGB[0], accRGB[1], accRGB[2], 200); else p.fill(96,255,142,78); };
     const cursorX = W*(0.08 + 0.76*((t*0.047)%1));
     const cursorY = H*(0.88 + 0.025*Math.sin(t*0.8));
     if((!this.P || this.P.cursor !== false) && Math.floor(t*3.8)%2 === 0){
-      if(inkMode === 4) p.fill(accRGB[0], accRGB[1], accRGB[2], 200); else p.fill(96,255,142,78);
+      curFill();
       p.rect(cursorX, cursorY, adv*1.2*kCur, lh*0.92*kCur);
     }
     if(carets && carets.length && Math.floor(t*3.8)%2 === 0){   // 字のひと続きの末尾のキャレット (色と点滅は走査カーソルと同じ)
-      if(inkMode === 4) p.fill(accRGB[0], accRGB[1], accRGB[2], 200); else p.fill(96,255,142,78);
+      curFill();
       for(const [x, y, v] of carets){ if(v) p.rect(x, y, vfs*kCur, vfs*0.5*kCur); else p.rect(x, y, fs*0.5*kCur, fs*kCur); }
     }
 
@@ -1686,25 +1685,25 @@ const NovelTerminal = {
     const W = p.width, H = p.height, dc = p.drawingContext, M = Math.min(W, H);
     const hair = Math.max(1, Math.round(M/900)), sfs = Math.max(7, Math.round(fs*0.62));
     const A = (c, a)=>`rgba(${c[0]},${c[1]},${c[2]},${Math.max(0, Math.min(1, a*k))})`;
-    const C = key => this._rgb(key, this.HUD_COLOR_BASE[key] === 'fluidAccent' ? acc : ink);   // HUD の各部の色 (null = 従来どおり)
+    const hc = this._rgb('hudColor', null), C = base => hc || base;   // HUD Color (null = 部品ごとに従来どおり acc / ink)
     const snap = 1 - g.jolt/0.42;   // 0 (切替の瞬間) → 1
     dc.save();
     dc.lineWidth = hair;
     // 照準線 (切替のたびに中心から外へ伸びる)
     const [cx, cy] = toPx(g.circleX, g.circleY), ext = 0.25 + 0.75*snap;
     if(g.circleOn){
-    dc.strokeStyle = A(C('hudAimColor'), 0.38);
+    dc.strokeStyle = A(C(acc), 0.38);
     dc.beginPath(); dc.moveTo(cx - W*ext, cy); dc.lineTo(cx + W*ext, cy); dc.moveTo(cx, cy - H*ext); dc.lineTo(cx, cy + H*ext); dc.stroke();
     // 円周の目盛り
     const rpx = g.circleRadius*H*0.5;
-    dc.strokeStyle = A(C('hudRingColor'), 0.30);
+    dc.strokeStyle = A(C(ink), 0.30);
     dc.beginPath(); dc.arc(cx, cy, rpx, -Math.PI*0.5, -Math.PI*0.5 + Math.PI*2*snap); dc.stroke();
-    dc.strokeStyle = A(C('hudTickColor'), 0.8);
+    dc.strokeStyle = A(C(acc), 0.8);
     for(let i=0;i<12;i++){ const a = i/12*Math.PI*2 + t*0.15, r0 = rpx*(i%3===0 ? 0.92 : 0.96); dc.beginPath(); dc.moveTo(cx + Math.cos(a)*r0, cy + Math.sin(a)*r0); dc.lineTo(cx + Math.cos(a)*rpx, cy + Math.sin(a)*rpx); dc.stroke(); }
     }
     // 矩形の角のブラケット (回転に追従)
     const [rx, ry] = toPx(g.rectX, g.rectY), hw = g.rectW*H*0.25, hh = g.rectH*H*0.25, ca = Math.cos(g.rectAngle), sa = Math.sin(g.rectAngle), L = Math.min(hw, hh)*0.28;
-    dc.strokeStyle = A(C('hudBracketColor'), 0.62);
+    dc.strokeStyle = A(C(ink), 0.62);
     if(g.rectOn) for(const [sx, sy] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
       const P = (u, v)=>[rx + (u*ca - v*sa), ry + (u*sa + v*ca)];
       const c0 = P(sx*hw, sy*hh), c1 = P(sx*hw - sx*L, sy*hh), c2 = P(sx*hw, sy*hh - sy*L);
@@ -1712,25 +1711,25 @@ const NovelTerminal = {
     }
     // 三角の中心の十字
     const [tx, ty] = toPx(g.triX, g.triY), cr = sfs*0.9;
-    dc.strokeStyle = A(C('hudCrossColor'), 0.7);
+    dc.strokeStyle = A(C(acc), 0.7);
     if(g.triOn){ dc.beginPath(); dc.moveTo(tx - cr, ty); dc.lineTo(tx + cr, ty); dc.moveTo(tx, ty - cr); dc.lineTo(tx, ty + cr); dc.stroke(); }
     // 座標ラベル
     dc.font = `${sfs}px ${this.ED_GOTHIC}`; dc.textBaseline = 'alphabetic';
     try{ dc.letterSpacing = (sfs*0.12).toFixed(1)+'px'; }catch(e){}
     const f2 = v=>(v>=0?'+':'−') + Math.abs(v).toFixed(3);
-    dc.fillStyle = A(C('hudCoordColor'), 0.95); dc.textAlign = 'left';
+    dc.fillStyle = A(C(acc), 0.95); dc.textAlign = 'left';
     if(g.circleOn) dc.fillText(`X${f2(g.circleX)}  Y${f2(g.circleY)}`, cx + sfs*0.8, cy - sfs*0.7);
-    dc.fillStyle = A(C('hudLabelColor'), 0.75);
+    dc.fillStyle = A(C(ink), 0.75);
     if(g.circleOn) dc.fillText(`R ${(g.circleRadius).toFixed(3)}`, cx + sfs*0.8, cy + sfs*1.5);
     if(g.rectOn) dc.fillText(`θ ${((g.rectAngle*180/Math.PI)%360).toFixed(1)}°`, rx + hw*0.0 + sfs*0.6, ry - sfs*0.6);
     // 四隅: シーン番号 / 時刻
     const m = Math.round(M*0.045);
-    dc.fillStyle = A(C('hudInfoColor'), 0.78); dc.textAlign = 'left';
+    dc.fillStyle = A(C(ink), 0.78); dc.textAlign = 'left';
     dc.fillText(`FLUID  ${String(g.scene+1).padStart(2,'0')} / 06   VAR ${variant+1}`, m, m + sfs);
     dc.textAlign = 'right';
     const tt = Math.max(0, t), mm = Math.floor(tt/60), ss = Math.floor(tt%60), ff = Math.floor((tt%1)*100);
     dc.fillText(`${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}.${String(ff).padStart(2,'0')}`, W - m, H - m);
-    dc.fillStyle = A(C('hudBarColor'), 0.95);
+    dc.fillStyle = A(C(acc), 0.95);
     dc.fillRect(m, m + sfs*1.6, sfs*6*snap, hair*2);
     try{ dc.letterSpacing = '0px'; }catch(e){}
     dc.restore();
@@ -2146,9 +2145,9 @@ const NovelTerminal = {
     ['Type', ['fluidFont','fluidAspect','density','leading','tracking','alpha','fluidContrast','glitch']],
     ['Layers', ['vertLayer','vertSize','vertGap','vertCut','cursorSize']],
     ['Motion', ['drift','rowWave','colWave','waveFreq','flicker','beatFlash','morph']],
-    ['Color', ['bgMode','bgColor','inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
+    ['Color', ['bgMode','bgColor','cursorMode','cursorColor','inkMode','tint','tintColor','monoColor','fluidAccent','flashColor']],
     ['Parts of Speech', ['posPunct','posKata','posKanji','posParticle','posInflect','posHira','posOther']],
-    ['HUD', ['fluidHud','hudAimColor','hudRingColor','hudTickColor','hudBracketColor','hudCrossColor','hudCoordColor','hudLabelColor','hudInfoColor','hudBarColor','fluidBig','fluidBigFont','fluidBigAspect']],
+    ['HUD', ['fluidHud','hudColor','fluidBig','fluidBigFont','fluidBigAspect']],
     ['Editorial', ['edLayout','edSize','edLeading','edTracking','edMargin','edJump','edCols','edGrid','edReveal','edTurnBeats','edFolio','edInk','edAccent']],
     ['Meltdown', ['meltDepth','dripLen','meltFade','meltGhost','meltLeading','meltSize']],
     ['Columns', ['colCount','colGutter','colLeading','colMargin']],
@@ -2206,6 +2205,8 @@ const NovelTerminal = {
     cursorSize:'カーソル (下を走るカーソルと、字の末尾のキャレット) の大きさ',
     bgMode:'背景。None = 透明 (Slot B では下の絵が透ける) / Color = Bg Color で塗る。Option のスポイトで色を拾うと Color になる',
     bgColor:'背景の色 (Background = Color のとき)',
+    cursorMode:'カーソルとキャレットの色。Auto = 従来 (Duotone は差し色、ほかは薄い緑) / Color = Cursor Color で塗る',
+    cursorColor:'カーソルとキャレットの色 (Cursor Ink = Color のとき)',
     fluidRunCaret:'字のひと続き (横組みの行・縦書きの列) の末尾ごとにキャレットを付ける。色と点滅は走査カーソルと同じ',
     drift:'字面全体がゆっくり流れる量',
     rowWave:'行ごとに横へうねる幅',
@@ -2221,6 +2222,7 @@ const NovelTerminal = {
     fluidAccent:'差し色。Duotone の縦書き・HUD・大きな字に使う',
     flashColor:'拍頭に光る色 (全場面)',
     fluidHud:'照準線・座標・ブラケットの濃さ',
+    hudColor:'HUD (照準線・弧・目盛り・ブラケット・十字・座標・四隅の文字と線) の色。未設定 (Reset) なら従来どおり Fluid Accent と Mono Ink',
     fluidBig:'円の中心に出る大きな字の濃さ',
     fluidBigFont:'大きな字の書体。Same as Fluid = Fluid Font と同じ。ほかは Fluid Font と同じ一覧',
     fluidBigAspect:'大きな字の縦横比。100 = 正体 / 小さいほど長体 (幅を詰める) / 大きいほど平体 (高さを詰める)',
@@ -2240,7 +2242,7 @@ const NovelTerminal = {
       'fluidCircleMode','fluidCircleLine','fluidCircleSize','fluidTriMode','fluidTriLine','fluidTriSize','fluidTriSpin','fluidRectMode','fluidRectLine','fluidRectSize','fluidRectSpin',
       'fluidContrast','fluidCrisp','fluidFont','fluidHud','fluidLayout','fluidSharp','glitch','inkMode','leading','lineWidth','monoColor','rhythmAmt','rowWave',
       'sceneSpeed','shapeScale','split','tint','tintColor','tracking','vertCut','vertGap','vertSize','waveFreq','vertLayer','holeLayer','cursor','clash','fluidTriText','fluidRectText','fluidCircleEdge','fluidTriEdge','fluidRectEdge','fluidBigFont','fluidBigAspect','fluidRunCaret','bgMode','bgColor','fluidCircleAlign','fluidTriAlign','fluidRectAlign',
-      'hudAimColor','hudRingColor','hudTickColor','hudBracketColor','hudCrossColor','hudCoordColor','hudLabelColor','hudInfoColor','hudBarColor'],
+      'hudColor','cursorMode','cursorColor'],
     editorial: ['edAccent','edCols','edFolio','edGrid','edInk','edJump','edLayout','edLeading','edMargin','edMarks','edReveal','edSize','edTracking','edTurnBeats'],
     melt: ['dripLen','meltDepth','meltFade','meltGhost','meltLeading','meltSize'],
     columns: ['colCount','colGutter','colLeading','colMargin'],
@@ -2268,6 +2270,8 @@ const NovelTerminal = {
     if(['vertSize','vertGap','vertCut','clash'].includes(key) && P.vertLayer === false) return false;
     if(key === 'cursorSize' && P.cursor === false && P.fluidRunCaret !== true) return false;
     if(key === 'bgColor' && P.bgMode !== 'color') return false;
+    if((key === 'cursorMode' || key === 'cursorColor') && P.cursor === false && P.fluidRunCaret !== true) return false;
+    if(key === 'cursorColor' && P.cursorMode !== 'color') return false;
     if((key === 'fluidBigFont' || key === 'fluidBigAspect') && ((P.fluidBig || 0) < 10 || (P.fluidCircleMode|0) === 3)) return false;   // 大きな字が出ないとき (Big Glyph 0 か円が Off)
     return true;
   },

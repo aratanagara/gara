@@ -282,5 +282,6 @@ vec3 bg_ravecube(vec2 fc){
     col *= 1.0 + (gn - 0.5) * (uGrain / 100.0) * 1.2;
   }
   if(uVignette != 0.0) col *= 1.0 - (uVignette / 100.0) * smoothstep(0.2, 0.9, length(uv));
+  if(!hit){ bgAlpha = uFx3dMatte; return col * max(uSlotIsA, uFx3dMatte); }   // ミス (背景) は Slot B で透かす。Slot A / 3D FX 紙抜き中は従来どおり描く
   return col;
 }

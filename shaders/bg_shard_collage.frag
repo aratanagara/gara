@@ -741,9 +741,12 @@ vec3 bg_shard_collage(vec2 fc){
   }
 
   vec3 ground = rim * (0.955 + 0.07 * sc_vn(p * vec2(130.0, 48.0))) * toothMul;
-  vec3 col = ground;
+  float scSolid = max(uSlotIsA, uFx3dMatte);   // Slot A / 3D FX 紙抜き中は地も描く。Slot B は地を透かす
+  vec3 col = ground * scSolid;
+  float shCov = 0.0;                           // 破片のカバレッジ (地の上に乗る量)
   if(topPrio >= 0.0){
-    vec3 base = ground;
+    vec3 base = ground * scSolid;
+    float baseCov = 0.0;
     if(underPrio >= 0.0 && topSd < gap + px * 2.0){
       sc_palMain = fract(underPal);
       sc_palAcc = floor(underPal) * 0.1 + 0.05;
@@ -753,7 +756,8 @@ vec3 bg_shard_collage(vec2 fc){
       if(uTexTurn != 0.0){ ulp = sc_rot(ulp, radians(uTexTurn)); }
       vec3 utex = sc_tex(underTyp, uTexScale != 100.0 ? ulp * (uTexScale / 100.0) : ulp, underId, fc, grain) * toothMul;
       utex = sc_shardLook(utex);
-      base = mix(ground, mix(rim, utex, uFill), uCover);
+      base = mix(ground * scSolid, mix(rim, utex, uFill), uCover);
+      baseCov = uCover;
     }
     float cover = smoothstep(-px, px, topSd);
     float fill = smoothstep(gap - px, gap + px, topSd);
@@ -769,6 +773,8 @@ vec3 bg_shard_collage(vec2 fc){
       face = mix(rim, ttex, fill);
     }
     col = mix(base, face, cover);
+    shCov = mix(baseCov, 1.0, cover);
   }
+  bgAlpha = max(shCov, uFx3dMatte);
   return clamp(col, 0.0, 1.0);
 }

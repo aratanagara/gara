@@ -229,5 +229,6 @@ vec3 bg_kuko(vec2 fc){
   col = mix(col, uFogColor, 1.0 - exp(-0.0019 * (uFogDensity / 100.0) * dt*dt*dt));                 // fog
   col = mix(vec3(0), col, smoothstep(3.9, 0.1, length(uvScr*vec2(1.4, 1) * (100.0 / uVignetteReach)))); // vignette
   if(uFilmGrain != 0.0){ col += (fract(sin(dot(fc, vec2(12.9898, 78.233))) * 43758.5453) - 0.5) * (uFilmGrain / 100.0) * 0.2; }
+  if(dt > 20.0){ bgAlpha = uFx3dMatte; return col * max(uSlotIsA, uFx3dMatte); }   // ミス (背景) は Slot B で透かす。Slot A / 3D FX 紙抜き中は従来どおり描く
   return col;
 }

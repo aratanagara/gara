@@ -51,7 +51,6 @@
 // @param uBoneColor color = #ffffff @desc 骨の地の色。掛け算のティント
 // @param uStainColor color = #ffffff @desc シミの色。掛け算のティント
 // @param uHazeColor color = #ffffff @desc 遠景の霞の色。掛け算のティント
-// @param uVoidColor color = #ffffff @desc 空洞の奥 (何も当たらない部分) の色。掛け算のティント
 // @param uSpecColor color = #ffffff @desc ハイライトの色。掛け算のティント
 uniform float uSteps;       // レイマーチのステップ上限。下げると軽いが遠景の細部が溶ける
 uniform float uRibs;        // 肋骨(尖った湾曲骨)。OFF で SDF 評価が減る (約 -17%)
@@ -96,7 +95,6 @@ uniform float uGrain; // フィルムの粒 (%)
 uniform vec3 uBoneColor; // 骨の地の色 (ティント)
 uniform vec3 uStainColor; // シミの色 (ティント)
 uniform vec3 uHazeColor; // 遠景の霞の色 (ティント)
-uniform vec3 uVoidColor; // 空洞の奥の色 (ティント)
 uniform vec3 uSpecColor; // ハイライトの色 (ティント)
 
 #define bt_rot(spin) mat2(cos(spin),sin(spin),-sin(spin),cos(spin))
@@ -375,12 +373,9 @@ vec3 bg_bonetunnel(vec2 fc){
 
   float dist = bt_shortestDistance(eye, worldDir, BT_MIN_DIST, BT_MAX_DIST);
 
-  // 背景(非ヒット=空洞の奥)= グレーの霞。真っ黒の空洞を避け奥行きを出す。
-  //   3D FX 中 (紙抜き) だけ空洞を透過にして、骨だけを 3D FX に乗せる。空洞の色は背景色 (uBgColor、既定 = 従来の霞の灰色) を最後に敷く
-  if(dist > BT_MAX_DIST - BT_EPSILON){
-    if(uFx3dMatte > 0.5){ bgAlpha = 0.0; return vec3(0.0); }
-    return vec3(0.22) * uVoidColor;
-  }
+  // 背景(非ヒット=空洞の奥)は透過で返す (Slot B では下が透け、3D FX には骨だけが乗る)。
+  //   空洞の色は背景色 (uBgColor、既定 = 従来の霞の灰色 #383838) を entrypoint が敷く。真っ黒の空洞を避け奥行きを出す。
+  if(dist > BT_MAX_DIST - BT_EPSILON){ bgAlpha = 0.0; return vec3(0.0); }
   vec3 p = eye + dist * worldDir;
   vjDepth = exp(-dist * 6.0);   // 深度 (トンネルの奥ほど 0)。当たる距離はほぼ 0〜0.25 なので、その幅で 1 → 0.2 ほどに広げる。折り系・3D FX が紙をこれで持ち上げる
   vec3 ka;

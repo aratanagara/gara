@@ -114,14 +114,17 @@ vec3 bg_rain(vec2 fc){
   float h = rn_blob_noises(time, v, uSharp / 100.0);     // 雨粒の高さ場 (0..1)
   vec3  n = rn_blob_normal(time, v, uSharp / 100.0);     // その法線
   vjDepth = clamp(h, 0.0, 1.0);                          // 深度 (粒の高さ=手前 1 / ガラス地 0)
+  float rnCov = clamp(h, 0.0, 1.0);                      // 粒のカバレッジ
+  float rnK = mix(max(uSlotIsA, uFx3dMatte), 1.0, rnCov);   // ガラス地を描く量 (Slot A / 3D FX 紙抜き中は常に 1、Slot B は粒のぶんだけ)
+  bgAlpha = max(rnCov, uFx3dMatte);
 
   // 白黒の雨粒: 暗いガラス背景 + 粒の陰影 + スペキュラのきらめき
   vec3  L    = normalize(vec3(0.5, 0.6, 0.6 * (uLightHeight / 100.0)));
   if(uLightAngle != 0.0){ float la = radians(uLightAngle); float cl = cos(la), sl = sin(la); L.xy = mat2(cl, -sl, sl, cl) * L.xy; }
   float diff = clamp(dot(n, L), 0.0, 1.0);
   float spec = pow(clamp(dot(reflect(-L, n), vec3(0.0, 0.0, 1.0)), 0.0, 1.0), 24.0 * (uSpecSharp / 100.0));
-  vec3 g = 0.08 * uGlassTint + 0.55*h*(uBodyAmt / 100.0) * uDropTint + 0.40*diff*h*(uDiffAmt / 100.0) + spec*0.9*(uSpecAmt / 100.0) * uSpecTint;
+  vec3 g = 0.08 * uGlassTint * rnK + 0.55*h*(uBodyAmt / 100.0) * uDropTint + 0.40*diff*h*(uDiffAmt / 100.0) + spec*0.9*(uSpecAmt / 100.0) * uSpecTint;
   if(uRimLight != 0.0) g += pow(1.0 - clamp(n.z, 0.0, 1.0), 3.0) * uRimLight / 100.0 * 0.6 * uRimTint;
-  if(uGrain != 0.0) g += (rn_hash(fc).x - 0.5) * uGrain / 100.0 * 0.15;
+  if(uGrain != 0.0) g += (rn_hash(fc).x - 0.5) * uGrain / 100.0 * 0.15 * rnK;
   return clamp(g, 0.0, 1.0);
 }

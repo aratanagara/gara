@@ -206,5 +206,6 @@ vec3 bg_moreFract(vec2 fc){
     col = mfEnv(rd) * (uBackGlow / 100.0) * 0.5;
   }
   col = pow(col, vec3(0.4545 * (uContrast / 100.0)));
+  if(d >= MF_MAX_DIST){ bgAlpha = uFx3dMatte; return col * max(uSlotIsA, uFx3dMatte); }   // ミス (背景) は Slot B で透かす。Slot A / 3D FX 紙抜き中は従来どおり描く
   return col;
 }

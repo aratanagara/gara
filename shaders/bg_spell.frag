@@ -86,7 +86,6 @@ uniform float uRoomHeight; // 床と天井の間隔 (%)
 // @param uVolumeGrain 0..300 = 100 @desc ボリュームのざらつき (%)
 // @param uDepthFade -50..100 = 0 @desc 奥ほど弱める量 (%)。負で奥を強める
 // @param uLightColor color = #ffffff @desc 光の色味
-// @param uVoidColor color = #000000 @desc 闇の色。暗い部分に足される
 uniform float uCamHeight; // カメラの高さ (%)。部屋の中で上下
 uniform float uCamPitch; // カメラの俯仰 (度)
 uniform float uCamRoll; // 画面の回転 (度)
@@ -101,7 +100,6 @@ uniform float uShellThick; // 光の殻の厚み (%)。大きいほど輪郭が�
 uniform float uVolumeGrain; // ボリュームのざらつき (%)
 uniform float uDepthFade; // 奥ほど弱める量 (%)。負で奥を強める
 uniform vec3 uLightColor; // 光のティント
-uniform vec3 uVoidColor; // 闇の色 (暗い部分に足す)
 
 float sp_tubes(vec3 pos){
   float cylinderRadius = .02 * (uThick / 100.0);
@@ -190,5 +188,6 @@ vec3 bg_spell(vec2 fc){
     spTrav += dist;
   }
   vjDepth = spFirst < 0.0 ? 0.0 : clamp(exp(-(spFirst - 3.0) * 0.15), 0.0, 1.0);   // 深度 (殻に最初に入った距離)。折り系・3D FX が紙をこれで持ち上げる
-  return vec3(shade) * uLightColor + uVoidColor * (1.0 - shade);
+  bgAlpha = shade;   // 光の殻の濃さ = カバレッジ。闇 (何も無い所) は透かし、闇の色は背景色 uBgColor が敷く
+  return vec3(shade) * uLightColor;
 }
