@@ -1,0 +1,3188 @@
+[
+  {
+    "file": "shaders/bg_7sKSDd.frag",
+    "line": 5,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_7sKSDd.frag",
+    "line": 43,
+    "name": "uWarpPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_7sSGWD.frag",
+    "line": 20,
+    "name": "uGridRotate",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_NdsSzl.frag",
+    "line": 7,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_abstract.frag",
+    "line": 63,
+    "name": "uRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_abstract.frag",
+    "line": 70,
+    "name": "uBandHue",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_abstract.frag",
+    "line": 73,
+    "name": "uCamYaw",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_abstract.frag",
+    "line": 74,
+    "name": "uCamPitch",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_bonetunnel.frag",
+    "line": 17,
+    "name": "uAngle",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_bonetunnel.frag",
+    "line": 26,
+    "name": "uFov",
+    "min": 40,
+    "max": 120,
+    "defaultValue": 64,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_bonetunnel.frag",
+    "line": 27,
+    "name": "uCamRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_bonetunnel.frag",
+    "line": 32,
+    "name": "uLookYaw",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_bonetunnel.frag",
+    "line": 33,
+    "name": "uLookPitch",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_bonetunnel.frag",
+    "line": 35,
+    "name": "uLightAz",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_boogie_woogie.frag",
+    "line": 49,
+    "name": "uMbTilt",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_boogie_woogie.frag",
+    "line": 54,
+    "name": "uMbPitch",
+    "min": 0,
+    "max": 80,
+    "defaultValue": 45,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_composition.frag",
+    "line": 37,
+    "name": "uMcTilt",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_composition.frag",
+    "line": 42,
+    "name": "uMcPitch",
+    "min": 0,
+    "max": 80,
+    "defaultValue": 45,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_cos20.frag",
+    "line": 18,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_cpuffs.frag",
+    "line": 19,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_cpuffs.frag",
+    "line": 38,
+    "name": "uCamYaw",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_cpuffs.frag",
+    "line": 39,
+    "name": "uCamPitch",
+    "min": -35,
+    "max": 35,
+    "defaultValue": 0,
+    "sliderStep": 0.07
+  },
+  {
+    "file": "shaders/bg_cpuffs.frag",
+    "line": 44,
+    "name": "uRollSway",
+    "min": 0,
+    "max": 300,
+    "defaultValue": 100,
+    "sliderStep": 0.3
+  },
+  {
+    "file": "shaders/bg_crystalPath.frag",
+    "line": 19,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_crystalPath.frag",
+    "line": 29,
+    "name": "uLightAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_crystalPath.frag",
+    "line": 30,
+    "name": "uLightElev",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_crystalPath.frag",
+    "line": 42,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_crystalPath.frag",
+    "line": 43,
+    "name": "uCamPitch",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_crystalice.frag",
+    "line": 26,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_crystalnoise.frag",
+    "line": 20,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_decon.frag",
+    "line": 21,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_discharge.frag",
+    "line": 15,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_echeveria.frag",
+    "line": 37,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_echeveria.frag",
+    "line": 38,
+    "name": "uTilt",
+    "min": -45,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.135
+  },
+  {
+    "file": "shaders/bg_echeveria.frag",
+    "line": 57,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_echeveria.frag",
+    "line": 58,
+    "name": "uEnvYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flowcollage.frag",
+    "line": 48,
+    "name": "uFieldRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flowcollage.frag",
+    "line": 61,
+    "name": "uRingTwist",
+    "min": 0,
+    "max": 300,
+    "defaultValue": 100,
+    "sliderStep": 0.3
+  },
+  {
+    "file": "shaders/bg_flower.frag",
+    "line": 32,
+    "name": "uBladePhase",
+    "min": 0,
+    "max": 360,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flower.frag",
+    "line": 40,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flower.frag",
+    "line": 43,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flower.frag",
+    "line": 44,
+    "name": "uLightPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_flowers.frag",
+    "line": 17,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flowers.frag",
+    "line": 52,
+    "name": "uPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flowingMetal.frag",
+    "line": 35,
+    "name": "uLightAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_flowingMetal.frag",
+    "line": 43,
+    "name": "uCamRoll",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_flowingMetal.frag",
+    "line": 44,
+    "name": "uOrbitOffset",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_formation.frag",
+    "line": 53,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_formation.frag",
+    "line": 70,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_fragile.frag",
+    "line": 25,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_fragile.frag",
+    "line": 65,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_futurist.frag",
+    "line": 36,
+    "name": "uFtTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ghost.frag",
+    "line": 31,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ghost.frag",
+    "line": 42,
+    "name": "uCamYaw",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_ghost.frag",
+    "line": 43,
+    "name": "uCamPitch",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "shaders/bg_ghost.frag",
+    "line": 49,
+    "name": "uRollSway",
+    "min": 0,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_ghost.frag",
+    "line": 53,
+    "name": "uEnvTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_glass_frost.frag",
+    "line": 45,
+    "name": "uTexLightAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_greyliquid.frag",
+    "line": 64,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_hinotori.frag",
+    "line": 11,
+    "name": "uArc",
+    "min": 2,
+    "max": 60,
+    "defaultValue": 12,
+    "sliderStep": 0.058
+  },
+  {
+    "file": "shaders/bg_hinotori.frag",
+    "line": 13,
+    "name": "uHueSpread",
+    "min": 0,
+    "max": 30,
+    "defaultValue": 6,
+    "sliderStep": 0.03
+  },
+  {
+    "file": "shaders/bg_hinotori.frag",
+    "line": 22,
+    "name": "uRingRot",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_iridiscious.frag",
+    "line": 40,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_iridiscious.frag",
+    "line": 43,
+    "name": "uWarpPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_jflow.frag",
+    "line": 35,
+    "name": "uHueSpread",
+    "min": 0,
+    "max": 500,
+    "defaultValue": 100,
+    "sliderStep": 0.5
+  },
+  {
+    "file": "shaders/bg_jflow.frag",
+    "line": 37,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_jflow.frag",
+    "line": 58,
+    "name": "uFlowTilt",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_juice.frag",
+    "line": 46,
+    "name": "uLookYaw",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_juice.frag",
+    "line": 47,
+    "name": "uLookPitch",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_juice.frag",
+    "line": 52,
+    "name": "uShieldTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_juice.frag",
+    "line": 53,
+    "name": "uShieldLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_juice.frag",
+    "line": 55,
+    "name": "uShieldHue",
+    "min": 0,
+    "max": 100,
+    "defaultValue": 25,
+    "sliderStep": 0.1
+  },
+  {
+    "file": "shaders/bg_kandinsky.frag",
+    "line": 42,
+    "name": "uKdTurn",
+    "min": 0,
+    "max": 180,
+    "defaultValue": 60,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_kuko.frag",
+    "line": 34,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_kuko.frag",
+    "line": 46,
+    "name": "uPitch",
+    "min": 40,
+    "max": 220,
+    "defaultValue": 100,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_kuko.frag",
+    "line": 57,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_kuko.frag",
+    "line": 58,
+    "name": "uCamYaw",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "shaders/bg_kuko.frag",
+    "line": 59,
+    "name": "uCamPitch",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "shaders/bg_liqmount.frag",
+    "line": 14,
+    "name": "uOctTurn",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_liqmount.frag",
+    "line": 15,
+    "name": "uHorizon",
+    "min": -40,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.07
+  },
+  {
+    "file": "shaders/bg_liqmount.frag",
+    "line": 32,
+    "name": "uRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_liqmount.frag",
+    "line": 36,
+    "name": "uLightAz",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_liqmount.frag",
+    "line": 85,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_liquicolor.frag",
+    "line": 43,
+    "name": "uRollAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_liquicolor.frag",
+    "line": 51,
+    "name": "uFieldRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_liquicolor.frag",
+    "line": 52,
+    "name": "uChromaPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_liquid.frag",
+    "line": 35,
+    "name": "uTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_liquid.frag",
+    "line": 43,
+    "name": "uWarpTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_mandelbaum.frag",
+    "line": 31,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_mandelbaum.frag",
+    "line": 56,
+    "name": "uKeyYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_mandelbaum.frag",
+    "line": 57,
+    "name": "uKeyPitch",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_mandelbaum.frag",
+    "line": 58,
+    "name": "uFillYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_manga.frag",
+    "line": 91,
+    "name": "uPageTilt",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "shaders/bg_manga.frag",
+    "line": 97,
+    "name": "uPatternSpin",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_marble.frag",
+    "line": 32,
+    "name": "uLayerTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_marble.frag",
+    "line": 45,
+    "name": "uTiltX",
+    "min": -80,
+    "max": 80,
+    "defaultValue": 0,
+    "sliderStep": 0.16
+  },
+  {
+    "file": "shaders/bg_marble.frag",
+    "line": 46,
+    "name": "uTiltY",
+    "min": -80,
+    "max": 80,
+    "defaultValue": 0,
+    "sliderStep": 0.16
+  },
+  {
+    "file": "shaders/bg_marble.frag",
+    "line": 48,
+    "name": "uFlowDir",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_marble.frag",
+    "line": 51,
+    "name": "uWarpTwist",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_marble.frag",
+    "line": 121,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_matrixjulia.frag",
+    "line": 36,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_meguru.frag",
+    "line": 40,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_meguru.frag",
+    "line": 56,
+    "name": "uDepthHue",
+    "min": 100,
+    "max": 500,
+    "defaultValue": 100,
+    "sliderStep": 0.4
+  },
+  {
+    "file": "shaders/bg_metalSlab.frag",
+    "line": 40,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_metalSlab.frag",
+    "line": 47,
+    "name": "uSplitJitter",
+    "min": 0,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_metalSlab.frag",
+    "line": 75,
+    "name": "uLightTurn",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_metalSlab.frag",
+    "line": 80,
+    "name": "uPlateHue",
+    "min": 0,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.1
+  },
+  {
+    "file": "shaders/bg_moreFract.frag",
+    "line": 39,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_moreFract.frag",
+    "line": 50,
+    "name": "uArmAngle",
+    "min": -35,
+    "max": 35,
+    "defaultValue": 0,
+    "sliderStep": 0.07
+  },
+  {
+    "file": "shaders/bg_moreFract.frag",
+    "line": 57,
+    "name": "uOrbit",
+    "min": -80,
+    "max": 80,
+    "defaultValue": 0,
+    "sliderStep": 0.16
+  },
+  {
+    "file": "shaders/bg_moreFract.frag",
+    "line": 72,
+    "name": "uCamHeight",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_moreFract.frag",
+    "line": 74,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_moreFract.frag",
+    "line": 77,
+    "name": "uLightPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_nebula.frag",
+    "line": 65,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_nebula.frag",
+    "line": 84,
+    "name": "uMidTilt",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_nebula.frag",
+    "line": 85,
+    "name": "uOuterTilt",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_newSinFract.frag",
+    "line": 30,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ngray.frag",
+    "line": 21,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ngray.frag",
+    "line": 54,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_ngray.frag",
+    "line": 58,
+    "name": "uOrbitStart",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ngray.frag",
+    "line": 59,
+    "name": "uLightAz",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_nitro.frag",
+    "line": 52,
+    "name": "uCamPitch",
+    "min": -40,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.1
+  },
+  {
+    "file": "shaders/bg_nitro.frag",
+    "line": 54,
+    "name": "uCamYaw",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "shaders/bg_nitro.frag",
+    "line": 70,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 31,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 38,
+    "name": "uFoldRot",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 39,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 40,
+    "name": "uLightElev",
+    "min": -20,
+    "max": 85,
+    "defaultValue": 32,
+    "sliderStep": 0.105
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 50,
+    "name": "uCamAzim",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 51,
+    "name": "uCamElev",
+    "min": -70,
+    "max": 70,
+    "defaultValue": 0,
+    "sliderStep": 0.14
+  },
+  {
+    "file": "shaders/bg_origami.frag",
+    "line": 52,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_paperfractal.frag",
+    "line": 24,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_paperfractal.frag",
+    "line": 37,
+    "name": "uOrbitYaw",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_paperfractal.frag",
+    "line": 38,
+    "name": "uOrbitPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_paperfractal.frag",
+    "line": 39,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_patchsdf.frag",
+    "line": 38,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_patchsdf.frag",
+    "line": 39,
+    "name": "uTilt",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_patchsdf.frag",
+    "line": 54,
+    "name": "uCubeTwist",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_patchsdf.frag",
+    "line": 78,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_patchsdf.frag",
+    "line": 81,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_patchsdf.frag",
+    "line": 89,
+    "name": "uBandPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_rain.frag",
+    "line": 25,
+    "name": "uLightAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_rain.frag",
+    "line": 37,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_rainbowWater.frag",
+    "line": 32,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_rainbowWater.frag",
+    "line": 36,
+    "name": "uWarpTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ravecube.frag",
+    "line": 87,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ribbon.frag",
+    "line": 14,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_ribpillar.frag",
+    "line": 27,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_romhack.frag",
+    "line": 58,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_romhack.frag",
+    "line": 59,
+    "name": "uTilt",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_romhack.frag",
+    "line": 78,
+    "name": "uLightSpin",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_romhack.frag",
+    "line": 83,
+    "name": "uBandPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_sdjGWR.frag",
+    "line": 6,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_sdjGWR.frag",
+    "line": 20,
+    "name": "uFoldRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_shard_collage.frag",
+    "line": 48,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_shard_collage.frag",
+    "line": 63,
+    "name": "uTexTurn",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_sinFBM.frag",
+    "line": 33,
+    "name": "uViewRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_sinedeform.frag",
+    "line": 16,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_sinedeform.frag",
+    "line": 29,
+    "name": "uOrbitYaw",
+    "min": -70,
+    "max": 70,
+    "defaultValue": 0,
+    "sliderStep": 0.14
+  },
+  {
+    "file": "shaders/bg_sinedeform.frag",
+    "line": 30,
+    "name": "uOrbitPitch",
+    "min": -50,
+    "max": 50,
+    "defaultValue": 0,
+    "sliderStep": 0.1
+  },
+  {
+    "file": "shaders/bg_slimeframe.frag",
+    "line": 21,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_slimeframe.frag",
+    "line": 57,
+    "name": "uFoldTurn",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_slimeframe.frag",
+    "line": 63,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_slimeframe.frag",
+    "line": 67,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_slimeframe.frag",
+    "line": 71,
+    "name": "uBandPhase",
+    "min": 0,
+    "max": 360,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_smear_tear.frag",
+    "line": 18,
+    "name": "uRotate",
+    "min": 0,
+    "max": 360,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_smear_tear.frag",
+    "line": 67,
+    "name": "uFlowTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spell.frag",
+    "line": 46,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spell.frag",
+    "line": 76,
+    "name": "uCamPitch",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "shaders/bg_spell.frag",
+    "line": 77,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spikeball.frag",
+    "line": 28,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spikeball.frag",
+    "line": 39,
+    "name": "uCamElev",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_spikeball.frag",
+    "line": 41,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spikeball.frag",
+    "line": 43,
+    "name": "uLightAz",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spikeball.frag",
+    "line": 46,
+    "name": "uEnvRot",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spiky.frag",
+    "line": 23,
+    "name": "uEnvTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spiky.frag",
+    "line": 25,
+    "name": "uLightAzim",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spiky.frag",
+    "line": 44,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_spiky.frag",
+    "line": 46,
+    "name": "uViewYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spiky.frag",
+    "line": 102,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_spiky.frag",
+    "line": 103,
+    "name": "uTilt",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "shaders/bg_storming.frag",
+    "line": 32,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_storming.frag",
+    "line": 47,
+    "name": "uEyeOrbit",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_storming.frag",
+    "line": 49,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_stractium.frag",
+    "line": 59,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_stractium.frag",
+    "line": 87,
+    "name": "uSunAzim",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_stractium.frag",
+    "line": 88,
+    "name": "uSunElev",
+    "min": -50,
+    "max": 50,
+    "defaultValue": 0,
+    "sliderStep": 0.1
+  },
+  {
+    "file": "shaders/bg_stractium.frag",
+    "line": 95,
+    "name": "uCamPitch",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_stractium.frag",
+    "line": 96,
+    "name": "uOrbit",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_tronclouds.frag",
+    "line": 42,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_tronclouds.frag",
+    "line": 64,
+    "name": "uCamPitch",
+    "min": 30,
+    "max": 170,
+    "defaultValue": 100,
+    "sliderStep": 0.14
+  },
+  {
+    "file": "shaders/bg_tronclouds.frag",
+    "line": 80,
+    "name": "uCamYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_tronclouds.frag",
+    "line": 81,
+    "name": "uCamRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "shaders/bg_twistors.frag",
+    "line": 26,
+    "name": "uCamPitch",
+    "min": 75,
+    "max": 130,
+    "defaultValue": 100,
+    "sliderStep": 0.055
+  },
+  {
+    "file": "shaders/bg_twistors.frag",
+    "line": 33,
+    "name": "uYawSway",
+    "min": 0,
+    "max": 300,
+    "defaultValue": 100,
+    "sliderStep": 0.3
+  },
+  {
+    "file": "shaders/bg_twistors.frag",
+    "line": 34,
+    "name": "uPitchSway",
+    "min": 0,
+    "max": 300,
+    "defaultValue": 100,
+    "sliderStep": 0.3
+  },
+  {
+    "file": "shaders/bg_twistors.frag",
+    "line": 35,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_twistors.frag",
+    "line": 86,
+    "name": "uAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_uniflash.frag",
+    "line": 32,
+    "name": "uTiltVar",
+    "min": 0,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.045
+  },
+  {
+    "file": "shaders/bg_uniflash.frag",
+    "line": 68,
+    "name": "uFxAngle",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "shaders/bg_vangogh.frag",
+    "line": 25,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_water.frag",
+    "line": 49,
+    "name": "uTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "shaders/bg_watercolors.frag",
+    "line": 32,
+    "name": "uStartAngle",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "shaders/bg_watercolors.frag",
+    "line": 35,
+    "name": "uLayerHue",
+    "min": 25,
+    "max": 300,
+    "defaultValue": 100,
+    "sliderStep": 0.275
+  },
+  {
+    "file": "shaders/bg_watercolors.frag",
+    "line": 38,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 20,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 356,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 486,
+    "name": "rollSpeed",
+    "min": -2,
+    "max": 2,
+    "defaultValue": 0.6,
+    "sliderStep": 0.004
+  },
+  {
+    "file": "presets.js",
+    "line": 500,
+    "name": "uSunAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 501,
+    "name": "uSunElevation",
+    "min": -15,
+    "max": 35,
+    "defaultValue": 0,
+    "sliderStep": 0.05
+  },
+  {
+    "file": "presets.js",
+    "line": 517,
+    "name": "uCamPitch",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "presets.js",
+    "line": 518,
+    "name": "uCamYaw",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 519,
+    "name": "uRollOffset",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 740,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 922,
+    "name": "uRotate",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 1029,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1030,
+    "name": "uLookYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1031,
+    "name": "uLookPitch",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 1190,
+    "name": "uWarpStrength",
+    "min": 20,
+    "max": 250,
+    "defaultValue": 100,
+    "sliderStep": 0.23
+  },
+  {
+    "file": "presets.js",
+    "line": 1202,
+    "name": "uTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1206,
+    "name": "uWarpBias",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1298,
+    "name": "uViewRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1299,
+    "name": "uTiltPitch",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1300,
+    "name": "uTiltYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1312,
+    "name": "uEnvTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1461,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1462,
+    "name": "uLookYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1463,
+    "name": "uLookPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 1622,
+    "name": "uCamPitch",
+    "min": -300,
+    "max": 300,
+    "defaultValue": 0,
+    "sliderStep": 0.6
+  },
+  {
+    "file": "presets.js",
+    "line": 1628,
+    "name": "uCamYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1629,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1631,
+    "name": "uSunAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 1632,
+    "name": "uSunElevation",
+    "min": -60,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.105
+  },
+  {
+    "file": "presets.js",
+    "line": 1999,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 2002,
+    "name": "uViewPitch",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 2003,
+    "name": "uViewYaw",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 2007,
+    "name": "uPhaseShift",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 2133,
+    "name": "uTurnXZ",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 2134,
+    "name": "uTurnXY",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 2138,
+    "name": "uRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "presets.js",
+    "line": 2505,
+    "name": "uCubeTumble",
+    "min": 0,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 2510,
+    "name": "uFov",
+    "min": 30,
+    "max": 70,
+    "defaultValue": 45,
+    "sliderStep": 0.04
+  },
+  {
+    "file": "presets.js",
+    "line": 2511,
+    "name": "uCamYaw",
+    "min": -25,
+    "max": 25,
+    "defaultValue": 0,
+    "sliderStep": 0.05
+  },
+  {
+    "file": "presets.js",
+    "line": 2512,
+    "name": "uCamPitch",
+    "min": -4,
+    "max": 12,
+    "defaultValue": 0,
+    "sliderStep": 0.016
+  },
+  {
+    "file": "presets.js",
+    "line": 2513,
+    "name": "uCamRoll",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 2515,
+    "name": "uSunAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 2516,
+    "name": "uSunElevation",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 2800,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 2801,
+    "name": "uLightYaw",
+    "min": -70,
+    "max": 70,
+    "defaultValue": 0,
+    "sliderStep": 0.14
+  },
+  {
+    "file": "presets.js",
+    "line": 2802,
+    "name": "uLightPitch",
+    "min": -30,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "presets.js",
+    "line": 3182,
+    "name": "uHueSpread",
+    "min": 40,
+    "max": 200,
+    "defaultValue": 100,
+    "sliderStep": 0.16
+  },
+  {
+    "file": "presets.js",
+    "line": 3185,
+    "name": "uSplitRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 3357,
+    "name": "uViewYaw",
+    "min": -35,
+    "max": 35,
+    "defaultValue": 0,
+    "sliderStep": 0.07
+  },
+  {
+    "file": "presets.js",
+    "line": 3358,
+    "name": "uViewPitch",
+    "min": -25,
+    "max": 25,
+    "defaultValue": 0,
+    "sliderStep": 0.05
+  },
+  {
+    "file": "presets.js",
+    "line": 3359,
+    "name": "uViewRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "presets.js",
+    "line": 3360,
+    "name": "uLightAzimuth",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 3361,
+    "name": "uLightElevation",
+    "min": -45,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.105
+  },
+  {
+    "file": "presets.js",
+    "line": 3618,
+    "name": "uTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 3782,
+    "name": "uRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 3919,
+    "name": "uEnvRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 3928,
+    "name": "uFieldRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 4183,
+    "name": "uSunAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 4184,
+    "name": "uSunElevation",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "presets.js",
+    "line": 4189,
+    "name": "uPitchOffset",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "presets.js",
+    "line": 4190,
+    "name": "uRollOffset",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 4453,
+    "name": "uFoldAngleXY",
+    "min": 70,
+    "max": 140,
+    "defaultValue": 100,
+    "sliderStep": 0.07
+  },
+  {
+    "file": "presets.js",
+    "line": 4454,
+    "name": "uFoldAngleYZ",
+    "min": 70,
+    "max": 140,
+    "defaultValue": 100,
+    "sliderStep": 0.07
+  },
+  {
+    "file": "presets.js",
+    "line": 4462,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 4465,
+    "name": "uLookYaw",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 4466,
+    "name": "uLookPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 4468,
+    "name": "uRollSwing",
+    "min": 0,
+    "max": 200,
+    "defaultValue": 100,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "presets.js",
+    "line": 4469,
+    "name": "uLightAzim",
+    "min": -150,
+    "max": 150,
+    "defaultValue": 0,
+    "sliderStep": 0.3
+  },
+  {
+    "file": "presets.js",
+    "line": 4470,
+    "name": "uLightElev",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 4668,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 4669,
+    "name": "uLightPitch",
+    "min": -80,
+    "max": 80,
+    "defaultValue": 0,
+    "sliderStep": 0.16
+  },
+  {
+    "file": "presets.js",
+    "line": 4676,
+    "name": "uCamRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "presets.js",
+    "line": 4679,
+    "name": "uOrbitPhase",
+    "min": 0,
+    "max": 360,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 4851,
+    "name": "uLightAzimuth",
+    "min": -75,
+    "max": 75,
+    "defaultValue": 0,
+    "sliderStep": 0.15
+  },
+  {
+    "file": "presets.js",
+    "line": 4856,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 4857,
+    "name": "uOrbitPhase",
+    "min": -75,
+    "max": 75,
+    "defaultValue": 0,
+    "sliderStep": 0.15
+  },
+  {
+    "file": "presets.js",
+    "line": 5099,
+    "name": "uCamPitch",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 5100,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 5607,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 5728,
+    "name": "uCamAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 5732,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 5738,
+    "name": "uLightPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 5896,
+    "name": "uCamAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 5899,
+    "name": "uCamRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6151,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6298,
+    "name": "uLookPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 6299,
+    "name": "uLightYaw",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6312,
+    "name": "uCamRoll",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "presets.js",
+    "line": 6313,
+    "name": "uCamYaw",
+    "min": -45,
+    "max": 45,
+    "defaultValue": 0,
+    "sliderStep": 0.09
+  },
+  {
+    "file": "presets.js",
+    "line": 6575,
+    "name": "uCamYaw",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 6576,
+    "name": "uCamRoll",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 6577,
+    "name": "uLightAzimuth",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 6818,
+    "name": "uViewPitch",
+    "min": 60,
+    "max": 125,
+    "defaultValue": 100,
+    "sliderStep": 0.065
+  },
+  {
+    "file": "presets.js",
+    "line": 6819,
+    "name": "uFlowerTurn",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6823,
+    "name": "uRoll",
+    "min": -25,
+    "max": 25,
+    "defaultValue": 0,
+    "sliderStep": 0.05
+  },
+  {
+    "file": "presets.js",
+    "line": 6824,
+    "name": "uLightAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6825,
+    "name": "uLightElevation",
+    "min": -25,
+    "max": 25,
+    "defaultValue": 0,
+    "sliderStep": 0.05
+  },
+  {
+    "file": "presets.js",
+    "line": 6968,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6973,
+    "name": "uRingPhase",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 6974,
+    "name": "uLightPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 6975,
+    "name": "uBreathePhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 7068,
+    "name": "uSunAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 7069,
+    "name": "uSunElevation",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "presets.js",
+    "line": 7075,
+    "name": "uCamYaw",
+    "min": -40,
+    "max": 40,
+    "defaultValue": 0,
+    "sliderStep": 0.08
+  },
+  {
+    "file": "presets.js",
+    "line": 7076,
+    "name": "uCamPitch",
+    "min": -15,
+    "max": 25,
+    "defaultValue": 0,
+    "sliderStep": 0.04
+  },
+  {
+    "file": "presets.js",
+    "line": 7077,
+    "name": "uCamRoll",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 7285,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 7403,
+    "name": "uViewRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 7405,
+    "name": "uDriftDir",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 7519,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 7520,
+    "name": "uLookYaw",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 7521,
+    "name": "uLookPitch",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 7864,
+    "name": "uCamPitch",
+    "min": -100,
+    "max": 100,
+    "defaultValue": 0,
+    "sliderStep": 0.2
+  },
+  {
+    "file": "presets.js",
+    "line": 7865,
+    "name": "uCamRoll",
+    "min": -300,
+    "max": 300,
+    "defaultValue": 0,
+    "sliderStep": 0.6
+  },
+  {
+    "file": "presets.js",
+    "line": 7872,
+    "name": "uCamYaw",
+    "min": -300,
+    "max": 300,
+    "defaultValue": 0,
+    "sliderStep": 0.6
+  },
+  {
+    "file": "presets.js",
+    "line": 7884,
+    "name": "uColorShift",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 8327,
+    "name": "uSceneRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 8458,
+    "name": "uStreakAngle",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 8466,
+    "name": "uRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 8882,
+    "name": "uRotate",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9082,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9087,
+    "name": "uSwayPhase",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9252,
+    "name": "yaw",
+    "min": -2,
+    "max": 2,
+    "defaultValue": 1,
+    "sliderStep": 0.004
+  },
+  {
+    "file": "presets.js",
+    "line": 9253,
+    "name": "pitch",
+    "min": -2,
+    "max": 2,
+    "defaultValue": 1,
+    "sliderStep": 0.004
+  },
+  {
+    "file": "presets.js",
+    "line": 9254,
+    "name": "roll",
+    "min": -2,
+    "max": 2,
+    "defaultValue": 1,
+    "sliderStep": 0.004
+  },
+  {
+    "file": "presets.js",
+    "line": 9267,
+    "name": "uCamRoll",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 9268,
+    "name": "uLightAzim",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9582,
+    "name": "uSceneAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9587,
+    "name": "uViewAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9588,
+    "name": "uLightAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9792,
+    "name": "uViewAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9793,
+    "name": "uPanAngle",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9930,
+    "name": "uViewRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9933,
+    "name": "uPoseX",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 9934,
+    "name": "uPoseY",
+    "min": -30,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.06
+  },
+  {
+    "file": "presets.js",
+    "line": 9935,
+    "name": "uPoseRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9942,
+    "name": "uLightAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 9943,
+    "name": "uLightElev",
+    "min": -25,
+    "max": 30,
+    "defaultValue": 0,
+    "sliderStep": 0.055
+  },
+  {
+    "file": "presets.js",
+    "line": 10272,
+    "name": "uPoseX",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10273,
+    "name": "uPoseY",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10274,
+    "name": "uPoseZ",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10280,
+    "name": "uPhaseA",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10281,
+    "name": "uPhaseB",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10283,
+    "name": "uRoll",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10284,
+    "name": "uKeyAzimuth",
+    "min": -180,
+    "max": 180,
+    "defaultValue": 0,
+    "sliderStep": 0.36
+  },
+  {
+    "file": "presets.js",
+    "line": 10285,
+    "name": "uKeyElevation",
+    "min": -60,
+    "max": 60,
+    "defaultValue": 0,
+    "sliderStep": 0.12
+  },
+  {
+    "file": "presets.js",
+    "line": 10521,
+    "name": "uHueSpan",
+    "min": 30,
+    "max": 140,
+    "defaultValue": 100,
+    "sliderStep": 0.11
+  },
+  {
+    "file": "presets.js",
+    "line": 10523,
+    "name": "uWarpTilt",
+    "min": -90,
+    "max": 90,
+    "defaultValue": 0,
+    "sliderStep": 0.18
+  },
+  {
+    "file": "presets.js",
+    "line": 10534,
+    "name": "uHueSat",
+    "min": 0,
+    "max": 150,
+    "defaultValue": 100,
+    "sliderStep": 0.15
+  },
+  {
+    "file": "presets.js",
+    "line": 10535,
+    "name": "uHueFloor",
+    "min": 0,
+    "max": 90,
+    "defaultValue": 50,
+    "sliderStep": 0.09
+  }
+]

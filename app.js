@@ -41,6 +41,92 @@ const isTextEntryTarget = el=>{
   return /^(text|search|number|password|email|url|tel|date|datetime-local|month|time|week)$/.test(type);
 };
 
+// 入力・表示・保存で共用する数値精度。描画時のデッドゾーンとカーブには触れない。
+const ParamValues = {
+  _specs: new WeakMap(),
+  _typed: new WeakMap(),
+  // UI をまだ開いていないエンジンの保存でも、細かい値と拍の選択値を保つ。
+  fine: {
+    post: { hue:0.001, grn:0.005, chr:0.0005, hueAuto:0, unsharpRadius:0 },
+    layer: { fog:0.002 }, transflock: { step:0.005 },
+    slicer: { shadowBias:0.0005, autoRebuildBeats:0 },
+    inkelly: { spawnW:0.002, curlScale:0.005, displace:0.0005, feather:0.002, bgHue:0.005 },
+    textdeform: { cvPos:0.005, letterSpacing:0.005, textEvery:0 },
+    overlay: { size:0.001, freq:0, drawBeats:0 },
+    image: { everyBeats:0, transBeats:0 },
+    fude: { beatBar:0, beatRate:0, beatHold:0, setTrans:0 },
+  },
+  digits(step){
+    const [m, e = '0'] = String(step).toLowerCase().split('e');
+    return Math.max(0, (m.split('.')[1] || '').length - Number(e));
+  },
+  number(v, spec = {}){
+    if(typeof v !== 'number' || !Number.isFinite(v) || spec.keep) return v;
+    const step = +spec.step;
+    const digits = step > 0 ? this.digits(step) : 2;
+    // 整数・微小値は元の step に合わせる。通常の小数は値そのものを 2 桁にする。
+    if(step >= 1 || (step > 0 && step < 0.01)){
+      const base = Number.isFinite(+spec.min) ? +spec.min : 0;
+      v = base + Math.round((v - base) / step) * step;
+    }
+    const factor = 10 ** Math.min(15, digits);
+    const n = Number((Math.sign(v) * Math.round((Math.abs(v) + Number.EPSILON) * factor) / factor).toFixed(Math.min(15, digits)));
+    return Object.is(n, -0) ? 0 : n;
+  },
+  bind(el, owner, key){
+    if(!el || !owner || !key) return;
+    let specs = this._specs.get(owner);
+    if(!specs) this._specs.set(owner, specs = {});
+    specs[key] = el.type === 'range' ? (el._paramPrecisionSpec ||= {step:el.step, min:el.min}) : {keep:true};
+  },
+  spec(kind, key, owner){
+    const step = (this.fine[kind] || {})[key];
+    return (this._specs.get(owner) || {})[key] || (step === 0 ? {keep:true} : {step:step || 0.01});
+  },
+  read(el){
+    if(this._typed.has(el)) return this._typed.get(el);
+    const v = parseFloat(el.value);
+    return this.number(v, el.type === 'range' || el.type === 'number' ? (el._paramPrecisionSpec || {step:el.step, min:el.min}) : {keep:true});
+  },
+  enter(el, v){
+    const spec = el._paramSpec || (el._paramPrecisionSpec ||= {step:el.step, min:el.min});
+    const n = this.number(v, spec);
+    if(!el._paramSpec && +el.step >= 0.01 && +el.step < 1) el.step = '0.01';
+    const position = el._paramToSlider ? el._paramToSlider(n) : n;
+    el.value = position;
+    // range の step 基準点と入力値がずれても、イベント先には確定した値を渡す。
+    this._typed.set(el, position);
+    try{
+      el.dispatchEvent(new Event('input', {bubbles:true}));
+      el.dispatchEvent(new Event('change', {bubbles:true}));
+    }finally{ this._typed.delete(el); }
+  },
+  object(values, kind, owner = values){
+    if(!values || typeof values !== 'object' || Array.isArray(values)) return values;
+    const out = Object.assign({}, values);
+    for(const [key, v] of Object.entries(out)){
+      out[key] = this.number(v, this.spec(kind, key, owner));
+    }
+    return out;
+  },
+  shaderSpec(p){
+    if(p.type !== 'float') return {keep:true};
+    const span = p.max - p.min, dv = p._factoryDefaultValue ?? p.defaultValue;
+    const words = p.name.replace(/^u(?=[A-Z])/, '').replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
+    const angle = /\b(angle|yaw|roll|rotation|hue)\b/.test(words) || /^(?:(?:cam|key|light|look|orbit|view|tilt|mb|mc) )?pitch\b/.test(words)
+      || /[（(、]\s*度|°|\bdeg(?:rees)?\b|角度|回転角|位相角|仰角|俯角/.test(p.desc || '');
+    // @param には step 指定がない。小さい値域・精密な既定値・角度は元の分解能を保つ。
+    const fine = span < 1 || [p.min, p.max, dv].some(v => Number.isFinite(v) && this.digits(v) > 2)
+      || angle;
+    return {step: fine ? Number((span / 1000).toPrecision(10)) : 0.01, min:p.min, keep:fine};
+  },
+  shader(p, v = p.value){ return this.number(v, this.shaderSpec(p)); },
+  shaderText(p){ return String(this.shader(p)); },
+  format(v, spec, fmt){
+    return +spec.step > 0 && +spec.step < 0.01 ? v.toFixed(this.digits(spec.step)) : fmt(v);
+  },
+};
+
 // 端末ごとの設定 (localStorage 'vj.<key>')。設定ペインが書き、各機能が読む。サーバーには送らない。
 const Prefs = {
   _c: {},
@@ -4996,7 +5082,7 @@ vec3 f3Paper(vec2 q, float lift){
     if(rec.params){
       for(const p of slot.params){
         const m = rec.params.find(x=>x.name===p.name);
-        if(m && (typeof m.value==='number' || Array.isArray(m.value))) p.value = m.value;
+        if(m && (typeof m.value==='number' || Array.isArray(m.value))) p.value = ParamValues.shader(p, m.value);
       }
     }
     slot.errors = '';
@@ -10563,6 +10649,7 @@ float vjDepth = 0.0;
       }
       if(wm) p.when = wm[1].trim();
       if(dm) p.desc = dm[1].trim();
+      if(p.type === 'float'){ p.value = ParamValues.shader(p); p.defaultValue = p.value; }
       params.push(p);
     }
 
@@ -12146,7 +12233,7 @@ const MIDI = {
       } else {
         const mi = parseFloat(el.min); const ma = parseFloat(el.max);
         const lo = isFinite(mi) ? mi : 0, hi = isFinite(ma) ? ma : 1;
-        const cur = parseFloat(el.value);
+        const cur = ParamValues.read(el);
         const init = (hi !== lo && isFinite(cur)) ? (cur - lo) / (hi - lo) * 127 : 0;
         const ev = this._continuousValue(slotKey + ':' + pname, v, init, c);
         el.value = lo + (hi - lo) * (ev / 127);
@@ -12155,7 +12242,7 @@ const MIDI = {
       }
       return;
     }
-    if(pname==='__crossfade__'){ const ev = this._continuousValue('__crossfade__', v, App.crossfade * 127, c); App.crossfade = ev/127; UI.refreshMix(); return ev; }
+    if(pname==='__crossfade__'){ const ev = this._continuousValue('__crossfade__', v, App.crossfade * 127, c); App.crossfade = ParamValues.number(ev/127, {step:0.001}); UI.refreshMix(); return ev; }
     if(pname==='__bpm__'){ BPM.setBpm(60 + v); return; }
     if(pname==='__slotAB__'){
       // 押した瞬間 (立ち上がり) にトグルしてハードカット。離しても保持
@@ -12220,8 +12307,8 @@ const MIDI = {
       // 双極ノブ: 上半分(>=64)=Fb Zoom 0..1 / 下半分(<64)=Fb Rot 0..1 (中央=両方0)。生値保存(描画時に deadParam)。
       const init = (App.post.fbZoom > 0) ? 64 + App.post.fbZoom * 63 : 64 - (App.post.fbRot || 0) * 64;
       const ev = this._continuousValue(pname, v, init, c);
-      if(ev >= 64){ App.post.fbZoom = (ev - 64) / 63; App.post.fbRot = 0; }
-      else        { App.post.fbZoom = 0; App.post.fbRot = (64 - ev) / 64; }
+      if(ev >= 64){ App.post.fbZoom = App.snapPost('fbZoom', (ev - 64) / 63); App.post.fbRot = 0; }
+      else        { App.post.fbZoom = 0; App.post.fbRot = App.snapPost('fbRot', (64 - ev) / 64); }
       if(UI.refreshPost) UI.refreshPost();
       return ev;
     }
@@ -12255,7 +12342,7 @@ const MIDI = {
     if(p.type==='float'){
       const init = (p.max !== p.min && typeof p.value === 'number' && isFinite(p.value)) ? (p.value - p.min) / (p.max-p.min) * 127 : 0;
       ev = this._continuousValue(slotKey+':'+pname, v, init, c);
-      p.value = p.min + (p.max-p.min)*(ev/127);
+      p.value = ParamValues.shader(p, p.min + (p.max-p.min)*(ev/127));
     }   // 生値保存 (描画時に deadParam)
     else if(p.type==='bool') p.value = v>63?1:0;
     UI.updateParamUI(slotKey, p);
@@ -14214,7 +14301,7 @@ const App = {
   snapPost(key, v){
     // 生値をそのまま保存する (デッドゾーンは描画時に effectivePost/deadParam で適用)。
     // 保存時に 0 化すると「0.0(-0.03)」の生値表示ができなくなるため。
-    return v;
+    return ParamValues.number(v, ParamValues.spec('post', key, this.post));
   },
 
   // ── Param Fade: post 数値パラメータを拍数かけて補間 ─────────────
@@ -14667,7 +14754,8 @@ const App = {
   },
   saveFbDefault(){
     const m=['add','multiply','residue'].includes(this.post.fbMode) ? this.post.fbMode : 'residue';
-    const v=Object.fromEntries(this.FB_KEYS.map(k=>[k,this.post[k]]));
+    const v=this.paramValues('post', Object.fromEntries(this.FB_KEYS.map(k=>[k,this.post[k]])));
+    Object.assign(this.post, v);
     try{
       localStorage.setItem('vj.fbDefault.'+m,JSON.stringify(v));
       localStorage.setItem('vj.fbDefault',JSON.stringify({fbMode:m,...v}));   // 起動時の Mode
@@ -14746,7 +14834,8 @@ const App = {
   savePostGroupDefault(group){
     const keys = this.POST_GROUPS[group]; if(!keys) return;
     const values = Object.assign({}, this.postGroupSaved(group));   // 他欄へ移したキーの旧保存値 (POST_KEY_FROM の引き継ぎ元) を消さない
-    for(const k of keys) if(this.post[k] !== undefined) values[k] = this.post[k];
+    const rounded = this.paramValues('post', this.post);
+    for(const k of keys) if(this.post[k] !== undefined) values[k] = this.post[k] = rounded[k];
     if(this._presetDefaults && this._presetDefaults.post){   // R / Esc / プリセット読込が戻す先 (起動時に取った値) も保存値へ
       for(const k of keys) if(this.post[k] !== undefined) this._presetDefaults.post[k] = JSON.parse(JSON.stringify(this.post[k]));
     }
@@ -16624,7 +16713,7 @@ ${outBlock}
       }
       if(hasData){
         if(kind === 'spacetype') d = stStrip(d);
-        Object.assign(P, d);
+        Object.assign(P, this.paramValues(kind, d));
       }
     }
     if(typeof TextDeform !== 'undefined' && (state.textdeform || opts.resetMissingDefaults)) TextDeform.applyP();
@@ -16642,9 +16731,47 @@ ${outBlock}
     // image はフォルダのリスト再構築が必要 (P 代入だけでは表示が切り替わらない)。両スロットへ適用。
     if(state.image && typeof ImageMode !== 'undefined' && ImageMode.applyState) ImageMode.applyState(state.image);
   },
+  paramValues(kind, values){
+    const owner = kind === 'post' ? this.post : this._engineP(kind);
+    const out = ParamValues.object(values, kind, owner || values);
+    if(!out || kind !== 'textdeform') return out;
+    // Surface / Composition の内部データと色配列は一括で丸めず、操作できる数値だけを扱う。
+    if(out.surf){
+      out.surf = ParamValues.object(out.surf);
+      out.surf.params = Object.assign({}, out.surf.params);
+      for(const [op, values] of Object.entries(out.surf.params)){
+        const meta = typeof TDSurf !== 'undefined' && TDSurf.meta && TDSurf.meta.ops[op];
+        if(!meta) continue;
+        const params = out.surf.params[op] = Object.assign({}, values);
+        for(const k of meta.keys) if(k.kind === 'range' && params[k.key] !== undefined) params[k.key] = ParamValues.number(params[k.key], k);
+      }
+    }
+    if(out.comp){
+      out.comp = Object.assign({}, out.comp);
+      out.comp.speed = ParamValues.number(out.comp.speed);
+      if(out.comp.macros) out.comp.macros = ParamValues.object(out.comp.macros);
+    }
+    return out;
+  },
+  defaultValues(key, values){
+    if(key.startsWith('sparam.')){
+      const name = key.slice(7), slot = Object.values(GL.slots).find(s => s._presetName === name);
+      const preset = typeof PRESETS !== 'undefined' && PRESETS.find(p => p.name === name);
+      const params = slot ? slot.params : (preset && preset.src ? Shader.preprocess(preset.src).params : []);
+      const out = Object.assign({}, values);
+      for(const p of params) if(out[p.name] !== undefined) out[p.name] = ParamValues.shader(p, out[p.name]);
+      return out;
+    }
+    if(key.startsWith('post.') || ['inkBleed','audioDetect','fb'].includes(key)) return this.paramValues('post', values);
+    if(key.startsWith('overlay.')) return this.paramValues('overlay', values);
+    if(key.startsWith('image.')) return this.paramValues('image', values);
+    return this._engineP(key) || key === 'image' ? this.paramValues(key, values) : values;
+  },
   saveEngineDefault(kind){
-    const P = (kind === 'textdeform' && typeof TextDeform !== 'undefined') ? TextDeform.stateP() : this._engineP(kind);
+    let P = (kind === 'textdeform' && typeof TextDeform !== 'undefined') ? TextDeform.stateP() : this._engineP(kind);
     if(!P){ toast('保存対象がありません'); return; }
+    P = this.paramValues(kind, P);
+    Object.assign(this._engineP(kind), P);
     const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
     if(pd) Object.assign(pd, JSON.parse(JSON.stringify(P)));   // プリセット読込で欠けた項目を埋める値 (起動時に取った値) も保存値へ
     const sc = (kind === 'novel' && typeof NovelTerminal !== 'undefined' && NovelTerminal.snapScene) ? NovelTerminal.snapScene() : null;   // Novel は今の Scene の値も控える
@@ -16674,7 +16801,7 @@ ${outBlock}
     const name = slot._presetName;
     if(!name){ toast('シェーダ名が不明です'); return; }
     const d = {};
-    for(const p of slot.params){ d[p.name] = Array.isArray(p.value) ? p.value.slice() : p.value; }
+    for(const p of slot.params){ p.value = ParamValues.shader(p); d[p.name] = Array.isArray(p.value) ? p.value.slice() : p.value; }
     try{ localStorage.setItem('vj.def.sparam.' + name, JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: ' + name); }
     catch(e){ toast('保存失敗'); }
   },
@@ -16691,7 +16818,7 @@ ${outBlock}
     if(!saved || typeof saved !== 'object') return;
     for(const p of slot.params){
       if(saved[p.name] == null) continue;
-      const v = saved[p.name];
+      const v = ParamValues.shader(p, saved[p.name]);
       p.value = Array.isArray(v) ? v.slice() : v;
       p.defaultValue = Array.isArray(v) ? v.slice() : v;   // ダブルクリックリセットも新デフォルトへ
     }
@@ -16730,7 +16857,7 @@ ${outBlock}
       saved = Object.assign({}, saved);
       for(const k of ['sceneMode','autoCycle','cycleReload','sceneBeats','scene']) delete saved[k];
     }
-    Object.assign(P, saved);
+    Object.assign(P, this.paramValues(kind, saved));
     if(kind === 'textdeform' && typeof TextDeform !== 'undefined') TextDeform.applyP();   // 文字と版面を組み直す (Surface / Composition は P.surf / P.comp への代入で反映済み)
     if(kind === 'pen' && typeof Pen !== 'undefined' && Pen.strokes){   // count 増加ぶんのストロークを追加
       while(Pen.strokes.length < (Pen.P.count||0)) Pen.strokes.push(Pen.makeRandomStroke((Pen.clock||0) - Pen._rand(0,1.5)));
@@ -16745,7 +16872,8 @@ ${outBlock}
   },
   saveInkBleedDefault(){
     const values = {};
-    for(const key of this.INK_BLEED_KEYS) values[key] = this.post[key];
+    const rounded = this.paramValues('post', this.post);
+    for(const key of this.INK_BLEED_KEYS) values[key] = this.post[key] = rounded[key];
     try{
       localStorage.setItem('vj.def.inkBleed', JSON.stringify(values));
       Object.assign(this._presetDefaults.post, values);
@@ -16936,7 +17064,8 @@ ${outBlock}
   AUDIO_DETECT_KEYS: ['audioTarget', 'audioGain', 'audioBand', 'audioAttack'],
   saveAudioDetectDefault(){
     const d = {};
-    for(const k of this.AUDIO_DETECT_KEYS) d[k] = this.post[k];
+    const rounded = this.paramValues('post', this.post);
+    for(const k of this.AUDIO_DETECT_KEYS) d[k] = this.post[k] = rounded[k];
     try{ localStorage.setItem('vj.def.audioDetect', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: audioDetect'); }
     catch(e){ toast('保存失敗'); }
   },
@@ -17511,6 +17640,10 @@ ${outBlock}
     // 各モード(inkelly 等)の設定や post は App の生オブジェクト参照なので、JSON で深いコピーを取り
     // スナップショット化する(同一セッション内で保存→変更→再呼出しても保存時の値=INKELLYの色等が復元される)。
     const data = JSON.parse(JSON.stringify(this._collectState()));
+    for(const kind of [...this.modeStateKinds, 'post', 'overlay']) if(data[kind]) data[kind] = this.paramValues(kind, data[kind]);
+    if(data.image) for(const k of ['A', 'B']) if(data.image[k]) data.image[k] = this.paramValues('image', data.image[k]);
+    if(data.overlayBrushParams) for(const k in data.overlayBrushParams) data.overlayBrushParams[k] = this.paramValues('overlay', data.overlayBrushParams[k]);
+    for(const slot of Object.values(data.slots || {})) for(const p of (slot.params || [])) p.value = ParamValues.shader(p);
     // beat×A (beatScale) は演奏中に手で決めるライブ設定 → プリセットには保存しない
     data.mixControls = this._captureMixControls();
     // MIDI相対は全Visual共通の端末設定。プリセットには保存しない。
@@ -18428,7 +18561,7 @@ ${outBlock}
     try{
       const local = this._localDefs(), defs = Object.create(null);
       const keys = currentOnly ? [this._currentDefaultKey()] : Object.keys(local);
-      for(const k of keys) if(k && this._isDefaultsFileKey(k) && Object.prototype.hasOwnProperty.call(local, k)) defs[k] = JSON.parse(local[k]);
+      for(const k of keys) if(k && this._isDefaultsFileKey(k) && Object.prototype.hasOwnProperty.call(local, k)) defs[k] = this.defaultValues(k, JSON.parse(local[k]));
       const date = new Date(), data = {format:'gara-defaults', version:1, exportedAt:date.toISOString(), defs};
       const count = this._validateDefaultsFile(data).length;
       if(!count){ toast(currentOnly ? 'このビジュアルの Save 値がありません' : '書き出せる Save 値がありません'); return; }
@@ -18832,7 +18965,7 @@ ${outBlock}
               const saved = sk.params;
               for(const pp of GL.slots[k].params){
                 const m = saved.find(x=>x.name===pp.name);
-                if(m && (typeof m.value==='number' || Array.isArray(m.value))) pp.value = m.value;
+                if(m && (typeof m.value==='number' || Array.isArray(m.value))) pp.value = ParamValues.shader(pp, m.value);
               }
             }
             continue;
@@ -19043,7 +19176,7 @@ void mainImage(out vec4 o, in vec2 f){
         App.autoCF.tail = null;
         const cb = $('#cfAuto'); if(cb) cb.checked = false;
       }
-      App.crossfade = parseFloat(e.target.value);
+      App.crossfade = ParamValues.read(e.target);
       this.refreshMix(false);
     });
     { const bo = $('#mixBOffset'), bv = $('#mixBOffsetVal');
@@ -19099,7 +19232,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdSec){
       const tdVal = (el)=>{
         const k = el.dataset.tdkind;
-        if(el.type === 'range' || k === 'num') return parseFloat(el.value);
+        if(el.type === 'range' || k === 'num') return ParamValues.read(el);
         if(k === 'bool') return el.value === '1';
         if(k === 'pal') return el.value === '1' ? true : el.value === 'paper' ? 'paper' : false;   // 共通パレット (Off / On / Paper only)
         return el.value;
@@ -19118,7 +19251,7 @@ void mainImage(out vec4 o, in vec2 f){
         App._undoSchedule();
       };
       // id はダブルクリックで戻す値 (Save の控え) の鍵
-      tdSec.querySelectorAll('[data-tdp]').forEach(el=>{ if(!el.id) el.id = 'tdp-' + el.dataset.tdp; });
+      tdSec.querySelectorAll('[data-tdp]').forEach(el=>{ ParamValues.bind(el, TextDeform.P, el.dataset.tdp); if(!el.id) el.id = 'tdp-' + el.dataset.tdp; });
       tdSec.addEventListener('input', e=>{ if(e.target.matches('input[data-tdp]')) onTdp(e.target); });
       tdSec.addEventListener('change', e=>{ if(e.target.matches('select[data-tdp]')) onTdp(e.target); });
       // 見出し (Type & Color / Motion / …) で畳む。開閉は端末ごとに覚える
@@ -19292,7 +19425,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdSurfEdit) tdSurfEdit.addEventListener('change', ()=>tdSurfSet({ op: tdSurfEdit.value }));
     [['tdSurfStrength','strength'],['tdSurfChance','chance'],['tdSurfSpeed','speed'],['tdSurfOpacity','opacity'],['tdSurfPixel','pixel']].forEach(([id, key])=>{
       const el = $('#'+id);
-      if(el) el.addEventListener('input', ()=>tdSurfSet({ [key]: parseFloat(el.value) }));
+      if(el) el.addEventListener('input', ()=>tdSurfSet({ [key]: ParamValues.read(el) }));
     });
     [['tdSurfSource','source'],['tdSurfBlend','blend'],['tdSurfColor','color']].forEach(([id, key])=>{
       const el = $('#'+id);
@@ -19303,7 +19436,7 @@ void mainImage(out vec4 o, in vec2 f){
       const onParam = (e)=>{
         const el = e.target, key = el.dataset && el.dataset.surfKey;
         if(!key || typeof TDSurf === 'undefined') return;
-        const v = el.type === 'range' ? parseFloat(el.value) : el.value;
+        const v = el.type === 'range' ? ParamValues.read(el) : el.value;
         tdSurfSet({ params: { [TDSurf.cfg.op]: { [key]: v } } });
       };
       tdSurfParams.addEventListener('input', onParam);
@@ -19370,7 +19503,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdCompReseed) tdCompReseed.addEventListener('click', ()=>tdCompSet({ seed: Math.floor(Math.random()*1e6) }));
     const bindComp = (id, fn)=>{
       const el = $('#'+id);
-      if(el) el.addEventListener('input', ()=>fn(parseFloat(el.value)));
+      if(el) el.addEventListener('input', ()=>fn(ParamValues.read(el)));
     };
     bindComp('tdCompSpeed', v=>tdCompSet({ speed: v }));
     bindComp('tdCompIntensity', v=>tdCompSet({ macros: { intensity: v } }));
@@ -19443,7 +19576,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(BPM.auto && Audio.mode !== 'off'){ BPM.auto = false; const a=$('#bpmAuto'); if(a) a.checked = false; toast('Auto BPM OFF'); }
       BPM.setBpm(v);
     };
-    $('#bpmInput').addEventListener('change', e=>{ typedBpm(parseFloat(e.target.value)); });
+    $('#bpmInput').addEventListener('change', e=>{ typedBpm(ParamValues.read(e.target)); });
     // 大きい BPM 表示をクリックするとその場で入力できる (Enter / フォーカスを外すで確定、Esc で取消)
     { const big = $('#bpmBig'), edit = $('#bpmBigEdit');
       const close = ()=>{ edit.style.display = 'none'; big.style.display = ''; };
@@ -19779,8 +19912,9 @@ void mainImage(out vec4 o, in vec2 f){
     const store = this._loadCtlDefaults();
     section.querySelectorAll('input[type=range], input[type=number], input[type=color]').forEach(el=>{
       if(!el.id || el.disabled) return;
-      el.dataset.default = el.value;
-      store[el.id] = el.value;
+      const value = el._paramToSlider ? String(el._paramToSlider(el._paramDisplay())) : el.value;
+      el.dataset.default = value;
+      store[el.id] = value;
     });
     try{ localStorage.setItem(this._ctlDefaultsKey, JSON.stringify(store)); }catch(e){}
   },
@@ -19824,9 +19958,15 @@ void mainImage(out vec4 o, in vec2 f){
       const saved = (el.id && store[el.id] !== undefined) ? store[el.id] : undefined;
       if(el.dataset.resetNull){ el.dispatchEvent(new Event('vj-reset-null')); return; }   // 既定が「なし (null)」の色は値を持たせず null に戻す
       if(saved === undefined && el.dataset.default === undefined) return;
-      el.value = saved !== undefined ? saved : el.dataset.default;
-      el.dispatchEvent(new Event('input', {bubbles:true}));
-      el.dispatchEvent(new Event('change', {bubbles:true}));
+      if(el.type === 'range' || el.type === 'number'){
+        const v = +(saved !== undefined ? saved : el.dataset.default);
+        ParamValues.enter(el, el._paramFromSlider ? el._paramFromSlider(v) : v);
+      }
+      else {
+        el.value = saved !== undefined ? saved : el.dataset.default;
+        el.dispatchEvent(new Event('input', {bubbles:true}));
+        el.dispatchEvent(new Event('change', {bubbles:true}));
+      }
     });
     // 数値表示 (.val) のダブルクリック = 直接入力。
     //   同じ行の range スライダーを探して値を流し込む (全パネルの動的生成にも有効)。
@@ -19840,7 +19980,7 @@ void mainImage(out vec4 o, in vec2 f){
       const prev = val.textContent;
       const inp = document.createElement('input');
       inp.type = 'text';
-      inp.value = String(parseFloat(r.value));
+      inp.value = String(r._paramDisplay ? r._paramDisplay() : ParamValues.read(r));
       inp.style.cssText = 'width:100%;box-sizing:border-box;background:var(--surface);color:inherit;border:1px solid var(--acc);border-radius:var(--radius);font:inherit;text-align:right;padding:0 2px;outline:none';
       val.textContent = '';
       val.appendChild(inp);
@@ -19853,12 +19993,10 @@ void mainImage(out vec4 o, in vec2 f){
         if(!commit) return;
         let v = parseFloat(String(txt).replace(',', '.'));
         if(!isFinite(v)) return;                    // 数値でなければ元のまま
-        const lo = parseFloat(r.min), hi = parseFloat(r.max);
+        const lo = r._paramSpec ? r._paramSpec.min : parseFloat(r.min), hi = r._paramSpec ? r._paramSpec.max : parseFloat(r.max);
         if(isFinite(lo) && v < lo) v = lo;          // 範囲外は一番近い有効値へ
         if(isFinite(hi) && v > hi) v = hi;
-        r.value = v;
-        r.dispatchEvent(new Event('input', {bubbles:true}));
-        r.dispatchEvent(new Event('change', {bubbles:true}));
+        ParamValues.enter(r, v);
       };
       inp.addEventListener('keydown', ev=>{
         if(ev.key === 'Enter') finish(true);
@@ -19924,7 +20062,7 @@ void mainImage(out vec4 o, in vec2 f){
         // Save で「既定値」が変わるので、ダブルクリック復帰用の控えも更新する
         { const sec = defaultScope;
           if(sec) sec.querySelectorAll('input[type=range]').forEach(el=>{ el.dataset.defval = el.value; }); }
-        if(kind === 'overlay'){ const m = Overlay.saveModeDefault(); toast('デフォルト保存: IMAGON ('+m+')'); }
+        if(kind === 'overlay'){ Object.assign(Overlay.P, App.paramValues('overlay', Overlay.P)); const m = Overlay.saveModeDefault(); toast('デフォルト保存: IMAGON ('+m+')'); }
         else if(kind === 'ugomekiMd') UI.saveUgomekiMdDefault();
         else if(kind === 'spacetypeMd') UI.saveSpaceTypeMdDefault();
         else if(kind === 'slicerImg') UI.saveSlicerImgDefault();
@@ -20057,11 +20195,12 @@ void mainImage(out vec4 o, in vec2 f){
       const el = $('#'+id); const val = $('#'+(valId||(id+'Val')));
       if(!el) return;
       // O[key] 未定義(古い保存状態にキーが無い等)なら HTML の初期値で補完してクラッシュを防ぐ
-      if(O[key] === undefined || O[key] === null) O[key] = parseFloat(el.value) || 0;
+      if(O[key] === undefined || O[key] === null) O[key] = ParamValues.read(el) || 0;
+      ParamValues.bind(el, O, key);
       el.value = O[key];
       if(val) val.textContent = format(O[key]);
       el.addEventListener('input', ()=>{
-        const v = parseFloat(el.value);
+        const v = ParamValues.read(el);
         O[key] = v;
         if(val) val.textContent = format(O[key]);
         if(brushKeySet.has(key) && Overlay.saveBrushParam) Overlay.saveBrushParam(key, v);
@@ -20220,10 +20359,11 @@ void mainImage(out vec4 o, in vec2 f){
     const slid = (id, key, format)=>{
       const el = $('#'+id); const val = $('#'+id+'Val');
       if(!el) return;
+      ParamValues.bind(el, M, key);
       el.value = M[key];
       if(val) val.textContent = format(M[key]);
       el.addEventListener('input', ()=>{
-        M[key] = parseFloat(el.value);
+        M[key] = ParamValues.read(el);
         if(val) val.textContent = format(M[key]);
       });
     };
@@ -20368,15 +20508,15 @@ void mainImage(out vec4 o, in vec2 f){
     if(fit) fit.addEventListener('change', ()=>{ Movie.setFit(fit.value); });
     const rate = $('#vidRate'); const rv = $('#vidRateVal');
     if(rate) rate.addEventListener('input', ()=>{
-      const v = parseFloat(rate.value);
+      const v = ParamValues.read(rate);
       Movie.setRate(v);
       if(rv) rv.textContent = v.toFixed(2);
     });
     for(const [id, key, fmt] of this._vidFx()){
       const el = $('#' + id), out = $('#' + id + 'Val');
       if(el) el.addEventListener('input', ()=>{
-        const v = parseFloat(el.value);
-        Movie.P[key] = v;
+        const v = ParamValues.read(el);
+        ParamValues.bind(el, Movie.P, key); Movie.P[key] = v;
         if(out) out.textContent = App.effDisplay(v, fmt);
       });
     }
@@ -20535,12 +20675,13 @@ void mainImage(out vec4 o, in vec2 f){
       const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st; inp.value=Layer.P[key];
+      ParamValues.bind(inp, Layer.P, key);
       // ダブルクリックで戻すデフォルト値 (Layer.PDefaults スナップショット)
       const dvFac = (Layer.PDefaults && Layer.PDefaults[key] !== undefined) ? Layer.PDefaults[key] : Layer.P[key];
       inp.dataset.default = String(App.resetValueFor('layer', key, dvFac));
       const val = document.createElement('div'); val.className='val'; val.textContent = fmt(Layer.P[key]);
       inp.addEventListener('input', ()=>{
-        Layer.P[key] = parseFloat(inp.value);
+        Layer.P[key] = ParamValues.read(inp);
         val.textContent = fmt(Layer.P[key]);
         if(cb) cb();
       });
@@ -20643,9 +20784,10 @@ void mainImage(out vec4 o, in vec2 f){
       const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st; inp.value=Pen.P[key];
+      ParamValues.bind(inp, Pen.P, key);
       inp.dataset.default = String(App.resetValueFor('pen', key, Pen._PDef[key] !== undefined ? Pen._PDef[key] : Pen.P[key]));
       const val = document.createElement('div'); val.className='val'; val.textContent = fmt(Pen.P[key]);
-      inp.addEventListener('input', ()=>{ Pen.P[key] = parseFloat(inp.value); val.textContent = fmt(Pen.P[key]); if(cb) cb(); });
+      inp.addEventListener('input', ()=>{ Pen.P[key] = ParamValues.read(inp); val.textContent = fmt(Pen.P[key]); if(cb) cb(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
       root.appendChild(row);
     }
@@ -20710,10 +20852,11 @@ void mainImage(out vec4 o, in vec2 f){
     const mkSlider = ([label, key, mi, ma, st2, fmt, title])=>{
       const row = mkRow(label, key);
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st2; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       if(title) inp.title = title;
       inp.dataset.default = String(App.resetValueFor('novel', key, NovelTerminal._PDef[key] !== undefined ? NovelTerminal._PDef[key] : P[key]));
       const val = document.createElement('div'); val.className='val'; val.textContent = fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key] = ParamValues.read(inp); val.textContent = fmt(P[key]); });
       row.appendChild(inp); row.appendChild(val);
     };
     const mkColor = ([label, key, title])=>{
@@ -20951,9 +21094,10 @@ void mainImage(out vec4 o, in vec2 f){
       const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
       const lab = document.createElement('label'); lab.textContent = label;
       const inp = document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=st; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       inp.dataset.default = String(App.resetValueFor('cyberui', key, CyberUI._PDef[key] !== undefined ? CyberUI._PDef[key] : P[key]));
       const val = document.createElement('div'); val.className='val'; val.textContent = fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key] = parseFloat(inp.value); val.textContent = fmt(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key] = ParamValues.read(inp); val.textContent = fmt(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
       root.appendChild(row);
     }
@@ -21019,14 +21163,15 @@ void mainImage(out vec4 o, in vec2 f){
     const slid = (id, key, format)=>{
       const el = $('#'+id); const val = $('#'+id+'Val');
       if(!el) return;
+      ParamValues.bind(el, App.post, key);
       el.value = App.post[key];
       // パラメータ欄は実効値のみ表示 (|値|<0.1 は "0.0")。生値の括弧併記は右上 HUD 側で行う。
-      const disp = (v)=> App.effDisplay(v, format);
+      const disp = (v)=> App.effDisplay(v, x=>ParamValues.format(x, el, format));
       if(val) val.textContent = disp(App.post[key]);
       if(MIDI.postRange[key]) el.dataset.midiKey = '*:__post__' + key;   // 右クリック MIDI Learn 対象
       if(!UI._postSlid.some(r => r.id === id)) UI._postSlid.push({id, key, disp});
       el.addEventListener('input', ()=>{
-        App.post[key] = App.snapPost(key, parseFloat(el.value));
+        App.post[key] = App.snapPost(key, ParamValues.read(el));
         if(val) val.textContent = disp(App.post[key]);
       });
     };
@@ -21036,10 +21181,10 @@ void mainImage(out vec4 o, in vec2 f){
     { const el = $('#pxSat'), val = $('#pxSatVal');
       if(el){
         el.value = (App.post.sat != null ? App.post.sat : 1.0) - 1.0;
-        if(val) val.textContent = f2(parseFloat(el.value));
+        if(val) val.textContent = f2(ParamValues.read(el));
         el.dataset.midiKey = '*:__post__sat';
         el.addEventListener('input', ()=>{
-          const d = parseFloat(el.value);
+          const d = ParamValues.read(el);
           App.post.sat = App.snapPost('sat', d + 1.0);
           if(val) val.textContent = f2(d);
         });
@@ -21057,9 +21202,9 @@ void mainImage(out vec4 o, in vec2 f){
     { const el = $('#pxCon'), val = $('#pxConVal');
       if(el){
         el.value = (App.post.con != null ? App.post.con : 1.0) - 1.0;
-        if(val) val.textContent = f2(parseFloat(el.value));
+        if(val) val.textContent = f2(ParamValues.read(el));
         el.dataset.midiKey = '*:__post__con';   // 右クリック MIDI Learn 対象
-        el.addEventListener('input', ()=>{ App.post.con = App.snapPost('con', parseFloat(el.value) + 1.0); if(val) val.textContent = f2(parseFloat(el.value)); });
+        el.addEventListener('input', ()=>{ App.post.con = App.snapPost('con', ParamValues.read(el) + 1.0); if(val) val.textContent = f2(ParamValues.read(el)); });
       } }
     slid('pxVig',  'vig',  f2);
     slid('pxChr',  'chr',  f3);
@@ -21077,7 +21222,7 @@ void mainImage(out vec4 o, in vec2 f){
         const showU = ()=>{ if(val) val.textContent = f2(App.post.unsharp); };
         showU();
         el.addEventListener('input', ()=>{
-          App.post.unsharp = Math.max(-1, Math.min(1, App.snapPost('unsharp', parseFloat(el.value))));
+          App.post.unsharp = Math.max(-1, Math.min(1, App.snapPost('unsharp', ParamValues.read(el))));
           App.post.unsharpRadius = App.unsharpRadiusFromValue(App.post.unsharp);
           showU();
         });
@@ -21649,10 +21794,14 @@ void mainImage(out vec4 o, in vec2 f){
     // Sensitivity: 位置(0..1)→ゲインは指数マップ。中央0.5=ゲイン0.5。表示は実ゲイン。
     { const el = $('#pxAGain'), val = $('#pxAGainVal');
       if(el){
+        el._paramSpec = {step:0.01, min:App.againFromSlider(0), max:App.againFromSlider(1)};
+        el._paramDisplay = ()=>App.post.audioGain;
+        el._paramToSlider = g=>App.againToSlider(g);
+        el._paramFromSlider = s=>App.againFromSlider(s);
         el.value = App.againToSlider(App.post.audioGain != null ? App.post.audioGain : 0.5);
-        const showG = ()=>{ if(val) val.textContent = App.againFromSlider(parseFloat(el.value)).toFixed(2); };
+        const showG = ()=>{ if(val) val.textContent = App.post.audioGain.toFixed(2); };
         showG();
-        el.addEventListener('input', ()=>{ App.post.audioGain = App.againFromSlider(parseFloat(el.value)); showG(); });
+        el.addEventListener('input', ()=>{ App.post.audioGain = ParamValues.number(App.againFromSlider(ParamValues.read(el))); showG(); });
       } }
     slid('pxABand',  'audioBand', f2);
     slid('pxAAttack','audioAttack', f2);
@@ -21830,9 +21979,6 @@ void mainImage(out vec4 o, in vec2 f){
     };
     const f2 = v=>v.toFixed(2), f3 = v=>v.toFixed(3), fi = v=>String(v|0);
     const p = App.post;
-    for(const k in p){
-      if(typeof p[k] === 'number') p[k] = App.snapPost(k, p[k]);
-    }
     // slid() 登録分をまとめて同期 (明示 set() の追記漏れを防ぐ)。
     //   con / sat のようなオフセット表示のものは下の明示 set() が後から上書きする。
     for(const r of (UI._postSlid || [])){
@@ -21851,10 +21997,10 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxBri',   p.bri,   f2);
     set('pxCon',   (p.con != null ? p.con : 1.0) - 1.0,   f2, true);   // con はオフセット表示なので生値表記しない
     set('pxVig',   p.vig,   f2);
-    set('pxChr',   p.chr,   f3);
+    set('pxChr',   p.chr,   v=>ParamValues.format(v, {step:0.0005}, f3));
     set('pxPix',   p.pix,   fi);
     set('pxScn',   p.scn,   f2);
-    set('pxGrn',   p.grn,   f2);
+    set('pxGrn',   p.grn,   v=>ParamValues.format(v, {step:0.005}, f2));
     set('pxTexN',  p.texNoise || 0, f2);
     { const el=$('#pxUnsharp'), out=$('#pxUnsharpVal');
       const u = Math.max(-1, Math.min(1, Number(p.unsharp) || 0));
@@ -22770,7 +22916,7 @@ void mainImage(out vec4 o, in vec2 f){
     // 画像の見た目 (Look)
     for(const [id, key, fmt] of this._imgFx()){
       const el = $('#'+id), val = $('#'+id+'Val'); if(!el) continue;
-      el.addEventListener('input', ()=>{ const m = ensure(); if(!m) return; m.P[key] = parseFloat(el.value); if(val) val.textContent = fmt(m.P[key]); });
+      el.addEventListener('input', ()=>{ const m = ensure(); if(!m) return; ParamValues.bind(el, m.P, key); m.P[key] = ParamValues.read(el); if(val) val.textContent = fmt(m.P[key]); });
     }
     const mir = $('#imgMirror');
     if(mir) mir.addEventListener('change', ()=>{ const m = ensure(); if(m) m.P.mirror = parseInt(mir.value, 10); });
@@ -22803,7 +22949,8 @@ void mainImage(out vec4 o, in vec2 f){
   saveImageDefault(){
     if(typeof ImageMode === 'undefined') return;
     const P = ImageMode.P;
-    const d = { folder: P.folder, image: P.image, ...Object.fromEntries(ImageMode.FOLDER_KEYS.map(k => [k, P[k]])) };
+    const d = App.paramValues('image', { folder: P.folder, image: P.image, ...Object.fromEntries(ImageMode.FOLDER_KEYS.map(k => [k, P[k]])) });
+    Object.assign(P, d);
     try{ localStorage.setItem(this._imageDefKey, JSON.stringify(d)); }catch(e){}
     toast('デフォルト保存: image' + (P.folder ? ' (' + P.folder.split('/').pop() + ')' : ''));
   },
@@ -22883,7 +23030,7 @@ void mainImage(out vec4 o, in vec2 f){
     const trans = $('#imgTrans'); if(trans) trans.value = String(typeof P.transBeats === 'number' ? P.transBeats : -1);
     const tstyle = $('#imgTransStyle'); if(tstyle) tstyle.value = String(typeof P.transStyle === 'number' ? P.transStyle : -1);
     for(const [id, key, fmt] of this._imgFx()){
-      const el = $('#'+id), val = $('#'+id+'Val'); if(el) el.value = P[key]; if(val) val.textContent = fmt(P[key]);
+      const el = $('#'+id), val = $('#'+id+'Val'); if(el){ ParamValues.bind(el, P, key); el.value = P[key]; } if(val) val.textContent = fmt(P[key]);
     }
     const mir = $('#imgMirror'); if(mir) mir.value = String(P.mirror);
     const tmir = $('#imgTileMirror'); if(tmir) tmir.checked = !!P.tileMirror;
@@ -22999,16 +23146,18 @@ void mainImage(out vec4 o, in vec2 f){
       const row=document.createElement('div'); row.className='row'; row.dataset.pkey=key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); if(relayout && PhotoPlane.generateLayout) PhotoPlane.generateLayout(); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=fmt(P[key]); if(relayout && PhotoPlane.generateLayout) PhotoPlane.generateLayout(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
     for(const [label,key,mi,ma,step,fmt] of (PhotoPlane.SPECS||[])){
       const row=document.createElement('div'); row.className='row'; row.dataset.pkey=key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=fmt(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
     { const row=document.createElement('div'); row.className='row'; row.dataset.pkey='bg';          // 背景色 (Slot A で敷く / Slot B は透過)
@@ -23104,7 +23253,7 @@ void mainImage(out vec4 o, in vec2 f){
     const setRange = (el, v)=>{
       const mi = parseFloat(el.min), ma = parseFloat(el.max), step = parseFloat(el.step) || 0.01;
       v = Math.max(mi, Math.min(ma, Math.round((v - mi)/step)*step + mi));
-      if(parseFloat(el.value) === v) return;
+      if(ParamValues.read(el) === v) return;
       el.value = String(v); fire(el, 'input');
     };
     // 他の量は中立へ
@@ -23292,8 +23441,9 @@ void mainImage(out vec4 o, in vec2 f){
       const [label,key,mi,ma,step,fmt,rebuild] = spec;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=fmt(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=fmt(P[key]);
         if(rebuild && Shredder.rebuild) Shredder.rebuild(); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val); root.appendChild(row);
     }
@@ -23369,8 +23519,9 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=disp(P[key], fmt);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=disp(P[key], fmt); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=disp(P[key], fmt); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -23435,9 +23586,10 @@ void mainImage(out vec4 o, in vec2 f){
       const [label,key,mi,ma,step,f] = spec;
       const fmt = formats[f];
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const show = (v)=> key === 'seed' ? fmt(v) : disp(v, fmt);   // Seed はデッドゾーン表示をしない
       const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=show(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     this.bindEngineHints(root, RZ);
@@ -23539,9 +23691,10 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
       const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=show(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -23591,9 +23744,10 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const show = (v)=> key === 'seed' ? fmt(v) : disp(v, fmt);   // Seed はデッドゾーン表示をしない
       const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=show(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     // Random 🎲 (スライダーのパラメータのみ。背景色は変えない。保存は右上の Save)
@@ -23665,10 +23819,11 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       if(NO_RAND[key]) inp.dataset.norand = '1';
       const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
       const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=show(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     };
     // 文字入力 (改行で複数行)。日本語の変換中は確定まで反映しない
@@ -23890,9 +24045,10 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
       const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=show(P[key]); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -24153,9 +24309,10 @@ void mainImage(out vec4 o, in vec2 f){
         const row = mkRow(key);
         const lab=document.createElement('label'); lab.textContent=label;
         const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+        ParamValues.bind(inp, P, key);
         const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
         const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
-        inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+        inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=show(P[key]); });
         if(key === 'seed') Fude._onSeed = ()=>{ inp.value = P.seed; val.textContent = show(P.seed); };
         row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
       }
@@ -24296,8 +24453,9 @@ void mainImage(out vec4 o, in vec2 f){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=disp(P[key], fmt);
-      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=disp(P[key], fmt); });
+      inp.addEventListener('input', ()=>{ P[key]=ParamValues.read(inp); val.textContent=disp(P[key], fmt); });
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
@@ -24478,10 +24636,11 @@ void mainImage(out vec4 o, in vec2 f){
       const row=document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
       sliderMap[key] = {inp, val, fmt};
       inp.addEventListener('input', ()=>{   // T.P を毎回参照する (md の切り替えで Ugomeki.P が差し替わっても効く)
-        T.P[key]=parseFloat(inp.value); val.textContent=fmt(T.P[key]);
+        T.P[key]=ParamValues.read(inp); val.textContent=fmt(T.P[key]);
         dropOther(key);
         if(relayout) T._layout = null;
       });
@@ -24523,10 +24682,11 @@ void mainImage(out vec4 o, in vec2 f){
       const row=document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=Ugomeki.P[key];
+      ParamValues.bind(inp, Ugomeki.P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(Ugomeki.P[key]);
       inp.addEventListener('input', ()=>{
         const PP = Ugomeki.P;
-        PP[key]=parseFloat(inp.value); val.textContent=fmt(PP[key]);
+        PP[key]=ParamValues.read(inp); val.textContent=fmt(PP[key]);
       });
       inp.addEventListener('dblclick', ()=>{
         const PP = Ugomeki.P;
@@ -24702,12 +24862,13 @@ void mainImage(out vec4 o, in vec2 f){
       const row=document.createElement('div'); row.className='row'; row.dataset.pkey = key;
       const lab=document.createElement('label'); lab.textContent=label;
       const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      ParamValues.bind(inp, P, key);
       const val=document.createElement('div'); val.className='val'; val.textContent=fmt(P[key]);
       // SpaceType.P は loadPreset で別オブジェクトへ差し替わることがあるため、
       // クロージャに P を捕まえず毎回 live 参照する (捕まえると死んだ P に書いて効かなくなる)
       inp.addEventListener('input', ()=>{
         const PP = SpaceType.P;
-        PP[key]=parseFloat(inp.value); val.textContent=fmt(PP[key]);
+        PP[key]=ParamValues.read(inp); val.textContent=fmt(PP[key]);
         if(rebuild) SpaceType._dirty = true;
       });
       // ダブルクリックでデフォルト値へ戻す
@@ -24758,8 +24919,9 @@ void mainImage(out vec4 o, in vec2 f){
     const slid = (id, key, fmt)=>{
       const el = $('#'+id), val = $('#'+id+'Val');
       if(!el) return;
+      ParamValues.bind(el, P, key);
       el.value = P[key]; if(val) val.textContent = fmt(P[key]);
-      el.addEventListener('input', ()=>{ P[key] = parseFloat(el.value); if(val) val.textContent = fmt(P[key]); });
+      el.addEventListener('input', ()=>{ P[key] = ParamValues.read(el); if(val) val.textContent = fmt(P[key]); });
     };
     slid('ikSpawnBeats', 'spawnBeats', v=>String(v));
     slid('ikDelay',      'delay',      v=>v.toFixed(1));
@@ -24932,10 +25094,11 @@ void mainImage(out vec4 o, in vec2 f){
     const slid = (id, key, fmt, rebuild)=>{
       const el = $('#'+id); const val = $('#'+id+'Val');
       if(!el) return;
+      ParamValues.bind(el, S, key);
       el.value = S[key];
       if(val) val.textContent = fmt(S[key]);
       el.addEventListener('input', ()=>{
-        S[key] = parseFloat(el.value);
+        S[key] = ParamValues.read(el);
         if(val) val.textContent = fmt(S[key]);
         // Auto のドリフト中心をユーザ操作値へ更新 (でないと次の拍で初期値中心へ戻される)
         if(key === 'explode' || key === 'bend' || key === 'curl') Slicer.noteAutoBase();
@@ -24985,7 +25148,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('slFov',      'fov',     fi, false);
     slid('slShadowStr','shadowStr',f2, false);
     slid('slShadowRad','shadowRadius', v=>v.toFixed(1), false);
-    slid('slShadowBias','shadowBias',  f3, false);
+    slid('slShadowBias','shadowBias',  v=>ParamValues.format(v, {step:0.0005}, f3), false);
     slid('slPostScale', 'postScale',   f2, false);
     const pc = v=>v + '%', pd = v=>v + '°';
     // 断片の形を作り直すもの: つまみを止めて 0.15 秒後に組み直す
@@ -25078,7 +25241,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('slOverlapShadow', S.overlapShadow);
     set('slShadowStr', S.shadowStr, f2);
     set('slShadowRad', S.shadowRadius, v=>v.toFixed(1));
-    set('slShadowBias', S.shadowBias, f3);
+    set('slShadowBias', S.shadowBias, v=>ParamValues.format(v, {step:0.0005}, f3));
     set('slPostScale',  S.postScale,  f2);
     { const pc = v=>v + '%', pd = v=>v + '°';
       set('slShardScale', S.shardScale, pc); set('slSmallShare', S.smallShare, pc); set('slLargeShare', S.largeShare, pc);
@@ -25511,7 +25674,7 @@ void mainImage(out vec4 o, in vec2 f){
         if(v != null) el.value = String(v);
         el.disabled = false;
         const out = el.type === 'range' ? el.nextElementSibling : null;
-        if(out) out.textContent = String(+(+el.value).toFixed(3));
+        if(out) out.textContent = ParamValues.format(+v, el, x=>String(ParamValues.number(x)));
       });
     }
     const st = $('#tdSurfStatus');
@@ -25712,13 +25875,13 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab);
       if(p.type==='float'){
         const r = document.createElement('input'); r.type='range'; r.min=p.min; r.max=p.max;
-        r.step = (p.max-p.min) / 1000;
+        r.step = ParamValues.shaderSpec(p).step;
         r.value = p.value;
         r.dataset.default = String(p.defaultValue ?? p.value);
         // 生値を保存 (デッドゾーンは描画時 deadParam)。パラメータ欄は |値|<0.1 を "0.0" 表示。
-        const pf3 = x=>(+x).toFixed(3);
+        const pf3 = x=>String(ParamValues.shader(p, x));
         const pdisp = (v)=> App.effDisplay(v, pf3);
-        r.addEventListener('input',()=>{ p.value = parseFloat(r.value); val.textContent = pdisp(p.value); });
+        r.addEventListener('input',()=>{ p.value = ParamValues.shader(p, ParamValues.read(r)); val.textContent = pdisp(p.value); });
         row.appendChild(r);
         const val = document.createElement('div'); val.className='val'; val.textContent = pdisp(p.value);
         row.appendChild(val);
@@ -25774,7 +25937,7 @@ void mainImage(out vec4 o, in vec2 f){
   updateParamUI(slotKey, p){
     if(slotKey!==App.activeSlot) return;
     if(p._uiRange) p._uiRange.value = p.value;
-    if(p._uiVal) p._uiVal.textContent = p._uiDisp ? p._uiDisp(p.value) : (+p.value).toFixed(3);
+    if(p._uiVal) p._uiVal.textContent = p._uiDisp ? p._uiDisp(p.value) : ParamValues.shaderText(p);
     if(p._uiBox) p._uiBox.checked = p.value>0.5;
   },
 

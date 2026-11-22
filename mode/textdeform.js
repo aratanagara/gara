@@ -1120,7 +1120,12 @@ void main(){
       const every = Math.max(0.0625, +P.textEvery || 4), b = (beat || 0) / every;
       const slot = Math.floor(b + 1e-6);
       if(this._textSlot == null || slot < this._textSlot) this._textSlot = slot;
-      else if(slot !== this._textSlot){ this._textSlot = slot; this.nextRandomText(); }
+      else if(slot !== this._textSlot){
+        this._textSlot = slot;
+        // T Type が On のときは、全文を打ち終えるまで替えない (長文が出だしだけで次へ行かないように。次の区切りで替える)
+        const typing = P.typeOn === 'on' && (this._twShown || 0) < ((this._metrics && this._metrics.length) || 0);
+        if(!typing) this.nextRandomText();
+      }
     }
     if(typeof TDLooks !== 'undefined') TDLooks.beatTick(beat);   // Look Auto
     this._compRandTick(beat);
@@ -1358,7 +1363,7 @@ void main(){
   // 一文字ずつ入力: 今の拍で見せる文字数 (Off は全部)。文字列か文字数が変わったら、その拍から数え直す
   _typedCount(n){
     const P = this.P;
-    if(P.typeOn !== 'on') return n;
+    if(P.typeOn !== 'on' || this._typeAll) return n;   // _typeAll = Canvas がスタンプを焼き付けている間
     const beat = this._beatNow || 0, key = n + '|' + P.text;
     if(this._twKey !== key || beat < this._twStart){ this._twKey = key; this._twStart = beat; this._twShown = 0; }
     const cpb = Math.max(0.25, +P.typeSpeed || 2), hold = Math.max(0, +P.typeHold || 0);
@@ -1764,7 +1769,7 @@ TextDeform.PARAM_HELP = {
   // Text
   textMode: '表示する文字の出どころ。Look = Look の語 (Featured はサムネと同じ語) / Random = テキストプリセットから拍ごと / Custom = 下の入力欄',
   textPool: 'Random で使う文字の種類。押すたびに On / Off し、On の種類を混ぜて使う (漢字・四字熟語・文学の一節・哲学の言葉など)。All = 長文以外の全部 (ほかを選ぶと外れる)。全部 Off にはならない',
-  textEvery: 'Random で文字を替える間隔 (拍)',
+  textEvery: 'Random で文字を替える間隔 (拍)。T Type が On のときは、全文を打ち終えてから次の区切りで替える',
   typeOn: '一文字ずつ入力 (タイプライター)。On = 文字が拍に合わせて一文字ずつ現れる (全 Look 共通・Canvas のスタンプもそれぞれ入力する)。文字が替わると最初から',
   typeSpeed: '入力の速さ (1 拍あたりの文字数)',
   typeHold: '全部入力したあと、最初に戻るまで待つ拍数 (Keep = 全文を出したまま)',

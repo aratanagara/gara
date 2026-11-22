@@ -293,7 +293,6 @@ const TDCanvas = {
       d.rX = s.rX; d.rY = s.rY; d.geo = s.geo; d.op = s.op; d.opStatic = s.opStatic;
       TD._applyStretch(d);
     }
-    TD._twKey = inst._twKey; TD._twStart = inst._twStart; TD._twShown = inst._twShown;   // 一文字ずつ入力の進み具合もスタンプのものにする (本体の文字を替えると数え直していた)
   },
   // 1 フレームぶん焼き付けを進める (TDCanvas.draw の先頭から)
   _stepBake(now){
@@ -315,7 +314,11 @@ const TDCanvas = {
   _bakeFrame(b, inst, now){
     const { pf, pw, ph } = inst._raster;
     this._copyLetters(inst);
-    const cv = TD._renderHero(pw, ph, 1/pf);   // 描くことで Surface の Worker へも頼む
+    // 焼き付けた絵は動かないので、T Type が On でも全文で焼く (入力途中の 1 文字目で固まっていた)
+    TD._typeAll = true;
+    let cv;
+    try{ cv = TD._renderHero(pw, ph, 1/pf); }   // 描くことで Surface の Worker へも頼む
+    finally{ TD._typeAll = false; }
     b.frames++;
     // Vector 3D の間は Surface を描かない (TextDeform._renderToCanvas) ので、その絵を待たない (待つと毎回 2.5 秒の打ち切りまで素の文字が出ていた)
     const vecOn = !!TD.P.vecMode && TD.P.vecMode !== 'off';
