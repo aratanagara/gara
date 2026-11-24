@@ -1,8 +1,6 @@
 @font-face{
   font-family:"Aratana";
-  src:url("fonts/Aratana.woff2") format("woff2"),
-      url("fonts/Aratana.woff")  format("woff"),
-      url("fonts/Aratana.ttf")   format("truetype");
+  src:url("fonts/aratana-web-vf.woff2?v=202611241700") format("woff2");
   font-weight:normal;
   font-style:normal;
   font-display:swap;
