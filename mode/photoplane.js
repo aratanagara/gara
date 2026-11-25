@@ -17,6 +17,7 @@
    プロトタイプ共有でよいもの: gl, prog, vao, vbo, ibo, idxCount, loc, defaultTex, ok, initialized, m4, startTime。
    _fx                (own プロパティ {w:0..1}。3D FX が設定すると「画面空間の配置 (w=0: 各プレーンが crop の元の位置・大きさで平ら・真正面カメラ) → 通常の 3D 配置 (w=1)」へ
                        render 内で補間する。未設定なら従来どおり。w=0 では環境光 1 / 拍パルス 0)
+                       curl / curlAxis / flutter / corner は FX 側で正規化した紙の調整値。spinT / spinClock は自転の積算時計
    FX 用: render(opts) に clock (数値) / keepDepth:true (呼び出し側 FBO の深度を使い、RBO の付け外しをしない)。
           P.softFocus は 0 にする (texture(uTex,uv,bias) はミップ前提。FBO テクスチャはミップ無し)。 */
 const PhotoPlane = {
@@ -133,25 +134,37 @@ in vec2 aUV;    // 0..1
 uniform mat4 uMVP, uModel;
 uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq, uWarpYR, uFold, uTwist, uPaper;
 uniform vec2 uBend;      // 端の反り x,y
+uniform vec2 uPaperDir;  // FX の紙を曲げる方向 (板ごとに固定)
+uniform vec3 uPaperCurve; // 本体の曲率 / 片端の曲率 / 片端の巻き始め
 uniform vec4 uCrop;      // u0,v0,u1,v1
 uniform float uNvOn, uNvSub;   // 3D FX の Needle: 板を GL.needleCellGLSL の針の面で覆う (aPos / aUV の代わりに gl_VertexID から作る)
 uniform vec2 uNvGrid, uNvSalt;
 uniform float uNvCell;          // 画面基準の針の間隔 (板の座標。小さな板でも針の大きさを揃える)
 out vec2 vUv; out vec3 vN; out vec3 vWorld; out vec2 vL; out vec2 vQ;
+// 弧長 s の円弧と接線 (x,z,cos,sin)。曲率 0 でも連続し、小角の桁落ちを避ける
+vec4 paperArc(float s, float k){
+  float a = s * k, c = cos(a), sn = sin(a);
+  if(abs(a) < 0.01){
+    float a2 = a * a;
+    return vec4(s * (1.0 - a2 / 6.0), s * a * (0.5 - a2 / 24.0), c, sn);
+  }
+  return vec4(sn / k, (1.0 - c) / k, c, sn);
+}
+vec3 paperDisplace(vec2 q, out vec3 normal){
+  vec2 p = q * vec2(uAspect, 1.0), d = uPaperDir;
+  float u = dot(p, d), edge = uPaperCurve.z;
+  vec4 arc = paperArc(min(u, edge), uPaperCurve.x);
+  if(u > edge){
+    // 同じ軸の円弧を接線でつなぐ。斜めの軸では片隅だけが巻かれ、面は伸縮しない
+    vec4 tip = paperArc(u - edge, uPaperCurve.y);
+    mat2 turn = mat2(arc.z, arc.w, -arc.w, arc.z);
+    arc = vec4(arc.xy + turn * tip.xy, turn * tip.zw);
+  }
+  normal = vec3(-d * arc.w, arc.z);
+  return vec3(p + d * (arc.x - u), arc.y);
+}
 vec3 displace(vec2 q){
   vec2 p = q; p.x *= uAspect;
-  if(uPaper > 0.5){
-    // 3D FX (Photos): 柔らかい紙のしなり。紙の上の 1 方向に沿って弧長を保ったまま曲げる (伸び縮みしない = 波打たない)。
-    //   曲率は中心で k0、そこから k1 で変わる (片反り ↔ S 字)。どちらも板ごとの周期でゆっくり行き来し、曲げの向きも少し漂う
-    float a = atan(uBend.y, uBend.x) + 0.35 * sin(uTime * 0.13 + uSeed);
-    vec2 d = vec2(cos(a), sin(a)), n = vec2(-d.y, d.x);
-    float u = dot(p, d), v = dot(p, n);
-    float k0 = uBendMul * 2.0 * sin(uTime * (0.45 + 0.05 * uSeed) + uSeed * 2.1);
-    float k1 = uBendMul * 3.2 * sin(uTime * (0.31 + 0.04 * uSeed) + uSeed * 3.7);
-    float x = 0.0, z = 0.0, h = u / 6.0;
-    for(int i = 0; i < 6; i++){ float s = (float(i) + 0.5) * h; float th = k0 * s + 0.5 * k1 * s * s; x += cos(th) * h; z += sin(th) * h; }
-    return vec3(d * x + n * v, z);
-  }
   float z = 0.0;
   z += uBend.x*uBendMul * (p.x*p.x - 0.0833);
   z += uBend.y*uBendMul * (p.y*p.y - 0.0833);
@@ -165,9 +178,13 @@ void main(){
   vec2 qp = aPos, uvp = aUV;
   float nw = 0.0; vec2 nkey = vec2(0.0);
   if(uNvOn > 0.5){ vec2 ab; fx3dNeedleVert(gl_VertexID, uNvGrid, uNvSub, uNvSalt, ab, nw, nkey); qp = ab - 0.5; uvp = vec2(ab.x, 1.0 - ab.y); }
-  vec3 pc = displace(qp);
-  float e = 0.02;
-  vec3 n = normalize(cross(displace(qp+vec2(e,0.0))-pc, displace(qp+vec2(0.0,e))-pc));
+  vec3 pc, n;
+  if(uPaper > 0.5) pc = paperDisplace(qp, n);  // FX は円弧の接線から法線を求め、差分用の再計算を省く
+  else {
+    pc = displace(qp);
+    float e = 0.02;
+    n = normalize(cross(displace(qp+vec2(e,0.0))-pc, displace(qp+vec2(0.0,e))-pc));
+  }
   if(uNvOn > 0.5) pc += n * (nw * fx3dNeedleH(nkey, uvp * vec2(uAspect, 1.0) * 3.2) * min(0.5 * (uAspect / uNvGrid.x + 1.0 / uNvGrid.y), uNvCell));
   vec4 wp = uModel * vec4(pc*uScale, 1.0);
   vWorld = wp.xyz;
@@ -236,7 +253,7 @@ void main(){
   _link(vs,fs){ const gl=this.gl; const v=this._compile(gl.VERTEX_SHADER,vs), f=this._compile(gl.FRAGMENT_SHADER,fs); if(!v||!f) return null;
     const p=gl.createProgram(); gl.attachShader(p,v); gl.attachShader(p,f); gl.bindAttribLocation(p,0,'aPos'); gl.bindAttribLocation(p,1,'aUV'); gl.linkProgram(p);
     if(!__glReady(gl, p, true)){ console.error('[PhotoPlane link]', gl.getProgramInfoLog(p)); return null; }
-    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uCut','uNvOn','uNvSub','uNvGrid','uNvSalt','uNvCell','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
+    this.loc={}; ['uMVP','uModel','uTime','uAspect','uScale','uSeed','uBend','uBendMul','uWarpAmp','uWarpFreq','uCrop','uTex','uCam','uAmbient','uWarpYR','uFold','uTwist','uPaper','uPaperDir','uPaperCurve','uCut','uNvOn','uNvSub','uNvGrid','uNvSalt','uNvCell','uRound','uFrameW','uEdgeFade','uZoom','uBlur','uFringe','uMosaic','uHue','uBright','uSpec','uShine','uRim','uFog','uFogStart','uLight','uTint','uFrameCol','uRimCol','uFogCol'].forEach(n=>this.loc[n]=gl.getUniformLocation(p,n)); return p; },
 
   // 細分プレーン (N×N グリッド) — bend/warp をなめらかに
   _buildGeo(N){
@@ -389,7 +406,8 @@ void main(){
       const f=this._norm([look[0]-eye[0],look[1]-eye[1],look[2]-eye[2]]), c=Math.cos(roll), sn=Math.sin(roll), fu=f[1], fx=this._cross(f,up);
       up=[up[0]*c+fx[0]*sn+f[0]*fu*(1-c), up[1]*c+fx[1]*sn+f[1]*fu*(1-c), up[2]*c+fx[2]*sn+f[2]*fu*(1-c)];
     }
-    const view=this.m4.lookAt(eye,look,up);
+    let view=this.m4.lookAt(eye,look,up);
+    if(this._fx && typeof GL !== 'undefined' && GL._stretchView) view=GL._stretchView(view);   // 3D FX のときだけ 3D Stretch X / Y / Z
     const vp=this.m4.mul(proj,view);
 
     const keepDepth = opts.keepDepth || (typeof GL !== 'undefined' && GL.kindKeepsDepth && GL.kindKeepsDepth(fbo));   // GL が共通の深度を付けている (Code の 3D 深度)
@@ -457,10 +475,19 @@ void main(){
     gl.uniform1i(this.loc.uTex,0);
     gl.activeTexture(gl.TEXTURE0);
 
+    let spinT = t * P.spin;
+    if(this._fx){
+      // スライダーで速度を変えても向きが跳ばないよう積算。フリーズ・逆再生は元の時計に従う
+      const fx = this._fx;
+      if(fx.spinT == null || (t >= 0 && t < 0.05 && fx.spinClock > 0.5)) fx.spinT = spinT;
+      else fx.spinT += (t - fx.spinClock) * P.spin;
+      fx.spinClock = t;
+      spinT = fx.spinT;
+    }
     for(let pi=0; pi<this.planes.length; pi++){
       const pl=this.planes[pi];
       const spinMul = spinVar!==0 ? 1 + spinVar*(hv(pi,1)*2-1) : 1;
-      const ang = pl.phase + t*P.spin*pl.spinSign*spinMul + pulse*0.5*pl.spinSign;   // 拍で少し余分に回す(加算kick, ジャンプしない)
+      const ang = pl.phase + spinT*pl.spinSign*spinMul + pulse*0.5*pl.spinSign;   // 拍で少し余分に回す(加算kick, ジャンプしない)
       let px=pl.pos[0], py=pl.pos[1], pz=pl.pos[2];
       if(hollow!==0){ const r=Math.hypot(px,py,pz); if(r>1e-6){ const k=(hollow*P.spread + (1-hollow)*r)/r; px*=k; py*=k; pz*=k; } }
       if(swirl!==0){ const a=swirl*t/(1+0.15*Math.hypot(px,pz)), c=Math.cos(a), sn=Math.sin(a); const nx=px*c+pz*sn; pz=-px*sn+pz*c; px=nx; }
@@ -489,6 +516,19 @@ void main(){
       gl.uniform1f(this.loc.uBright, brightVar!==0 ? 1 + brightVar/100*(hv(pi,3)-0.5)*1.6 : 1);
       gl.uniform1f(this.loc.uSeed,pl.seed);
       gl.uniform2f(this.loc.uBend,pl.bend[0],pl.bend[1]);
+      if(this._fx){
+        // 板ごとの定数と遅い揺れは CPU で一度だけ計算。頂点数・レイアウト・Code 側の乱数列は変えない
+        const fx = this._fx, pa = aspSq===1 ? pl.aspect : Math.pow(pl.aspect,aspSq);
+        const a = Math.atan2(pl.bend[1], pl.bend[0]) * fx.curlAxis;
+        const dx = Math.cos(a), dy = Math.sin(a);
+        const span = Math.max(1e-4, Math.abs(dx) * pa + Math.abs(dy));
+        const wave = 0.75 * Math.sin(t * (0.38 + 0.06 * pl.seed) + pl.phase) + 0.25 * Math.sin(t * 0.23 + pl.seed * 2.1);
+        const curl = pl.spinSign * fxw * (2.8 * fx.curl * (0.7 + 0.03 * pl.seed) + 0.9 * fx.flutter * wave) / span;
+        const edge = span * 0.28, tipLen = span * 0.22;
+        const corner = pl.spinSign * fxw * 1.6 * fx.corner * (1 + 0.2 * fx.flutter * wave) / tipLen;
+        gl.uniform2f(this.loc.uPaperDir, dx, dy);
+        gl.uniform3f(this.loc.uPaperCurve, curl, curl + corner, edge);
+      }
       gl.uniform4f(this.loc.uCrop,pl.crop[0],pl.crop[1],pl.crop[2],pl.crop[3]);
       const tex=(pl.texIdx>=0 && this.textures[pl.texIdx])?this.textures[pl.texIdx]:this.defaultTex;
       gl.bindTexture(gl.TEXTURE_2D,tex);

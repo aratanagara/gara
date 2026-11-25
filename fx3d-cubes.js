@@ -63,8 +63,21 @@ vec3 cubeSurf(int cube, int face, vec2 ab, out vec2 uvo, out vec3 ctr){
 const VS = `#version 300 es
 precision highp float;
 uniform mat4 uView, uProj;
-out vec2 vUv; out vec3 vW;
+out vec2 vUv; out vec3 vW; out vec3 vN;
 ${SURF}
+// 面内座標 ab の点を、立体シェーダの深度で面の外向きへ持ち上げた位置 (面の法線は差分で求める)
+vec3 liftSurf(int cube, int face, vec2 ab, out vec2 uvo, out vec3 ctr){
+  vec3 P = cubeSurf(cube, face, ab, uvo, ctr);
+  float rl = fx3dRelief(uvo);
+  if(rl > 0.0){
+    const float E = 1e-3;
+    vec2 uvd; vec3 c2;
+    vec3 N = normalize(cross(cubeSurf(cube, face, ab + vec2(E, 0.0), uvd, c2) - P, cubeSurf(cube, face, ab + vec2(0.0, E), uvd, c2) - P));
+    if(dot(N, P - ctr) < 0.0) N = -N;
+    P += N * rl;
+  }
+  return P;
+}
 void main(){
   int id = gl_VertexID, cube = id / ${PER}, r = id - cube * ${PER};
   int face = r / ${FV}, q = r - face * ${FV};
@@ -73,16 +86,13 @@ void main(){
   int cy = cell / ${SUB}, cx = cell - cy * ${SUB};
   ab = (vec2(float(cx), float(cy)) + ab) / float(${SUB});
   vec3 ctr;
-  vec3 P = cubeSurf(cube, face, ab, vUv, ctr);
-  {   // 立体シェーダの深度で面を外向きに持ち上げる (面の法線は差分で求める)
-    float rl = fx3dRelief(vUv);
-    if(rl > 0.0){
-      const float E = 1e-3;
-      vec2 uvd; vec3 c2;
-      vec3 N = normalize(cross(cubeSurf(cube, face, ab + vec2(E, 0.0), uvd, c2) - P, cubeSurf(cube, face, ab + vec2(0.0, E), uvd, c2) - P));
-      if(dot(N, P - ctr) < 0.0) N = -N;
-      P += N * rl;
-    }
+  vec3 P = liftSurf(cube, face, ab, vUv, ctr);
+  {   // 陰影の法線は、隣のマスの持ち上げた位置から頂点ごとに求める (三角形ごとに明るさが変わって網目に見えるのを防ぐ)
+    const float D = 1.0 / float(${SUB});
+    vec2 uvd; vec3 c2;
+    vec3 N = cross(liftSurf(cube, face, ab + vec2(D, 0.0), uvd, c2) - liftSurf(cube, face, ab - vec2(D, 0.0), uvd, c2),
+                   liftSurf(cube, face, ab + vec2(0.0, D), uvd, c2) - liftSurf(cube, face, ab - vec2(0.0, D), uvd, c2));
+    vN = normalize(dot(N, P - ctr) < 0.0 ? -N : N);
   }
   P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
   vW = P;
@@ -94,7 +104,7 @@ precision highp float;
 uniform mat4 uView, uProj;
 uniform vec2 uNvGrid;
 uniform float uNvSub;
-out vec2 vUv; out vec3 vW;
+out vec2 vUv; out vec3 vW; out vec3 vN;
 ${SURF}
 void main(){
   int per = (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * int(uNvSub) * int(uNvSub);
@@ -116,18 +126,20 @@ void main(){
   P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
   vUv = uv0;
   vW = P;
+  vN = vec3(0.0);   // 針の面は三角形ごとの陰影のまま (FS が差分の法線を使う)
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
 const FS = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec3 vW;
+in vec2 vUv; in vec3 vW; in vec3 vN;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
   vec4 t0 = texture(uTex, fx3dSrcC(vUv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
-  frag = vec4(fx3dFoldShade(fx3dLit(t0.rgb, vW, uEye, uShade)), 1.0);
+  vec3 c = dot(vN, vN) > 0.25 ? fx3dLitN(t0.rgb, normalize(vN), vW, uEye, uShade) : fx3dLit(t0.rgb, vW, uEye, uShade);
+  frag = vec4(fx3dFoldShade(c), 1.0);
 }`;
 const U = {};
 function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get(p); if(l === undefined){ l = gl.getUniformLocation(p, n); m.set(p, l); } return l; }

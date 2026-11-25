@@ -108,17 +108,24 @@ void main(){
       if(!p) return false;
       const N = Fx3d.popCount('diorama', Math.max(2, Math.min(24, Math.round(+(o.post && o.post.fx3dDioramaLayers) || 8))), false);   // 層数を変えると区切りが全部変わる = 全層が縮んでから出直す
       const k = o.k, t = o.clock;
-      // カメラの振り: drone = ゆっくり連続、beat = 拍ごとの乱数の向きへ Ease Out (Needle と同じ bid / ease)
-      let az = 0.35 * Math.sin(0.3 * t), el = 0.22 * Math.sin(0.23 * t);
+      // カメラ (FX タブの Diorama の詳細): Swing = 振りの大きさ (0.5 = 従来、0 = 止める) / Speed = 振りの速さ (drone は角速度、beat は向きを替える拍数 4〜1/4)
+      //   Pan / Tilt = 振りの中心の向き (左右 / 上下) / Zoom = 寄り (+) と引き (-)
+      const post = o.post || {}, dz = (v, d)=>App.deadParam(v != null ? +v : d);
+      const swing = 2 * Math.max(0, dz(post.fx3dDioramaSwing, 0.5)), speed = Math.max(0, Math.min(1, dz(post.fx3dDioramaSpeed, 0.5)));
+      const pan = dz(post.fx3dDioramaPan, 0), tilt = dz(post.fx3dDioramaTilt, 0), zoom = dz(post.fx3dDioramaZoom, 0);
+      // 振り: drone = ゆっくり連続、beat = 拍ごとの乱数の向きへ Ease Out (Needle と同じ bid / ease)
+      const ts = t * 2 * speed;
+      let az = 0.35 * Math.sin(0.3 * ts), el = 0.22 * Math.sin(0.23 * ts);
       if(o.beatMode){
-        const bid = Math.floor(o.beat), f = o.beat - bid;
+        const step = Math.pow(2, Math.round((0.5 - speed) * 4));   // Speed 0.5 = 1 拍ごと、0 = 4 拍、1 = 1/4 拍
+        const b = o.beat / step, bid = Math.floor(b), f = b - bid;
         const ease = 1 - Math.pow(1 - Math.min(1, f / 0.24), 3);
         const A = (b)=>[(hash(b) * 2 - 1) * 0.4, (hash(b + 17.3) * 2 - 1) * 0.22];
         const a0 = A(bid), a1 = A(bid + 1);
         az = a0[0] + (a1[0] - a0[0]) * ease; el = a0[1] + (a1[1] - a0[1]) * ease;
       }
-      az *= k; el *= k;
-      const dist = 1.35 + 0.35 * k;
+      az = (az * swing + pan * 1.1) * k; el = (el * swing + tilt * 0.65) * k;
+      const dist = (1.35 + 0.35 * k) * (1 - 0.45 * zoom * k);
       const gap = (0.6 * k + 0.25 * o.hit * k) / N;
       const cam = Fx3d.camera(o.asp, az, el, dist);
       const margin = 1 + 3.5 * k;

@@ -70,7 +70,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795340639">
+<link rel="stylesheet" href="style.css?v=1795579178">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -342,6 +342,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row">
             <label>A BG</label>
             <input type="color" id="slotABg" value="#000000" title="Slot A の背景色 = 出力の下地。Slot A が透過している所 (なし / 透過シェーダ / Image の余白) がこの色になる">
+            <div class="toggle-btns"><button id="slotABgClear" title="透過: 背景色なし。A BG の所に Grad Map を掛けず、#000000 の上に出す (もう一度で黒に戻す)" aria-pressed="false">None</button></div>
             <button id="slotABgReset" class="ico-only" title="黒 (既定) に戻す" data-icon="reset"></button>
           </div>
           <div class="row">
@@ -405,14 +406,14 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="tdCanvasClear" title="置いたスタンプを全部消す">Clear</button>
           </div>
           <div class="row"><label>C Layout</label>
-            <select data-tdp="canvasLayout" data-norand="1" style="flex:1"><option value="hero">Hero (大 1 + 周り)</option><option value="grid">Grid</option><option value="diagonal">Diagonal</option><option value="frame">Frame (中央を空ける)</option><option value="cascade">Cascade (大→小)</option><option value="scatter">Scatter (余白を保つ)</option><option value="free">Free (自由配置)</option><option value="cycle">Random (ランダムな周期で構成を入れ替え)</option><optgroup label="構成主義"><option value="slash">Slash (強い対角線)</option><option value="scale">Scale (極端な大小)</option><option value="cross">Cross (縦横の交差)</option><option value="radial">Radial (放射)</option><option value="wedge">Wedge (くさびと円)</option><option value="stairs">Stairs (階段)</option></optgroup></select>
+            <select data-tdp="canvasLayout" data-norand="1" style="flex:1"><option value="hero">Hero (大 1 + 周り)</option><option value="grid">Grid</option><option value="diagonal">Diagonal</option><option value="frame">Frame (中央を空ける)</option><option value="cascade">Cascade (大→小)</option><option value="scatter">Scatter (余白を保つ)</option><option value="free">Free (自由配置)</option><option value="cycle">Random (ランダムな周期で構成を入れ替え)</option><optgroup label="構成主義"><option value="slash">Slash (強い対角線)</option><option value="scale">Scale (極端な大小)</option><option value="cross">Cross (縦横の交差)</option><option value="radial">Radial (放射)</option><option value="wedge">Wedge (くさびと円)</option><option value="stairs">Stairs (階段)</option></optgroup></select><select data-tdp="canvasLayoutSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
             <button id="tdCanvasLayoutRand" title="別のレイアウトをランダムに">🎲</button>
           </div>
           <div class="row"><label>C Timing</label>
             <select data-tdp="canvasTiming" data-norand="1" style="flex:1"><option value="sync">Sync (まとめて出る)</option><option value="gun">Machine Gun (拍の刻みで 1 枚ずつ)</option></select>
           </div>
           <div class="row"><label>C Gun Speed</label>
-            <select data-tdp="canvasGunDiv" data-tdkind="num" data-norand="1" style="flex:1"><option value="1">1 / beat</option><option value="2">2 / beat</option><option value="4">4 / beat</option><option value="8">8 / beat</option><option value="16">16 / beat</option></select>
+            <select data-tdp="canvasGunDiv" data-tdkind="num" data-norand="1" style="flex:1"><option value="1">1 / beat</option><option value="2">2 / beat</option><option value="4">4 / beat</option><option value="8">8 / beat</option><option value="16">16 / beat</option></select><select data-tdp="canvasGunDivSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>C Gun Order</label>
             <select data-tdp="canvasGunOrder" data-norand="1" style="flex:1"><option value="layout">Layout (大きい順)</option><option value="random">Random</option><option value="sweep">Sweep (左から)</option></select>
@@ -421,7 +422,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <select data-tdp="canvasMove" data-norand="1" style="flex:1"><option value="glide">Glide (なめらかに移る)</option><option value="jump">Jump (瞬間的に置き直す)</option></select>
           </div>
           <div class="row"><label>C Jump Every</label>
-            <select data-tdp="canvasJumpEvery" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option></select>
+            <select data-tdp="canvasJumpEvery" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option></select><select data-tdp="canvasJumpEverySync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>C Source</label>
             <select data-tdp="canvasSource" data-norand="1" style="flex:1"><option value="current">Current Look</option><option value="random">Random (Look Pool)</option></select>
@@ -431,16 +432,16 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <div class="val"></div>
           </div>
           <div class="row"><label>C Auto Layout</label>
-            <select data-tdp="canvasAutoLayout" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option><option value="32">32 beat</option></select>
+            <select data-tdp="canvasAutoLayout" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option><option value="32">32 beat</option></select><select data-tdp="canvasAutoLayoutSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>C Auto Swap</label>
-            <select data-tdp="canvasAutoSwap" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select>
+            <select data-tdp="canvasAutoSwap" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select><select data-tdp="canvasAutoSwapSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>C Auto Add</label>
-            <select data-tdp="canvasAutoAdd" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select>
+            <select data-tdp="canvasAutoAdd" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select><select data-tdp="canvasAutoAddSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>C Auto Clear</label>
-            <select data-tdp="canvasAutoClear" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select>
+            <select data-tdp="canvasAutoClear" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select><select data-tdp="canvasAutoClearSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <!-- (2026-11-21 永良さんの指示で UI から隠す。コードと保存値は残す。戻すときは td-comp-hidden を外す) Composition (上流 0.3 の Compose。mode/textdeform-comp.js): Canvas と同じ段に置く。Look とは独立 (Look を当てても変わらない) -->
           <div class="row td-comp-hidden"><label>Comp</label>
@@ -462,7 +463,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div class="row td-comp-hidden"><label>Comp Rand</label>
             <select data-tdp="compRandEvery" data-tdkind="num" data-norand="1" style="flex:1"><option value="0">Off</option><option value="1">1</option><option value="2">2</option><option value="4">4</option><option value="8">8</option><option value="16">16</option><option value="32">32</option></select>
-            <select data-tdp="compRandUnit" data-norand="1" style="flex:1"><option value="beat">beat</option><option value="sec">sec</option></select>
+            <select data-tdp="compRandUnit" data-norand="1" style="flex:1"><option value="beat">beat</option><option value="sec">sec</option></select><select data-tdp="compRandEverySync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row td-comp-hidden"><label>Comp Speed</label>
             <input type="range" id="tdCompSpeed" min="0.01" max="1" step="0.01" value="0.18" title="Composition のループ速度 (1周/秒)">
@@ -573,7 +574,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div id="tdLookGrid" class="td-look-grid" title="クリックで Look を当てる"></div>
           <div class="row"><label>Look Auto</label>
-            <select data-tdp="lookEvery" data-tdkind="num" data-norand="1" style="flex:1" title="この拍数ごとに一覧から Look を引き直す (重い Surface を含む Featured は除く)"><option value="0">Off</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option><option value="32">32 beat</option></select>
+            <select data-tdp="lookEvery" data-tdkind="num" data-norand="1" style="flex:1" title="この拍数ごとに一覧から Look を引き直す (重い Surface を含む Featured は除く)"><option value="0">Off</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option><option value="32">32 beat</option></select><select data-tdp="lookEverySync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row" style="justify-content:flex-end"><span class="default-actions"><button id="tdLookAdd" title="いまの見た目を保存 Look の末尾に保存 (全端末で共通)">Save New</button><button id="tdLookOver" title="選んでいる保存 Look を、いまの見た目で上書き">Overwrite</button><button id="tdLookDel" title="選んでいる保存 Look を削除">Delete</button></span></div>
           <div class="fold-head td-fold" data-td-fold="lookdetail">Look の詳細</div>
@@ -590,13 +591,13 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <div id="tdTextPool" class="td-chips" title="押すたびに On / Off。On の種類を混ぜて Random で使う"></div>
           </div>
           <div class="row"><label>T Every</label>
-            <select data-tdp="textEvery" data-tdkind="num" data-norand="1" style="flex:1" title="Random で文字を替える間隔 (拍)"><option value="0.0625">1/16 beat</option><option value="0.125">1/8 beat</option><option value="0.25">1/4 beat</option><option value="0.5">1/2 beat</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select>
+            <select data-tdp="textEvery" data-tdkind="num" data-norand="1" style="flex:1" title="Random で文字を替える間隔 (拍)"><option value="0.0625">1/16 beat</option><option value="0.125">1/8 beat</option><option value="0.25">1/4 beat</option><option value="0.5">1/2 beat</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option><option value="16">16 beat</option></select><select data-tdp="textEverySync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>T Type</label>
             <select data-tdp="typeOn" data-norand="1" style="flex:1" title="一文字ずつ入力"><option value="off">Off</option><option value="on">On</option></select>
           </div>
           <div class="row"><label>T Type Speed</label>
-            <select data-tdp="typeSpeed" data-tdkind="num" data-norand="1" style="flex:1" title="1 拍あたりの文字数"><option value="1">1 / beat</option><option value="2">2 / beat</option><option value="4">4 / beat</option><option value="8">8 / beat</option><option value="16">16 / beat</option><option value="32">32 / beat</option></select>
+            <select data-tdp="typeSpeed" data-tdkind="num" data-norand="1" style="flex:1" title="1 拍あたりの文字数"><option value="1">1 / beat</option><option value="2">2 / beat</option><option value="4">4 / beat</option><option value="8">8 / beat</option><option value="16">16 / beat</option><option value="32">32 / beat</option></select><select data-tdp="typeSpeedSync" data-norand="1" style="flex:0 0 auto;width:4.6em" title="拍の数え方: BPM = 実際の拍 (beat xA を掛けない) / ×A = beat xA を掛けた拍"><option value="bpm">BPM</option><option value="xa">×A</option></select>
           </div>
           <div class="row"><label>T Type Hold</label>
             <select data-tdp="typeHold" data-tdkind="num" data-norand="1" style="flex:1" title="全文を出したあと最初に戻るまでの拍数"><option value="0">Keep</option><option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8">8 beat</option></select>
@@ -1188,6 +1189,11 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div id="chrometypeParams" style="margin-top:6px"></div>
         </div>
 
+        <div class="section glitchtype-mode" style="display:none">
+          <h3 title="Aratana などの書体で、ドゥルーズの引用をスイス・タイポグラフィのグリッドに組み、ランダムな記号や英数字がスクランブルしながら確定していくグリッチタイピングで打ち続ける。引用ごとに Layout (Hero / Column / Stack / Split / Rotate) を組み替える。">Glitch Type <span class="pill section-tag">Swiss タイポ</span> <span class="default-actions"><button class="saveDefBtn" data-kind="glitchtype" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="glitchtype" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="glitchtype" title="パラメータをランダムに変える (文字・書体・大きさは変えない)">Random 🎲</button></span></h3>
+          <div id="glitchtypeParams" style="margin-top:6px"></div>
+        </div>
+
         <div class="section surrealfloat-mode" style="display:none">
           <h3 title="白い砂漠の上空を、マグリット風の構造物 (板・管・石膏球・輪・小窓・白い布) とイヴ・タンギー風の不定形が、それぞれの速さと向きで近づいたり遠ざかったりする。Depth=行き交う速さ、Pan=カメラの横回転、Morph=部品の組み替え。シェーダ版 (Surreal Float) をジオメトリで描き直した軽量版。">Surreal Float <span class="pill section-tag">浮遊する構造物</span> <span class="default-actions"><button class="saveDefBtn" data-kind="surrealfloat" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="surrealfloat" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="surrealfloat" title="パラメータをランダムに変える (色は変えない)">Random 🎲</button></span></h3>
           <div id="surrealParams" style="margin-top:6px"></div>
@@ -1466,6 +1472,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <div class="section">
           <h3>Color <span class="default-actions"><button class="saveDefBtn" data-kind="post:color" title="色調の現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:color" title="保存した色調の既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label title="抽出色でもう片方のスロットを再彩色 (Grad Map より先に適用)">Auto Map</label><input type="range" id="pxPaletteAmt" min="-1" max="1" step="0.01" value="0" title="正=B を A のパレットへ / 負=A を B のパレットへ / 0=なし (ホットキー: A = アクティブスロットへ適用)"><div class="val" id="pxPaletteAmtVal">0.00</div></div>
+          <div class="row"><label>Gamma</label><input type="range" id="pxGamma" min="0.5" max="2.5" step="0.01" value="1"><div class="val" id="pxGammaVal">1.00</div></div>
           <div class="row"><label>Brightness</label><input type="range" id="pxBri" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxBriVal">0.00</div></div>
           <div class="row"><label>Contrast</label><input type="range" id="pxCon" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxConVal">0.00</div></div>
           <div class="row"><label>Saturation</label><input type="range" id="pxSat" min="-1" max="1" step="0.01" value="0"><div class="val" id="pxSatVal">0.00</div></div>
@@ -1476,21 +1483,36 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <div id="pxGradList" style="flex:1" title="クリック or 数字キー 1〜9,0 で適用"></div>
           </div>
           <div class="row" style="align-items:stretch"><label>Grad Edit</label><div id="pxGradEditor" style="flex:1"><div id="pxGradBar" title="バー=ストップ追加 / つまみ: ドラッグ=移動・クリック=色変更・バー外(下)へドラッグ=削除" style="position:relative;cursor:copy"></div><div id="pxGradHandles" style="position:relative;height:13px;margin-top:2px"></div></div><button id="pxGradFromVisual" class="ico-only" title="Visual から生成 (印象的な色 + グレーで、元の絵の色味を保つグラデを作る)" data-icon="dropper"></button><button id="pxGradAdd" class="ico-only" title="現在のグラデを名前付きで新規保存" data-icon="plus"></button></div>
-          <div class="row">
-            <label>Grad Auto</label>
-            <select id="pxGradAuto" style="flex:1" title="Grad Map が Grad Preset の間を色を変えながら移り続ける">
-              <option value="0">Off</option>
-              <option value="1">Random (ランダムに変わり続ける)</option>
-            </select>
-            <select id="pxGradAutoBeats" style="flex:0 0 76px" title="次の Grad Preset へ移るのに掛ける拍数">
-              <option value="1">1 beat</option><option value="2">2 beat</option><option value="4">4 beat</option><option value="8" selected>8 beat</option><option value="16">16 beat</option><option value="32">32 beat</option>
-            </select>
-          </div>
           <div class="row"><label>Hue Shift</label><input type="range" id="pxHue" min="-1" max="1" step="0.001" value="0"><div class="val" id="pxHueVal">0.00</div></div>
-          <div class="row"><label>Hue Rotate</label><input type="range" id="pxHueRot" min="0" max="2" step="0.01" value="0" title="自動で色相が左右にランダムに揺れる"><div class="val" id="pxHueRotVal">0.00</div></div>
           <div class="row"><label>Posterize</label><input type="range" id="pxPos" min="0" max="16" step="1" value="0"><div class="val" id="pxPosVal">0</div></div>
           <div class="row"><label>Vignette</label><input type="range" id="pxVig" min="0" max="2" step="0.01" value="0"><div class="val" id="pxVigVal">0.00</div></div>
-          <div class="row"><label>Gamma</label><input type="range" id="pxGamma" min="0.5" max="2.5" step="0.01" value="1"><div class="val" id="pxGammaVal">1.00</div></div>
+          <div class="row"><label for="pxColorTemp">Temperature</label><input type="range" id="pxColorTemp" class="grad-trk" style="--trk:linear-gradient(90deg,#3f7fff,#9a9a9a 50%,#ffb02e)" min="-1" max="1" step="0.01" value="0" title="色温度 (− = 寒色 / + = 暖色)"><div class="val" id="pxColorTempVal">0.00</div></div>
+          <div class="row"><label for="pxColorTint">Tint</label><input type="range" id="pxColorTint" class="grad-trk" style="--trk:linear-gradient(90deg,#2fd05a,#9a9a9a 50%,#e040d0)" min="-1" max="1" step="0.01" value="0" title="色被り補正 (− = グリーン / + = マゼンタ)"><div class="val" id="pxColorTintVal">0.00</div></div>
+          <div class="row"><label>Color Mixer</label><div id="pxMixerShow" class="toggle-btns" data-single title="表示する項目 (隠した項目の値もそのまま掛かる)"><button data-grp="Hue" title="色相の帯ごとに色相を回す">Hue</button><button data-grp="Sat" title="色相の帯ごとに彩度を変える">Sat</button><button data-grp="Lum" title="色相の帯ごとに明度を変える">Lum</button></div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueRed" class="sub-label">Hue Red</label><input type="range" id="pxMixHueRed" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(180,80%,55%) 0%,hsl(225,80%,55%) 12%,hsl(270,80%,55%) 25%,hsl(315,80%,55%) 37%,hsl(0,80%,55%) 50%,hsl(45,80%,55%) 62%,hsl(90,80%,55%) 75%,hsl(135,80%,55%) 87%,hsl(180,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="赤 (0°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueRedVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueOrange" class="sub-label">Hue Orange</label><input type="range" id="pxMixHueOrange" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(210,80%,55%) 0%,hsl(255,80%,55%) 12%,hsl(300,80%,55%) 25%,hsl(345,80%,55%) 37%,hsl(30,80%,55%) 50%,hsl(75,80%,55%) 62%,hsl(120,80%,55%) 75%,hsl(165,80%,55%) 87%,hsl(210,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="橙 (30°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueOrangeVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueYellow" class="sub-label">Hue Yellow</label><input type="range" id="pxMixHueYellow" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(240,80%,55%) 0%,hsl(285,80%,55%) 12%,hsl(330,80%,55%) 25%,hsl(15,80%,55%) 37%,hsl(60,80%,55%) 50%,hsl(105,80%,55%) 62%,hsl(150,80%,55%) 75%,hsl(195,80%,55%) 87%,hsl(240,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="黄 (60°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueYellowVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueGreen" class="sub-label">Hue Green</label><input type="range" id="pxMixHueGreen" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(300,80%,55%) 0%,hsl(345,80%,55%) 12%,hsl(30,80%,55%) 25%,hsl(75,80%,55%) 37%,hsl(120,80%,55%) 50%,hsl(165,80%,55%) 62%,hsl(210,80%,55%) 75%,hsl(255,80%,55%) 87%,hsl(300,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="緑 (120°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueGreenVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueAqua" class="sub-label">Hue Aqua</label><input type="range" id="pxMixHueAqua" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(0,80%,55%) 0%,hsl(45,80%,55%) 12%,hsl(90,80%,55%) 25%,hsl(135,80%,55%) 37%,hsl(180,80%,55%) 50%,hsl(225,80%,55%) 62%,hsl(270,80%,55%) 75%,hsl(315,80%,55%) 87%,hsl(0,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="水色 (180°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueAquaVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueBlue" class="sub-label">Hue Blue</label><input type="range" id="pxMixHueBlue" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(60,80%,55%) 0%,hsl(105,80%,55%) 12%,hsl(150,80%,55%) 25%,hsl(195,80%,55%) 37%,hsl(240,80%,55%) 50%,hsl(285,80%,55%) 62%,hsl(330,80%,55%) 75%,hsl(15,80%,55%) 87%,hsl(60,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="青 (240°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueBlueVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHuePurple" class="sub-label">Hue Purple</label><input type="range" id="pxMixHuePurple" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(90,80%,55%) 0%,hsl(135,80%,55%) 12%,hsl(180,80%,55%) 25%,hsl(225,80%,55%) 37%,hsl(270,80%,55%) 50%,hsl(315,80%,55%) 62%,hsl(0,80%,55%) 75%,hsl(45,80%,55%) 87%,hsl(90,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="紫 (270°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHuePurpleVal">0.00</div></div>
+          <div class="row" data-mixgrp="Hue"><label for="pxMixHueMagenta" class="sub-label">Hue Magenta</label><input type="range" id="pxMixHueMagenta" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(120,80%,55%) 0%,hsl(165,80%,55%) 12%,hsl(210,80%,55%) 25%,hsl(255,80%,55%) 37%,hsl(300,80%,55%) 50%,hsl(345,80%,55%) 62%,hsl(30,80%,55%) 75%,hsl(75,80%,55%) 87%,hsl(120,80%,55%) 100%)" min="-1" max="1" step="0.01" value="0" title="赤紫 (300°)の色相 (−1〜1 = −180°〜+180°)"><div class="val" id="pxMixHueMagentaVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatRed" class="sub-label">Sat Red</label><input type="range" id="pxMixSatRed" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(0,0%,55%),hsl(0,50%,55%) 50%,hsl(0,100%,55%))" min="-1" max="1" step="0.01" value="0" title="赤 (0°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatRedVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatOrange" class="sub-label">Sat Orange</label><input type="range" id="pxMixSatOrange" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(30,0%,55%),hsl(30,50%,55%) 50%,hsl(30,100%,55%))" min="-1" max="1" step="0.01" value="0" title="橙 (30°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatOrangeVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatYellow" class="sub-label">Sat Yellow</label><input type="range" id="pxMixSatYellow" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(60,0%,55%),hsl(60,50%,55%) 50%,hsl(60,100%,55%))" min="-1" max="1" step="0.01" value="0" title="黄 (60°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatYellowVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatGreen" class="sub-label">Sat Green</label><input type="range" id="pxMixSatGreen" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(120,0%,55%),hsl(120,50%,55%) 50%,hsl(120,100%,55%))" min="-1" max="1" step="0.01" value="0" title="緑 (120°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatGreenVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatAqua" class="sub-label">Sat Aqua</label><input type="range" id="pxMixSatAqua" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(180,0%,55%),hsl(180,50%,55%) 50%,hsl(180,100%,55%))" min="-1" max="1" step="0.01" value="0" title="水色 (180°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatAquaVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatBlue" class="sub-label">Sat Blue</label><input type="range" id="pxMixSatBlue" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(240,0%,55%),hsl(240,50%,55%) 50%,hsl(240,100%,55%))" min="-1" max="1" step="0.01" value="0" title="青 (240°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatBlueVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatPurple" class="sub-label">Sat Purple</label><input type="range" id="pxMixSatPurple" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(270,0%,55%),hsl(270,50%,55%) 50%,hsl(270,100%,55%))" min="-1" max="1" step="0.01" value="0" title="紫 (270°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatPurpleVal">0.00</div></div>
+          <div class="row" data-mixgrp="Sat"><label for="pxMixSatMagenta" class="sub-label">Sat Magenta</label><input type="range" id="pxMixSatMagenta" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(300,0%,55%),hsl(300,50%,55%) 50%,hsl(300,100%,55%))" min="-1" max="1" step="0.01" value="0" title="赤紫 (300°)の彩度 (−1 = 無彩色 / +1 = 2 倍)"><div class="val" id="pxMixSatMagentaVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumRed" class="sub-label">Lum Red</label><input type="range" id="pxMixLumRed" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(0,80%,12%),hsl(0,80%,50%) 50%,hsl(0,80%,88%))" min="-1" max="1" step="0.01" value="0" title="赤 (0°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumRedVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumOrange" class="sub-label">Lum Orange</label><input type="range" id="pxMixLumOrange" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(30,80%,12%),hsl(30,80%,50%) 50%,hsl(30,80%,88%))" min="-1" max="1" step="0.01" value="0" title="橙 (30°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumOrangeVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumYellow" class="sub-label">Lum Yellow</label><input type="range" id="pxMixLumYellow" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(60,80%,12%),hsl(60,80%,50%) 50%,hsl(60,80%,88%))" min="-1" max="1" step="0.01" value="0" title="黄 (60°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumYellowVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumGreen" class="sub-label">Lum Green</label><input type="range" id="pxMixLumGreen" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(120,80%,12%),hsl(120,80%,50%) 50%,hsl(120,80%,88%))" min="-1" max="1" step="0.01" value="0" title="緑 (120°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumGreenVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumAqua" class="sub-label">Lum Aqua</label><input type="range" id="pxMixLumAqua" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(180,80%,12%),hsl(180,80%,50%) 50%,hsl(180,80%,88%))" min="-1" max="1" step="0.01" value="0" title="水色 (180°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumAquaVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumBlue" class="sub-label">Lum Blue</label><input type="range" id="pxMixLumBlue" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(240,80%,12%),hsl(240,80%,50%) 50%,hsl(240,80%,88%))" min="-1" max="1" step="0.01" value="0" title="青 (240°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumBlueVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumPurple" class="sub-label">Lum Purple</label><input type="range" id="pxMixLumPurple" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(270,80%,12%),hsl(270,80%,50%) 50%,hsl(270,80%,88%))" min="-1" max="1" step="0.01" value="0" title="紫 (270°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumPurpleVal">0.00</div></div>
+          <div class="row" data-mixgrp="Lum"><label for="pxMixLumMagenta" class="sub-label">Lum Magenta</label><input type="range" id="pxMixLumMagenta" class="grad-trk" style="--trk:linear-gradient(90deg,hsl(300,80%,12%),hsl(300,80%,50%) 50%,hsl(300,80%,88%))" min="-1" max="1" step="0.01" value="0" title="赤紫 (300°)の明度 (−1 = 暗く / +1 = 明るく)"><div class="val" id="pxMixLumMagentaVal">0.00</div></div>
           <div class="row"><label for="pxInv">Invert</label><input type="checkbox" id="pxInv" title="色反転 (hue も180°回転)"></div>
         </div>
         <div class="section">
@@ -1512,15 +1534,28 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Water</label><input type="range" id="pxSketch" min="0" max="1" step="0.01" value="0" title="Water: fBMノイズで画面を水面のように歪ませる (lt33zn)"><div class="val" id="pxSketchVal">0.00</div></div>
           <div class="row"><label>Boltzmann</label><input type="range" id="pxBoltz" min="0" max="1" step="0.01" value="0" title="0=off。値で運動の強弱・速さ。攪拌の向きはランダム"><div class="val" id="pxBoltzVal">0.0</div></div>
           <div class="row"><label>Relief</label><input type="range" id="pxSdfChrome" min="0" max="1" step="0.01" value="0" title="Relief (旧Chrome Relief): 輝度勾配法線に金属スペキュラ+フレネル。プラスチック/金属のレリーフ"><div class="val" id="pxSdfChromeVal">0.00</div></div>
+          <div class="row"><label for="pxSdfChromeObj" class="sub-label">Relief Obj</label><input type="range" id="pxSdfChromeObj" data-sub-of="pxSdfChrome" min="0" max="1" step="1" value="1" title="1 = 物体だけに掛ける (A BG の色の所には掛けない) / 0 = 背景にも掛ける (従来)"><div class="val" id="pxSdfChromeObjVal">1.00</div></div>
           <div class="row"><label>Watercolor</label><input type="range" id="pxBleed" min="0" max="1" step="0.01" value="0" title="水彩/インクのにじみ。輪郭が滲んで溶け、エッジに顔料の暗溜まりが出る"><div class="val" id="pxBleedVal">0.00</div></div>
+          <div class="row"><label for="pxBleedObj" class="sub-label">Watercolor Obj</label><input type="range" id="pxBleedObj" data-sub-of="pxBleed" min="0" max="1" step="1" value="1" title="1 = 物体だけに掛ける (A BG の色の所には掛けない) / 0 = 背景にも掛ける (従来)"><div class="val" id="pxBleedObjVal">1.00</div></div>
           <div class="row"><label>Impasto</label><input type="range" id="pxImpasto" min="0" max="1" step="0.01" value="0" title="油絵の厚塗り。絵の具の盛り上がり・筆すじ・艶が乗る(色は保持)"><div class="val" id="pxImpastoVal">0.00</div></div>
+          <div class="row"><label for="pxImpastoObj" class="sub-label">Impasto Obj</label><input type="range" id="pxImpastoObj" data-sub-of="pxImpasto" min="0" max="1" step="1" value="1" title="1 = 物体だけに掛ける (A BG の色の所には掛けない) / 0 = 背景にも掛ける (従来)"><div class="val" id="pxImpastoObjVal">1.00</div></div>
           <div class="row"><label>Chrome</label><input type="range" id="pxChrome" min="0" max="1" step="0.01" value="0" title="液体金属(マットキャップ)。スタジオ照明の映り込みで全体を金属質に。光源はゆっくり回転"><div class="val" id="pxChromeVal">0.00</div></div>
+          <div class="row"><label for="pxChromeBump" class="sub-label">Chrome Bump</label><input type="range" id="pxChromeBump" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="起伏の高さ (0.5 = 従来)"><div class="val" id="pxChromeBumpVal">0.50</div></div>
+          <div class="row"><label for="pxChromeEdge" class="sub-label">Chrome Edge</label><input type="range" id="pxChromeEdge" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="縁の幅 (0.5 = 従来)"><div class="val" id="pxChromeEdgeVal">0.50</div></div>
+          <div class="row"><label for="pxChromeCon" class="sub-label">Chrome Contrast</label><input type="range" id="pxChromeCon" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="映り込みの明暗の振れ (0.5 = 従来)"><div class="val" id="pxChromeConVal">0.50</div></div>
+          <div class="row"><label for="pxChromeTint" class="sub-label">Chrome Tint</label><input type="range" id="pxChromeTint" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.35" title="映像の色の乗り (0 = 銀一色 / 0.35 = 従来)"><div class="val" id="pxChromeTintVal">0.35</div></div>
+          <div class="row"><label for="pxChromeSpec" class="sub-label">Chrome Spec</label><input type="range" id="pxChromeSpec" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="グリント (光の粒) の強さ (0.5 = 従来)"><div class="val" id="pxChromeSpecVal">0.50</div></div>
+          <div class="row"><label for="pxChromeSharp" class="sub-label">Chrome Sharp</label><input type="range" id="pxChromeSharp" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="グリントの鋭さ (0.5 = 従来)"><div class="val" id="pxChromeSharpVal">0.50</div></div>
+          <div class="row"><label for="pxChromeRim" class="sub-label">Chrome Rim</label><input type="range" id="pxChromeRim" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="縁の青い光の強さ (0.5 = 従来)"><div class="val" id="pxChromeRimVal">0.50</div></div>
+          <div class="row"><label for="pxChromeLight" class="sub-label">Chrome Light</label><input type="range" id="pxChromeLight" data-sub-of="pxChrome" min="0" max="1" step="0.01" value="0.5" title="光源が回る速さ (0 = 止める / 0.5 = 従来)"><div class="val" id="pxChromeLightVal">0.50</div></div>
+          <div class="row"><label for="pxChromeObj" class="sub-label">Chrome Obj</label><input type="range" id="pxChromeObj" data-sub-of="pxChrome" min="0" max="1" step="1" value="1" title="1 = 物体だけに掛ける (A BG の色の所には掛けない) / 0 = 背景にも掛ける (従来)"><div class="val" id="pxChromeObjVal">1.00</div></div>
           <div class="row"><label for="pxGloss">Gloss</label><input type="range" id="pxGloss" min="0" max="1" step="0.01" value="0" title="光沢: 輝度の起伏に濡れたクリアコートをかける。元の色は残し、濡れ色 + ハイライト + 映り込みの帯を足す"><div class="val" id="pxGlossVal">0.00</div></div>
           <div class="row"><label for="pxGlossBump" class="sub-label">Gloss Bump</label><input type="range" id="pxGlossBump" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.5" title="起伏の高さとなだらかさ"><div class="val" id="pxGlossBumpVal">0.50</div></div>
           <div class="row"><label for="pxGlossSharp" class="sub-label">Gloss Sharp</label><input type="range" id="pxGlossSharp" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.6" title="ハイライトの鋭さ (高い = 小さく鋭い点)"><div class="val" id="pxGlossSharpVal">0.60</div></div>
           <div class="row"><label for="pxGlossShine" class="sub-label">Gloss Shine</label><input type="range" id="pxGlossShine" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.6" title="ハイライトと映り込みの強さ"><div class="val" id="pxGlossShineVal">0.60</div></div>
           <div class="row"><label for="pxGlossWet" class="sub-label">Gloss Wet</label><input type="range" id="pxGlossWet" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.4" title="濡れ色の深さ (色を少し深く・鮮やかに)"><div class="val" id="pxGlossWetVal">0.40</div></div>
           <div class="row"><label for="pxGlossLight" class="sub-label">Gloss Light</label><input type="range" id="pxGlossLight" data-sub-of="pxGloss" min="0" max="1" step="0.01" value="0.3" title="光源が回る速さ (0 = 止める)"><div class="val" id="pxGlossLightVal">0.30</div></div>
+          <div class="row"><label for="pxGlossObj" class="sub-label">Gloss Obj</label><input type="range" id="pxGlossObj" data-sub-of="pxGloss" min="0" max="1" step="1" value="1" title="1 = 物体だけに掛ける (A BG の色の所には掛けない) / 0 = 背景にも掛ける (従来)"><div class="val" id="pxGlossObjVal">1.00</div></div>
           <div class="row"><label for="pxNovel">Novel</label><input type="range" id="pxNovel" min="0" max="1" step="0.01" value="0" title="小説化: 画面を字のマス目に割り、明るさに応じて C007 の本文の字で描き直す。3D FX の前に掛かるので紙の柄として一緒に折れる"><div class="val" id="pxNovelVal">0</div></div>
           <div class="row"><label for="pxNovelSize" class="sub-label">Novel Size</label><input type="range" id="pxNovelSize" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.35" title="字の大きさ (マスの大きさ)"><div class="val" id="pxNovelSizeVal">0.35</div></div>
           <div class="row"><label for="pxNovelThresh" class="sub-label">Novel Thresh</label><input type="range" id="pxNovelThresh" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.25" title="字を置く明るさのしきい値 (高い = 明るい所だけ)"><div class="val" id="pxNovelThreshVal">0.25</div></div>
@@ -1541,54 +1576,145 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Pollock Gloss</label><input type="range" id="pxPollockGloss" min="0" max="1" step="0.01" value="0" title="光沢(gloss)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockGlossVal">0.0</div></div>
           <div class="row"><label>Pollock Matt</label><input type="range" id="pxPollockMatt" min="0" max="1" step="0.01" value="0" title="マット(matt)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockMattVal">0.0</div></div>
           <div class="row"><label>Pollock Flat</label><input type="range" id="pxPollockFlat" min="0" max="1" step="0.01" value="0" title="フラット(単色+エンボスのみ)ポロック。0=off"><div class="val" id="pxPollockFlatVal">0.0</div></div>
+          <div class="row"><label>Pollock Metal</label><input type="range" id="pxPollockMetal" min="0" max="1" step="0.01" value="0" title="液体金属(クローム・水銀)ポロック。0=off。塗りの厚みで空と地平を映す"><div class="val" id="pxPollockMetalVal">0.0</div></div>
+          <div class="row"><label for="pxPollockSize" class="sub-label">Pollock Size</label><input type="range" id="pxPollockSize" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="筆の太さ (0.5 = 従来)"><div class="val" id="pxPollockSizeVal">0.50</div></div>
+          <div class="row"><label for="pxPollockLength" class="sub-label">Pollock Length</label><input type="range" id="pxPollockLength" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="一筆の長さ (0.5 = 従来)"><div class="val" id="pxPollockLengthVal">0.50</div></div>
+          <div class="row"><label for="pxPollockDensity" class="sub-label">Pollock Density</label><input type="range" id="pxPollockDensity" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="描き足す速さ・量 (0.5 = 従来。上げると重くなる)"><div class="val" id="pxPollockDensityVal">0.50</div></div>
+          <div class="row"><label for="pxPollockDrops" class="sub-label">Pollock Drops</label><input type="range" id="pxPollockDrops" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="しずく・飛び散りの量 (0 = なし / 0.5 = 従来)"><div class="val" id="pxPollockDropsVal">0.50</div></div>
+          <div class="row"><label for="pxPollockCurve" class="sub-label">Pollock Curve</label><input type="range" id="pxPollockCurve" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="線の曲がり (0 = まっすぐ / 0.5 = 従来)"><div class="val" id="pxPollockCurveVal">0.50</div></div>
+          <div class="row"><label for="pxPollockLife" class="sub-label">Pollock Life</label><input type="range" id="pxPollockLife" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="塗りが残る長さ (0 = すぐ消える / 0.5 = 従来 / 1 = 長く残る)"><div class="val" id="pxPollockLifeVal">0.50</div></div>
+          <div class="row"><label for="pxPollockRelief" class="sub-label">Pollock Relief</label><input type="range" id="pxPollockRelief" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="塗りの厚み・陰影の強さ (0 = 平ら / 0.5 = 従来)"><div class="val" id="pxPollockReliefVal">0.50</div></div>
         </div>
         <div class="section">
           <h3>3D <span class="default-actions"><button class="saveDefBtn" data-kind="post:fx3d" title="3Dの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:fx3d" title="保存した3Dの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
-          <div class="row"><label for="pxFx3dPhoto">Photos</label><input type="range" id="pxFx3dPhoto" min="0" max="1" step="0.01" value="0" title="Photos: 画面をランダムな矩形に切り抜き、3D 空間に浮かせる (Code の PhotoPlane を画面素材で描く)。値=展開量 (0=元画像→1=全開)。後段の Needle / Origami / Kaiser はこの結果ごと折る"><div class="val" id="pxFx3dPhotoVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dExtrude">Extrude</label><input type="range" id="pxFx3dExtrude" min="0" max="1" step="0.01" value="0" title="Extrude: 画面の絵を形に沿って厚みのある立体に押し出し、カメラを少し傾けて見せる。形 = 背景が透過のフレーム (3D Target = Object で深度を出す Visual など) は透けていない所、それ以外は地 (画面の縁の色) と違う所。地は押し出しの奥に床として残る。値=厚み・傾き (0=元画像→1=全開)"><div class="val" id="pxFx3dExtrudeVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dExtrudeMode" class="sub-label">Extrude Mode</label>
+            <select id="pxFx3dExtrudeMode" data-sub-of="pxFx3dExtrude" data-norand="1" style="flex:1" title="Flat = 形を一律の厚みで押し出す / Depth = 表示中のシェーダ・Code の深度 (3D Depth と同じもの) に応じた高さで押し出す (深度が無いときは形の濃さ)。Depth は手前ほど高い地形になり、Depth の値が高さの最大">
+              <option value="flat">Flat</option><option value="depth">Depth</option>
+            </select>
+          </div>
+          <div class="row"><label for="pxFx3dExtrudeDepth" class="sub-label">Extrude Depth</label><input type="range" id="pxFx3dExtrudeDepth" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0.5" title="押し出しの厚み"><div class="val" id="pxFx3dExtrudeDepthVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dExtrudeTilt" class="sub-label">Extrude Tilt</label><input type="range" id="pxFx3dExtrudeTilt" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0.5" title="カメラの傾き (1 = 約 43°)"><div class="val" id="pxFx3dExtrudeTiltVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dExtrudeSpin" class="sub-label">Extrude Spin</label><input type="range" id="pxFx3dExtrudeSpin" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0.3" title="カメラが左右に振れる速さ。beat = 拍ごとに進む / drone = 連続。0 = 止まったまま斜めから"><div class="val" id="pxFx3dExtrudeSpinVal">0.30</div></div>
+          <div class="row"><label for="pxFx3dExtrudeShade" class="sub-label">Extrude Shade</label><input type="range" id="pxFx3dExtrudeShade" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0.5" title="側面の暗さ (陰影)。0 = 縁の色のまま"><div class="val" id="pxFx3dExtrudeShadeVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dExtrudeTwist" class="sub-label">Extrude Twist</label><input type="range" id="pxFx3dExtrudeTwist" data-sub-of="pxFx3dExtrude" min="-1" max="1" step="0.01" value="0" title="ひねり: 奥へ行くほど断面を画面の中心まわりに回す (らせん状の押し出し)。±1 = 厚み全体で ±90°。0 = まっすぐ"><div class="val" id="pxFx3dExtrudeTwistVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dExtrudeRound" class="sub-label">Extrude Round</label><input type="range" id="pxFx3dExtrudeRound" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0" title="角丸: 前面と側面の境 (形の縁) を丸める。1 = 1080p で半径 24px。Mode = Flat のとき"><div class="val" id="pxFx3dExtrudeRoundVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dPhoto">Photos</label><input type="range" id="pxFx3dPhoto" min="0" max="1" step="0.01" value="0" title="Photos: 画面をランダムな矩形に切り抜き、3D 空間に浮かせる (Code の PhotoPlane を画面素材で描く)。値=展開量 (0=元画像→1=全開)。後段の Needle / Origami / Drape はこの結果ごと折る"><div class="val" id="pxFx3dPhotoVal">0.00</div></div>
           <div class="row"><label for="pxFx3dPhotoCount" class="sub-label">Photos Count</label><input type="range" id="pxFx3dPhotoCount" data-sub-of="pxFx3dPhoto" min="4" max="80" step="1" value="24" title="切り抜きの枚数"><div class="val" id="pxFx3dPhotoCountVal">24</div></div>
           <div class="row"><label for="pxFx3dPhotoCrop" class="sub-label">Photos Crop</label><input type="range" id="pxFx3dPhotoCrop" data-sub-of="pxFx3dPhoto" min="30" max="100" step="1" value="70" title="切り抜きの大きさ (画面比の長辺の上限)"><div class="val" id="pxFx3dPhotoCropVal">70%</div></div>
-          <div class="row"><label for="pxFx3dSlicer">Slicer</label><input type="range" id="pxFx3dSlicer" min="0" max="1" step="0.01" value="0" title="Slicer: 画面を多角形の断片に砕いて 3D 空間に散らす (Code の Slicer を画面素材で描く)。値=砕け方 (0=元画像→1=全開)。後段の Layers / Needle / Origami / Kaiser はこの結果ごと処理する"><div class="val" id="pxFx3dSlicerVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dPhotoCurl" class="sub-label">Photos Curl</label><input type="range" id="pxFx3dPhotoCurl" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.65" title="紙全体が円筒のように丸まる強さ"><div class="val" id="pxFx3dPhotoCurlVal">0.65</div></div>
+          <div class="row"><label for="pxFx3dPhotoCurlAxis" class="sub-label">Photos Curl Axis</label><input type="range" id="pxFx3dPhotoCurlAxis" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="1" title="曲げる軸のばらつき (0 = 板の縦軸に揃う / 1 = 板ごとにばらばら)"><div class="val" id="pxFx3dPhotoCurlAxisVal">1.00</div></div>
+          <div class="row"><label for="pxFx3dPhotoFlutter" class="sub-label">Photos Flutter</label><input type="range" id="pxFx3dPhotoFlutter" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.4" title="ゆっくりたわむ揺れ (0 = 止まる)"><div class="val" id="pxFx3dPhotoFlutterVal">0.40</div></div>
+          <div class="row"><label for="pxFx3dPhotoCorner" class="sub-label">Photos Corner</label><input type="range" id="pxFx3dPhotoCorner" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.45" title="片端・片隅を巻き上げる強さ"><div class="val" id="pxFx3dPhotoCornerVal">0.45</div></div>
+          <div class="row"><label for="pxFx3dPhotoSpin" class="sub-label">Photos Spin</label><input type="range" id="pxFx3dPhotoSpin" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.35" title="板の自転の速さ (0 = 止まる)"><div class="val" id="pxFx3dPhotoSpinVal">0.35</div></div>
+          <div class="row"><label for="pxFx3dSlicer">Slicer</label><input type="range" id="pxFx3dSlicer" min="0" max="1" step="0.01" value="0" title="Slicer: 画面を多角形の断片に砕いて 3D 空間に散らす (Code の Slicer を画面素材で描く)。値=砕け方 (0=元画像→1=全開)。後段の Layers / Needle / Origami / Drape はこの結果ごと処理する"><div class="val" id="pxFx3dSlicerVal">0.00</div></div>
           <div class="row"><label for="pxFx3dSlicerPieces" class="sub-label">Slicer Pieces</label><input type="range" id="pxFx3dSlicerPieces" data-sub-of="pxFx3dSlicer" min="20" max="400" step="5" value="150" title="断片の数"><div class="val" id="pxFx3dSlicerPiecesVal">150</div></div>
-          <div class="row"><label for="pxFx3dLayer">Layers</label><input type="range" id="pxFx3dLayer" min="0" max="1" step="0.01" value="0" title="Layers: 画面と同じ形の板を揃えたまま奥へ積み、拍ごとに回転の波が 1 枚ずつ遅れて積層を通り抜ける (軸は縦 / 横 / 面内)。積層全体も回り続ける。値=開き方 (0=元画像→1=全開)。後段の Needle / Origami / Kaiser はこの結果ごと折る"><div class="val" id="pxFx3dLayerVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dLayer">Layers</label><input type="range" id="pxFx3dLayer" min="0" max="1" step="0.01" value="0" title="Layers: 画面と同じ形の板を揃えたまま奥へ積み、拍ごとに回転の波が 1 枚ずつ遅れて積層を通り抜ける (軸は縦 / 横 / 面内)。積層全体も回り続ける。値=開き方 (0=元画像→1=全開)。後段の Needle / Origami / Drape はこの結果ごと折る"><div class="val" id="pxFx3dLayerVal">0.00</div></div>
           <div class="row"><label for="pxFx3dLayerCount" class="sub-label">Layers Count</label><input type="range" id="pxFx3dLayerCount" data-sub-of="pxFx3dLayer" min="1" max="40" step="1" value="12" title="重ねる板の枚数"><div class="val" id="pxFx3dLayerCountVal">12</div></div>
           <div class="row"><label for="pxFx3dLayerSize" class="sub-label">Layers Size</label><input type="range" id="pxFx3dLayerSize" data-sub-of="pxFx3dLayer" min="20" max="300" step="5" value="100" title="板の大きさ (%)"><div class="val" id="pxFx3dLayerSizeVal">100%</div></div>
           <div class="row"><label for="pxFx3dLayerEdge" class="sub-label">Layers Edge</label><input type="range" id="pxFx3dLayerEdge" data-sub-of="pxFx3dLayer" min="0" max="1" step="0.01" value="0" title="板の縁の線の太さ。0 = 線なし"><div class="val" id="pxFx3dLayerEdgeVal">0.00</div></div>
           <div class="row"><label for="pxFx3dDiorama">Diorama</label><input type="range" id="pxFx3dDiorama" min="0" max="1" step="0.01" value="0" title="Diorama: 明るさで画面を何層かの切り絵に分け、奥行きに並べて視差を出す。値=層の間隔・カメラの振り (0=元画像→1=全開)"><div class="val" id="pxFx3dDioramaVal">0.00</div></div>
           <div class="row"><label for="pxFx3dDioramaLayers" class="sub-label">Diorama Layers</label><input type="range" id="pxFx3dDioramaLayers" data-sub-of="pxFx3dDiorama" min="2" max="24" step="1" value="8" title="層の数"><div class="val" id="pxFx3dDioramaLayersVal">8</div></div>
+          <div class="row"><label for="pxFx3dDioramaSwing" class="sub-label">Diorama Swing</label><input type="range" id="pxFx3dDioramaSwing" data-sub-of="pxFx3dDiorama" min="0" max="1" step="0.01" value="0.5" title="カメラの振りの大きさ。0.5 = 従来、0 = 振らない"><div class="val" id="pxFx3dDioramaSwingVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dDioramaSpeed" class="sub-label">Diorama Speed</label><input type="range" id="pxFx3dDioramaSpeed" data-sub-of="pxFx3dDiorama" min="0" max="1" step="0.01" value="0.5" title="カメラの振りの速さ。drone は回る速さ、beat は向きを替える間隔 (0 = 4 拍、0.5 = 1 拍、1 = 1/4 拍)"><div class="val" id="pxFx3dDioramaSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dDioramaPan" class="sub-label">Diorama Pan</label><input type="range" id="pxFx3dDioramaPan" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの左右の向き (振りの中心)"><div class="val" id="pxFx3dDioramaPanVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dDioramaTilt" class="sub-label">Diorama Tilt</label><input type="range" id="pxFx3dDioramaTilt" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの上下の向き (振りの中心)"><div class="val" id="pxFx3dDioramaTiltVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dDioramaZoom" class="sub-label">Diorama Zoom</label><input type="range" id="pxFx3dDioramaZoom" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの寄り (+) と引き (-)"><div class="val" id="pxFx3dDioramaZoomVal">0.00</div></div>
           <div class="row"><label for="pxFx3dPoints">Points</label><input type="range" id="pxFx3dPoints" min="0" max="1" step="0.01" value="0" title="Points: 画面を点群にして、明るさを奥行きに取り、音で散らす。値=奥行き・散り・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dPointsVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dPointsDensity" class="sub-label">Points Density</label><input type="range" id="pxFx3dPointsDensity" data-sub-of="pxFx3dPoints" min="60" max="400" step="10" value="200" title="横の点の数"><div class="val" id="pxFx3dPointsDensityVal">200</div></div>
+          <div class="row"><label for="pxFx3dPointsDensity" class="sub-label">Points Density</label><input type="range" id="pxFx3dPointsDensity" data-sub-of="pxFx3dPoints" min="60" max="1200" step="10" value="400" title="横の点の数 (多いほど細かく重い)"><div class="val" id="pxFx3dPointsDensityVal">400</div></div>
           <div class="row"><label for="pxFx3dCubes">Box</label><input type="range" id="pxFx3dCubes" min="0" max="1" step="0.01" value="0" title="Box: 画面全体を 1 個の直方体にし、拍ごとに縦か横へ 90° 転がる。6 面すべてに画面の絵を貼るので、転がり終わると正立した同じ絵に戻る"><div class="val" id="pxFx3dCubesVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlinds">Blinds</label><input type="range" id="pxFx3dBlinds" min="0" max="1" step="0.01" value="0" title="Blinds: 画面を横長の帯に割り、ブラインドのように回転・らせん状にねじれる。値=回転の振れ幅・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dBlindsVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlindsCount" class="sub-label">Blinds Count</label><input type="range" id="pxFx3dBlindsCount" data-sub-of="pxFx3dBlinds" min="2" max="48" step="1" value="14" title="帯の本数"><div class="val" id="pxFx3dBlindsCountVal">14</div></div>
           <div class="row"><label for="pxFx3dBlindsTwist" class="sub-label">Blinds Twist</label><input type="range" id="pxFx3dBlindsTwist" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="回転が帯の長さ方向へ遅れる量 (0=板のまま回る→1=らせん)"><div class="val" id="pxFx3dBlindsTwistVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dBlindsAngle" class="sub-label">Blinds Angle</label><input type="range" id="pxFx3dBlindsAngle" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="羽根の向き (0.5 = 従来の横 / 縦の自動切替、0 / 1 で ±90° 傾く)"><div class="val" id="pxFx3dBlindsAngleVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dBlindsSpeed" class="sub-label">Blinds Speed</label><input type="range" id="pxFx3dBlindsSpeed" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="返る速さ (0 = 止まる / 0.5 = 従来 / 1 = 2 倍)"><div class="val" id="pxFx3dBlindsSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dBlindsWave" class="sub-label">Blinds Wave</label><input type="range" id="pxFx3dBlindsWave" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="波の伝わり方 (0 = 一斉に返る / 0.5 = 従来 / 1 = 逆向きの波)"><div class="val" id="pxFx3dBlindsWaveVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dBlindsOpen" class="sub-label">Blinds Open</label><input type="range" id="pxFx3dBlindsOpen" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="羽根の開き角 (0.5 = 従来、0 / 1 で ±90° 開いたまま)"><div class="val" id="pxFx3dBlindsOpenVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dBlindsGap" class="sub-label">Blinds Gap</label><input type="range" id="pxFx3dBlindsGap" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0" title="羽根の間のすき間 (0 = 従来)"><div class="val" id="pxFx3dBlindsGapVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dBlindsRandom" class="sub-label">Blinds Random</label><input type="range" id="pxFx3dBlindsRandom" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="羽根の幅のばらつき (0 = 等幅 / 0.5 = 従来)"><div class="val" id="pxFx3dBlindsRandomVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnel">Tunnel</label><input type="range" id="pxFx3dTunnel" min="0" max="1" step="0.01" value="0" title="Tunnel (Wax Tunnel): 画面をキャンバスの縦横比の長方形の筒に丸め、うねる道に沿ってねじれて脈打つ凸凹の通路にして奥へ進む。映像は内壁にタイル状に流れる。値 = 0 で元の画面 → 1 で奥まで続く通路"><div class="val" id="pxFx3dTunnelVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dTunnelSpeed" class="sub-label">Tunnel Speed</label><input type="range" id="pxFx3dTunnelSpeed" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="奥へ進む速さ (0 = 止まる / 1 = 2 倍)"><div class="val" id="pxFx3dTunnelSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnelRadius" class="sub-label">Tunnel Radius</label><input type="range" id="pxFx3dTunnelRadius" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="通路の太さ"><div class="val" id="pxFx3dTunnelRadiusVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnelTwist" class="sub-label">Tunnel Twist</label><input type="range" id="pxFx3dTunnelTwist" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.6" title="奥へ行くほど断面が回る量 (0.5 = なし、0 / 1 で逆向き)"><div class="val" id="pxFx3dTunnelTwistVal">0.60</div></div>
+          <div class="row"><label for="pxFx3dTunnelCurve" class="sub-label">Tunnel Curve</label><input type="range" id="pxFx3dTunnelCurve" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="道のうねり (0 = まっすぐ)"><div class="val" id="pxFx3dTunnelCurveVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnelBump" class="sub-label">Tunnel Bump</label><input type="range" id="pxFx3dTunnelBump" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.4" title="壁の凸凹"><div class="val" id="pxFx3dTunnelBumpVal">0.40</div></div>
+          <div class="row"><label for="pxFx3dTunnelPulse" class="sub-label">Tunnel Pulse</label><input type="range" id="pxFx3dTunnelPulse" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.4" title="通路の脈打ち (太さが奥へ波打つ)"><div class="val" id="pxFx3dTunnelPulseVal">0.40</div></div>
+          <div class="row"><label for="pxFx3dTunnelTile" class="sub-label">Tunnel Tile</label><input type="range" id="pxFx3dTunnelTile" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.4" title="映像を周りに貼る枚数 (0 = 1 枚 / 1 = 6 枚)"><div class="val" id="pxFx3dTunnelTileVal">0.40</div></div>
+          <div class="row"><label for="pxFx3dTunnelRound" class="sub-label">Tunnel Round</label><input type="range" id="pxFx3dTunnelRound" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0" title="断面の形 (0 = キャンバスの縦横比の長方形 / 1 = 楕円)"><div class="val" id="pxFx3dTunnelRoundVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dTunnelSpin" class="sub-label">Tunnel Spin</label><input type="range" id="pxFx3dTunnelSpin" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="断面ごと回る速さ (0.5 = 止まる、0 / 1 で逆向き)"><div class="val" id="pxFx3dTunnelSpinVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnelFlip" class="sub-label">Tunnel Flip</label><input type="range" id="pxFx3dTunnelFlip" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="回転の向きの変わりやすさ (0 = ずっと同じ向き / 1 = よく反転。Twist のねじれも Spin の回転も)"><div class="val" id="pxFx3dTunnelFlipVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnelBendX" class="sub-label">Tunnel Bend X</label><input type="range" id="pxFx3dTunnelBendX" data-sub-of="pxFx3dTunnel" min="-1" max="1" step="0.01" value="0" title="通路を左右へ曲げる (0 = まっすぐ / − で左 / + で右)"><div class="val" id="pxFx3dTunnelBendXVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dTunnelBendY" class="sub-label">Tunnel Bend Y</label><input type="range" id="pxFx3dTunnelBendY" data-sub-of="pxFx3dTunnel" min="-1" max="1" step="0.01" value="0" title="通路を上下へ曲げる (0 = まっすぐ / − で下 / + で上)"><div class="val" id="pxFx3dTunnelBendYVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dTunnelFog" class="sub-label">Tunnel Fog</label><input type="range" id="pxFx3dTunnelFog" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.4" title="奥の暗さ"><div class="val" id="pxFx3dTunnelFogVal">0.40</div></div>
+          <div class="row"><label for="pxFx3dTunnelShine" class="sub-label">Tunnel Shine</label><input type="range" id="pxFx3dTunnelShine" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="蝋のような照り"><div class="val" id="pxFx3dTunnelShineVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dTunnelEdge" class="sub-label">Tunnel Edge</label><input type="range" id="pxFx3dTunnelEdge" data-sub-of="pxFx3dTunnel" min="0" max="1" step="1" value="0" title="通路の模様: 0 = 映像をタイル状に貼る / 1 = 画面の端のピクセルを奥へ伸ばす"><div class="val" id="pxFx3dTunnelEdgeVal">0</div></div>
+          <div class="row"><label for="pxFx3dTunnelTilt" class="sub-label">Tunnel Tilt</label><input type="range" id="pxFx3dTunnelTilt" data-sub-of="pxFx3dTunnel" min="-1" max="1" step="0.01" value="0" title="カメラを上下に傾ける (0 = 正面 / − で見下ろす / + で見上げる)"><div class="val" id="pxFx3dTunnelTiltVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dTunnelPan" class="sub-label">Tunnel Pan</label><input type="range" id="pxFx3dTunnelPan" data-sub-of="pxFx3dTunnel" min="-1" max="1" step="0.01" value="0" title="カメラを左右に振る (0 = 正面 / − で左 / + で右)"><div class="val" id="pxFx3dTunnelPanVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dGlobe">Globe</label><input type="range" id="pxFx3dGlobe" min="0" max="1" step="0.01" value="0" title="Globe: 画面が筒から球に巻き上がって回る。値=巻き具合 (前半=筒、後半=球)。Detail を下げるとミラーボール"><div class="val" id="pxFx3dGlobeVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dGlobeDetail" class="sub-label">Globe Detail</label><input type="range" id="pxFx3dGlobeDetail" data-sub-of="pxFx3dGlobe" min="6" max="96" step="1" value="64" title="縦の分割数 (小さいほど面が角張る)"><div class="val" id="pxFx3dGlobeDetailVal">64</div></div>
+          <div class="row"><label>Origami</label><input type="range" id="pxKaiser" min="0" max="1" step="0.01" value="0" title="Origami: 一枚のキャンバスを実際の折り紙のように層ごと折りたたむ(ベクター折り)。周期で平面へ戻り再抽選。高パラメータで引き"><div class="val" id="pxKaiserVal">0.00</div></div>
+          <div class="row"><label for="pxKaiserFolds" class="sub-label">Origami Folds</label><input type="range" id="pxKaiserFolds" data-sub-of="pxKaiser" min="0" max="1" step="0.01" value="1" title="折り数 (0 = 1 本 / 1 = 14 本 = 従来)"><div class="val" id="pxKaiserFoldsVal">1.00</div></div>
+          <div class="row"><label for="pxKaiserSpeed" class="sub-label">Origami Speed</label><input type="range" id="pxKaiserSpeed" data-sub-of="pxKaiser" min="0" max="1" step="0.01" value="0.5" title="開いたり閉じたりする速さ (0 = 止まる / 0.5 = 従来)"><div class="val" id="pxKaiserSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserAngle" class="sub-label">Origami Angle</label><input type="range" id="pxKaiserAngle" data-sub-of="pxKaiser" min="0" max="1" step="0.01" value="0.5" title="折り角の大きさ (0.5 = 従来)"><div class="val" id="pxKaiserAngleVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserSpread" class="sub-label">Origami Spread</label><input type="range" id="pxKaiserSpread" data-sub-of="pxKaiser" min="0" max="1" step="0.01" value="0.5" title="折り線が中心から散らばる範囲 (0 = 中心に集まる / 0.5 = 従来)"><div class="val" id="pxKaiserSpreadVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserSoft" class="sub-label">Origami Soft</label><input type="range" id="pxKaiserSoft" data-sub-of="pxKaiser" min="0" max="1" step="0.01" value="0" title="折り目の丸み (0 = 鋭い折り = 従来 / 1 = 丸く曲げる)"><div class="val" id="pxKaiserSoftVal">0.00</div></div>
+          <div class="row"><label>Drape</label><input type="range" id="pxKaiserOld" min="0" max="1" step="0.01" value="0" title="Drape (旧 Kaiser): 布を巻きつけたように、丸い曲面で折り重なってひねり・うねる。スカーフを巻くような変形"><div class="val" id="pxKaiserOldVal">0.00</div></div>
+          <div class="row"><label for="pxKaiserOldFolds" class="sub-label">Drape Folds</label><input type="range" id="pxKaiserOldFolds" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="1" title="折り数 (0 = 1 本 / 1 = 14 本 = 従来)"><div class="val" id="pxKaiserOldFoldsVal">1.00</div></div>
+          <div class="row"><label for="pxKaiserOldSpeed" class="sub-label">Drape Speed</label><input type="range" id="pxKaiserOldSpeed" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="0.5" title="動く速さ (0 = 止まる / 0.5 = 従来)"><div class="val" id="pxKaiserOldSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserOldAngle" class="sub-label">Drape Angle</label><input type="range" id="pxKaiserOldAngle" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="0.5" title="折り角の大きさ (0.5 = 従来)"><div class="val" id="pxKaiserOldAngleVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserOldSpread" class="sub-label">Drape Spread</label><input type="range" id="pxKaiserOldSpread" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="0.5" title="折り線が中心から散らばる範囲 (0.5 = 従来)"><div class="val" id="pxKaiserOldSpreadVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserOldCurve" class="sub-label">Drape Curve</label><input type="range" id="pxKaiserOldCurve" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="0.5" title="曲面の丸み (0 = 鋭い折りに近い / 0.5 = 従来 / 1 = 大きく丸く)"><div class="val" id="pxKaiserOldCurveVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserOldTwist" class="sub-label">Drape Twist</label><input type="range" id="pxKaiserOldTwist" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="0.5" title="紙全体のひねりとうねり (0 = なし / 0.5 = 従来)"><div class="val" id="pxKaiserOldTwistVal">0.50</div></div>
+          <div class="row"><label for="pxKaiserOldCam" class="sub-label">Drape Cam</label><input type="range" id="pxKaiserOldCam" data-sub-of="pxKaiserOld" min="0" max="1" step="0.01" value="0.5" title="カメラの揺れ (0 = 正面で固定 / 0.5 = 従来)"><div class="val" id="pxKaiserOldCamVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dRoll">Roll</label><input type="range" id="pxFx3dRoll" min="0" max="1" step="0.01" value="0" title="Roll: 紙を端から巻物のように巻き取る。折り系 (Needle / Origami / Drape) と同じ紙に乗る。値=巻き取った量 (0=元画像→1=全巻き)"><div class="val" id="pxFx3dRollVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dRollRadius" class="sub-label">Roll Radius</label><input type="range" id="pxFx3dRollRadius" data-sub-of="pxFx3dRoll" min="0" max="1" step="0.01" value="0.5" title="巻いた筒の太さ (0.5 = 従来)"><div class="val" id="pxFx3dRollRadiusVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dRollDepth" class="sub-label">Roll Depth</label><input type="range" id="pxFx3dRollDepth" data-sub-of="pxFx3dRoll" min="0" max="1" step="0.01" value="0.5" title="どこまで巻き取るか (0 = 浅く / 0.5 = 従来 / 1 = 深く)"><div class="val" id="pxFx3dRollDepthVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dRollAngle" class="sub-label">Roll Angle</label><input type="range" id="pxFx3dRollAngle" data-sub-of="pxFx3dRoll" min="0" max="1" step="0.01" value="0" title="巻く向き (0〜1 = 0〜360°)"><div class="val" id="pxFx3dRollAngleVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dRollSpin" class="sub-label">Roll Spin</label><input type="range" id="pxFx3dRollSpin" data-sub-of="pxFx3dRoll" min="0" max="1" step="0.01" value="0.5" title="巻く向きが回る速さ (0 = Angle の向きに固定 / 0.5 = 従来)"><div class="val" id="pxFx3dRollSpinVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dRollCurl" class="sub-label">Roll Curl</label><input type="range" id="pxFx3dRollCurl" data-sub-of="pxFx3dRoll" min="0" max="1" step="0.01" value="0.5" title="平らな側のゆるい反り (0 = まっすぐ / 0.5 = 従来)"><div class="val" id="pxFx3dRollCurlVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dRollCam" class="sub-label">Roll Cam</label><input type="range" id="pxFx3dRollCam" data-sub-of="pxFx3dRoll" min="0" max="1" step="0.01" value="0.5" title="筒を斜めから見下ろす構図の強さ (0 = 正面から / 0.5 = 従来)"><div class="val" id="pxFx3dRollCamVal">0.50</div></div>
+          <div class="row"><label>Passage</label><input type="range" id="pxRiver" min="0" max="1" step="0.01" value="0" title="Passage (旧 Flames。VitalRiverFlames l3sXW4 を元に): 映像をねじれた四角い通路の壁に貼り、その中を進む。映像は面の上を川のように流れる。値 = 平面 (元の映像) → ねじれた構造。重め"><div class="val" id="pxRiverVal">0.00</div></div>
+          <div class="row"><label for="pxRiverTwist" class="sub-label">Passage Twist</label><input type="range" id="pxRiverTwist" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="通路のねじれの強さ (0.5 = 従来)"><div class="val" id="pxRiverTwistVal">0.50</div></div>
+          <div class="row"><label for="pxRiverSpeed" class="sub-label">Passage Speed</label><input type="range" id="pxRiverSpeed" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="通路を進む速さ (0 = 止まる / 0.5 = 従来 / 1 = 2 倍)"><div class="val" id="pxRiverSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxRiverWidth" class="sub-label">Passage Width</label><input type="range" id="pxRiverWidth" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="通路の幅 (0.5 = 従来)"><div class="val" id="pxRiverWidthVal">0.50</div></div>
+          <div class="row"><label for="pxRiverFlow" class="sub-label">Passage Flow</label><input type="range" id="pxRiverFlow" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="壁の上を映像が流れる速さ (0 = 止まる / 0.5 = 従来)"><div class="val" id="pxRiverFlowVal">0.50</div></div>
+          <div class="row"><label for="pxRiverLight" class="sub-label">Passage Light</label><input type="range" id="pxRiverLight" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="壁の陰影の深さ (0 = 平ら / 0.5 = 従来)"><div class="val" id="pxRiverLightVal">0.50</div></div>
+          <div class="row"><label for="pxRiverFog" class="sub-label">Passage Fog</label><input type="range" id="pxRiverFog" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="奥の暗さ (0 = 奥まで明るい / 0.5 = 従来)"><div class="val" id="pxRiverFogVal">0.50</div></div>
+          <div class="row"><label for="pxRiverSway" class="sub-label">Passage Sway</label><input type="range" id="pxRiverSway" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="カメラの揺れ (0 = まっすぐ / 0.5 = 従来)"><div class="val" id="pxRiverSwayVal">0.50</div></div>
+          <div class="row"><label>Uzumaki</label><input type="range" id="pxUzumaki" min="0" max="1" step="0.01" value="0" title="Uzumaki: 画面をカードの束として3D空間で対数螺旋状にファン展開。値=展開量 (0=元画像→1=全開の渦)。カードは面と面が平行のまま一枚ごとに浮かび、渦は徐々に逆回転、カメラが渦の周りを公転。Needle/Origami/Drape と重ねがけすると折った紙だけがカードに乗って渦巻く。背景は 3D BG"><div class="val" id="pxUzumakiVal">0.00</div></div>
+          <div class="row"><label for="pxUzumakiCards" class="sub-label">Uzumaki Cards</label><input type="range" id="pxUzumakiCards" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カードの枚数 (0 = 4 枚 / 0.5 = 24 枚 = 従来 / 1 = 44 枚)"><div class="val" id="pxUzumakiCardsVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiTwist" class="sub-label">Uzumaki Twist</label><input type="range" id="pxUzumakiTwist" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="渦の巻き数 (0 = 回さず重ねる / 0.5 = 従来)"><div class="val" id="pxUzumakiTwistVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiSpread" class="sub-label">Uzumaki Spread</label><input type="range" id="pxUzumakiSpread" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カードが外へ広がる半径 (0.5 = 従来)"><div class="val" id="pxUzumakiSpreadVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiDepth" class="sub-label">Uzumaki Depth</label><input type="range" id="pxUzumakiDepth" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カードの奥行きの間隔 (0 = 平ら / 0.5 = 従来)"><div class="val" id="pxUzumakiDepthVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiShrink" class="sub-label">Uzumaki Shrink</label><input type="range" id="pxUzumakiShrink" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="奥のカードほど小さくなる度合い (0 = 同じ大きさ / 0.5 = 従来)"><div class="val" id="pxUzumakiShrinkVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiCard" class="sub-label">Uzumaki Card</label><input type="range" id="pxUzumakiCard" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カード 1 枚の縮み具合 (0 = 縮まない / 0.5 = 従来)"><div class="val" id="pxUzumakiCardVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiSpin" class="sub-label">Uzumaki Spin</label><input type="range" id="pxUzumakiSpin" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="渦全体が回る量 (0 = 止める / 0.5 = 従来)"><div class="val" id="pxUzumakiSpinVal">0.50</div></div>
+          <div class="row"><label for="pxUzumakiCam" class="sub-label">Uzumaki Cam</label><input type="range" id="pxUzumakiCam" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カメラが回り込む動き (0 = 正面で固定 / 0.5 = 従来)"><div class="val" id="pxUzumakiCamVal">0.50</div></div>
+          <div class="row"><label>Needle</label><input type="range" id="pxOrigami" min="0" max="1" step="0.01" value="0" title="三角錐主峰が拍頭のEase Outで大きく変形し、重なった裾野だけが峰間のブリッジを形成。Droneでは緩やかに成長し、元映像を内部反射へ使用"><div class="val" id="pxOrigamiVal">0.00</div></div>
+          <div class="row"><label for="pxNeedleScatter" class="sub-label">Needle Scatter</label><input type="range" id="pxNeedleScatter" data-sub-of="pxOrigami" min="0" max="1" step="0.01" value="0.6" title="針の散らばり: 0 = 格子に近い等間隔 → 1 = 位置の揺れが大きく、密な群れと空き地ができる"><div class="val" id="pxNeedleScatterVal">0.60</div></div>
+          <div class="row"><label for="pxNeedleThick" class="sub-label">Needle Thick</label><input type="range" id="pxNeedleThick" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の太さ (底面の大きさ): 0 = 従来 → マイナスで細かく (針の数が増える)・プラスで太く。長さは変わらない"><div class="val" id="pxNeedleThickVal">0.00</div></div>
+          <div class="row"><label for="pxNeedleLen" class="sub-label">Needle Length</label><input type="range" id="pxNeedleLen" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の長さ (高さ): 0 = 従来 → マイナスで短く (最短で半分)・プラスで長く (最長で 2 倍)"><div class="val" id="pxNeedleLenVal">0.00</div></div>
+          <div class="row"><label for="pxNeedleSides" class="sub-label">Needle Sides</label><input type="range" id="pxNeedleSides" data-sub-of="pxOrigami" min="3" max="5" step="1" value="5" title="針の底の最大辺数: 5 = 従来 (面を覆う針は三角形と四角形、ほかの針は三〜五角形) → 3 = 三角錐だけ"><div class="val" id="pxNeedleSidesVal">5</div></div>
           <div class="row"><label for="pxFx3dGravity">Gravity</label><input type="range" id="pxFx3dGravity" min="0" max="1" step="0.01" value="0" title="Gravity: 画面の布が重力井戸に吸い込まれて渦を巻く (漏斗形)。値=井戸の深さ・引き込み (0=元画像→1=全開)"><div class="val" id="pxFx3dGravityVal">0.00</div></div>
           <div class="row"><label for="pxFx3dGravitySpin" class="sub-label">Gravity Spin</label><input type="range" id="pxFx3dGravitySpin" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="渦のねじれ量"><div class="val" id="pxFx3dGravitySpinVal">0.50</div></div>
           <div class="row"><label for="pxFx3dGravityDepth" class="sub-label">Gravity Depth</label><input type="range" id="pxFx3dGravityDepth" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="喉 (井戸) の深さ。0.5 = 標準、1 = 2 倍の深さ"><div class="val" id="pxFx3dGravityDepthVal">0.50</div></div>
           <div class="row"><label for="pxFx3dGravityFlip" class="sub-label">Gravity Flip</label><input type="range" id="pxFx3dGravityFlip" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="拍ごとのめくれ (布が裏返る) の強さ。0 = めくれない"><div class="val" id="pxFx3dGravityFlipVal">0.50</div></div>
           <div class="row"><label for="pxFx3dGravityPoints" class="sub-label">Gravity Points</label><input type="range" id="pxFx3dGravityPoints" data-sub-of="pxFx3dGravity" min="1" max="4" step="1" value="2" title="吸い込み口 (消失点) の数 (1〜4)。拍の切り替わりで反映"><div class="val" id="pxFx3dGravityPointsVal">2</div></div>
           <div class="row"><label for="pxFx3dGravityWave" class="sub-label">Gravity Wave</label><input type="range" id="pxFx3dGravityWave" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="布全体のうねり。0 = うねりなし、1 = 2 倍"><div class="val" id="pxFx3dGravityWaveVal">0.50</div></div>
-          <div class="row"><label for="pxFx3dGlobe">Globe</label><input type="range" id="pxFx3dGlobe" min="0" max="1" step="0.01" value="0" title="Globe: 画面が筒から球に巻き上がって回る。値=巻き具合 (前半=筒、後半=球)。Detail を下げるとミラーボール"><div class="val" id="pxFx3dGlobeVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dGlobeDetail" class="sub-label">Globe Detail</label><input type="range" id="pxFx3dGlobeDetail" data-sub-of="pxFx3dGlobe" min="6" max="96" step="1" value="64" title="縦の分割数 (小さいほど面が角張る)"><div class="val" id="pxFx3dGlobeDetailVal">64</div></div>
-          <div class="row"><label>Origami</label><input type="range" id="pxKaiser" min="0" max="1" step="0.01" value="0" title="Origami: 一枚のキャンバスを実際の折り紙のように層ごと折りたたむ(ベクター折り)。周期で平面へ戻り再抽選。高パラメータで引き"><div class="val" id="pxKaiserVal">0.00</div></div>
-          <div class="row"><label>Kaiser</label><input type="range" id="pxKaiserOld" min="0" max="1" step="0.01" value="0" title="Kaiser: 折り線が前の折りを横切りフラップがリボン状に裂けるダイナミックな折り紙(旧Origami)。鋭い折り目"><div class="val" id="pxKaiserOldVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dRoll">Roll</label><input type="range" id="pxFx3dRoll" min="0" max="1" step="0.01" value="0" title="Roll: 紙を端から巻物のように巻き取る。折り系 (Needle / Origami / Kaiser) と同じ紙に乗る。値=巻き取った量 (0=元画像→1=全巻き)"><div class="val" id="pxFx3dRollVal">0.00</div></div>
-          <div class="row"><label>Passage</label><input type="range" id="pxRiver" min="0" max="1" step="0.01" value="0" title="Passage (旧 Flames。VitalRiverFlames l3sXW4 を元に): 映像をねじれた四角い通路の壁に貼り、その中を進む。映像は面の上を川のように流れる。値 = 平面 (元の映像) → ねじれた構造。重め"><div class="val" id="pxRiverVal">0.00</div></div>
-          <div class="row"><label>Uzumaki</label><input type="range" id="pxUzumaki" min="0" max="1" step="0.01" value="0" title="Uzumaki: 画面をカードの束として3D空間で対数螺旋状にファン展開。値=展開量 (0=元画像→1=全開の渦)。カードは面と面が平行のまま一枚ごとに浮かび、渦は徐々に逆回転、カメラが渦の周りを公転。Needle/Origami/Kaiser と重ねがけすると折った紙だけがカードに乗って渦巻く。背景は 3D BG"><div class="val" id="pxUzumakiVal">0.00</div></div>
-          <div class="row"><label>Needle</label><input type="range" id="pxOrigami" min="0" max="1" step="0.01" value="0" title="三角錐主峰が拍頭のEase Outで大きく変形し、重なった裾野だけが峰間のブリッジを形成。Droneでは緩やかに成長し、元映像を内部反射へ使用"><div class="val" id="pxOrigamiVal">0.00</div></div>
-          <div class="row"><label for="pxNeedleScatter" class="sub-label">Needle Scatter</label><input type="range" id="pxNeedleScatter" data-sub-of="pxOrigami" min="0" max="1" step="0.01" value="0.6" title="針の散らばり: 0 = 格子に近い等間隔 → 1 = 位置の揺れが大きく、密な群れと空き地ができる"><div class="val" id="pxNeedleScatterVal">0.60</div></div>
-          <div class="row"><label for="pxNeedleThick" class="sub-label">Needle Thick</label><input type="range" id="pxNeedleThick" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の太さ (底面の大きさ): 0 = 従来 → マイナスで細かく (針の数が増える)・プラスで太く。長さは変わらない"><div class="val" id="pxNeedleThickVal">0.00</div></div>
-          <div class="row"><label for="pxNeedleLen" class="sub-label">Needle Length</label><input type="range" id="pxNeedleLen" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の長さ (高さ): 0 = 従来 → マイナスで短く (最短で半分)・プラスで長く (最長で 2 倍)"><div class="val" id="pxNeedleLenVal">0.00</div></div>
-          <div class="row"><label for="pxNeedleSides" class="sub-label">Needle Sides</label><input type="range" id="pxNeedleSides" data-sub-of="pxOrigami" min="3" max="5" step="1" value="5" title="針の底の最大辺数: 5 = 従来 (面を覆う針は三角形と四角形、ほかの針は三〜五角形) → 3 = 三角錐だけ"><div class="val" id="pxNeedleSidesVal">5</div></div>
-          <div class="row"><label for="pxFx3dDepth">3D Depth</label><input type="range" id="pxFx3dDepth" min="0" max="1" step="0.01" value="0.5" title="立体を描くシェーダ (深度を出すもの) のとき、Origami / Kaiser / Roll / Uzumaki / Gravity / Needle が紙をその深度で持ち上げてから折る = 立体のまま 3D FX が重なる。0 = 平らな紙 (従来どおり)"><div class="val" id="pxFx3dDepthVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dDepth">3D Depth</label><input type="range" id="pxFx3dDepth" min="0" max="1" step="0.01" value="0.5" title="立体を描くシェーダ (深度を出すもの) のとき、Origami / Drape / Roll / Uzumaki / Gravity / Needle が紙をその深度で持ち上げてから折る = 立体のまま 3D FX が重なる。0 = 平らな紙 (従来どおり)"><div class="val" id="pxFx3dDepthVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dStretchX">3D Stretch X</label><input type="range" id="pxFx3dStretchX" min="-1" max="1" step="0.01" value="0" title="3D FX と折り (Needle / Origami / Drape / Roll / Uzumaki / Gravity) の頂点を横方向に伸び縮みさせる。0 = 等倍 / +1 = 4 倍 / -1 = 1/4"><div class="val" id="pxFx3dStretchXVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dStretchY">3D Stretch Y</label><input type="range" id="pxFx3dStretchY" min="-1" max="1" step="0.01" value="0" title="3D FX と折り (Needle / Origami / Drape / Roll / Uzumaki / Gravity) の頂点を縦方向に伸び縮みさせる。0 = 等倍 / +1 = 4 倍 / -1 = 1/4"><div class="val" id="pxFx3dStretchYVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dStretchZ">3D Stretch Z</label><input type="range" id="pxFx3dStretchZ" min="-1" max="1" step="0.01" value="0" title="3D FX と折り (Needle / Origami / Drape / Roll / Uzumaki / Gravity) の頂点を奥行き方向に伸び縮みさせる。0 = 等倍 / +1 = 4 倍 / -1 = 1/4"><div class="val" id="pxFx3dStretchZVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dZoom">3D Zoom</label><input type="range" id="pxFx3dZoom" min="-1" max="1" step="0.01" value="0" title="3D FX と折りのカメラを寄せる / 引く (遠近の付き方は変えずに望遠のように)。0 = 等倍 / +1 = 4 倍に寄る / -1 = 1/4 に引く"><div class="val" id="pxFx3dZoomVal">0.00</div></div>
           <div class="row"><label for="pxCode3D">Code 3D</label><input type="checkbox" id="pxCode3D" checked title="Code (3D で描くエンジン) の深度を 3D FX に渡す。OFF = 平面として扱う (シェーダの 3D Mode と同じ)"></div>
           <div class="row"><label for="pxFx3dScale">3D Res</label>
-            <select id="pxFx3dScale" data-sub-of="pxFx3dPhoto pxFx3dSlicer pxFx3dLayer pxFx3dDiorama pxFx3dPoints pxFx3dCubes pxFx3dBlinds pxFx3dGravity pxFx3dGlobe" data-norand="1" style="flex:1" title="3D FX の描画解像度 (小さいほど軽い)">
+            <select id="pxFx3dScale" data-sub-of="pxFx3dPhoto pxFx3dSlicer pxFx3dLayer pxFx3dDiorama pxFx3dPoints pxFx3dCubes pxFx3dBlinds pxFx3dGravity pxFx3dGlobe pxFx3dExtrude" data-norand="1" style="flex:1" title="3D FX の描画解像度 (小さいほど軽い)">
               <option value="1">100%</option><option value="0.75">75%</option><option value="0.5">50%</option>
             </select>
           </div>
-          <div class="row" title="頂点を持つ Code (現状 41/49 Tower) を 1 枚だけ表示しているとき、折り系 (Needle / Origami / Kaiser) を 3D の形のまま掛ける試験機能。端末ごとの設定 (Random・プリセット・MIDI の対象外)"><label for="pxFx3dNative">3D Native (exp)</label><input type="checkbox" id="pxFx3dNative" data-no-midi="1"></div>
+          <div class="row" title="頂点を持つ Code (現状 41/49 Tower) を 1 枚だけ表示しているとき、折り系 (Needle / Origami / Drape) を 3D の形のまま掛ける試験機能。端末ごとの設定 (Random・プリセット・MIDI の対象外)"><label for="pxFx3dNative">3D Native (exp)</label><input type="checkbox" id="pxFx3dNative" data-no-midi="1"></div>
           <div class="row"><label for="pxFx3dBg">3D BG</label>
-            <select id="pxFx3dBg" data-norand="1" data-no-midi="1" style="flex:1" title="3D 欄 (Photo〜Globe・Needle / Origami / Kaiser / Roll・Uzumaki) で画面の外に見える背景。Auto = 元の画面を大きくぼかして沈めた絵 / Color = Params の背景色 (シェーダの uBgColor → エンジンの背景 → Slot A 背景色)">
+            <select id="pxFx3dBg" data-norand="1" data-no-midi="1" style="flex:1" title="3D 欄 (Photo〜Globe・Needle / Origami / Drape / Roll・Uzumaki) で画面の外と、3D Target = Object で抜いた背景の所に見える背景 (背景には 3D FX が掛からない)。Auto = 元の画面を大きくぼかして沈めた絵 / Color = Params の背景色 (シェーダの uBgColor → エンジンの背景 → Slot A 背景色)">
               <option value="auto">Auto</option><option value="color">Color</option>
             </select>
           </div>
@@ -1603,12 +1729,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             </select>
           </div>
           <div class="row"><label for="pxFx3dTarget">3D Target</label>
-            <select id="pxFx3dTarget" data-norand="1" data-no-midi="1" style="flex:1" title="3D 欄 (Photos〜Globe・Needle / Origami / Kaiser / Roll・Passage・Uzumaki) を掛ける範囲。Object = 深度を出す Visual では物体 (深度 &gt; 0) だけに掛け、背景は元の平らな絵のまま残す (両スロットが映っているときは 3D Mix を参照) / All = 背景も含めた画面全体に掛ける。深度を出さない Visual はどちらでも全体">
+            <select id="pxFx3dTarget" data-norand="1" data-no-midi="1" style="flex:1" title="3D 欄 (Photos〜Globe・Needle / Origami / Drape / Roll・Passage・Uzumaki) を掛ける範囲。Object = 深度を出す Visual では物体 (深度 &gt; 0、透過で抜ける Visual は透けていない所) だけに掛け、背景の所には 3D BG を敷く (両スロットが映っているときは 3D Mix を参照) / All = 背景も含めた画面全体に掛ける。深度を出さない Visual はどちらでも全体">
               <option value="object">Object</option><option value="all">All</option>
             </select>
           </div>
           <div class="row"><label for="pxFx3dOverscan">3D Overscan</label>
-            <select id="pxFx3dOverscan" data-norand="1" data-no-midi="1" style="flex:1" title="3D 欄の FX が掛かっている間だけ、画面の外 (片側この割合) まで実際の絵と深度を描いておく。紙を回す・折る・傾けたときに画面の端で絵が切れたりミラーになったりしない。3D 対応の Visual (深度を出すシェーダ・Code) のスロットと、3D FX の素材が対象。0% (既定) = 従来どおり (余白なし)。Kaiser 単体・Uzumaki 単体では使わない。描く面積が (1 + 2 × 割合)² 倍になるので、重いときは下げる">
+            <select id="pxFx3dOverscan" data-norand="1" data-no-midi="1" style="flex:1" title="3D 欄の FX が掛かっている間だけ、画面の外 (片側この割合) まで実際の絵と深度を描いておく。紙を回す・折る・傾けたときに画面の端で絵が切れたりミラーになったりしない。3D 対応の Visual (深度を出すシェーダ・Code) のスロットと、3D FX の素材が対象。0% (既定) = 従来どおり (余白なし)。Uzumaki 単体では使わない。描く面積が (1 + 2 × 割合)² 倍になるので、重いときは下げる">
               <option value="0">0%</option><option value="5">5%</option><option value="10">10%</option><option value="15">15%</option><option value="20">20%</option>
             </select>
           </div>
@@ -1621,10 +1747,16 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <div class="section">
           <h3>Pattern <span class="default-actions"><button class="saveDefBtn" data-kind="post:pattern" title="Patternの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:pattern" title="保存したPatternの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label>Slice</label><input type="range" id="pxSlice" min="0" max="1" step="0.01" value="0" title="横の帯ごとに映像を左右へずらして切り裂く。値=ずれの大きさ。帯のパターンは拍ごとに変わる"><div class="val" id="pxSliceVal">0.00</div></div>
-          <div class="row"><label>Ring Slice</label><input type="range" id="pxRingSlice" min="0" max="1" step="0.01" value="0" title="同心円の帯ごとに別々の速さ・向きで映像を回し続ける (Slice の同心円版。境界線なし)。値=回転の速さ。帯のパターンは beat モードで拍ごとに変わり、drone では固定"><div class="val" id="pxRingSliceVal">0.00</div></div>
+          <div class="row"><label for="pxSliceLine" class="sub-label">Slice Line</label><input type="range" id="pxSliceLine" data-sub-of="pxSlice" min="0" max="1" step="0.01" value="0.5" title="境界線の太さ (0 = 線なし / 0.5 = 従来 1px / 1 = 2px)"><div class="val" id="pxSliceLineVal">0.50</div></div>
+          <div class="row"><label for="pxSliceCount" class="sub-label">Slice Count</label><input type="range" id="pxSliceCount" data-sub-of="pxSlice" min="0" max="1" step="0.01" value="0.5" title="帯の数 (0 = 少なく太く / 0.5 = 従来 / 1 = 多く細かく)"><div class="val" id="pxSliceCountVal">0.50</div></div>
+          <div class="row"><label for="pxSliceMove" class="sub-label">Slice Move</label><input type="range" id="pxSliceMove" data-sub-of="pxSlice" min="0" max="1" step="0.01" value="0.5" title="ずれる帯の割合 (0 = 動かない / 0.5 = 従来 7 割 / 1 = すべて)"><div class="val" id="pxSliceMoveVal">0.50</div></div>
+          <div class="row"><label for="pxSliceAngle" class="sub-label">Slice Angle</label><input type="range" id="pxSliceAngle" data-sub-of="pxSlice" min="0" max="1" step="0.01" value="0" title="帯の向き (0 = 横 / 0.5 = 縦 / 1 = 横に戻る)"><div class="val" id="pxSliceAngleVal">0.00</div></div>
           <div class="row"><label>Mondrian</label><input type="range" id="pxSplit" min="0" max="1" step="0.01" value="0" title="Mondrian: 画面を再帰分割した矩形ごとに変位。値が大きいほど取り出し座標が大きくジャンプ。音/拍で増幅"><div class="val" id="pxSplitVal">0.00</div></div>
           <div class="row"><label>Rings</label><input type="range" id="pxRings" min="0" max="1" step="0.01" value="0" title="Twisting Rings: 同心円リングごとに映像をねじる。時間経過で常時回転し、Audioヒット時に大きく動く。低値は少ない広いリング"><div class="val" id="pxRingsVal">0.00</div></div>
-          <div class="row"><label>Tunnel</label><input type="range" id="pxCandy" min="0" max="1" step="0.01" value="0" title="Tunnel: 映像をトンネル壁にマップ。値=分割数(タイル反復)。0=OFF"><div class="val" id="pxCandyVal">0.00</div></div>
+          <div class="row"><label for="pxRingsLine" class="sub-label">Rings Line</label><input type="range" id="pxRingsLine" data-sub-of="pxRings" min="0" max="1" step="0.01" value="0.5" title="境界線の太さ (0 = 線なし / 0.5 = 従来)"><div class="val" id="pxRingsLineVal">0.50</div></div>
+          <div class="row"><label for="pxRingsCount" class="sub-label">Rings Count</label><input type="range" id="pxRingsCount" data-sub-of="pxRings" min="0" max="1" step="0.01" value="0.5" title="リングの数 (0 = 少なく広く / 0.5 = 従来 / 1 = 多く細かく)"><div class="val" id="pxRingsCountVal">0.50</div></div>
+          <div class="row"><label for="pxRingsTwist" class="sub-label">Rings Twist</label><input type="range" id="pxRingsTwist" data-sub-of="pxRings" min="0" max="1" step="0.01" value="0.5" title="ねじれる角度 (0 = 回さない / 0.5 = 従来 / 1 = 2 倍)"><div class="val" id="pxRingsTwistVal">0.50</div></div>
+          <div class="row"><label for="pxRingsWobble" class="sub-label">Rings Wobble</label><input type="range" id="pxRingsWobble" data-sub-of="pxRings" min="0" max="1" step="0.01" value="0.5" title="リング幅のゆらぎ (0 = 等間隔 / 0.5 = 従来)"><div class="val" id="pxRingsWobbleVal">0.50</div></div>
           <div class="row"><label>Voxel</label><input type="range" id="pxVoxel" min="0" max="1" step="0.01" value="0" title="画面を立方体ボクセル状にピクセル化"><div class="val" id="pxVoxelVal">0.00</div></div>
         </div>
         <div class="section">
@@ -1714,6 +1846,14 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Spectrum Warp</label><input type="range" id="pxSpecWarp" min="0" max="1" step="0.01" value="0" title="音のスペクトル (FFT) で列ごとに映像を上下へ押す (EQ のバルジ)。低音は左、高音は右"><div class="val" id="pxSpecWarpVal">0.00</div></div>
           <div class="row"><label>Bass Zoom-Pump</label><input type="range" id="pxZoomPump" min="0" max="1" step="0.01" value="0" title="音量と拍頭でズームと微回転が脈動する。映像が音で呼吸する"><div class="val" id="pxZoomPumpVal">0.00</div></div>
           <div class="row"><label>Freeze-Shatter</label><input type="range" id="pxShatter" min="0" max="1" step="0.01" value="0" title="アタックで Voronoi 片に割れて飛び散る。打点で砕ける"><div class="val" id="pxShatterVal">0.00</div></div>
+          <div class="row"><label>Pop Up</label><input type="range" id="pxAPop" min="0" max="1" step="0.01" value="0" title="強い音で、画面のランダムな位置に円や多角形がふくらんで飛び出す。中は映像を拡大し、陰影と縁取りで浮かせる。発火ごとに位置が変わる"><div class="val" id="pxAPopVal">0.00</div></div>
+          <div class="row"><label for="pxAPopCount" class="sub-label">Pop Count</label><input type="range" id="pxAPopCount" data-sub-of="pxAPop" min="1" max="32" step="1" value="12" title="図形の数"><div class="val" id="pxAPopCountVal">12</div></div>
+          <div class="row"><label for="pxAPopSize" class="sub-label">Pop Size</label><input type="range" id="pxAPopSize" data-sub-of="pxAPop" min="2" max="400" step="1" value="60" title="半径の上限 (px)。各図形の半径は 1px〜この値でランダム"><div class="val" id="pxAPopSizeVal">60</div></div>
+          <div class="row"><label for="pxAPopSides" class="sub-label">Pop Sides</label><input type="range" id="pxAPopSides" data-sub-of="pxAPop" min="2" max="12" step="1" value="2" title="形 (2 = 円 / 3 = 三角形 … 12 = 十二角形)"><div class="val" id="pxAPopSidesVal">2</div></div>
+          <div class="row"><label for="pxAPopZoom" class="sub-label">Pop Zoom</label><input type="range" id="pxAPopZoom" data-sub-of="pxAPop" min="0" max="1" step="0.01" value="0.5" title="図形の中の映像の拡大 (0 = 拡大なし / 0.5 = 約 2.5 倍)"><div class="val" id="pxAPopZoomVal">0.50</div></div>
+          <div class="row"><label for="pxAPopLine" class="sub-label">Pop Line</label><input type="range" id="pxAPopLine" data-sub-of="pxAPop" min="0" max="1" step="0.01" value="0.5" title="縁取りの太さ (0 = なし / 0.5 = 2px)"><div class="val" id="pxAPopLineVal">0.50</div></div>
+          <div class="row"><label for="pxAPopShade" class="sub-label">Pop Shade</label><input type="range" id="pxAPopShade" data-sub-of="pxAPop" min="0" max="1" step="0.01" value="0.5" title="ふくらみの陰影と落ち影 (0 = 平ら)"><div class="val" id="pxAPopShadeVal">0.50</div></div>
+          <div class="row"><label for="pxAPopSpin" class="sub-label">Pop Spin</label><input type="range" id="pxAPopSpin" data-sub-of="pxAPop" min="0" max="1" step="0.01" value="0.5" title="多角形の向きのばらつきと、出るときの回転 (0 = そろえる)"><div class="val" id="pxAPopSpinVal">0.50</div></div>
           <div class="row"><label>Scan Hit</label><input type="range" id="pxAScan" min="0" max="1" step="0.01" value="0" title="オンセットで走査線ずらし"><div class="val" id="pxAScanVal">0.00</div></div>
           <div class="row"><label>RGB</label><input type="range" id="pxARgb" min="0" max="1" step="0.01" value="0" title="音量で色収差(RGB分離)"><div class="val" id="pxARgbVal">0.00</div></div>
           <div class="row"><label>Shockwave</label><input type="range" id="pxAShock" min="0" max="1" step="0.01" value="0" title="拍頭(beat)/アタック(drone)で中心から屈折の衝撃波リング"><div class="val" id="pxAShockVal">0.00</div></div>
@@ -1727,6 +1867,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxAShardsSize" class="sub-label">Shards Size</label><input type="range" id="pxAShardsSize" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.5" title="頂点を拾う範囲: 0 = 小さな破片 → 1 = 画面全体にまたがる大きな多角形"><div class="val" id="pxAShardsSizeVal">0.50</div></div>
           <div class="row"><label for="pxAShardsHole" class="sub-label">Shards Hole</label><input type="range" id="pxAShardsHole" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0" title="切り抜いた元の場所を黒く抜く量 (0 = 元の絵のまま / 1 = 真っ黒の穴)"><div class="val" id="pxAShardsHoleVal">0.00</div></div>
           <div class="row"><label for="pxAShardsLine" class="sub-label">Shards Line</label><input type="range" id="pxAShardsLine" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.3" title="多角形の縁の線の太さ (色は Slice / Mondrian と同じ線の色)。0 = 線なし"><div class="val" id="pxAShardsLineVal">0.30</div></div>
+          <div class="row"><label for="pxAShardsMove" class="sub-label">Shards Move</label><input type="range" id="pxAShardsMove" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.5" title="破片ごとにランダムに漂って回る量 (音が大きい破片ほど大きく動く)。0 = その場で拡縮するだけ (従来)"><div class="val" id="pxAShardsMoveVal">0.50</div></div>
           <div class="row"><label>Waveform</label><input type="range" id="pxWaveform" min="0" max="1" step="0.01" value="0" title="画面を 32 本の縦帯に分け、帯ごとに音声スペクトルの高さへ縦に圧縮する (帯の幅はゆっくり揺れる)。1.0 で無音の帯は高さ 0。0=OFF"><div class="val" id="pxWaveformVal">0.00</div></div>
           <div class="row"><label>Pixelsort</label><input type="range" id="pxPixsort" min="0" max="1" step="0.01" value="0" title="Freeangle Pixelsort: 明るい部分を角度方向にソート。音量で閾値(ソート量)が変化 (NdGXWD)"><div class="val" id="pxPixsortVal">0.00</div></div>
         </div>
@@ -2199,7 +2340,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <li><b>Timing</b> でテンポを合わせ (<kbd>T</kbd> でタップ)、Audio Input を Mic か System にすると音に反応する。</li>
             <li>色は <kbd>1</kbd>〜<kbd>9</kbd> の Grad Preset、仕上げは <b>FX</b> タブ。FX タブの <b>Color</b> 欄 (Grad Map・Hue・Brightness・Gamma・Invert ほか) は欄だけ先頭にあり、効くのは Post FX の最後 (3D FX・Glitch・残像・ブラーにも掛かる)。</li>
             <li>画面上部のクイック行: <b>Freeze</b> (<kbd>Space</kbd>) / <b>↶ ↷</b> (Undo / Redo) / <b>Reset</b> (<kbd>R</kbd>) / <b>Clear</b> (<kbd>C</kbd>) / <b>All Off</b> (<kbd>Esc</kbd>。スマホでは二度押し)。</li>
-            <li><b>3D FX</b> (FX タブの 3D 欄: Photo / Slicer / Layers / Needle / Origami / Kaiser / Passage / Uzumaki): 量 0 から元の画面とつながり、重ねがけできる。重いときは <b>3D Res</b> を下げる。</li>
+            <li><b>3D FX</b> (FX タブの 3D 欄: Photo / Slicer / Layers / Needle / Origami / Drape / Passage / Uzumaki): 量 0 から元の画面とつながり、重ねがけできる。重いときは <b>3D Res</b> を下げる。</li>
             <li>気に入った状態は <b>Preset</b> タブの「+ Save Current」で残す。</li>
             <li>本番の出力は <b>Projector</b> (スマホは <b>Full</b> = フルスクリーン)、録画は <b>Record</b>、静止画は <b>Shot</b>。</li>
           </ol>
@@ -2299,63 +2440,66 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795340639"></script>
-<script src="mode/layer.js?v=1795340639"></script>
-<script src="vendor/iro.min.js?v=1795340639"></script>
-<script src="vendor/mediabunny.min.js?v=1795340639"></script>
-<script src="mode/textdeform.js?v=1795340639"></script>
-<script src="mode/textdeform-texts.js?v=1795340639"></script>
-<script src="mode/textdeform-upstream.js?v=1795340639"></script>
-<script src="mode/textdeform-comp.js?v=1795340639"></script>
-<script src="mode/textdeform-surface.js?v=1795340639"></script>
-<script src="mode/textdeform-looks.js?v=1795340639"></script>
-<script src="mode/textdeform-vector.js?v=1795340639"></script>
-<script src="mode/textdeform-canvas.js?v=1795340639"></script>
-<script src="mode/ugomeki.js?v=1795340639"></script>
-<script src="mode/slicer.js?v=1795340639"></script>
-<script src="mode/video.js?v=1795340639"></script>
-<script src="mode/aratanagara.js?v=1795340639"></script>
-<script src="vendor/p5.min.js?v=1795340639"></script>
-<script src="mode/cyberui.js?v=1795340639"></script>
-<script src="mode/novel.js?v=1795340639"></script>
-<script src="shaders/inkelly.js?v=1795340639"></script>
-<script src="sketchfx.js?v=1795340639"></script>
-<script src="pixelsortfx.js?v=1795340639"></script>
-<script src="shaders/boltzmann.js?v=1795340639"></script>
-<script src="mode/pen.js?v=1795340639"></script>
-<script src="shaders/caverns.js?v=1795340639"></script>
-<script src="mode/shelf.js?v=1795340639"></script>
-<script src="shaders/ribbon.js?v=1795340639"></script>
-<script src="mode/photoplane.js?v=1795340639"></script>
-<script src="mode/shredder.js?v=1795340639"></script>
-<script src="mode/transflock.js?v=1795340639"></script>
-<script src="mode/liquidpeel.js?v=1795340639"></script>
-<script src="mode/windflock.js?v=1795340639"></script>
-<script src="mode/rhizome.js?v=1795340639"></script>
-<script src="mode/surrealfloat.js?v=1795340639"></script>
-<script src="mode/chrometype.js?v=1795340639"></script>
-<script src="mode/tower4149.js?v=1795340639"></script>
-<script src="mode/fude.js?v=1795340639"></script>
-<script src="mode/image.js?v=1795340639"></script>
-<script src="mode/spacetype.js?v=1795340639"></script>
-<script src="fx3d.js?v=1795340639"></script>
-<script src="fx3d-layers.js?v=1795340639"></script>
-<script src="fx3d-cubes.js?v=1795340639"></script>
-<script src="fx3d-blinds.js?v=1795340639"></script>
-<script src="fx3d-diorama.js?v=1795340639"></script>
-<script src="fx3d-points.js?v=1795340639"></script>
-<script src="fx3d-gravity.js?v=1795340639"></script>
-<script src="fx3d-globe.js?v=1795340639"></script>
-<script src="pollockfx.js?v=1795340639"></script>
-<script src="overlay.js?v=1795340639"></script>
-<script src="gif.js?v=1795340639"></script>
-  <script src="ui-icons.js?v=1795340639"></script>
-  <script src="app.js?v=1795340639"></script>
-  <script src="autopilot.js?v=1795340639"></script>
-  <script src="crash-guard.js?v=1795340639"></script>
-  <script src="ui-scrollbar.js?v=1795340639"></script>
-  <script src="ui-settings.js?v=1795340639"></script>
-<script src="camroll.js?v=1795340639" defer></script>
-<script src="dbltap.js?v=1795340639" defer></script>
+<script src="presets.js?v=1795579178"></script>
+<script src="mode/layer.js?v=1795579178"></script>
+<script src="vendor/iro.min.js?v=1795579178"></script>
+<script src="vendor/mediabunny.min.js?v=1795579178"></script>
+<script src="mode/textdeform.js?v=1795579178"></script>
+<script src="mode/textdeform-texts.js?v=1795579178"></script>
+<script src="mode/textdeform-upstream.js?v=1795579178"></script>
+<script src="mode/textdeform-comp.js?v=1795579178"></script>
+<script src="mode/textdeform-surface.js?v=1795579178"></script>
+<script src="mode/textdeform-looks.js?v=1795579178"></script>
+<script src="mode/textdeform-vector.js?v=1795579178"></script>
+<script src="mode/textdeform-canvas.js?v=1795579178"></script>
+<script src="mode/ugomeki.js?v=1795579178"></script>
+<script src="mode/slicer.js?v=1795579178"></script>
+<script src="mode/video.js?v=1795579178"></script>
+<script src="mode/aratanagara.js?v=1795579178"></script>
+<script src="vendor/p5.min.js?v=1795579178"></script>
+<script src="mode/cyberui.js?v=1795579178"></script>
+<script src="mode/novel.js?v=1795579178"></script>
+<script src="shaders/inkelly.js?v=1795579178"></script>
+<script src="sketchfx.js?v=1795579178"></script>
+<script src="pixelsortfx.js?v=1795579178"></script>
+<script src="shaders/boltzmann.js?v=1795579178"></script>
+<script src="mode/pen.js?v=1795579178"></script>
+<script src="shaders/caverns.js?v=1795579178"></script>
+<script src="mode/shelf.js?v=1795579178"></script>
+<script src="shaders/ribbon.js?v=1795579178"></script>
+<script src="mode/photoplane.js?v=1795579178"></script>
+<script src="mode/shredder.js?v=1795579178"></script>
+<script src="mode/transflock.js?v=1795579178"></script>
+<script src="mode/liquidpeel.js?v=1795579178"></script>
+<script src="mode/windflock.js?v=1795579178"></script>
+<script src="mode/rhizome.js?v=1795579178"></script>
+<script src="mode/surrealfloat.js?v=1795579178"></script>
+<script src="mode/chrometype.js?v=1795579178"></script>
+<script src="mode/glitchtype.js?v=1795579178"></script>
+<script src="mode/tower4149.js?v=1795579178"></script>
+<script src="mode/fude.js?v=1795579178"></script>
+<script src="mode/image.js?v=1795579178"></script>
+<script src="mode/spacetype.js?v=1795579178"></script>
+<script src="fx3d.js?v=1795579178"></script>
+<script src="fx3d-layers.js?v=1795579178"></script>
+<script src="fx3d-cubes.js?v=1795579178"></script>
+<script src="fx3d-blinds.js?v=1795579178"></script>
+<script src="fx3d-diorama.js?v=1795579178"></script>
+<script src="fx3d-points.js?v=1795579178"></script>
+<script src="fx3d-gravity.js?v=1795579178"></script>
+<script src="fx3d-globe.js?v=1795579178"></script>
+<script src="fx3d-tunnel.js?v=1795579178"></script>
+<script src="fx3d-extrude.js?v=1795579178"></script>
+<script src="pollockfx.js?v=1795579178"></script>
+<script src="overlay.js?v=1795579178"></script>
+<script src="gif.js?v=1795579178"></script>
+  <script src="ui-icons.js?v=1795579178"></script>
+  <script src="app.js?v=1795579178"></script>
+  <script src="autopilot.js?v=1795579178"></script>
+  <script src="crash-guard.js?v=1795579178"></script>
+  <script src="ui-scrollbar.js?v=1795579178"></script>
+  <script src="ui-settings.js?v=1795579178"></script>
+<script src="camroll.js?v=1795579178" defer></script>
+<script src="dbltap.js?v=1795579178" defer></script>
 </body>
 </html>

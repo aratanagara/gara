@@ -47,7 +47,7 @@ const ParamValues = {
   _typed: new WeakMap(),
   // UI をまだ開いていないエンジンの保存でも、細かい値と拍の選択値を保つ。
   fine: {
-    post: { hue:0.001, grn:0.005, chr:0.0005, hueAuto:0, unsharpRadius:0 },
+    post: { hue:0.001, grn:0.005, chr:0.0005, unsharpRadius:0 },
     layer: { fog:0.002 }, transflock: { step:0.005 },
     slicer: { shadowBias:0.0005, autoRebuildBeats:0 },
     inkelly: { spawnW:0.002, curlScale:0.005, displace:0.0005, feather:0.002, bgHue:0.005 },
@@ -482,6 +482,7 @@ const GL = {
     //   対応環境では compileSlot がコンパイルを投げっぱなしにし、tick で完了をポーリングして差し替える。
     this._parallelCompileExt = gl.getExtension('KHR_parallel_shader_compile');
     this._pendingCompiles = [];
+    this._pre = new Map();   // 先読みコンパイル (precompile) の置き場
     // GPU 実行時間計測 (Chrome=対応 / Safari=非対応→'—'表示)
     this._gpuExt = gl.getExtension('EXT_disjoint_timer_query_webgl2');
     this._gpuInflight = []; this._gpuQ = null; this._gpuMs = 0;
@@ -613,6 +614,8 @@ uniform sampler2D uMatteD; // 深度で抜くスロットの深度 (R8。1 = 手
 uniform sampler2D uMatteD2; // 両スロットを深度で抜くとき (uMatteSlot = 3) の Slot B の深度 (uMatteD = Slot A)
 uniform vec3  uMatteW;     // uMatteSlot = 3: xy = A / B の物体の重み (クロスフェード × 表示の割合)、z = 1 で手前優先 (max) / 0 でミックス比 (和)
 uniform vec3  uBgColA;    // Slot A の背景色 (A の透明部分を埋める下地)。既定 黒
+uniform int   uABgKeepA;  // A BG = 透過 + Material 段あり (紙抜きでない): alpha = 中身の割合で _finalFBO へ (Material 段を alpha 0 に掛けないため。段のあとで 1 に戻す)
+uniform int   uABgClear;  // A BG = 透過: 1 = A の alpha で / 2 = A が「なし」(全面が背景)。sampleAB の alpha を「A BG でない割合」にする (Grad Map のマスク)
 uniform float uZoomA, uZoomB;   // mode エンジン用 テクスチャズーム (shader は iZoom で処理済のため 1.0)
 uniform vec2  uPanA, uPanB;     // mode エンジン用 テクスチャパン
 uniform int   uBlendMode;  // 0=mix(crossfade) 1=add 2=multiply 3=screen 4=暗い色(DarkerColor) 5=明るい色(LighterColor) 6=difference 7=overlay
@@ -658,8 +661,14 @@ uniform float uBlm;
 // glitch-style FX (ported from hinotori-vj visual.frag)
 uniform float uGlass;     // 0..1 Hipass (旧Glass / Liquid Glass)
 uniform float uSlice;     // 0..1
-uniform float uRingSlice; // 0..1 Ring Slice (同心円の帯ごとに映像を回す。Slice の極座標版。値 = 回転の速さ)
-uniform float uRsPhase;   // Ring Slice の回転位相 (JS で値 × 時間を積分。速さを変えても角度が跳ばない)
+uniform float uSliceLine;
+uniform float uSliceCount;
+uniform float uSliceMove;
+uniform float uSliceAngle;
+uniform float uRingsLine;
+uniform float uRingsCount;
+uniform float uRingsTwist;
+uniform float uRingsWobble;
 uniform float uSplit;     // 0..1 Split Glitch (グリッドのセルごとにランダム方向へ変位)
 uniform float uMosaic;    // 0..1 — block 単位の RGB swap
 uniform float uShake;     // 0..1
@@ -672,10 +681,15 @@ uniform float uRings;     // 0..1 Twisting Rings (同心円リングごとに映
 uniform float uSpecWarp;  // 0..1 Spectrum Warp (FFT で列ごとに映像を押す)
 uniform float uZoomPump;  // 0..1 Bass Zoom-Pump (低音 + 拍でズーム / 微回転が脈動)
 uniform float uShatter;   // 0..1 Freeze-Shatter (アタックで Voronoi 片に割れて飛散)
+uniform float uAPop;      // 0..1 Pop Up (強い音でランダムな位置に図形がふくらんで飛び出す)
+uniform float uAPopCount;
+uniform float uAPopSize;
+uniform float uAPopSides;
+uniform float uAPopZoom;
+uniform float uAPopLine;
+uniform float uAPopShade;
+uniform float uAPopSpin;
 uniform float uEnergy;    // 音量 (平滑。Audio.energy)
-uniform float uCandy;     // 0..1 Tunnel (X3jXWh: 映像をトンネル壁にマップ。値=分割数(タイル反復)+ON/OFF)
-uniform int   uCandyMode; // Tunnel 2パス: 0=通常 1=前段パス(トンネルのみ描く) 2=本パス(sampleAB がトンネルを土台に返す)
-uniform sampler2D uCandyTex; // 前段パスで描いたトンネル
 // 画質補完系 (Quality)
 uniform float uClarity;   // 0..1 CAS 風の適応シャープ (局所コントラストに応じて輪郭を立てる)
 uniform float uDenoise;   // 0..1 エッジ保存平滑 (バイラテラル風。輪郭を残して面のノイズを均す)
@@ -824,15 +838,28 @@ vec2 fl_mirror(vec2 p){ return 1.0 - abs(mod(p, 2.0) - 1.0); }
 // スロットの画面座標 → テクスチャ座標 (3D Overscan の余白 o = 全体 / 画面分 - 1 を中央へ切り戻す。余白の外はミラー)
 uniform vec2 uOsA, uOsB;
 vec2 fl_slotUv(vec2 s, vec2 o){ return (o.x == 0.0 && o.y == 0.0) ? fl_mirror(s) : fl_mirror((s - 0.5) / (1.0 + o) + 0.5); }
-// 深度で抜くスロットの物体の割合 (深度 > 0 = 1 / 背景 = 0)
+// 深度 > 0 (物体) の割合を 3×3 (1-2-1) でならす。1 画素ごとの二択だと、Drape などで紙を引き伸ばしたときに
+// 切り抜きの縁の段がのこぎり状に拡大される。縁に中間の値を持たせ、折りのパスはアルファ・トゥ・カバレッジでなめらかに描く
+float matteStep(sampler2D t, vec2 mu){
+  vec2 px = 1.0 / vec2(textureSize(t, 0));
+  float s = 0.0;
+  for(int j = -1; j <= 1; j++){
+    for(int i = -1; i <= 1; i++){
+      float w = (i == 0 ? 2.0 : 1.0) * (j == 0 ? 2.0 : 1.0);
+      s += w * step(0.004, texture(t, mu + vec2(float(i), float(j)) * px).r);
+    }
+  }
+  return s / 16.0;
+}
+// 深度で抜くスロットの物体の割合 (深度 > 0 = 1 / 背景 = 0。縁は中間の値)
 float matteObj(vec2 uv){
   if(uMatteSlot == 3){   // 両スロットとも深度を出す: 両方の物体を 3D 段へ
-    float oa = uMatteW.x * step(0.004, texture(uMatteD, fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA)).r);
-    float ob = uMatteW.y * step(0.004, texture(uMatteD2, fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB)).r);
+    float oa = uMatteW.x * matteStep(uMatteD, fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA));
+    float ob = uMatteW.y * matteStep(uMatteD2, fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB));
     return uMatteW.z > 0.5 ? max(oa, ob) : min(1.0, oa + ob);
   }
   vec2 mu = uMatteSlot == 1 ? fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA) : fl_slotUv((uv - 0.5) / uZoomB + 0.5 - uPanB, uOsB);
-  return step(0.004, texture(uMatteD, mu).r);
+  return matteStep(uMatteD, mu);
 }
 vec4 sampleAB(vec2 uv){
   vec4 ca = texture(uA, fl_slotUv((uv - 0.5) / uZoomA + 0.5 - uPanA, uOsA));   // mode エンジンの user zoom/pan (領域外はミラー)
@@ -849,6 +876,7 @@ vec4 sampleAB(vec2 uv){
   if(uMatteDepth == 4 && uMatte > 0) return vec4(0.0);
   if(uMatte == 1) return vec4(ca.rgb / max(ca.a, 1e-4), ca.a);
   if(uMatte == 2) return vec4(cb.rgb / max(cb.a, 1e-4), cb.a);
+  float covA = uABgClear == 2 ? 0.0 : clamp(ca.a, 0.0, 1.0);   // A の中身の割合 (A BG = 透過のときのマスク用)
   // Slot A は出力の下地。透過している所を「A の背景色」で埋めて不透明にする (既定 黒 = 従来と同じ絵)
   ca = vec4(mix(uBgColA, ca.rgb, clamp(ca.a, 0.0, 1.0)), 1.0);
   float showA = clamp(uShowA, 0.0, 1.0);
@@ -903,10 +931,11 @@ vec4 sampleAB(vec2 uv){
     both = vec4(res, max(ca.a, cb.a));
   }
   vec4 abRes = _slotVisMix(ca, cb, both, showA, showB);
-  // Tunnel 本パス: 前段パスで描いたトンネルを土台として返す。
-  // 以降の全 FX (Hipass/Outline/ブラー等) が sampleAB を再サンプルしてもトンネルが対象になり、元映像が透けない。
-  if(uCandyMode == 2){
-    abRes = vec4(texture(uCandyTex, fl_mirror(uv)).rgb, 1.0);
+  // A BG = 透過: alpha = A BG でない割合 (A の中身と B の重なり)。合成内の Grad Map がこれでマスクする
+  if(uABgClear > 0){
+    float cbA = clamp(cb.a, 0.0, 1.0);
+    float cBoth = (cb.a < 0.999 || (uBOverB > 0.5 && uBlendMode != 0)) ? 1.0 - (1.0 - covA) * (1.0 - cbA * uMix) : mix(covA, 1.0, uMix);
+    abRes.a = cBoth * showA * showB + covA * showA * (1.0 - showB) + cbA * showB * (1.0 - showA);
   }
   if(uMatteDepth == 1 && uMatte == 3) abRes.a = matteObj(uv);   // 両スロットを深度で抜く: 合成した絵のまま、背景 (どちらの物体でもない所) を alpha 0 に
   return abRes;
@@ -927,14 +956,21 @@ float sg_f(vec2 uv){
   }
   return c;
 }
-vec2 applySlice(vec2 uv){
-  float str = uSlice;                           // スライダー値で常時 (音/拍での発火はしない。帯のパターンは拍ごとに変わる)
-  if(str <= 0.001) return uv;
-  float seed = floor(uBeat);            // 行のパターンは拍ごとに変化
-  // 上から可変高さの行を積む: 大(画面1/4~1/3)が1-2個 / 中くらい多め / 1-4px の細行を散り散り。
-  float yPx = uv.y * uRes.y;
-  float pos = 0.0, band = 0.0;
-  int _slIt = int(min(96.0, 96.0 + uRes.x * 0.0));   // uniform依存の上限で ANGLE(D3D11) の強制ループ展開を抑止 (コンパイル爆発→TDR対策)
+// Slice の帯の座標: 帯に直交する向きの位置 (px)、帯の方向 (アスペクト補正空間)、全体の長さ (px)。Angle 0 = 従来の横帯
+float sliceCoord(vec2 uv, out vec2 dir, out float ext){
+  float aspect = uRes.x / uRes.y, a = uSliceAngle * 3.1415927;
+  dir = vec2(cos(a), sin(a));
+  vec2 c = (uv - 0.5) * vec2(aspect, 1.0);
+  float L = abs(dir.y) * aspect + abs(dir.x);              // 帯に直交する向きの画面の長さ (縦 = 1)
+  ext = L * uRes.y;
+  return (dot(c, vec2(-dir.y, dir.x)) + 0.5 * L) * uRes.y;
+}
+// 上から可変高さの帯を積む: 大(画面1/4~1/3)が1-2個 / 中くらい多め / 1-6px の細帯を散り散り。Count で帯の高さを割る
+float sliceBand(float yPx, float seed, out float pos, out float bandH){
+  float k = exp2((uSliceCount - 0.5) * 4.0);
+  pos = 0.0; bandH = 0.0;
+  float band = 0.0;
+  int _slIt = int(min(320.0, 320.0 + uRes.x * 0.0));   // uniform依存の上限で ANGLE(D3D11) の強制ループ展開を抑止 (コンパイル爆発→TDR対策)
   for(int i = 0; i < _slIt; i++){
     float fi = float(i);
     float t = h11(fi*1.7 + seed*3.1 + 0.5);
@@ -943,52 +979,24 @@ vec2 applySlice(vec2 uv){
     else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed);              // 細: 1-6px (半分近くを細い帯に)
     else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 3.0);       // 小: 6-20px
     else              h = 24.0 + 50.0*h11(fi*9.0 + seed);            // 中: 24-74px
-    band = fi;
-    if(yPx < pos + h) break;
-    pos += h;
-  }
-  float r = sg_f(vec2(band*1.91 + seed, 4.7));              // 行ごとの横シフト乱数
-  float act = step(0.30, sg_f(vec2(band*2.37 + seed, 9.1)));// 一部の行だけ動く
-  float shift = (r - 0.5) * str * 0.45 * act;
-  return uv + vec2(shift, 0.0);
-}
-
-// === Ring Slice (Slice の同心円版) ===
-//   中心から可変幅の同心円の帯を積み (大 / 細 1-4px / 中 26-60px)、帯ごとに別々の速さ・向きで映像を回し続ける
-//   (値 = 速さ。位相は uRsPhase に積分)。帯のパターンは beat モードでは拍ごとに変わり、drone では固定。
-//   Ring Blur (後段パス) も同じ帯を使う。
-float rsBand(float rPx, float seed, out float pos, out float bandH){
-  pos = 0.0; bandH = 0.0;
-  float band = 0.0;
-  int it = int(min(96.0, 96.0 + uRes.x * 0.0));
-  for(int i = 0; i < it; i++){
-    float fi = float(i);
-    float t = h11(fi*1.7 + seed*3.1 + 20.5), h;
-    if(t < 0.10)      h = uRes.y * (0.10 + 0.08*h11(fi*5.0 + seed + 20.0));   // 大: 画面高の 10-18%
-    else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed + 20.0);               // 細: 1-6px (半分近く)
-    else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 23.0);              // 小: 6-20px
-    else              h = 24.0 + 50.0*h11(fi*9.0 + seed + 20.0);             // 中: 24-74px
+    h = max(1.0, h / k);
     band = fi; bandH = h;
-    if(rPx < pos + h) break;
+    if(yPx < pos + h) break;
     pos += h;
   }
   return band;
 }
-vec2 applyRingSlice(vec2 uv){
-  if(uRingSlice <= 0.001) return uv;
-  float seed = (uBeatMode == 1) ? floor(uBeat) : 0.0;        // beat モードは拍ごとにパターン更新 / drone は固定 (滑らかに回り続ける)
+vec2 applySlice(vec2 uv){
+  float str = uSlice;                           // スライダー値で常時 (音/拍での発火はしない。帯のパターンは拍ごとに変わる)
+  if(str <= 0.001) return uv;
+  float seed = floor(uBeat);            // 行のパターンは拍ごとに変化
+  vec2 dir; float ext, pos, bandH;
+  float band = sliceBand(sliceCoord(uv, dir, ext), seed, pos, bandH);
+  float r = sg_f(vec2(band*1.91 + seed, 4.7));              // 行ごとの横シフト乱数
+  float act = step(clamp(1.0 - uSliceMove * 1.4, 0.0, 1.0) + 0.0001 * step(uSliceMove, 0.0), sg_f(vec2(band*2.37 + seed, 9.1)));// 一部の行だけ動く (Move 0.5 = 7 割)
+  float shift = (r - 0.5) * str * 0.45 * act;
   float aspect = uRes.x / uRes.y;
-  vec2  c = (uv - 0.5) * vec2(aspect, 1.0);
-  float rPx = length(c) * uRes.y;
-  float pos, bandH;
-  float band = rsBand(rPx, seed, pos, bandH);
-  float r   = sg_f(vec2(band*1.91 + seed, 14.7));
-  float act = step(0.30, sg_f(vec2(band*2.37 + seed, 19.1)));
-  float spd = (r < 0.5 ? -1.0 : 1.0) * (0.25 + 0.75*floor(abs(r - 0.5)*2.0*3.0 + 1.0)/3.0);   // 帯ごとの速さ: ±(0.5 / 0.75 / 1.0) 倍
-  float ang = spd * uRsPhase * act;                          // 回転角 (位相に帯ごとの速さを掛けて回り続ける)
-  float sn = sin(ang), cs = cos(ang);
-  c = mat2(cs, -sn, sn, cs) * c;
-  return c / vec2(aspect, 1.0) + 0.5;
+  return uv + dir * shift * aspect / vec2(aspect, 1.0);    // 帯の方向へずらす (Angle 0 = 従来の左右)
 }
 
 // === Split Glitch (Shadertoy "split glitch effect" wfcfRB) ===
@@ -1074,8 +1082,8 @@ vec2 applyShake(vec2 uv){
 //   基本リングの中に細い副リング (1-6px、リングごとに最大 3 本) を混ぜ、副リングは別のねじれ量で回す。
 //   戻り値 = リング番号 (副リングは小数オフセット)。edgeDist = 最寄りの境界までの距離 (リング座標単位)
 float ringsBand(float rPx, float fine, out float edgeDist){
-  float freq = mix(0.0004, 0.0026, fine);
-  float warpAmp = mix(0.5, 2.0, fine);
+  float freq = mix(0.0004, 0.0026, fine) * exp2((uRingsCount - 0.5) * 3.0);   // Count: リングの数
+  float warpAmp = mix(0.5, 2.0, fine) * uRingsWobble * 2.0;                     // Wobble: 幅のゆらぎ
   float warp = warpAmp*sin(rPx*0.011 + uTime*0.6) + 0.55*warpAmp*sin(rPx*0.019 - uTime*0.4);
   float x = rPx*freq + warp;
   float id = floor(x), fr = fract(x);
@@ -1106,7 +1114,7 @@ vec2 applyRings(vec2 uv){
   float ringId = ringsBand(rPx, fine, _ed);
   // リングごとに異なる回転量(有界) → 同心円がバラバラにねじれる
   float twist = 0.6*sin(ringId*0.7) + 0.4*sin(ringId*1.9 + 1.3);
-  float ang = twist * amt * 2.2;               // 回転量アップ
+  float ang = twist * amt * 2.2 * uRingsTwist * 2.0;   // Twist: 0.5 = 従来
   float s = sin(ang), co = cos(ang);
   vec2 cc = (uv - 0.5) * vec2(aspect, 1.0);   // アスペクト補正した空間で回す (縦横比が違っても外側が伸びない)
   cc = mat2(co, -s, s, co) * cc;
@@ -1135,6 +1143,58 @@ vec2 applyZoomPump(vec2 uv){
   c /= max(0.2, z);
   return c + 0.5;
 }
+// === Pop Up (Audio FX): 強い音 (uHit) でランダムな位置に円 / 多角形がふくらんで飛び出す ===
+//   発火ごと (uHitSeed) に位置を選び直し、図形ごとにしきい値を変えて時間差で引っ込む。中は映像を拡大し、
+//   ドームの陰影・縁取り・落ち影で浮かせる。pd.x = 面の陰影 (-1..1) / pd.y = 縁 / pd.z = 落ち影
+float popShape(vec2 q, float n){          // 外接円半径 1 の正 n 角形 (n < 3 = 円)。辺の上で 0、内側が負
+  if(n < 2.5) return length(q) - 1.0;
+  float an = 3.14159265 / n;
+  float k = mod(atan(q.y, q.x) + an, 2.0 * an) - an;
+  return length(q) * cos(k) / cos(an) - 1.0;
+}
+vec2 applyPop(vec2 uv, out vec3 pd){
+  pd = vec3(0.0);
+  if(uAPop <= 0.001 || uHit <= 0.001) return uv;
+  float aspect = uRes.x / uRes.y;
+  vec2 p = uv * vec2(aspect, 1.0);
+  int n = int(clamp(floor(uAPopCount + 0.5), 1.0, 32.0));
+  float sides = floor(uAPopSides + 0.5);
+  float maxPx = max(1.0, uAPopSize);
+  vec2 outUv = uv;
+  for(int i = 0; i < 32; i++){
+    if(i >= n) break;
+    float fi = float(i), sd = uHitSeed * 37.1;
+    vec2 c = vec2(h11(fi*12.7 + sd + 0.3) * aspect, h11(fi*7.3 + sd + 3.1));
+    float th = h11(fi*3.9 + sd + 9.0) * 0.6;                       // 図形ごとのしきい値 = 引っ込む順
+    float a = clamp((uHit - th) / (1.0 - th), 0.0, 1.0);
+    if(a <= 0.0) continue;
+    float grow = a * (1.0 + 0.35 * sin(a * 3.14159265));            // ふくらみ (少し行き過ぎて戻る)
+    float rPx = mix(1.0, maxPx, h11(fi*5.1 + sd + 2.3));           // 半径 = 1px〜上限でランダム
+    float R = rPx / uRes.y * grow * (0.4 + 0.6 * uAPop);
+    if(R <= 0.0) continue;
+    float rot = (h11(fi*8.3 + sd + 5.5) - 0.5) * 6.2831853 * uAPopSpin + (1.0 - a) * uAPopSpin * 2.5;
+    float cs = cos(rot), sn = sin(rot);
+    vec2 dp = p - c;
+    vec2 q = mat2(cs, -sn, sn, cs) * dp / R;
+    float d = popShape(q, sides);
+    if(d < 0.0){
+      float zoom = 1.0 + uAPopZoom * 3.0 * a * uAPop;
+      outUv = (c + dp / zoom) / vec2(aspect, 1.0);
+      float r = clamp(1.0 + d, 0.0, 1.0);                          // 0 = 中心 / 1 = 縁
+      vec2 dir = q / max(length(q), 1e-4);
+      vec3 nrm = normalize(vec3(dir * r, sqrt(max(0.0, 1.0 - r * r)) + 0.05));
+      vec3 L = normalize(vec3(-0.45, 0.55, 0.70));
+      pd.x = dot(nrm, L) - L.z;
+      pd.y = step(-d * R * uRes.y, uAPopLine * 4.0) * step(0.001, uAPopLine);
+      pd.z = 0.0;
+    } else {
+      vec2 so = vec2(0.35, -0.45) * R * 0.25;                       // 落ち影 (右下)
+      float ds = popShape(mat2(cs, -sn, sn, cs) * (dp - so) / R, sides);
+      if(ds < 0.0) pd.z = max(pd.z, smoothstep(0.0, -0.35, ds));
+    }
+  }
+  return outUv;
+}
 // === Freeze-Shatter (Audio FX): アタック (uHit) で Voronoi 片に割れて飛散 ===
 vec2 applyShatter(vec2 uv){
   if(uShatter <= 0.001) return uv;
@@ -1162,29 +1222,14 @@ vec2 applyShatter(vec2 uv){
 
 // Slice / Mondrian / Rings の境界線マスク。線自体は main の色に合わせて白黒を決める。
 float sliceEdgeMask(vec2 uv){
-  float str = uSlice;
-  if(str <= 0.001) return 0.0;
-  float yPx = uv.y * uRes.y, pos = 0.0, bandH = 0.0;
+  if(uSlice <= 0.001 || uSliceLine <= 0.001) return 0.0;
   float seed = floor(uBeat);
-  int it = int(min(96.0, 96.0 + uRes.x * 0.0));
-  for(int i=0;i<it;i++){
-    float fi = float(i), t = h11(fi*1.7 + seed*3.1 + 0.5), h;
-    if(t < 0.10) h = uRes.y * (0.22 + 0.10*h11(fi*5.0 + seed));
-    else if(t < 0.55) h = 1.0 + 5.0*h11(fi*7.0 + seed);
-    else if(t < 0.75) h = 6.0 + 14.0*h11(fi*8.0 + seed + 3.0);
-    else h = 24.0 + 50.0*h11(fi*9.0 + seed);
-    bandH = h;
-    if(yPx < pos + h) break;
-    pos += h;
-  }
-  float localY = clamp((yPx - pos) / max(bandH, 0.0001), 0.0, 1.0);
-  float dTop = (pos > 0.5) ? localY : 1.0;
-  float dBottom = (pos + bandH < uRes.y - 0.5) ? (1.0 - localY) : 1.0;
-  float edgeDist = min(dTop, dBottom);
-  // 微分値ではなく帯の実ピクセル高さから算出。境界位置によらず必ず1px分を拾う。
-  // 境界の両側を拾わないよう、中心から0.5px相当だけを線にする。
-  float lineW = 0.5 / max(bandH * uRes.y, 1.0);
-  return step(edgeDist, lineW);
+  vec2 dir; float ext, pos, bandH;
+  float yPx = sliceCoord(uv, dir, ext);
+  sliceBand(yPx, seed, pos, bandH);
+  // 帯の上端だけを線にする (境界の両側を拾わない)。太さ = Line × 2px (0.5 = 従来の 1px)
+  if(pos < 0.5 || pos > ext - 0.5) return 0.0;
+  return step(yPx - pos, uSliceLine * 2.0);
 }
 
 float splitEdgeMask(vec2 uv){
@@ -1224,7 +1269,7 @@ float splitEdgeMask(vec2 uv){
 }
 
 float ringsEdgeMask(vec2 uv){
-  if(uRings <= 0.001) return 0.0;
+  if(uRings <= 0.001 || uRingsLine <= 0.001) return 0.0;
   float rExp = (exp2(4.0*clamp(uRings, 0.0, 1.0)) - 1.0) / 15.0;
   float amt = rExp * 0.72;
   if(amt <= 0.001) return 0.0;
@@ -1232,9 +1277,9 @@ float ringsEdgeMask(vec2 uv){
   float rPx = length((uv-0.5)*vec2(aspect,1.0))*uRes.y;
   float edgeDist;
   ringsBand(rPx, fine, edgeDist);                              // 副リングの境界も含む
-  float freq = mix(0.0004,0.0026,fine);
-  // 境界の両側を拾わないよう、リング座標で 0.5px 相当だけを線にする
-  float lineW = max(0.00005, 0.5 * freq * fwidth(rPx));
+  float freq = mix(0.0004,0.0026,fine) * exp2((uRingsCount - 0.5) * 3.0);
+  // 境界の両側を拾わないよう、リング座標で 0.5px 相当だけを線にする (Line で太さ。0.5 = 従来)
+  float lineW = max(0.00005, 0.5 * freq * fwidth(rPx)) * uRingsLine * 2.0;
   return step(edgeDist, lineW);
 }
 
@@ -1525,117 +1570,12 @@ float glassH(vec2 q, float t){
 
 // Dither Blur は後段の独立パス (_applyDitherPost) へ移設。
 
-// ── Tunnel (Shadertoy X3jXWh "CandyTunnel VFX" by Eboman / aiekick Wax Tunnel ベース) 移植 ──
-// 元コードのデフォルト状態 (mouse.x=0 → uMzero=0.98 / キー無し) を再現:
-//   df・path・camera・march は原文どおり / iChannel2(変位テクスチャ)は手続きノイズで代替。
-//   テクスチャ投影は Q モード(トライプレナー): uv2 の寄与は 1-uMzero=2% なので元映像は透けない。
-//   減光は原文の「End of tunnel darkness」式 (1.25 - d*uMfive/10 - 0.25*(1-uMfive))。uMfive を上げて奥を黒に潰す。
-mat3 ct_RotZ(float a){ return mat3(cos(a),-sin(a),0.,sin(a),cos(a),0.,0.,0.,1.); }
-float ct_noise(vec2 p){ return _bnV(p*3.0)*0.7 + _bnV(p*7.0+11.3)*0.5 + _bnV(p*15.0+31.7)*0.2; }
-float gCandyZero;
-float gCandyWarp;
-vec2 ct_path(float t){ return vec2(cos(t*0.2), sin(t*0.2)) * (2.0 * gCandyWarp); }
-vec2 ct_df(vec3 p){
-  p.xy -= ct_path(p.z);
-  p *= ct_RotZ(p.z * mix(0.06, 0.45, gCandyWarp));
-  float tunnelPulse = 0.56 + 0.44 * sin(p.z + cos(p.z));
-  p.xy *= mix(1.0, tunnelPulse, gCandyWarp);
-  float y = 1.72*gCandyZero - max(max(p.x, -p.x)*75.0 + p.y, -p.y);
-  float d = ct_noise(vec2(max(p.x, -p.x), p.z)*0.06) * mix(0.12, 1.0, gCandyWarp);
-  return vec2(y + d, 1.0);
-}
-vec3 ct_nor(vec3 pos, float prec){
-  vec3 e = vec3(prec, 0.0, 0.0);
-  return normalize(vec3(
-    ct_df(pos+e.xyy).x - ct_df(pos-e.xyy).x,
-    ct_df(pos+e.yxy).x - ct_df(pos-e.yxy).x,
-    ct_df(pos+e.yyx).x - ct_df(pos-e.yyx).x));
-}
-vec3 ct_cam(vec2 uv, vec3 ro, vec3 cv){
-  vec3 cu = vec3(0.0, 1.0, 0.0);
-  vec3 z = normalize(cv - ro);
-  vec3 x = normalize(cross(cu, z));
-  vec3 y = cross(z, x);
-  return normalize(z + uv.x*x + uv.y*y);
-}
-vec3 applyCandyTunnel(vec3 col, vec2 uv2){
-  vec3 base = sampleAB(uv2).rgb;
-  float raw = clamp(uCandy, 0.0, 1.0);
-  if(raw < 0.001) return base;
-  // 透明度フェードではなく、スクリーンUVからトンネル投影UVへ変形してつなぐ。
-  // 低パラメータでは中身の投影UVを先に歪ませ、高パラメータで通路・捻り・タイル投影が立ち上がる。
-  float rawEase = raw * raw * (3.0 - 2.0 * raw);
-  float warp = pow(rawEase, 1.30);
-  // 内部投影は低値で先行して暴れやすいため、高値側で立ち上がるカーブにする。
-  float innerWarp = pow(rawEase, 1.25);
-  float geom = pow(rawEase, 1.05);
-  gCandyWarp = mix(0.01, 1.0, geom);
-  gCandyZero = mix(0.42, 0.98, geom);
-  float t = uTime * mix(1.0, 3.0, geom);
-  vec2 si = uRes;
-  vec2 uv = (2.0*(uv2*si) - si) / si.y;
-  vec3 ro = vec3(ct_path(t), t);
-  vec3 cv = vec3(ct_path(t+0.1), t+0.1);
-  vec3 rd = ct_cam(uv, ro, cv);
-  // 低値では近距離の緩い変形しか見えないため、探索距離と反復数も形状量に合わせる。
-  // 0.01でも96反復を走らせていた従来のGPUスパイクを避け、高値だけ原作相当へ増やす。
-  float workRise=pow(geom,0.62);
-  float md=mix(18.0,100.0,workRise), s=1.0, d=1.0;
-  int ctIter=int(floor(mix(28.0,96.0,workRise)+0.5));
-  for(int i=0;i<96;i++){
-    if(i>=ctIter) break;
-    if(s < 0.002*log(d*d) || d > md) break;
-    s = ct_df(ro + rd*d).x;
-    d += s * (s > 0.1 ? 0.15 : 0.1);
-  }
-  vec3 outc = base;
-  if(d < md){
-    vec3 p = ro + rd*d;
-    vec3 n = abs(ct_nor(p, 0.001));
-    // Q モード(トライプレナー): 面の向きごとに映像をタイル投影。
-    // uv2(平面スクリーンUV)は一切混ぜない。カメラ正面(z向き)の壁は p.xy だけだと
-    // 映像がほぼ無変形で貼られ「元画像が残る」ため、z でスクロールさせて静止させない。
-    float projScale = 0.145;
-    vec2 qXZ = fract(p.xz * projScale);
-    vec2 qYZ = fract(p.yz * projScale);
-    vec2 qXY = fract(p.xy * projScale + p.z * mix(0.02, 0.13, geom));
-    vec2 flow = vec2(
-      sin(p.z*0.30 + p.y*0.42),
-      cos(p.z*0.34 + p.x*0.38)
-    ) * (0.020 * innerWarp);
-    vec2 srcUv = clamp(uv2 + flow, vec2(0.0), vec2(1.0));
-    vec3 vXZ = sampleAB(mix(srcUv, qXZ, innerWarp)).rgb;
-    vec3 vYZ = sampleAB(mix(srcUv, qYZ, innerWarp)).rgb;
-    vec3 vXY = sampleAB(mix(srcUv, qXY, innerWarp)).rgb;
-    // 重みを鋭くして支配軸の1投影だけをほぼ選ぶ。3投影を混ぜると映像が多重露光になり
-    // 乗算/加算のように濃くなったり明るくなったりするため(境界だけ僅かにブレンド)。
-    vec3 w = pow(n, vec3(mix(5.0, 12.0, geom)));
-    w /= max(w.x + w.y + w.z, 1e-5);
-    vec3 video = vYZ*w.x + vXZ*w.y + vXY*w.z;
-    // 奥行きグラデーション: 距離 d に対して単調になめらかに暗くする。
-    // 実測でヒット距離は d ≈ 0〜4 (画面中心が最奥で約1、周辺は約0.1)。旧実装は
-    // 1.25 - d*0.08 や exp(-(d-2)*0.3) と d が数十ある前提だったため実質効いていなかった。
-    float caveAmt = max(warp, innerWarp * 0.55);
-    float kFall = mix(2.4, 1.15, geom);                       // 減衰の速さ (低値ほど浅い変形=近景なので強め)
-    float fade = exp(-max(d - 0.15, 0.0) * kFall);             // 1=手前 → 0=最奥 (単調・境目なし)
-    float depthT = 1.0 - fade;
-    vec3 coldTint = mix(vec3(1.0), vec3(0.34, 0.40, 0.52), depthT);   // 奥は冷たい影色へ
-    vec3 shaded = video * coldTint * fade;
-    outc = mix(video, shaded, caveAmt);
-  }
-  return outc;   // 前段パス専用: uCandy は透明度ではなく変形量として使う
-}
-
 void main(){
-  // Tunnel 前段パス: 実 A/B 合成からトンネルだけを専用 FBO に描いて終了。
-  if(uCandyMode == 1){ frag = vec4(applyCandyTunnel(vec3(0.0), vUv), 1.0); return; }
-
   vec2 uv = vUv;
 
   // beat-driven UV warps (Twist は後段パスへ移設)
   vec2 sliceLineUv = uv;
   uv = applySlice(uv);
-  uv = applyRingSlice(uv);                 // 境界線なし (Slice / Mondrian / Rings とは違い線は描かない)
   vec2 splitLineUv = uv;
   uv = applySplit(uv);
   uv = applyShake(uv);
@@ -1680,7 +1620,6 @@ void main(){
     vec3 fxLine = (uFxLineOn > 0.5) ? uFxLineCol : ((fxLuma < 0.48) ? vec3(1.0) : vec3(0.0));
     col = mix(col, fxLine, clamp(fxEdge, 0.0, 1.0));
   }
-  // Tunnel は 2パス処理: 前段パス(uCandyMode==1)で描き、本パスでは sampleAB が返すためここでは何もしない。
 
   // Hipass (旧Glass): 序盤はぼかしではなく高域強調だけを即座に効かせ、後段でブラーを広げる。
   if(uGlass > 0.001){
@@ -1797,7 +1736,7 @@ void main(){
     col = vxRender();
   }
 
-  // Color 段 (Invert / Bri / Con / Sat / Vibrance / Grad Map / Hue / Posterize / Vignette / Gamma) は Post FX 連鎖の最後 (GL._applyFinalColorGrade) で掛ける。
+  // Color 段 (Invert / Bri / Con / Sat / Vibrance / Grad Map / Hue / Posterize / Vignette / Temperature・Tint / Color Mixer / Gamma) は Post FX 連鎖の最後 (GL._applyFinalColorGrade) で掛ける。
   // @gradmask シェーダだけは Grad Map をサンプル α でマスクする必要があるので、ここで掛ける (最後の段では掛けない)。
   if(uGradMask == 1 && abs(uGradMix) > 0.0001) col = mix(col, _gradMap(col), clamp(srcA, 0.0, 1.0));
 
@@ -1883,7 +1822,7 @@ void main(){
     col = mix(col, fc, clamp(fl, 0.0, 1.0));
   }
 
-  frag = (uMatte > 0) ? vec4(col * srcA, srcA) : vec4(col, uMatteDepth == 2 ? 1.0 - matteObj(vUv) : 1.0);   // 紙抜き中は前乗算 + 実 alpha で 3D 段へ渡す / 深度で抜く絵の下敷きは alpha = 背景の割合
+  frag = (uMatte > 0) ? vec4(col * srcA, srcA) : vec4(col, uMatteDepth == 2 ? 1.0 - matteObj(vUv) : (uABgKeepA == 1 ? clamp(srcA, 0.0, 1.0) : 1.0));   // 紙抜き中は前乗算 + 実 alpha で 3D 段へ渡す / 深度で抜く絵の下敷きは alpha = 背景の割合
 }`;
     this._compositeFS = COMPOSITE_FS;   // Audio / Pattern を 3D のあとに掛けるパス (_applyAudioPatternPost) がこのソースから作る
     this._linkDeferred('compositeProg', COMPOSITE_FS);
@@ -2118,7 +2057,7 @@ void main(){
 
     // Chrome: マットキャップ流の液体金属。輝度勾配法線でスタジオ照明バンドの環境を引き、
     // 映像の色味を残したまま全体を金属質に変える。光源はゆっくり回転。
-    // Ring Blur: Ring Slice と同じ同心円の帯 (rsBand と同一の乱数・定数) ごとに、円周方向の回転ブラーを掛ける
+    // Ring Blur: 可変幅の同心円の帯 (rsBand) ごとに、円周方向の回転ブラーを掛ける
     this._linkDeferred('ringBlurProg', `#version 300 es
 precision highp float;
 in vec2 vUv; out vec4 frag;
@@ -2188,7 +2127,9 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uAmount, uTime;
+uniform float uBump, uEdgeW, uCon, uTint, uSpec, uSharp, uRim, uLight;   // サブパラメータ (0..1。既定 = 従来の絵: 0.5 / Tint 0.35)
 float lum(vec3 c){ return dot(c,vec3(0.299,0.587,0.114)); }
+float x4(float v){ return exp2((v*2.0-1.0)*2.0); }   // 0..1 → 1/4..4 (0.5 で 1)
 // 密なディスクぼかし (13タップ): 点・粒を消しつつランプ幅は数px に留める
 float blum(vec2 uv){
   vec2 px=1.0/uRes;
@@ -2204,22 +2145,22 @@ float blum(vec2 uv){
 void main(){
   vec3 col=texture(uTex,vUv).rgb;
   if(uAmount<=0.001){ frag=vec4(col,1.0); return; }
-  vec2 e=1.6/uRes;   // フチ幅を狭く (2.5→1.6px)
+  vec2 e=1.6*x4(uEdgeW)/uRes;   // フチ幅 (Edge 0.5 = 1.6px)
   float lx=blum(vUv+vec2(e.x,0.0))-blum(vUv-vec2(e.x,0.0));
   float ly=blum(vUv+vec2(0.0,e.y))-blum(vUv-vec2(0.0,e.y));
   // Relief と同じ方式: 弱い勾配(点)だけデッドゾーンで無視し、
   // 勾配に比例した法線で自然な丸い起伏にする (飽和させない)
   float clean=smoothstep(0.005,0.03,length(vec2(lx,ly)));
   lx*=clean; ly*=clean;
-  float steep=mix(1.0,2.2,uAmount);
+  float steep=mix(1.0,2.2,uAmount)*x4(uBump);   // 起伏 (Bump)
   vec3 n=normalize(vec3(-lx*steep,-ly*steep,0.5));
   // 光源をゆっくり回す
-  float a=uTime*0.25;
+  float a=uTime*0.5*uLight;   // 光源の回る速さ (Light 0.5 = 従来 / 0 で止まる)
   mat2 R=mat2(cos(a),-sin(a),sin(a),cos(a));
   vec2 nr=R*n.xy;
   // スタジオ照明バンド (matcap): 上下の帯 + 天窓 + ソフトボックス + 側面窓
   // 環境参照だけ法線を増幅: 起伏は低いまま、緩い傾きでも明暗が大きく振れるクロムのコントラストを出す
-  vec2 nrE=clamp(nr*2.6,-1.0,1.0);
+  vec2 nrE=clamp(nr*2.6*x4(uCon),-1.0,1.0);   // 映り込みの明暗の振れ (Contrast)
   float band=nrE.y*0.5+0.5;
   vec3 env=mix(vec3(0.02,0.025,0.035), vec3(1.25,1.28,1.35), pow(smoothstep(0.05,0.95,band),1.6));
   env+=vec3(1.0)*pow(max(0.0,nrE.y),14.0)*1.2;                    // 天窓の鋭い反射
@@ -2228,14 +2169,14 @@ void main(){
   env+=vec3(0.9)*pow(max(0.0,-nrE.y),12.0)*0.4;                   // 床の照り返し
   // 映像の色味をクロームへ流し込む (金属感を優先して控えめ)
   vec3 tint=col/max(0.35,lum(col));
-  vec3 metal=env*mix(vec3(1.0),clamp(tint,0.0,2.2),0.35);
+  vec3 metal=env*mix(vec3(1.0),clamp(tint,0.0,2.2),uTint);   // 映像の色の乗り (Tint)
   // 回転光源のスペキュラグリント (縁の上を光の粒が走る)
   vec3 V=vec3(0.0,0.0,1.0);
   vec3 Ldir=normalize(vec3(cos(a*1.7)*0.7, 0.35+0.4*sin(a*1.3), 0.65));
-  float spec=pow(max(0.0,dot(reflect(-Ldir,n),V)),80.0);
-  metal+=spec*mix(vec3(1.0),clamp(tint,0.0,2.2),0.25)*1.5;
+  float spec=pow(max(0.0,dot(reflect(-Ldir,n),V)),80.0*x4(uSharp));   // グリントの鋭さ (Sharp)
+  metal+=spec*mix(vec3(1.0),clamp(tint,0.0,2.2),0.25)*3.0*uSpec;   // グリントの強さ (Spec 0.5 = 1.5)
   float fres=pow(1.0-max(0.0,n.z),2.0);
-  metal+=fres*vec3(0.25,0.35,0.6)*0.55;
+  metal+=fres*vec3(0.25,0.35,0.6)*1.1*uRim;   // 縁の青い光 (Rim 0.5 = 0.55)
   frag=vec4(mix(col,metal,clamp(uAmount,0.0,1.0)),1.0);
 }`);
 
@@ -3283,8 +3224,9 @@ uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uAmount, uTime;
 uniform int uSteps;   // レイマーチの回数 (定数ループは ANGLE が展開して重くなるので uniform にする)
+uniform float uTwistK, uWidthK, uFlowK, uLightK, uFogK, uSwayK;   // サブパラメータ (0..1、0.5 = 従来の絵)
 float rvTT, rvTw;
-const float RV_W=1.2;   // 通路の半幅
+float RV_W=1.2;   // 通路の半幅 (Width で 0.6〜2.4)
 mat2 rvR2(float r){ return mat2(cos(r),sin(r),-sin(r),cos(r)); }
 // ねじれ: 奥 (z) へ進むほど通路の断面が回る。量に合わせて強くなる
 float rvAng(float z){ return z*rvTw + rvTT*0.15; }
@@ -3294,11 +3236,10 @@ float rvMap(vec3 p){
   vec3 q=rvTwist(p);
   return (RV_W-max(abs(q.x),abs(q.y)))*0.8;   // ねじれで距離場が歪む分を詰める
 }
-// shape 0 = 画面と同じ平面 (元の映像) → 1 = ねじれた通路
-float rvTrace(vec3 ro,vec3 rd,float shape){
+float rvTrace(vec3 ro,vec3 rd){
   float t=0.1;
   for(int i=0;i<uSteps;i++){
-    float d=mix(12.0-t,rvMap(ro+rd*t),shape);
+    float d=rvMap(ro+rd*t);
     if(d<0.0006*t||t>40.0) break;
     t+=d;
   }
@@ -3317,34 +3258,43 @@ void main(){
   vec3 baseCol=texture(uTex,vUv).rgb;
   if(uAmount<=0.00001){ frag=vec4(baseCol,1.0); return; }
   float shape=rvRise(min(1.0,uAmount*1.6));   // 0.6 で通路が出来上がる (中間の値でも一目で分かる)
+  // 映像の座標を元の位置から通路の壁の座標へ寄せる割合。色は混ぜないので、弱い値でも絵は薄くならず弱く歪むだけ
+  float k=pow(min(1.0,uAmount/0.55),1.6);
   vec2 uv=vUv-0.5;
   float asp=uRes.x/uRes.y;
   uv.x*=asp;
   rvTT=mod(uTime,1000.0);
-  rvTw=shape*(0.08+0.30*uAmount);   // 0.6 で通路が出来上がり、その先はねじれが強くなる
-  vec3 ro=vec3(0.3*sin(rvTT*0.21),0.25*cos(rvTT*0.17),rvTT*1.2);
-  vec3 ta=ro+vec3(0.25*sin(rvTT*0.13),0.2*cos(rvTT*0.11),1.0);
+  RV_W=1.2*exp2(uWidthK*2.0-1.0);
+  rvTw=shape*(0.08+0.30*uAmount)*exp2((uTwistK*2.0-1.0)*2.0);   // Twist 0.5 = 従来 (1/4〜4 倍)   // 0.6 で通路が出来上がり、その先はねじれが強くなる
+  float sw=uSwayK*2.0;   // Sway 0.5 = 従来
+  vec3 ro=vec3(0.3*sw*sin(rvTT*0.21),0.25*sw*cos(rvTT*0.17),rvTT*1.2);
+  vec3 ta=ro+vec3(0.25*sw*sin(rvTT*0.13),0.2*sw*cos(rvTT*0.11),1.0);
   vec3 cw=normalize(ta-ro);
   vec3 cu=normalize(cross(cw,vec3(0.0,1.0,0.0)));
   vec3 cv=cross(cu,cw);
   vec3 rd=normalize(mat3(cu,cv,cw)*vec3(uv,1.0));
-  vec3 col=baseCol*0.2;
-  float t=rvTrace(ro,rd,shape);
+  vec3 col=baseCol*mix(1.0,0.2,k);
+  float t=rvTrace(ro,rd);
   if(t>0.0){
     vec3 p=ro+rd*t;
     vec3 nrm=rvNormal(p);
     vec3 q=rvTwist(p);
     // 壁ごとに映像を 1 枚: 横 = 壁の幅、縦 = 奥行き (映像の縦横比のまま)。映像は壁の上を手前へ川のように流れる
     float along=abs(q.x)>abs(q.y)?q.y*sign(q.x):-q.x*sign(q.y);
-    vec2 tuv=vec2(rvMir(along/(2.0*RV_W)+0.5), rvMir((q.z-rvTT*(0.5+0.6*uAmount))/(2.0*RV_W)*asp*0.5));
-    vec3 alb=texture(uTex,tuv).rgb;
+    vec2 tuv=vec2(rvMir(along/(2.0*RV_W)+0.5), rvMir((q.z-rvTT*(0.5+0.6*uAmount)*uFlowK*2.0)/(2.0*RV_W)*asp*0.5));
+    // 壁ごとの座標は角で途切れる。弱い値では断面を一周する途切れない座標を使い、通路が出来上がるにつれて壁ごとの座標へ寄せる
+    float per=abs(q.x)>abs(q.y)?(q.x>0.0?q.y+RV_W:5.0*RV_W-q.y):(q.y>0.0?3.0*RV_W-q.x:7.0*RV_W+q.x);
+    float full=smoothstep(0.6,1.0,k);
+    tuv.x=mix(rvMir(per/(2.0*RV_W)),tuv.x,full);
+    // 弱い値では奥ほどずらしを抑える (消失点のまわりのざらつきと、レイが抜けた所との段差を出さない)
+    vec3 alb=texture(uTex,mix(vUv,tuv,k*mix(exp(-t*0.08),1.0,full))).rgb;
     vec3 L=normalize(cw*0.6+vec3(0.3,0.5,0.0));
     float diff=clamp(dot(nrm,-L)*0.5+0.5,0.0,1.0);
     float spec=pow(clamp(dot(reflect(rd,nrm),-rd),0.0,1.0),30.0);
-    vec3 s=alb*(0.45+0.75*diff)+vec3(spec*0.15);
-    col=mix(baseCol*0.2,s,exp(-t*0.06));
+    vec3 s=alb*mix(1.0,0.45+0.75*diff,clamp(k*uLightK*2.0,0.0,1.5))+vec3(spec*0.15*k*uLightK*2.0);   // Light 0.5 = 従来
+    col=mix(baseCol*0.2,s,mix(1.0,exp(-t*0.12*uFogK),k));   // Fog 0.5 = 従来
   }
-  frag=vec4(mix(baseCol,col,shape),1.0);
+  frag=vec4(col,1.0);
 }`);
 
     // PiP 用: Post FX 適用付き転写プログラム (Slot tex → 小 RGBA8 FBO)
@@ -3425,105 +3375,11 @@ void main(){
       }
     }
 
-    // Kaiser (元 = グリッドメッシュのリボン裂け折り。Kaiser_202607152021.zip 由来)
-    // 分割面と最大折り数は単体/統合で共通 (Needle 変位も統合では同じメッシュ上で解像)。
+    // 統合パスの格子の細かさ (Kaiser は単体でも統合パスで描く)
     this._foldGrid = [72, 42];
-    this._kaiserOldGrid = this._foldGrid;
     this._foldStackGrid = this._foldGrid;
-    this._kaiserOldK = 14;   // Origami と同数に統一
     {
       const gl = this.gl;
-      const KVS = `#version 300 es
-precision highp float;
-uniform vec2 uRes, uGrid;
-uniform float uMode, uTwist, uWarp2, uWt2, uCollapse;
-uniform mat4 uView, uProj;
-uniform vec3 uCenter;                // 折り上がりの重心 → 画面中央に来るよう平行移動
-uniform int uFoldN;
-uniform vec2 uCreaseP[14];
-uniform vec2 uCreaseN[14];
-uniform float uTheta[14];
-uniform vec3 uAxisO[14];
-uniform vec3 uAxisD[14];
-out vec2 vUv; out vec3 vWorld;
-void main(){
-  if(uMode < 0.5){
-    vec2 c = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
-    vUv = c;
-    vWorld = vec3(0.0);
-    gl_Position = vec4(c * 2.0 - 1.0, 0.99999, 1.0);
-    return;
-  }
-  int vid = gl_VertexID;
-  int cell = vid / 6, corner = vid - cell * 6;
-  int GW = int(uGrid.x);
-  int cx = cell - (cell / GW) * GW, cy = cell / GW;
-  vec2 co[6] = vec2[6](vec2(0.,0.), vec2(1.,0.), vec2(1.,1.), vec2(0.,0.), vec2(1.,1.), vec2(0.,1.));
-  vec2 uv = (vec2(float(cx), float(cy)) + co[corner]) / uGrid;
-  vUv = uv;
-  float asp = uRes.x / max(uRes.y, 1.0);
-  vec2 q = (uv - 0.5) * 2.0 * vec2(asp, 1.0);
-  // 蛇腹プリーツ (三角波): 折り前の紙に鋭い山谷。面は平面のままなので刃の鋭さは保たれ、
-  // 裂けたフラップの断面が蛇腹の刃として覗く = Origami との差別化要素
-  float jab = uWarp2 * 0.30 * (abs(fract(q.x * 1.5 + uWt2 * 0.055) - 0.5) * 4.0 - 1.0);
-  vec3 P = vec3(q, jab);
-  for(int i = 0; i < 14; i++){
-    if(i >= uFoldN) break;
-    float s = dot(q - uCreaseP[i], uCreaseN[i]);   // 側判定は「元の紙座標」= 前の折りを横切るとリボン状に裂ける
-    float k = clamp(-s / 0.0022, 0.0, 1.0);         // 折り目をほぼハードエッジに = 刃のように鋭い
-    if(k > 0.0){
-      float th = uTheta[i] * k;
-      vec3 ax = uAxisD[i];
-      vec3 rel = P - uAxisO[i];
-      float ct = cos(th), st = sin(th);
-      P = uAxisO[i] + rel * ct + cross(ax, rel) * st + ax * dot(ax, rel) * (1.0 - ct);
-    }
-  }
-  P -= uCenter;                      // 折り重心を原点へ = 画面中央に固定
-  // 最後に全体を巨大変形 (面はフラットのまま = 角丸が出ない大域変形)
-  float ang = P.y * uTwist + uWt2 * 0.3;           // 高さに沿った巨大なひねり
-  float cs = cos(ang), sn = sin(ang);
-  P.xz = mat2(cs, -sn, sn, cs) * P.xz;
-  // 直交ひねり (雑巾絞り): x に沿った第2のねじり軸
-  float ang2 = q.x * uTwist * 0.45 - uWt2 * 0.22;
-  float c2 = cos(ang2), s2 = sin(ang2);
-  P.yz = mat2(c2, -s2, s2, c2) * P.yz;
-  P.z += uWarp2 * sin(P.x * 0.8 + uWt2)            // 大域の低周波うねり
-       + uWarp2 * 0.7 * cos(P.y * 0.6 - uWt2 * 0.8);
-  P *= uCollapse;                    // ブラックホール: 周期的に原点(画面中央)へ吸い込まれ 0 になる
-  vWorld = P;
-  gl_Position = uProj * (uView * vec4(P, 1.0));
-}`;
-      const KFS = `#version 300 es
-precision highp float;
-in vec2 vUv; in vec3 vWorld; out vec4 frag;
-uniform sampler2D uTex;
-uniform float uMode, uShade, uBgDark;
-uniform vec3 uEye;
-void main(){
-  if(uMode < 0.5){
-    vec4 bA = texture(uTex, vUv); vec3 b = bA.rgb;    // 3D FX が抜いた背景 (alpha 0) は抜けたまま
-    frag = vec4(b * (1.0 - uBgDark), bA.a * (1.0 - uBgDark));   // 暗転しきった背景は alpha も 0 (Uzumaki が紙だけを渦に乗せられる)
-    return;
-  }
-  vec4 albA = texture(uTex, clamp(vUv, 0.0, 1.0));
-  if(albA.a < 0.5) discard;          // 3D FX が抜いた背景は紙に乗せない (3D の物体だけが折られる)
-  vec3 alb = albA.rgb;              // 裏面も同じイメージ (裏から見るため左右反転に見える)
-  vec3 N = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
-  vec3 V = normalize(uEye - vWorld);
-  if(dot(N, V) < 0.0) N = -N;
-  vec3 L = normalize(vec3(2.4, 2.0, 3.0));
-  float ndl = max(0.0, dot(N, L));
-  vec3 light = vec3(1.06, 1.02, 0.96) * ndl + mix(vec3(0.50, 0.52, 0.56), vec3(0.74), N.y * 0.5 + 0.5);
-  float spec = pow(max(0.0, dot(N, normalize(L + V))), 26.0);
-  vec3 res = alb * light + vec3(1.0) * spec * 0.20;
-  frag = vec4(mix(alb, res, uShade), 1.0);
-}`;
-      const kvs = this._compile(gl.VERTEX_SHADER, KVS);
-      const kfs = this._compile(gl.FRAGMENT_SHADER, KFS);
-      const kprog = this._link(kvs, kfs);
-      this.kaiserOldProg = (kprog && !kprog.err) ? kprog : null;
-      if(!kprog || kprog.err) console.error('kaiser(grid) program failed:', kprog && kprog.err);
 
       // ── 統合折りエンジン (Needle 変位 + Origami 折り + Kaiser 折り + ひねり を1メッシュの頂点で合成) ──
       // スライダーが2つ以上上がったとき、または Needle が上がったとき (Needle は単体でもここで描く) に起動。それ以外の単体は各パス。
@@ -3595,7 +3451,7 @@ void main(){
     P.xy = RZ * ((P.xy * uUzCard - uUzCw) * usc) + uUzCw + uUzOrbR * usc * vec2(ucs, usn);
     P.z = P.z * uUzCard * usc + ufi * uUzZStep;
   }
-  // Gravity: 折り・Uzumaki のあとに重力の場で吸い込む (Origami → Roll → Kaiser → Uzumaki → Gravity → Needle の順)
+  // Gravity: 針・折り・Uzumaki のあとに重力の場で吸い込む (3D の最後。針は紙の起伏 lift として先に立ててある)
   if(uGravOn > 0.5){ float gd; P = gField(P, gd); }
   vWorld = P;
   gl_Position = uProj * (uView * vec4(P, 1.0));
@@ -3618,7 +3474,10 @@ void main(){
   }
   vec2 uv = vUv;   // 0..1 の外 (Needle / Roll で広げた紙・3D Overscan の余白) は素材の余白、その外はミラー (ovUv)
   vec4 albA = texture(uTex, ovUv(uv));
-  if(albA.a < 0.5) discard;          // 3D FX が抜いた背景は紙に乗せない (3D の物体だけが折られる)
+  // 3D FX が抜いた背景は紙に乗せない (3D の物体だけが折られる)。縁は二択で捨てずに覆う割合 cov にし、
+  // 統合パスではアルファ・トゥ・カバレッジで MSAA の縁にする (折って引き伸ばすと、二択の縁がのこぎり状に拡大されていた)
+  float cov = smoothstep(0.25, 0.75, albA.a);
+  if(cov <= 0.0) discard;
   vec3 alb = albA.rgb;
   vec3 N = normalize(cross(dFdx(vWorld), dFdy(vWorld)));
   vec3 V = normalize(uEye - vWorld);
@@ -3647,7 +3506,7 @@ void main(){
   crystal += vec3(1.0) * (pow(specBase, 96.0) * 1.6 + fres * fres * 0.10);
   crystal = mix(crystal, alb, 0.24);
   vec3 res = mix(paper, crystal, uNeedleMix);
-  frag = vec4(mix(alb, res, uShade), 1.0) * (1.0 - uPaperFade);   // uPaperFade: 3D FX の段で物体に抜けた分だけ紙を薄く (前乗算)
+  frag = vec4(mix(alb, res, uShade), cov) * (1.0 - uPaperFade);   // uPaperFade: 3D FX の段で物体に抜けた分だけ紙を薄く (前乗算)
 }`;
       const fvs = this._compile(gl.VERTEX_SHADER, FVS);
       const ffs = this._compile(gl.FRAGMENT_SHADER, FFS);
@@ -4546,6 +4405,18 @@ void main(){
     gl.uniform1f(U('uTrSeed'), (slot._tr.seed != null) ? slot._tr.seed : 0.0);
     gl.drawArrays(gl.TRIANGLES,0,3);
     gl.bindVertexArray(null);
+    // 深度 (dtex) は色だけ描いた dst に残らないので、いまの描画 (cur) の深度を写す (写さないと 3D FX が切替中ずっと切替前の深度で止まる)
+    dst.depthValid = !!(cur.depthValid && cur.dtex);
+    if(dst.depthValid){
+      this._ensureSlotDepth(dst);
+      if(!this._dcpR){ this._dcpR = gl.createFramebuffer(); this._dcpD = gl.createFramebuffer(); }
+      gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._dcpR);
+      gl.framebufferTexture2D(gl.READ_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, cur.dtex, 0);
+      gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._dcpD);
+      gl.framebufferTexture2D(gl.DRAW_FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, dst.dtex, 0);
+      gl.blitFramebuffer(0,0,cur.w,cur.h, 0,0,dst.w,dst.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    }
     slot.fbIdx ^= 1;
     if(phEnd) slot._tr.on=false;
   },
@@ -4653,7 +4524,7 @@ void main(){
   //   読む側は slotOs(fbo) (= 全体 / 画面分 - 1。0 = 余白なし) で uv を中央へ切り戻す。3D 段の素材は _ovSrc (composite 参照)。
   OS_FOLD: ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'],
   // 3D 段より前で画面全体の見た目を変える段。これが掛かっているときは余白にその段が入らず継ぎ目になるので overscan しない
-  OS_PRE3D: ['sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','candy','novel'],
+  OS_PRE3D: ['sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','novel'],
   slotOs(f){ return (f && f.pad && f.bw) ? [(f.w / f.bw) - 1, (f.h / f.bh) - 1] : [0, 0]; },
   // スロットの中身が overscan できるか (画面の外まで描ける 3D 対応の Visual で、自分や他のスロットの絵を読んでいない)
   _osCapable(k){
@@ -4676,8 +4547,8 @@ void main(){
   _osUpdate(p){
     const pct = App.fx3dOverscanPct(p);
     const on = (k)=>(+(p && p[k]) || 0) > 0.001;
-    // 余白を素材に使う段があるときだけ (Kaiser 単体・Uzumaki 単体は画面を読む専用パスなので余白を使わない。どちらかと別の折りが一緒なら統合パスで使う)
-    const fx = !!p && !App.safeMode && (['origami','kaiser','fx3dRoll'].some(on) || (on('kaiserOld') && on('uzumaki'))
+    // 余白を素材に使う段があるときだけ (Uzumaki 単体は画面を読む専用パスなので余白を使わない。別の折りが一緒なら統合パスで使う)
+    const fx = !!p && !App.safeMode && (['origami','kaiser','kaiserOld','fx3dRoll'].some(on)
       || (typeof Fx3d !== 'undefined' && Fx3d.ORDER.some(n=>on(Fx3d.KEY[n]) || Fx3d.effE[n] > 0.001)));
     const live = pct > 0 && fx && !this.OS_PRE3D.some(on);
     // 切り替えのたびに FBO を作り直さないよう、3D FX を切ってから 1 秒は余白を持ったまま (縮んで消える間も端が切れない)
@@ -4913,8 +4784,8 @@ vec3 f3Paper(vec2 q, float lift){
   // Needle 変位を折り前に足す。ヒット増幅は単体 Needle の depth 係数と同じ (beat 0.46 / drone 0.10)
   float nHitBoost = 1.0 + mix(0.10, 0.46, uBeatMode) * pow(clamp(uHit, 0.0, 1.0), 0.65);
   float nz = uNeedleAmt > 0.001 ? f3NeedleH(q / uNeedleThick, uNt) * uNeedleAmt * nHitBoost * uNeedleLen : 0.0;   // 太さ = 針の座標を拡大縮小 (高さは座標に比例して変わるので、長さの倍率だけが効く)
-  // 蛇腹プリーツ (三角波): Kaiser 固有の折り前変形 (単体 Kaiser と同じ)
-  float jab = uWarp2 * 0.30 * (abs(fract(q.x * 1.5 + uWt2 * 0.055) - 0.5) * 4.0 - 1.0);
+  // Drape 固有の折り前変形: 布のなめらかなうねり (サイン波。角の立つ蛇腹にしない)
+  float jab = uWarp2 * 0.26 * sin(6.2831853 * (q.x * 0.75 + uWt2 * 0.055) + 0.8 * sin(q.y * 1.3 + uWt2 * 0.07));
   vec3 P = vec3(q, nz + jab + lift);
   // Roll: 巻き始めの線 (uRollOff) から先の紙を、外周の半径 uRollR から内へ細くなる渦巻き (spiral) に巻き取る (折りの前。折りは巻いた紙をそのまま折る)
   //   uRollShift: 平らな残りと渦巻きを合わせた塊が画面の中央に来るよう、巻く向きに沿って寄せる
@@ -4946,11 +4817,12 @@ vec3 f3Paper(vec2 q, float lift){
   }
   P -= uCenter;
   // ひねりは折り前の紙座標基準 (静的レバー): 折りの運動が P.y 経由で高速回転に増幅されるのを防ぐ
-  float ang = q.y * uTwist + uWt2 * 0.3;
+  float ang = q.y * uTwist * (0.75 + 0.25 * sin(uWt2 * 0.41)) + 0.45 * sin(uWt2 * 0.3) * min(1.0, uTwist);   // 回り続けず、決まった幅で揺れる (真横を向いて細くならない)
   float cs = cos(ang), sn = sin(ang);
   P.xz = mat2(cs, -sn, sn, cs) * P.xz;
   // 直交ひねり (雑巾絞り): x に沿った第2のねじり軸 (単体 Kaiser と同じ)
-  float ang2 = q.x * uTwist * 0.45 - uWt2 * 0.22;
+  // 横方向に進むらせんのひねり: リボンが波打ちながらねじれる (位置ごとにねじれ角が違い、波が x に沿って流れる)
+  float ang2 = q.x * uTwist * 0.2 + 0.15 * sin(uWt2 * 0.22) * min(1.0, uTwist) + uTwist * 0.55 * sin(q.x * 1.15 - uWt2 * 0.9 + 0.6 * sin(q.y * 0.9 + uWt2 * 0.31));
   float c2 = cos(ang2), s2 = sin(ang2);
   P.yz = mat2(c2, -s2, s2, c2) * P.yz;
   P.z += uWarp2 * sin(P.x * 0.8 + uWt2) + uWarp2 * 0.7 * cos(P.y * 0.6 - uWt2 * 0.8);
@@ -4999,24 +4871,54 @@ vec3 f3Paper(vec2 q, float lift){
     const gl = this.gl;
     const slot = this.slots[slotKey];
     const pp = Shader.preprocess(src);
-    // 前処理エラー(GLSL 変換前の @param 等)はここでは出ない。compile/link は投げっぱなしにして
-    // ステータス照会(=同期ブロックの原因)を遅延する。
+    // 先読み (precompile) 済みならそのプログラムを使う。コンパイルが終わっていればこの場で確定する
+    const pre = this._pre && this._pre.get(pp.code);
+    if(pre) this._pre.delete(pp.code);
+    const { fs, prog } = pre || this._startCompile(pp.code);
+    const rec = { slotKey, src, pp, fs, prog, params: opts.params || null, editor: !!opts.editor };
+    const ext = this._parallelCompileExt;
+    let ready = false;
+    if(pre && ext){ try{ ready = gl.getProgramParameter(prog, ext.COMPLETION_STATUS_KHR) === true; }catch(e){} }
+    if(ready) this._cancelPendingCompile(slotKey);
+    // 並列コンパイル対応 & 同期強制でなければ、ステータス照会を tick へ遅延(UI を固めない)。
+    //   旧 slot.prog はそのまま描画し続け、完了後に差し替える(黒フラッシュ無し)。
+    if(ext && !opts.sync && !ready){
+      this._cancelPendingCompile(slotKey);   // 同じ Slot の未完了コンパイルは破棄(最新のみ)
+      rec.t0 = performance.now();
+      this._pendingCompiles.push(rec);
+      return true;   // 楽観的に成功扱い。実エラーは finalize で slot.errors に反映。
+    }
+    return this._finalizeCompile(rec, false);
+  },
+  // 前処理エラー(GLSL 変換前の @param 等)はここでは出ない。compile/link は投げっぱなしにして
+  // ステータス照会(=同期ブロックの原因)を遅延する。
+  _startCompile(code){
+    const gl = this.gl;
     const fs = gl.createShader(gl.FRAGMENT_SHADER);
-    gl.shaderSource(fs, pp.code);
+    gl.shaderSource(fs, code);
     gl.compileShader(fs);
     const prog = gl.createProgram();
     gl.attachShader(prog, this.vs);
     gl.attachShader(prog, fs);
     gl.linkProgram(prog);
-    const rec = { slotKey, src, pp, fs, prog, params: opts.params || null, editor: !!opts.editor };
-    // 並列コンパイル対応 & 同期強制でなければ、ステータス照会を tick へ遅延(UI を固めない)。
-    //   旧 slot.prog はそのまま描画し続け、完了後に差し替える(黒フラッシュ無し)。
-    if(this._parallelCompileExt && !opts.sync){
-      this._cancelPendingCompile(slotKey);   // 同じ Slot の未完了コンパイルは破棄(最新のみ)
-      this._pendingCompiles.push(rec);
-      return true;   // 楽観的に成功扱い。実エラーは finalize で slot.errors に反映。
+    return { fs, prog };
+  },
+  // 先読みコンパイル: タイルにホバーしたシェーダを裏でコンパイルしておく (並列コンパイル対応環境のみ)。
+  //   切替時に compileSlot が前処理後のコードで引き当てて使う = コンパイル待ち (100〜250ms、その間は旧シェーダが映る) が消える
+  PRE_MAX: 6,
+  precompile(src){
+    const gl = this.gl;
+    if(!gl || !this._parallelCompileExt || !this._pre || !src || gl.isContextLost()) return;
+    if(['A', 'B'].some(k => this.slots[k] && this.slots[k].src === src)) return;
+    const pp = Shader.preprocess(src);
+    const hit = this._pre.get(pp.code);
+    if(hit){ this._pre.delete(pp.code); this._pre.set(pp.code, hit); return; }   // 最近使った順へ
+    this._pre.set(pp.code, this._startCompile(pp.code));
+    while(this._pre.size > this.PRE_MAX){
+      const [k, e] = this._pre.entries().next().value;
+      this._pre.delete(k);
+      try{ gl.deleteShader(e.fs); gl.deleteProgram(e.prog); }catch(e2){}
     }
-    return this._finalizeCompile(rec, false);
   },
   // 同じ Slot に対する未完了の非同期コンパイルを破棄
   _cancelPendingCompile(slotKey){
@@ -5040,6 +4942,13 @@ vec3 f3Paper(vec2 q, float lift){
       else still.push(r);
     }
     this._pendingCompiles = still;
+    if(typeof UI !== 'undefined' && UI._refreshAllPending && !this._compileHoldsUI()) UI.refreshAll();
+  },
+  // コンパイル待ち (1 秒以内) があれば UI.refreshAll を完了まで保留する = 切替 1 回で UI を作り直すのは 1 回だけ。
+  //   1 秒を超えた待ち (完了を返さないドライバ) では保留しない
+  _compileHoldsUI(){
+    const t = performance.now();
+    return !!this._pendingCompiles && this._pendingCompiles.some(r => t - r.t0 < 1000);
   },
   // コンパイル/リンク結果を確定してスロットへ適用 (deferred=非同期完了時: UI を再同期)
   _finalizeCompile(rec, deferred){
@@ -5121,7 +5030,8 @@ vec3 f3Paper(vec2 q, float lift){
       }
     }catch(e){ /* ウォームアップ失敗は致命的でない */ }
     // 非同期完了時: パラメータ UI 等を新シェーダに再同期(loadPreset の初回 refresh は旧 params だったため)
-    if(deferred && typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
+    //   (_pollCompiles が待ちのなくなった時点で 1 回だけ作り直す)
+    if(deferred && typeof UI !== 'undefined') UI._refreshAllPending = true;
     // Draw フリーズ / Pause 中でも、コンパイル完了した新シェーダを 1 フレーム描画して切替を見せる
     this.forceRenderOnce();
     return true;
@@ -5361,6 +5271,7 @@ vec3 f3Paper(vec2 q, float lift){
     slicer: ()=> (typeof Slicer !== 'undefined') ? Slicer : null,
     aratanagara: ()=> (typeof Aratanagara !== 'undefined') ? Aratanagara : null,
     chrometype: ()=> (typeof ChromeType !== 'undefined') ? ChromeType : null,
+    glitchtype: ()=> (typeof GlitchType !== 'undefined') ? GlitchType : null,
     tower4149: ()=> (typeof Tower4149 !== 'undefined') ? Tower4149 : null,
     rhizome: ()=> (typeof Rhizome !== 'undefined') ? Rhizome : null,
     rzfan: ()=> (typeof RhizomeFan !== 'undefined') ? RhizomeFan : null,
@@ -5480,15 +5391,6 @@ void main(){
       gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, w, h, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
       this._finalFBO.w = w; this._finalFBO.h = h;
     }
-    // Tunnel用FBOをスライダー操作時ではなく通常描画の初期化中に確保し、ON直後の一回だけ止まる症状を避ける。
-    if(!this._candyFBO) this._candyFBO = this._mkFBO(w,h);
-    else if(this._candyFBO.w !== w || this._candyFBO.h !== h) this._resizeFBO(this._candyFBO,w,h);
-    const mw=Math.max(2,Math.ceil(w*0.5)), mh=Math.max(2,Math.ceil(h*0.5));
-    const lw=Math.max(2,Math.ceil(w*0.25)), lh=Math.max(2,Math.ceil(h*0.25));
-    if(!this._candyFBOMid) this._candyFBOMid=this._mkFBO(mw,mh);
-    else if(this._candyFBOMid.w!==mw || this._candyFBOMid.h!==mh) this._resizeFBO(this._candyFBOMid,mw,mh);
-    if(!this._candyFBOLow) this._candyFBOLow=this._mkFBO(lw,lh);
-    else if(this._candyFBOLow.w!==lw || this._candyFBOLow.h!==lh) this._resizeFBO(this._candyFBOLow,lw,lh);
   },
 
   composite(toDefault=true){
@@ -5563,11 +5465,11 @@ void main(){
     this._fbFade = Math.max(0, Math.min(1, p.fbFade == null ? 0.5 : p.fbFade));
     this._fbCaptureInterval = 1 + Math.round((1-this._fbFade)*7);
     this._fbCaptureTick = ((this._fbFrameCounter = (this._fbFrameCounter || 0) + 1) % this._fbCaptureInterval === 0);
-    // Water (SketchFX) の有無: Tunnel などを止める判定に使う (色は Water でなく最後の Color 段が掛ける)
+    // Water (SketchFX) の有無: 合成段の効果を止める判定に使う (色は Water でなく最後の Color 段が掛ける)
     const _sk = (typeof SketchFX !== 'undefined') && p && (p.sketch || 0) > 0.001 && !(App.safeMode);
     const _safe = (typeof App !== 'undefined' && App.safeMode);
     // Color 段 (Grad Map / Hue / Bri / Con / Sat / Gamma / Invert / Posterize / Vignette / Vibrance) は連鎖の最後で掛ける (_applyFinalColorGrade)。
-    // Audio (Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe) と Pattern (Tunnel / Slice / Ring Slice / Mondrian / Rings / Voxel) は
+    // Audio (Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe) と Pattern (Slice / Mondrian / Rings / Voxel) は
     //   合成では掛けず、3D 段のあとの _applyAudioPatternPost で掛ける (3D で折れた・吸い込まれた絵に乗る)。ここでは 0 を送る
     gl.uniform1f(U('uAScan'),  0);
     { const c = this._fxLineRGB || [1,1,1]; gl.uniform3f(U('uFxLineCol'), c[0], c[1], c[2]); gl.uniform1f(U('uFxLineOn'), this._fxLineOn ? 1 : 0); }
@@ -5595,7 +5497,7 @@ void main(){
       if(ac){ gl.uniform4fv(U('uAutoHueLut'), ac.lut); gl.uniform1f(U('uAutoChromaK'), ac.chromaK); } }
     _uploadGradStops(gl, U, p);
     // Grad Map は最後の Color 段で掛ける。@gradmask シェーダ (サンプル α でマスクが要る) だけ合成内で掛ける。
-    gl.uniform1f(U('uGradMix'),   (this.slots.A.gradMask || this.slots.B.gradMask) ? (p.gradMix || 0) : 0);
+    gl.uniform1f(U('uGradMix'),   this._gradInComposite() ? (p.gradMix || 0) : 0);
     gl.uniform1f(U('uCosGrad'),   0.0);                 // Cos Grad は廃止(composite では常に 0)
     gl.uniform1i(U('uCosPalette'), p.cosPalette || 0);
     gl.uniform1f(U('uBOverB'), (()=>{ const bo = this.slots.B.blendOver; if(!bo) return 0.0; if(bo === true) return 1.0; const pp = (this.slots.B.params || []).find(q => q.name === bo); return (pp && pp.value > 0) ? 0.0 : 1.0; })());   // @blendover シェーダ: リング等が乗算・暗い色などで消えない
@@ -5603,11 +5505,17 @@ void main(){
     gl.uniform1f(U('uBKeyWhite'), this.slots.B.bKeyWhite ? 1.0 : 0.0);   // ribbon 等を Slot B で白キー透過
     gl.uniform1f(U('uBlm'),       p.blm);
     gl.uniform1f(U('uSlice'),     0);
-    gl.uniform1f(U('uRingSlice'), 0);
-    // Ring Slice の回転位相: 値 (= 速さ。1.0 で最大 0.8 rad/s) × 時間を積分。0 で止まる (角度は保持、次に上げると続きから)
-    { const _rsDt = Math.max(0.001, Math.min(0.1, this.lastDt || 1/60));
-      this._rsPhase = (this._rsPhase || 0) + (p.ringSlice || 0) * 0.8 * _rsDt;
-      gl.uniform1f(U('uRsPhase'), this._rsPhase); }
+    { // Slice / Rings の詳細 (生の値 0..1。Pattern パスが合成から写す)
+      const rv = (k, d)=>{ const x = +(App.post || p || {})[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };
+      gl.uniform1f(U('uSliceLine'), rv('sliceLine', 0.5));
+      gl.uniform1f(U('uSliceCount'), rv('sliceCount', 0.5));
+      gl.uniform1f(U('uSliceMove'), rv('sliceMove', 0.5));
+      gl.uniform1f(U('uSliceAngle'), rv('sliceAngle', 0));
+      gl.uniform1f(U('uRingsLine'), rv('ringsLine', 0.5));
+      gl.uniform1f(U('uRingsCount'), rv('ringsCount', 0.5));
+      gl.uniform1f(U('uRingsTwist'), rv('ringsTwist', 0.5));
+      gl.uniform1f(U('uRingsWobble'), rv('ringsWobble', 0.5));
+    }
     gl.uniform1f(U('uSplit'),     0);
     gl.uniform1f(U('uMosaic'),    0);
     gl.uniform1f(U('uShake'),     0);
@@ -5624,66 +5532,31 @@ void main(){
     gl.uniform1f(U('uZoomPump'),  0);
     gl.uniform1f(U('uShatter'),   0);
     gl.uniform1f(U('uEnergy'),    (typeof Audio!=='undefined') ? (Audio.energy||0) : 0);
-    const _candyBlocked = _sk || _safe;
-    const _candyRaw = _candyBlocked ? 0 : Math.max(0, Math.min(1, p.candy || 0));
-    const _candyBeatNow = App.visualBeat ? App.visualBeat() : ((typeof BPM !== 'undefined' && BPM.beatCount ? BPM.beatCount() : 0) * (App.beatScale || 1));
-    const _candyDt = Math.max(0.001, Math.min(0.1, this.lastDt || 1/60));
-    let _candyAmt = _candyRaw;
-    if(_candyBlocked){
-      this._candyRunning = false;
-      this._candyTailStart = null;
-      this._candyTailFrom = 0;
-      this._candyLastAmount = 0;
-      this._candySmooth = 0;
-      _candyAmt = 0;
-    } else if(_candyRaw > 0.001){
-      const _candyPrev = isFinite(this._candySmooth) ? this._candySmooth : 0;
-      const _candyRate = _candyRaw > _candyPrev ? 12.0 : 7.0;
-      const _candyFollow = 1.0 - Math.exp(-_candyRate * _candyDt);
-      _candyAmt = _candyPrev + (_candyRaw - _candyPrev) * _candyFollow;
-      if(Math.abs(_candyAmt - _candyRaw) < 0.001) _candyAmt = _candyRaw;
-      this._candySmooth = _candyAmt;
-      this._candyRunning = true;
-      this._candyTailStart = null;
-      this._candyTailFrom = _candyAmt;
-      this._candyLastAmount = _candyAmt;
-    } else {
-      if(this._candyRunning && this._candyTailStart == null){
-        this._candyTailStart = _candyBeatNow;
-        this._candyTailFrom = Math.max(0, this._candyLastAmount || 0);
-      }
-      if(this._candyTailStart != null){
-        const _candyPh = Math.max(0, Math.min(1, _candyBeatNow - this._candyTailStart));
-        const _candyEase = _candyPh * _candyPh * (3 - 2 * _candyPh);
-        _candyAmt = (this._candyTailFrom || 0) * (1 - _candyEase);
-        this._candySmooth = _candyAmt;
-        if(_candyPh >= 1 || _candyAmt <= 0.001){
-          _candyAmt = 0;
-          this._candyRunning = false;
-          this._candyTailStart = null;
-          this._candyTailFrom = 0;
-          this._candyLastAmount = 0;
-          this._candySmooth = 0;
-        }
-      } else {
-        this._candyRunning = false;
-        this._candyTailFrom = 0;
-        this._candyLastAmount = 0;
-        this._candySmooth = 0;
-      }
-    }
-    gl.uniform1f(U('uCandy'),     0);
-    // 3D 段のあとの Audio / Pattern パスへ渡す値 (Tunnel は上のなめらかな立ち上がり / 拍での消え方を済ませた値)
+    // 3D 段のあとの Audio / Pattern パスへ渡す値
     this._apVals = { uAScan: p.aScan || 0, uAStrobe: p.aStrobe || 0, uAShock: p.aShock || 0, uAExplode: p.aExplode || 0,
-      uSlice: p.slice || 0, uRingSlice: p.ringSlice || 0, uSplit: p.split || 0, uMosaic: p.mosaic || 0, uShake: p.shake || 0,
-      uGain: p.gain || 0, uVoxel: _safe ? 0 : (p.voxel || 0), uRings: _safe ? 0 : (p.rings || 0), uCandy: _candyAmt,
-      uSpecWarp: _safe ? 0 : (p.specWarp || 0), uZoomPump: _safe ? 0 : (p.zoomPump || 0), uShatter: _safe ? 0 : (p.shatter || 0) };
+      uSlice: p.slice || 0, uSplit: p.split || 0, uMosaic: p.mosaic || 0, uShake: p.shake || 0,
+      uGain: p.gain || 0, uVoxel: _safe ? 0 : (p.voxel || 0), uRings: _safe ? 0 : (p.rings || 0),
+      uSpecWarp: _safe ? 0 : (p.specWarp || 0), uZoomPump: _safe ? 0 : (p.zoomPump || 0), uShatter: _safe ? 0 : (p.shatter || 0), uAPop: _safe ? 0 : (p.aPop || 0) };
+    { const raw = App.post || p;   // Pop Up の詳細は生の値 (実効値はデッドゾーンで既定がずれる)
+      this._apVals.uAPopCount = Number.isFinite(+raw.aPopCount) ? +raw.aPopCount : 12;
+      this._apVals.uAPopSize = Number.isFinite(+raw.aPopSize) ? +raw.aPopSize : 60;
+      this._apVals.uAPopSides = Number.isFinite(+raw.aPopSides) ? +raw.aPopSides : 2;
+      this._apVals.uAPopZoom = Number.isFinite(+raw.aPopZoom) ? +raw.aPopZoom : 0.5;
+      this._apVals.uAPopLine = Number.isFinite(+raw.aPopLine) ? +raw.aPopLine : 0.5;
+      this._apVals.uAPopShade = Number.isFinite(+raw.aPopShade) ? +raw.aPopShade : 0.5;
+      this._apVals.uAPopSpin = Number.isFinite(+raw.aPopSpin) ? +raw.aPopSpin : 0.5;
+    }
     gl.uniform1f(U('uClarity'),   p.clarity || 0);
     gl.uniform1f(U('uDenoise'),   _safe ? 0 : (p.denoise || 0));
     gl.uniform1f(U('uDeband'),    _safe ? 0 : (p.deband || 0));
-    gl.uniform1i(U('uGradMask'),  (this.slots.A.gradMask || this.slots.B.gradMask) ? 1 : 0);
+    gl.uniform1i(U('uGradMask'),  this._gradInComposite() ? 1 : 0);
+    // Obj (Relief / Watercolor / Impasto / Chrome / Gloss のサブパラメータ): A BG が色でも物体 (A BG でない所) だけに掛ける。合成の alpha を中身の割合にして各パスのあとで戻す
+    this._matObj = (!_safe && !this._matte && App.slotABg !== 'none' && p) ? Object.keys(this.MAT_OBJ_KEYS).filter(k=>(+p[k] || 0) > 0.001 && (p[this.MAT_OBJ_KEYS[k]] == null || +p[this.MAT_OBJ_KEYS[k]] >= 0.5)) : [];
+    gl.uniform1i(U('uABgClear'),  (App.slotABg === 'none' || this._matObj.length) ? (this.slots.A.kind === 'none' ? 2 : 1) : 0);
+    this._abgKeep = !_safe && !this._matte && ((App.slotABg === 'none' && this.MATTE_KEEP_KEYS.some(k=>(+(p && p[k]) || 0) > 0.001)) || this._matObj.length > 0);
+    gl.uniform1i(U('uABgKeepA'),  this._abgKeep ? 1 : 0);
     gl.uniform1i(U('uEmptyAB'),   (this.slots.A.kind === 'none' && this.slots.B.kind === 'none') ? 1 : 0);
-    const _feedbackSafe = _safe || Math.abs(p.river || 0) > 0.001;
+    const _feedbackSafe = _safe || Math.abs(App.deadParam(+p.river || 0)) > 0.001;
     // Feedback は合成段では適用せず、後段の独立パス _applyFeedbackBlend で適用する (fold の後)。
     gl.uniform1f(U('uFbAdd'),      0);
     gl.uniform1f(U('uFbMultiply'), 0);
@@ -5694,7 +5567,6 @@ void main(){
     gl.bindTexture(gl.TEXTURE_2D, null);
     gl.uniform1i(U('uFbTex'), 6);
     gl.activeTexture(gl.TEXTURE0);
-    gl.uniform1i(U('uCandyMode'), 0);   // Tunnel は 3D 段のあとの _applyAudioPatternPost で掛ける
     // 3D Native の切り替わり (0 < g < 1): 平面の絵 F を _finalFBO へ (以降は平面方式と同じ経路)、3D の絵 N を補助 FBO へ合成する
     const _fr3 = this._fx3dFrame, _fl3 = this._fx3dFlat;
     this._ovFrame = null;
@@ -5751,28 +5623,35 @@ void main(){
       gl.activeTexture(gl.TEXTURE0 + 14); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
     } else {
       gl.drawArrays(gl.TRIANGLES, 0, 3);
+      if(this._abgKeep) gl.uniform1i(U('uABgKeepA'), 0);   // 余白付きの合成 (3D 段の素材) は従来どおり不透明
       if(P === this.compositeProg) this._ovDrawComposite(P);
     }
     gl.bindVertexArray(null);
 
     // ── Post FX パス順 (composite 内のものは括弧で明記) ──
-    //   0) 合成シェーダ: Auto Map・Tunnel・Rain・Mondrian/Rings・Voxel ほか (Grad Map は @gradmask シェーダだけここ)
+    //   0) 合成シェーダ: Auto Map・Rain・Mondrian/Rings・Voxel ほか (Grad Map は @gradmask シェーダだけここ)
     //   1) Water → Boltzmann
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
     //   2.5) IMAGON (Overlay の筆跡)
-    //   3.5) 3D FX: Photo → Slicer → Layers → Diorama → Points → Box → Blinds → Gravity → Globe
-    //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Passage → Uzumaki → (Gravity) → Needle (最後)
-    //      Gravity は Origami / Kaiser / Roll / Uzumaki のどれかと一緒のときだけ、3D FX の段でなく統合パスで Uzumaki のあとに掛かる
-    //   4.5) Pattern (Slice / Ring Slice / Mondrian / Rings / Voxel / Tunnel)
+    //   3.5) 3D FX: Photo → Slicer → Layers → Diorama → Points → Box → Blinds → Tunnel → Gravity → Globe
+    //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Passage → Uzumaki → Needle → Gravity (最後)
+    //      Gravity は Needle / Origami / Kaiser / Roll / Uzumaki / Globe のどれかと一緒のときは、3D FX の段でなく統合パスの最後に掛かる
+    //   4.5) Pattern (Slice / Mondrian / Rings / Voxel)
     //   5) Glitch 段: Slit-scan → Barcode → Datamosh
     //   6) Lens 段: Mirror → Pixelate → Chroma Ab
     //   7) Twist → FB Add/Multiply
     //   8) FXAA → Unsharp → Sharpen → Crisp → Shock → Outline → Hatching → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
-    //   9.5) Audio: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter → RGB → Shards → Waveform → Pixelsort
-    //  10) Color: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
+    //   9.5) Audio: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter / Pop Up → RGB → Shards → Waveform → Pixelsort
+    //  10) Color: Gamma → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Invert
     //  11) プリセット切替トランジション (最後): 旧の最終画面と新の最終画面を混ぜる
 
+    // Material 段 (Water〜Gloss) は、紙抜きのフレーム (物体だけを alpha で 3D 段へ運ぶ) と A BG = None (透過) のときは alpha 0 の所に掛けない: 段の前の alpha を控え、段のあとで戻す
+    const _mk = !_safe && ((!!this._matte && this.MATTE_KEEP_KEYS.some(k=>(+(p && p[k]) || 0) > 0.001)) || (!!this._abgKeep && !(this._matObj && this._matObj.length)));
+    const _ob = (!_safe && this._matObj && this._matObj.length) ? this._matObj : null;   // Obj: 段の前の alpha (中身の割合) を控え、各パスの直前の絵を背景の色として戻す
+    if(_ob) this._matteKeepBegin();
+    const _obRun = (k, fn)=>{ const on = _ob && _ob.includes(k); if(on) this._matteKeepPre(); fn(); if(on) this._matteKeepEnd(true, true); };
+    if(_mk) this._matteKeepBegin();
     // 1) Water (Ballpoint Sketch) / Boltzmann
     if(typeof SketchFX !== 'undefined' && p && (p.sketch || 0) > 0.001 && !(App.safeMode)){
       const sketchPost = Object.assign({}, p, { bri:0, con:1, sat:1, hue:0, gamma:1, inv:0 });
@@ -5782,11 +5661,12 @@ void main(){
     this._applyBoltzmannFinal(p);
 
     // 2) マチエール系
-    this._applyReliefPost(p, _safe);
-    this._applyBleedPost(p, _safe);
-    this._applyImpastoPost(p, _safe);
-    this._applyChromePost(p, _safe);
-    this._applyGlossPost(p, _safe);
+    _obRun('sdfChrome', ()=>this._applyReliefPost(p, _safe));
+    _obRun('bleed',     ()=>this._applyBleedPost(p, _safe));
+    _obRun('impasto',   ()=>this._applyImpastoPost(p, _safe));
+    _obRun('chrome',    ()=>this._applyChromePost(p, _safe));
+    _obRun('gloss',     ()=>this._applyGlossPost(p, _safe));
+    if(_mk) this._matteKeepEnd(!this._matte);
     this._applyNovelPost(p, _safe);   // 小説化 (3D FX の前 = 紙の柄として一緒に折れる)
 
     this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (以降の Post FX・最後の Color 段が筆跡にも掛かる)
@@ -5806,7 +5686,6 @@ void main(){
     this._foldPrebuilt = null;
     if(!_stacked){
       this._applyKaiserPost(_pF, _safe);     // 表示: Origami
-      this._applyKaiserOldPost(_pF, _safe);  // 表示: Kaiser
     }
     if(_blend) this._fx3dBlendOver(this._fx3dFrame.a);
     this._applyPassagePost(p, _safe);
@@ -5859,10 +5738,10 @@ void main(){
       this._fbTrail = null;
     }
 
-    // 10) Color 段: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma。
+    // 10) Color 段: Gamma → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Invert。
     //     FB のトレイルは上で色を掛ける前の絵から採るので、残像にも Color が一度だけ掛かる
     // 9.5) Audio 段 (Color の直前): 音・拍で画面を揺らす / 光らせる / 割る。FB のトレイルは上で採り終えているので、残像には入らない
-    this._applyAudioPatternPost(p, _safe, 'audio');   // Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter
+    this._applyAudioPatternPost(p, _safe, 'audio');   // Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter / Pop Up
     if(p && (+p.aRgb || 0) > 0) this._applyLensPost({ chr: 0, pix: 0, mir: 0, aRgb: p.aRgb }, _safe);   // RGB (音量で色収差)
     this._applyShardsPost(p, _safe);
     this._applyWaveformPost(p, _safe);
@@ -5951,10 +5830,19 @@ void main(){
     const pkG = safe ? 0 : (+p.pollockGloss || 0);
     const pkM = safe ? 0 : (+p.pollockMatt || 0);
     const pkF = safe ? 0 : (+p.pollockFlat || 0);
-    let pkVal, pkFlat = false;
-    if(pkF >= pkG && pkF >= pkM){ pkVal = pkF; pkFlat = pkF > 0.001; }   // Flat: gloss ジオメトリ + uFlat
+    const pkX = safe ? 0 : (+p.pollockMetal || 0);
+    // Flat: matt ジオメトリ + uFlat / Metal: gloss ジオメトリ + uMetal
+    let pkVal, pkFlat = false, pkMetal = false;
+    if(pkF >= pkG && pkF >= pkM && pkF >= pkX){ pkVal = pkF; pkFlat = pkF > 0.001; }
+    else if(pkX >= pkG && pkX >= pkM){ pkVal = pkX; pkMetal = true; }
     else if(pkG >= pkM){ pkVal = pkG; }
     else { pkVal = -pkM; }
+    { // 詳細 (0..1、0.5 = 従来)。全スタイル共通
+      const rv = k=>{ const x = +(App.post || p)[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0.5; };   // 生の値 (実効値はデッドゾーンで 0.5 がずれる)
+      const e2 = (k, r)=>Math.pow(2, (rv(k) - 0.5) * 2 * r);
+      PollockFX.opts = { size:e2('pollockSize', 1.5), len:e2('pollockLength', 1.5), dens:e2('pollockDensity', 1.3),
+        drops:rv('pollockDrops') * 2, curve:rv('pollockCurve') * 2, life:e2('pollockLife', 2), relief:rv('pollockRelief') * 2 };
+    }
     const pkAlive = Math.abs(pkVal) > 0.001 || (PollockFX.isAlive && PollockFX.isAlive());
     if(!pkAlive) return;
     if(!PollockFX.initialized) PollockFX.init(gl);
@@ -5969,7 +5857,7 @@ void main(){
     gl.blitFramebuffer(0,0,w,h, 0,0,w,h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     const beatNow = App.visualBeat ? App.visualBeat() : BPM.beatCount() * App.beatScale;
     const pkDrawAmount = PollockFX.render({ srcTex:this._pollockTmp.tex, fbo:this._finalFBO.fbo, w, h,
-                       value:pkVal, flat:pkFlat, pulse: ((beatNow * 2) % 1 + 1) % 1,
+                       value:pkVal, flat:pkFlat, metal:pkMetal, pulse: ((beatNow * 2) % 1 + 1) % 1,
                        beat:beatNow, bpm:BPM.bpm, transBeats:App.transBeats||0,
                        transStyle:App.transStyle||0, time:this.clock||0 });
     gl.bindVertexArray(null);
@@ -6108,31 +5996,34 @@ void main(){
     const gl = this.gl;
     if(!this.pipProg || !this._finalFBO) return;
     const p = App.effectivePost ? App.effectivePost(App.post || {}) : (App.post || {});
-    // 手動 Hue(1.0=180°)と自動ローテート位相(全周)は別々に渡す。スケール変換は _applyMiniFxUniforms に集約。
-    const hueImage = App.imageHue ? App.imageHue(Object.assign({}, p, {hueAuto: App._hueRotPhase || 0})) : 0;
+    const hueImage = App.imageHue ? App.imageHue(p) : 0;
     const hueManual = 0;                    // 手動 Hue は imageHue に集約 (常にライブで最終出力へ)
-    const hueAuto = App._hueRotPhase || 0;
     const sat = (p.sat != null ? p.sat : 1);
     const bri = p.bri || 0;
     const con = (p.con != null ? p.con : 1);
     // Color 段の残り (旧: 合成シェーダ内)。@gradmask シェーダの Grad Map だけは合成内で掛け済み
-    const gradMix = (this.slots.A.gradMask || this.slots.B.gradMask) ? 0 : (p.gradMix || 0);
+    const gradMix = this._gradInComposite() ? 0 : (p.gradMix || 0);
     const gamma = p.gamma != null ? p.gamma : 1;
     const inv = p.inv === true ? 1 : (Number(p.inv) || 0);
     const pos = p.pos || 0, vig = p.vig || 0, vibrance = p.vibrance || 0;
+    const colorTemp = p.colorTemp || 0, colorTint = p.colorTint || 0;
+    // Color Mixer: 帯ごとの色相・彩度・明度 (デッドゾーン後)。全部 0 なら掛けない
+    const mixArr = (g)=>new Float32Array(['Red', 'Orange', 'Yellow', 'Green', 'Aqua', 'Blue', 'Purple', 'Magenta'].map(b=>+p['mix' + g + b] || 0));
+    let mixH = mixArr('Hue'), mixS = mixArr('Sat'), mixL = mixArr('Lum');
+    if(![...mixH, ...mixS, ...mixL].some(v=>Math.abs(v) > 0.0001)) mixH = mixS = mixL = null;
     if(Math.abs(bri) <= 0.0001 && Math.abs(con - 1) <= 0.0001 && Math.abs(sat - 1) <= 0.0001 && Math.abs(hueImage) <= 0.0001
-       && Math.abs(gradMix) <= 0.0001 && gamma === 1 && inv <= 0.001 && pos < 1.5 && vig <= 0.0001 && Math.abs(vibrance) <= 0.001) return;
+       && Math.abs(gradMix) <= 0.0001 && gamma === 1 && inv <= 0.001 && pos < 1.5 && vig <= 0.0001 && Math.abs(vibrance) <= 0.001 && !mixH && Math.abs(colorTemp) <= 0.0001 && Math.abs(colorTint) <= 0.0001) return;
     const w = this._finalFBO.w, h = this._finalFBO.h;
     if(!this._finalGradeTmp || this._finalGradeTmp.w !== w || this._finalGradeTmp.h !== h){
       if(this._finalGradeTmp){ gl.deleteTexture(this._finalGradeTmp.tex); gl.deleteFramebuffer(this._finalGradeTmp.fbo); }
       this._finalGradeTmp = this._mkRGBA8FBO(w, h);
     }
     const post = {
-      bri, con, sat, hue: hueManual, hueAuto, hueImage,
+      bri, con, sat, hue: hueManual, hueImage,
       gradMix:0,                      // gradMix / gamma はヘルパのデッドゾーンを二重に掛けないよう下で実効値を直接入れる
       gradA: p.gradA, gradB: p.gradB, gradStops: p.gradStops,
       gamma:1,
-      inv, pos, vig, vibrance,
+      inv, pos, vig, vibrance, colorTemp, colorTint, mixH, mixS, mixL,
       unsharp:0,
       unsharpRadius:1.5,
       slit2:0,
@@ -6362,18 +6253,16 @@ void main(){
   // ── Audio / Pattern を 3D 段のあとに掛けるパス ──
   //   合成シェーダのソース (_compositeFS) を流用し、sampleAB を「3D 段のあとの画面 (uPost3D)」を読むものに差し替え、
   //   main を Audio / Pattern の効果だけにしたプログラム (audioPatProg) で描く。合成と同じ uniform は合成のプログラムから写し、
-  //   効果の量 (_apVals) だけ上書きする。Tunnel は合成と同じ 2 パス (前段でトンネルだけを描き、本パスでそれを土台にする)
+  //   効果の量 (_apVals) だけ上書きする
   _audioPatFS(){
     let s = this._compositeFS;
     s = s.replace('precision highp float;\n', 'precision highp float;\nuniform sampler2D uPost3D;\n');
-    s = s.replace('vec4 sampleAB(vec2 uv){\n', 'vec4 sampleAB(vec2 uv){\n  if(uCandyMode == 2) return vec4(texture(uCandyTex, fl_mirror(uv)).rgb, 1.0);\n  return vec4(texture(uPost3D, fl_mirror(uv)).rgb, 1.0);\n');
+    s = s.replace('vec4 sampleAB(vec2 uv){\n', 'vec4 sampleAB(vec2 uv){\n  return vec4(texture(uPost3D, fl_mirror(uv)).rgb, 1.0);\n');
     const i = s.lastIndexOf('void main(){');
     return s.slice(0, i) + `void main(){
-  if(uCandyMode == 1){ frag = vec4(applyCandyTunnel(vec3(0.0), vUv), 1.0); return; }
   vec2 uv = vUv;
   vec2 sliceLineUv = uv;
   uv = applySlice(uv);
-  uv = applyRingSlice(uv);
   vec2 splitLineUv = uv;
   uv = applySplit(uv);
   uv = applyShake(uv);
@@ -6383,7 +6272,17 @@ void main(){
   uv = applyZoomPump(uv);
   uv = applyShatter(uv);
   uv = applyAudioFX(uv);
+  vec3 popD;
+  uv = applyPop(uv, popD);
   vec3 col = sampleAB(uv).rgb;
+  if(popD.x != 0.0 || popD.y > 0.0 || popD.z > 0.0){
+    float sh = uAPopShade * 2.0;
+    col *= 1.0 - clamp(popD.z * 0.45 * sh, 0.0, 0.9);
+    col += popD.x * 0.30 * sh * (0.4 + 0.6 * col);
+    float pl = dot(col, vec3(0.299, 0.587, 0.114));
+    vec3 popLine = (uFxLineOn > 0.5) ? uFxLineCol : ((pl < 0.48) ? vec3(1.0) : vec3(0.0));
+    col = mix(col, popLine, popD.y);
+  }
   float fxEdge = max(sliceEdgeMask(sliceLineUv), max(splitEdgeMask(splitLineUv), ringsEdgeMask(ringsLineUv)));
   if(fxEdge > 0.001){
     float fxLuma = dot(col, vec3(0.299, 0.587, 0.114));
@@ -6416,10 +6315,10 @@ void main(){
   frag = vec4(max(col, 0.0), 1.0);
 }`;
   },
-  // part = 'pattern' (3D 段のあと: Slice / Ring Slice / Mondrian / Rings / Voxel / Tunnel) か
-  //        'audio' (Color の直前: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter)。
+  // part = 'pattern' (3D 段のあと: Slice / Mondrian / Rings / Voxel) か
+  //        'audio' (Color の直前: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter / Pop Up)。
   //   同じプログラムを、もう一方の欄の値を 0 にして 2 回通す
-  AUDIO_AP_KEYS: ['uAScan','uAStrobe','uAShock','uAExplode','uMosaic','uShake','uGain','uSpecWarp','uZoomPump','uShatter'],
+  AUDIO_AP_KEYS: ['uAScan','uAStrobe','uAShock','uAExplode','uMosaic','uShake','uGain','uSpecWarp','uZoomPump','uShatter','uAPop','uAPopCount','uAPopSize','uAPopSides','uAPopZoom','uAPopLine','uAPopShade','uAPopSpin'],
   _applyAudioPatternPost(p, safe, part){
     const V0 = this._apVals;
     let V = null;
@@ -6429,7 +6328,7 @@ void main(){
     if(!this._audioPatQueued){ this._audioPatQueued = true; this._linkDeferred('audioPatProg', this._audioPatFS()); }
     if(safe || !V || !this._finalFBO) return;
     let on = false;
-    for(const k in V){ if(Math.abs(V[k]) > 0.001){ on = true; break; } }
+    for(const k in V){ if(!/^uAPop[A-Z]/.test(k) && Math.abs(V[k]) > 0.001){ on = true; break; } }   // Pop Up の詳細は量ではないので判定に入れない
     if(!on) return;
     const P = this.audioPatProg, C = this.compositeProg;
     if(!P) return;   // 非同期コンパイル待ち
@@ -6439,7 +6338,7 @@ void main(){
       const list = [], n = gl.getProgramParameter(P, gl.ACTIVE_UNIFORMS);
       for(let i = 0; i < n; i++){
         const u = gl.getActiveUniform(P, i);
-        if(!u || /^(uPost3D|uCandyTex|uRes|uCandyMode)$/.test(u.name)) continue;
+        if(!u || /^(uPost3D|uRes)$/.test(u.name)) continue;
         if(V[u.name.replace(/\[0\]$/, '')] != null) continue;
         const base = u.name.replace(/\[0\]$/, '');
         for(let j = 0; j < u.size; j++){
@@ -6478,26 +6377,10 @@ void main(){
     gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
     gl.uniform1i(U('uPost3D'), 8);
     if(this.audioTex){ gl.activeTexture(gl.TEXTURE0 + 5); gl.bindTexture(gl.TEXTURE_2D, this.audioTex); gl.uniform1i(U('uFFT'), 5); }   // Spectrum Warp
-    if(V.uCandy > 0.001){
-      const ca = V.uCandy;
-      const ct = ca < 0.18 ? this._candyFBOLow : (ca < 0.48 ? this._candyFBOMid : this._candyFBO);
-      if(ct){
-        gl.activeTexture(gl.TEXTURE0 + 7); gl.bindTexture(gl.TEXTURE_2D, null);   // 描画先を読まない (フィードバック防止)
-        gl.uniform1i(U('uCandyMode'), 1);
-        gl.uniform2f(U('uRes'), ct.w, ct.h);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, ct.fbo);
-        gl.viewport(0, 0, ct.w, ct.h);
-        gl.drawArrays(gl.TRIANGLES, 0, 3);
-        gl.activeTexture(gl.TEXTURE0 + 7); gl.bindTexture(gl.TEXTURE_2D, ct.tex);
-        gl.uniform1i(U('uCandyTex'), 7);
-        gl.uniform1i(U('uCandyMode'), 2);
-      } else gl.uniform1i(U('uCandyMode'), 0);
-    } else gl.uniform1i(U('uCandyMode'), 0);
     gl.uniform2f(U('uRes'), w, h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, tmp.fbo);
     gl.viewport(0, 0, w, h);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.activeTexture(gl.TEXTURE0 + 7); gl.bindTexture(gl.TEXTURE_2D, null);
     gl.activeTexture(gl.TEXTURE0 + 8); gl.bindTexture(gl.TEXTURE_2D, null);
     gl.activeTexture(gl.TEXTURE0);
     gl.bindVertexArray(null);
@@ -6524,6 +6407,8 @@ uniform float uHole;
 uniform float uAspect;
 uniform float uLv[${MX}];
 uniform int uPass;
+uniform float uMove;   // Move: 破片ごとにランダムに漂う・回る量 (0 = その場で拡縮だけ)
+uniform float uTime;
 out vec2 vSrc;
 out float vBc;
 out float vHole;
@@ -6549,6 +6434,18 @@ void main(){
   float lv = uLv[poly];
   float s = (uPass == 0) ? 1.0 : exp(uAmt * mix(log(0.45), log(2.6), lv));
   vec2 pos = c + (v - c) * s;
+  // Move: 破片ごとに乱数の速さ・位相で漂って回る (音が大きいほど大きく)。元の場所の穴 (uPass 0) は動かさない
+  if(uPass != 0 && uMove > 0.001){
+    float mv = uMove * uAmt * (0.35 + 0.65 * lv);
+    float f1 = mix(0.25, 0.9, h1(fp * 21.1 + 7.0)), f2 = mix(0.25, 0.9, h1(fp * 23.3 + 8.0)), f3 = mix(0.15, 0.6, h1(fp * 25.7 + 9.0));
+    float p1 = h1(fp * 27.9 + 10.0) * 6.2831853, p2 = h1(fp * 29.3 + 11.0) * 6.2831853, p3 = h1(fp * 31.1 + 12.0) * 6.2831853;
+    float sgn = h1(fp * 33.7 + 13.0) < 0.5 ? -1.0 : 1.0;
+    float a = mv * (sgn * 1.6 * sin(uTime * f3 + p3) + sgn * 0.6 * uTime * f3);   // 揺れながらゆっくり回り続ける
+    float ca = cos(a), sa = sin(a);
+    vec2 d = pos - c;
+    pos = c + vec2(ca * d.x - sa * d.y, sa * d.x + ca * d.y)
+        + mv * 0.35 * vec2(sin(uTime * f1 + p1) * uAspect, cos(uTime * f2 + p2));
+  }
   vSrc = toUv(v);
   vBc = (corner == 0) ? 1.0 : 0.0;
   vHole = uHole;
@@ -6640,6 +6537,8 @@ void main(){
     gl.uniform1f(U('uAspect'), w / h);
     gl.uniform1fv(U('uLv[0]'), this._shardsLevels(n));
     gl.uniform1f(U('uLine'), Math.max(0, Math.min(1, p.aShardsLine || 0)));
+    gl.uniform1f(U('uMove'), Math.max(0, Math.min(1, App.post.aShardsMove != null ? +App.post.aShardsMove : 0.5)));
+    gl.uniform1f(U('uTime'), this.postClock != null ? this.postClock : this.clock);
     { const c = this._fxLineRGB || [1,1,1]; gl.uniform3f(U('uFxLineCol'), c[0], c[1], c[2]); gl.uniform1f(U('uFxLineOn'), this._fxLineOn ? 1 : 0); }
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, tmp.tex);
@@ -7387,9 +7286,19 @@ ${body}
   _applyChromePost(p, safe){
     const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.chrome) || 0));
     if(amount <= 0.001 || !this.chromeProg) return;
+    const v = (k, d) => { const x = +(App.post || {})[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };   // サブパラメータはデッドゾーン前の値 (App.post) を読む (p = effectivePost は 0.5 を 0.45 にする)
     this._runFinalPost(this.chromeProg, '_chromeTmp', (P)=>{
-      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
-      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
+      const gl = this.gl, u = (n) => gl.getUniformLocation(P, n);
+      gl.uniform1f(u('uAmount'), amount);
+      gl.uniform1f(u('uTime'), this.postClock != null ? this.postClock : this.clock);
+      gl.uniform1f(u('uBump'),  v('chromeBump', 0.5));
+      gl.uniform1f(u('uEdgeW'), v('chromeEdge', 0.5));
+      gl.uniform1f(u('uCon'),   v('chromeCon', 0.5));
+      gl.uniform1f(u('uTint'),  v('chromeTint', 0.35));
+      gl.uniform1f(u('uSpec'),  v('chromeSpec', 0.5));
+      gl.uniform1f(u('uSharp'), v('chromeSharp', 0.5));
+      gl.uniform1f(u('uRim'),   v('chromeRim', 0.5));
+      gl.uniform1f(u('uLight'), v('chromeLight', 0.5));
     });
   },
 
@@ -7431,12 +7340,27 @@ ${body}
   },
 
   _applyPassagePost(p, safe){
-    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.river) || 0));
-    if(amount <= 0.001 || !this.passageProg) return;
+    const amount = safe ? 0 : Math.max(0, Math.min(1, App.deadParam(+(p && p.river) || 0)));
+    const v = (k)=>{ const x = +(App.post || {})[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0.5; };
+    // Speed: 時計からのずれ (_pvOff) を積み上げる (値を動かしても通路の位置が飛ばない。0.5 = 従来の時計と一致)。
+    //   切っている間はずれを 0 に戻す = 入れ直しても・フレームが落ちても時計どおり (入れ直しは量 0 から立ち上がるので戻しても跳ねない)
+    const clk = this.postClock != null ? this.postClock : this.clock;
+    const dt = this._pvLast == null ? 0 : Math.max(0, clk - this._pvLast);
+    this._pvLast = clk;
+    if(amount <= 0.001 || !this.passageProg){ this._pvOff = 0; return; }
+    this._pvOff = (this._pvOff || 0) + dt * (v('riverSpeed') * 2 - 1);
+    this._pvT = clk + this._pvOff;
     this._runFinalPost(this.passageProg, '_passageTmp', (P)=>{
-      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
-      this.gl.uniform1i(this.gl.getUniformLocation(P, 'uSteps'), 90);
-      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
+      const gl = this.gl, u = (n)=>gl.getUniformLocation(P, n);
+      gl.uniform1f(u('uAmount'), amount);
+      gl.uniform1i(u('uSteps'), 90);
+      gl.uniform1f(u('uTime'), this._pvT);
+      gl.uniform1f(u('uTwistK'), v('riverTwist'));
+      gl.uniform1f(u('uWidthK'), v('riverWidth'));
+      gl.uniform1f(u('uFlowK'),  v('riverFlow'));
+      gl.uniform1f(u('uLightK'), v('riverLight'));
+      gl.uniform1f(u('uFogK'),   v('riverFog'));
+      gl.uniform1f(u('uSwayK'),  v('riverSway'));
     });
   },
 
@@ -7445,23 +7369,30 @@ ${body}
     const t = this.postClock != null ? this.postClock : this.clock;
     const sstep = (a, b, x)=>{ const u = Math.max(0, Math.min(1, (x - a) / (b - a))); return u * u * (3 - 2 * u); };
     const ease = amount * amount * (3 - 2 * amount);
-    const N = 24;
-    const TH = ease * 6.28318 * (1.0 + 1.4 * ease) / N * (1 + 0.03 * Math.sin(t * 0.5));   // 1枚あたり回転 (全開で約2.4周・呼吸つき)
+    // サブパラメータ (0..1、0.5 = 従来)。x2 = 0.5 で 1 倍 → 0..2 倍
+    const pp = (typeof App !== 'undefined' && App.post) || {};
+    const uv = (k)=>{ const x = +pp[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0.5; };
+    const x2 = (k)=>uv(k) * 2;
+    const N = Math.round(4 + uv('uzumakiCards') * 40);
+    const TH = ease * 6.28318 * (1.0 + 1.4 * ease) / 24 * (1 + 0.03 * Math.sin(t * 0.5)) * x2('uzumakiTwist');   // 1枚あたり回転 (全開で約2.4周・呼吸つき。従来の 24 枚の間隔のまま)
     // 渦全体の回転: 2 周波数の sin 合成 = 回りながら徐々に減速して逆方向へ、を不規則に繰り返す
-    const spin = (2.2 * Math.sin(t * 0.17) + 1.1 * Math.sin(t * 0.31 + 2.0)) * sstep(0.30, 1.0, ease);
-    const shr = 0.04 * ease;                         // 1枚あたり縮小 (log)
+    const spin = (2.2 * Math.sin(t * 0.17) + 1.1 * Math.sin(t * 0.31 + 2.0)) * sstep(0.30, 1.0, ease) * x2('uzumakiSpin');
+    const shr = 0.04 * ease * x2('uzumakiShrink');   // 1枚あたり縮小 (log)
     const asp = w / Math.max(1, h);
     const cw = [ (0.47 + 0.10 * Math.sin(t * 0.13 + 1.7) - 0.5) * 2 * asp,   // 渦中心はゆっくり漂う
                  (0.54 + 0.10 * Math.cos(t * 0.11) - 0.5) * 2 ];
-    const zstep = 0.05 * ease;                       // カードの奥行き間隔 (等間隔)
-    const card = 1.0 - 0.45 * ease;                  // カード自体のスケール (展開で縮んで 1 枚ずつ分離)
-    const orbR = 0.55 * ease;                        // カード中心の螺旋軌道半径 (らせん階段状に分散)
+    const zstep = 0.05 * ease * x2('uzumakiDepth');  // カードの奥行き間隔 (等間隔)
+    const card = Math.max(0.1, 1.0 - 0.45 * ease * x2('uzumakiCard'));   // カード自体のスケール (展開で縮んで 1 枚ずつ分離)
+    const orbR = 0.55 * ease * x2('uzumakiSpread');  // カード中心の螺旋軌道半径 (らせん階段状に分散)
     const D = 1.35 + 0.75 * ease;                    // 展開に応じてカメラを引く (1.35 = 平紙が画面を満たす距離)
     // カメラ公転: 渦の軸 (Z = カード法線) 周りの円錐軌道を高速周回。傾き 26°〜60° を大きく揺らしながら
     // 回る (Kaiser 並みに激しい 3D 回転)。カード面が真横で潰れるエッジオンには届かない。
     // カード自体は回さない = 面と面は平行のまま。
-    const til = ease * (0.75 + 0.30 * Math.sin(t * 0.23));
-    const orb = ease * (t * 0.9 + 0.4 * Math.sin(t * 0.13));
+    const cam = x2('uzumakiCam');
+    const til = ease * (0.75 + 0.30 * Math.sin(t * 0.23)) * Math.min(1.6, cam);
+    this._uzuOrb = (this._uzuOrb == null ? t * 0.9 : this._uzuOrb) + Math.max(0, Math.min(0.5, t - (this._uzuT == null ? t : this._uzuT))) * 0.9 * cam;   // 公転は位相を積み上げる (Cam を動かしても飛ばない)
+    this._uzuT = t;
+    const orb = ease * (this._uzuOrb + 0.4 * Math.sin(t * 0.13) * cam);
     const eye = [ D * Math.sin(til) * Math.cos(orb), D * Math.sin(til) * Math.sin(orb), D * Math.cos(til) ];
     const norm3 = (v)=>{ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
     const zc = norm3(eye);
@@ -7545,6 +7476,22 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
   },
+  // 3D Stretch X / Y / Z: 3D FX と折り (Needle / Origami / Kaiser / Roll / Uzumaki / Gravity) の頂点を世界座標の x / y / z 方向に伸び縮みさせる
+  //   (-1..1 → 1/4〜4 倍、0 = 等倍。デッドゾーンあり)。カメラの view 行列に掛ける = 各エンジンの頂点シェーダはそのまま
+  fx3dStretch(){
+    const P = (typeof App !== 'undefined' && App.post) || {};
+    const f = (k)=>Math.pow(4, Math.max(-1, Math.min(1, App.deadParam(+P[k] || 0))));
+    return [f('fx3dStretchX'), f('fx3dStretchY'), f('fx3dStretchZ'), f('fx3dZoom')];
+  },
+  // 3D Zoom (4 番目): カメラ空間の x / y を拡大 = 遠近の付き方を変えずに望遠のように寄る (view に左から diag(z, z, 1) を掛ける)
+  _stretchView(v){
+    const s = this.fx3dStretch();
+    if(s[0] === 1 && s[1] === 1 && s[2] === 1 && s[3] === 1) return v;
+    const o = Array.from(v);
+    for(let i = 0; i < 4; i++){ o[i] *= s[0]; o[4 + i] *= s[1]; o[8 + i] *= s[2]; }
+    for(let c = 0; c < 4; c++){ o[c * 4] *= s[3]; o[c * 4 + 1] *= s[3]; }
+    return o;
+  },
   _apply3dFx(p, safe){
     this._fx3dPostFold = null;
     this._fx3dNeedleTaken = false;
@@ -7562,9 +7509,9 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     this._fx3dPostFold = null;
     const av = (k)=>Math.max(0, Math.min(1, +(p && p[k]) || 0));
     const aN = av('origami'), aO = av('kaiser'), aK = av('kaiserOld'), aR = av('fx3dRoll');
-    // Gravity は折り (Origami / Kaiser / Roll) や Uzumaki と一緒のときは 3D FX の段で描かず、統合パスで Uzumaki のあとに場として掛ける
+    // Gravity は 3D の最後に掛ける: 折り (Needle / Origami / Kaiser / Roll)・Uzumaki・Globe (3D FX で Gravity より後) と一緒のときは 3D FX の段で描かず、統合パスの最後に場として掛ける
     const gE = Fx3d.effE.gravity || 0;
-    this._gravFold = (gE > 0.001 && (aO > 0.001 || aK > 0.001 || aR > 0.001 || (+(p && p.uzumaki) || 0) > 0.001) && !this._fx3dFrame && !!this.foldStackProg) ? gE : 0;
+    this._gravFold = (gE > 0.001 && (aN > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001 || (+(p && p.uzumaki) || 0) > 0.001 || (Fx3d.effE.globe || 0) > 0.001) && !this._fx3dFrame && !!this.foldStackProg) ? gE : 0;
     const skip = (name)=>name === 'gravity' && this._gravFold > 0;
     let lastName = null;
     for(const name of Fx3d.ORDER){ if(Fx3d.effE[name] > 0.001 && Fx3d.has(name) && !skip(name)) lastName = name; }
@@ -7656,13 +7603,13 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
   },
   // 紙抜き (@matte): 3D FX / 折りが効いていて、@matte シェーダのスロットだけが映っているフレームなら {slot, paper()} を返す。
   //   そのフレームは紙を透過 (alpha 0) のまま 3D 段まで運び、物体だけを 3D FX に乗せる。紙の色は 3D 段の最後 (_fx3dBgUnder) に敷く。
-  //   3D 段より前で画面の明るさ・alpha を読む段 (Water / Boltzmann / マチエール / Tunnel) やプリセット切替の最中は従来どおり
+  //   3D 段より前で画面の明るさ・alpha を読む段 (Water / Boltzmann / マチエール) やプリセット切替の最中は従来どおり
   _matteFrame(p){
     if(App.safeMode || !p || !this.compositeProg) return null;
     const on = (k)=>(+p[k] || 0) > 0.001;
     const fx = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'].some(on)
       || (typeof Fx3d !== 'undefined' && Fx3d.ORDER.some(n=>on(Fx3d.KEY[n]) || Fx3d.effE[n] > 0.001));
-    if(!fx || ['sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','candy'].some(on)) return null;
+    if(!fx) return null;   // Material 段 (Water〜Gloss) は紙抜きでも掛かる (alpha 0 の所には掛けない = _matteKeepBegin / End)
     if(this._presetTr && this._presetTr.on) return null;
     const vis = (k)=>App.slotVisibleAmount ? App.slotVisibleAmount(k) : 1;
     const has = (k)=>this.slots[k].kind !== 'none';
@@ -7706,6 +7653,8 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     const mp = s.mattePal, pp = mp && s.params.find(x=>x.name === mp.name);
     return q ? { slot:key, paper:()=>{ const i = pp ? Math.round(+pp.value || 0) : 0; return (i >= 1 && mp.papers[i - 1]) ? mp.papers[i - 1].slice() : q.value.slice(0, 3); } } : null;
   },
+  // Grad Map を合成内で (サンプル α のマスクつきで) 掛けるか: @gradmask シェーダ / A BG = 透過 (A BG の所に掛けない)。それ以外は最後の Color 段
+  _gradInComposite(){ return !!(this.slots.A.gradMask || this.slots.B.gradMask || App.slotABg === 'none'); },
   // いま描き終えたフレームが深度を持っていればその FBO (なければ null)
   _slotDepthFbo(k){
     const s = this.slots[k], f = s && s.fbos && s.fbos[s.fbIdx ^ 1];
@@ -7771,11 +7720,12 @@ precision highp float;
 in vec2 vUv; uniform sampler2D uTex; uniform vec2 uCell; uniform float uMode; uniform vec3 uColor; out vec4 frag;
 void main(){
   if(uMode > 0.5){ frag = vec4(uColor, 1.0); return; }
-  // セル 3 つ分の箱で平均 (隣のセルと重ねて、拡大したときの段差を消す)
+  // セル 3 つ分の箱で平均 (隣のセルと重ねて、拡大したときの段差を消す)。透過で抜いたフレームは紙 (alpha 0) に紙の色 (uColor) を敷いて元の絵に戻してからぼかす
   vec3 c = vec3(0.0);
   for(int j = 0; j < 8; j++) for(int i = 0; i < 8; i++){
     vec2 o = (vec2(float(i), float(j)) + 0.5) / 8.0 - 0.5;
-    c += texture(uTex, clamp(vUv + o * uCell * 3.0, 0.0, 1.0)).rgb;
+    vec4 s = texture(uTex, clamp(vUv + o * uCell * 3.0, 0.0, 1.0));
+    c += mix(uColor, s.rgb, clamp(s.a, 0.0, 1.0));
   }
   c /= 64.0;
   float l = dot(c, vec3(0.299, 0.587, 0.114));
@@ -7786,8 +7736,8 @@ void main(){
       if(!this._fx3dBgProg){ console.error('fx3d bg program failed:', pr && pr.err); return; }
     }
     const P = this._fx3dBgProg, U = (n)=>gl.getUniformLocation(P, n);
-    const M = this._matte && !this._matte.depth && !this._matte.only ? this._matte : null;   // 紙抜き中は 3D BG の設定によらず紙の色を敷く (深度で抜くときは 3D BG の設定どおり)
-    const color = !!M || App.post.fx3dBg === 'color';
+    const M = this._matte && !this._matte.depth && !this._matte.only ? this._matte : null;   // 透過で抜くフレーム: Color の色と、Auto でぼかす前に紙へ敷く色は紙の色
+    const color = App.post.fx3dBg === 'color';
     if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
     gl.bindFramebuffer(gl.FRAMEBUFFER, T.fbo);
     gl.viewport(0, 0, bw, bh);
@@ -7799,12 +7749,93 @@ void main(){
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uCell'), 1 / bw, 1 / bh);
     gl.uniform1f(U('uMode'), color ? 1 : 0);
-    const c = M ? M.paper() : color ? App.bgTarget().get() : [0, 0, 0];
+    const c = M ? M.paper() : color ? App.bgTarget().get() : App.bgAColor();   // Auto で深度で抜くフレーム: 物体の跡 (alpha 0) は Slot A 背景色で埋めてからぼかす (黒だと背景に物体の形の斑が出る)
     gl.uniform3f(U('uColor'), c[0], c[1], c[2]);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, fw, fh);
+  },
+  // 紙抜きのフレーム / A BG = None で alpha を控えて戻す Material 段のキー (Water / Boltzmann / Relief / Watercolor / Impasto / Chrome / Gloss)
+  MATTE_KEEP_KEYS: ['sketch', 'boltz', 'sdfChrome', 'bleed', 'impasto', 'chrome', 'gloss'],
+  // Material 段のうち、物体だけに掛けるサブパラメータ (Obj) を持つパス → そのキー
+  MAT_OBJ_KEYS: { sdfChrome:'sdfChromeObj', bleed:'bleedObj', impasto:'impastoObj', chrome:'chromeObj', gloss:'glossObj' },
+  _matteKeepBegin(){
+    const gl = this.gl, F = this._finalFBO;
+    if(!F) return;
+    let T = this._mkSrc;
+    if(!T || T.w !== F.w || T.h !== F.h){
+      if(T){ gl.deleteTexture(T.tex); gl.deleteFramebuffer(T.fbo); }
+      T = this._mkSrc = this._mkRGBA8FBO(F.w, F.h);
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, F.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, T.fbo);
+    gl.blitFramebuffer(0, 0, F.w, F.h, 0, 0, F.w, F.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  },
+  // Obj: パスの直前の絵を控える (背景 = alpha 0 の所はこの色に戻す)
+  _matteKeepPre(){
+    const gl = this.gl, F = this._finalFBO;
+    if(!F) return;
+    let T = this._mkPre;
+    if(!T || T.w !== F.w || T.h !== F.h){
+      if(T){ gl.deleteTexture(T.tex); gl.deleteFramebuffer(T.fbo); }
+      T = this._mkPre = this._mkRGBA8FBO(F.w, F.h);
+    }
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, F.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, T.fbo);
+    gl.blitFramebuffer(0, 0, F.w, F.h, 0, 0, F.w, F.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+  },
+  // Material 段のあと: alpha は段の前の値に戻し、alpha 0 (紙 / 透過) の所は段の前の色のまま (段が描いた色を捨てる)。opaque = A BG = None (紙抜きでない): alpha は 1 に戻す / pre = 背景の色は _matteKeepPre で控えた絵から (Obj)
+  _matteKeepEnd(opaque, pre){
+    const gl = this.gl, F = this._finalFBO, S = this._mkSrc;
+    if(!F || !S || S.w !== F.w || S.h !== F.h) return;
+    if(this._mkProg === undefined){
+      const vsh = this._compile(gl.VERTEX_SHADER, `#version 300 es
+out vec2 vUv;
+void main(){ vec2 q = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = q; gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0); }`);
+      const fsh = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
+precision highp float;
+in vec2 vUv; uniform sampler2D uTex, uSrc, uPre; uniform int uOpaque, uUsePre; out vec4 frag;
+void main(){
+  vec4 s = texture(uSrc, vUv);
+  vec3 bg = uUsePre == 1 ? texture(uPre, vUv).rgb : s.rgb;
+  frag = vec4(s.a > 0.0001 ? texture(uTex, vUv).rgb : bg, uOpaque == 1 ? 1.0 : s.a);
+}`);
+      const pr = this._link(vsh, fsh);
+      this._mkProg = (pr && !pr.err) ? pr : null;
+      if(!this._mkProg) console.error('matte keep program failed:', pr && pr.err);
+    }
+    if(!this._mkProg) return;
+    let T = this._mkTmp;
+    if(!T || T.w !== F.w || T.h !== F.h){
+      if(T){ gl.deleteTexture(T.tex); gl.deleteFramebuffer(T.fbo); }
+      T = this._mkTmp = this._mkRGBA8FBO(F.w, F.h);
+    }
+    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
+    gl.bindFramebuffer(gl.FRAMEBUFFER, T.fbo);
+    gl.viewport(0, 0, F.w, F.h);
+    gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST);
+    gl.useProgram(this._mkProg);
+    gl.bindVertexArray(this._emptyVAO);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, S.tex);
+    gl.uniform1i(gl.getUniformLocation(this._mkProg, 'uSrc'), 1);
+    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, F.tex);
+    gl.uniform1i(gl.getUniformLocation(this._mkProg, 'uTex'), 0);
+    gl.uniform1i(gl.getUniformLocation(this._mkProg, 'uOpaque'), opaque ? 1 : 0);
+    const _pre = !!(pre && this._mkPre && this._mkPre.w === F.w && this._mkPre.h === F.h);
+    gl.uniform1i(gl.getUniformLocation(this._mkProg, 'uUsePre'), _pre ? 1 : 0);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, _pre ? this._mkPre.tex : S.tex);
+    gl.uniform1i(gl.getUniformLocation(this._mkProg, 'uPre'), 2);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.bindVertexArray(null);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, null);
+    gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
+    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, T.fbo);
+    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, F.fbo);
+    gl.blitFramebuffer(0, 0, F.w, F.h, 0, 0, F.w, F.h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
   // 折り系 / Uzumaki のパスが _finalFBO へ書いたフレームだけ、抜けた背景 (alpha < 1) の下に 3D BG を敷く: rgb += fill * (1 - a), a = 1
   _fx3dBgUnder(){
@@ -7817,11 +7848,10 @@ out vec2 vUv;
 void main(){ vec2 q = vec2((gl_VertexID << 1) & 2, gl_VertexID & 2); vUv = q; gl_Position = vec4(q * 2.0 - 1.0, 0.0, 1.0); }`);
       const fsh = this._compile(gl.FRAGMENT_SHADER, `#version 300 es
 precision highp float;
-in vec2 vUv; uniform sampler2D uFill, uFlat, uOther; uniform float uUseFlat, uUseOther; out vec4 frag;
+in vec2 vUv; uniform sampler2D uFill, uOther; uniform float uUseOther; out vec4 frag;
 void main(){
   vec3 c = texture(uFill, vUv).rgb;
   if(uUseOther > 0.5) c = texture(uOther, vUv).rgb;   // 3D Slot = A / B: 3D にしたスロットの後ろは、もう一方のスロットの平らな絵
-  if(uUseFlat > 0.5){ vec4 f = texture(uFlat, vUv); c = mix(c, f.rgb, f.a); }   // 深度で抜いたフレーム: 背景 (f.a = 1) は元の平らな絵、物体のあった所は 3D BG
   frag = vec4(c, 1.0);
 }`);
       const pr = this._link(vsh, fsh);
@@ -7835,13 +7865,8 @@ void main(){
     gl.useProgram(this._fx3dBgUnderProg);
     gl.bindVertexArray(this._emptyVAO);
     gl.activeTexture(gl.TEXTURE0);
-    const flat = this._matte && this._matte.depth && this._matteFlat;   // 深度で抜いたフレーム: 3D 段に入る前の平らな絵の背景を敷く (背景には 3D FX が掛からない)
-    gl.bindTexture(gl.TEXTURE_2D, this._fx3dBg.tex);
+    gl.bindTexture(gl.TEXTURE_2D, this._fx3dBg.tex);   // 物体を抜いたフレームも背景は 3D BG (Auto = ぼかした元の絵 / Color)。背景には 3D FX が掛からない
     gl.uniform1i(gl.getUniformLocation(this._fx3dBgUnderProg, 'uFill'), 0);
-    gl.activeTexture(gl.TEXTURE1);
-    gl.bindTexture(gl.TEXTURE_2D, flat ? this._matteFlat.tex : null);
-    gl.uniform1i(gl.getUniformLocation(this._fx3dBgUnderProg, 'uFlat'), 1);
-    gl.uniform1f(gl.getUniformLocation(this._fx3dBgUnderProg, 'uUseFlat'), flat ? 1 : 0);
     const other = this._matte && this._matte.only && this._matteOther;
     gl.activeTexture(gl.TEXTURE2);
     gl.bindTexture(gl.TEXTURE_2D, other ? this._matteOther.tex : null);
@@ -7960,7 +7985,7 @@ void main(){
     const U = (n)=>gl.getUniformLocation(P, n);
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uRes'), w, h);
-    gl.uniformMatrix4fv(U('uView'), false, Z.view);
+    gl.uniformMatrix4fv(U('uView'), false, this._stretchView(Z.view));
     gl.uniformMatrix4fv(U('uProj'), false, Z.proj);
     gl.uniform1f(U('uTH'), Z.TH);
     gl.uniform1f(U('uSpin'), Z.spin);
@@ -8012,8 +8037,11 @@ void main(){
     // 効果量比で正規化 → 2系合計の運動量が単体1つ分に収まり、重ねがけでも極端にチラつかない。
     const wO = aO / Math.max(aO + aK, 1e-6);
     const wK = aK / Math.max(aO + aK, 1e-6);
-    this._foldPhO = (this._foldPhO || 0) + fdt * (0.9 + 0.9 * aO) * 1.35 * wO;
-    this._foldPhK = (this._foldPhK || 0) + fdt * (0.55 + 0.45 * aK) * wK;
+    // Origami (kaiser*) / Kaiser (kaiserOld*) のサブパラメータ (0..1)。x2 = 0.5 で 1 倍 → 0..2 倍
+    const fv = (k, d)=>{ const x = +(App.post || {})[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };
+    const x2 = (k)=>fv(k, 0.5) * 2;
+    this._foldPhO = (this._foldPhO || 0) + fdt * (0.9 + 0.9 * aO) * 1.35 * wO * x2('kaiserSpeed');
+    this._foldPhK = (this._foldPhK || 0) + fdt * (0.55 + 0.45 * aK) * wK * x2('kaiserOldSpeed');
     // onset エンベロープ: デッドゾーンを抜けた 0 付近で変形量を 0 から立ち上げ、元映像へ連続。
     const onF = (a=>{ const t = Math.max(0, Math.min(1, a / 0.16)); return t*t*(3-2*t); })(Math.max(aN, aO, aK, aR));
     const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat');
@@ -8048,7 +8076,7 @@ void main(){
     const CREASE_EPS = uzOn ? 0.056 : 0.028;   // Uzumaki 統合時はグリッドが粗い分だけ折り目も広げる (セル幅比を維持)
     // Origami 折り (2D→z=0 平面軸)。_applyKaiserPost と同じ折り線生成。
     if(aO > 0.001 && foldsU.length < 28){
-      const K = 14, CYC = 23, SEED = 57.3;
+      const K = Math.round(1 + 13 * fv('kaiserFolds', 1)), CYC = 23, SEED = 57.3;
       const T = this._foldPhO;
       const cyc = ((T / CYC) % 1 + 1) % 1;
       const smo = (a, b, x)=>{ const t = Math.max(0, Math.min(1, (x - a) / (b - a))); return t * t * (3 - 2 * t); };
@@ -8059,46 +8087,54 @@ void main(){
         const wgt = Math.max(0, Math.min(1, aO * K - i));
         const ang = H(i + 3.7 + csd) * Math.PI * 2;
         const N = [Math.cos(ang), Math.sin(ang)];
-        const off = (H(i + 9.1 + csd) * 2 - 1) * 0.80 * Math.pow(0.88, i);
+        const off = (H(i + 9.1 + csd) * 2 - 1) * 0.80 * x2('kaiserSpread') * Math.pow(0.88, i);
         const C = [N[0] * off, N[1] * off];
         const sp = 0.55 + 0.55 * H(i + 17.2 + csd);
         const ph = H(i + 41.6 + csd) * Math.PI * 2;
         const sgn = (H(i + 27.9 + csd) < 0.5) ? -1 : 1;
-        const th = onF * genv * sgn * wgt * (Math.PI * (0.52 + 0.46 * wO * Math.sin(T * sp + ph)) + 0.6 * hit * wO);
+        const th = onF * genv * sgn * wgt * (Math.PI * (0.52 + 0.46 * wO * Math.sin(T * sp + ph)) + 0.6 * hit * wO) * x2('kaiserAngle');
         if(Math.abs(th) <= 1e-4) continue;
-        const f = { C, N, th, axO: [C[0], C[1], 0], axD: [-N[1], N[0], 0], eps: CREASE_EPS };
+        const f = { C, N, th, axO: [C[0], C[1], 0], axD: [-N[1], N[0], 0], eps: CREASE_EPS + 0.5 * fv('kaiserSoft', 0) };
         foldsU.push(f);
         if(foldsU.length >= 28) break;
       }
     }
-    // Kaiser 折り (3D 軸 = 前段の折りを適用した端点から)。_applyKaiserOldPost と同じ。
+    // Drape (kaiserOld) の折り: 紙の縁の側だけを、広い幅でゆるく巻き上げる (布の裾が翻る曲線)。
+    //   折り目は中心から離れた位置に置き、向き (表 / 裏) を交互にして S 字のうねりにする → 紙を半分に畳まないので広がりがほぼ変わらない。
+    //   拍では形を作り直さず、うねりの位相を Ease Out で送る (形が飛ばない)。
+    const KAISER_EPS = 0.42;
     if(aK > 0.001 && foldsU.length < 28){
-      const K = this._kaiserOldK;
+      const K = Math.round(1 + 13 * fv('kaiserOldFolds', 1));
       const T = this._foldPhK;
-      const bs = beatMode ? Math.floor(beatId) * 19.73 : 0;
+      let bk = 0;
+      if(beatMode){ const bid = Math.floor(beatId), fr = beatId - bid; bk = (bid + 1 - Math.pow(1 - Math.min(1, fr / 0.35), 3)) * 0.9 * wK; }
       const nAct = Math.min(K, Math.ceil(aK * K + 1e-6));
+      const sprd = x2('kaiserOldSpread');
       for(let i = 0; i < nAct; i++){
         const wgt = Math.max(0, Math.min(1, aK * K - i));
-        const ang = H(i + 3.7 + bs) * Math.PI * 2 + 0.15 * Math.sin(T * 0.21 + i * 1.7);
-        const N = [Math.cos(ang), Math.sin(ang)];
-        const Dir = [-Math.sin(ang), Math.cos(ang)];
-        const off = (H(i + 9.1 + bs) * 2 - 1) * 0.92 * Math.pow(0.87, i);
-        const C = [N[0] * off, N[1] * off];
-        const sp = 0.31 + 0.27 * H(i + 17.2 + bs);
-        const ph = H(i + 41.6 + bs) * Math.PI * 2;
-        const sgn = (H(i + 27.9 + bs) < 0.5) ? -1 : 1;
-        const th = onF * sgn * wgt * (Math.PI * (0.85 + 0.95 * wK * Math.sin(T * sp + ph)) + 0.5 * hit * wK);
+        const ang = H(i + 3.7) * Math.PI * 2 + 0.35 * Math.sin(T * 0.13 + i * 1.7 + bk * 0.3);
+        const U = [Math.cos(ang), Math.sin(ang)];                       // 縁へ向かう向き
+        const ext = Math.abs(U[0]) * asp + Math.abs(U[1]);               // その向きの紙の半分の長さ
+        const d = ext * Math.min(0.92, (0.3 + 0.45 * H(i + 9.1)) * (0.55 + 0.45 * sprd));   // 折り目の位置 (縁寄り。Spread で中心へ)
+        const N = [-U[0], -U[1]];                                        // 折れる側 = 折り目より縁の側
+        const C = [U[0] * d, U[1] * d];
+        const Dir = [-U[1], U[0]];
+        const sp = 0.31 + 0.27 * H(i + 17.2);
+        const ph = H(i + 41.6) * Math.PI * 2;
+        const sgn = (i % 2 === 0) === (H(i + 27.9) < 0.75) ? 1 : -1;     // 隣り合う折りは主に逆向き = S 字
+        const A = Math.PI * (0.45 + 0.4 * H(i + 33.3)) * x2('kaiserOldAngle');
+        const th = Math.max(-1.15 * Math.PI, Math.min(1.15 * Math.PI, onF * sgn * wgt * (A * (0.65 + 0.35 * Math.sin(T * sp + ph + bk)) + 0.18 * hit * wK)));
         const L = 0.55;
         const a3 = foldPt([C[0] - Dir[0]*L, C[1] - Dir[1]*L]);
         const b3 = foldPt([C[0] + Dir[0]*L, C[1] + Dir[1]*L]);
         let dx = b3[0]-a3[0], dy = b3[1]-a3[1], dz = b3[2]-a3[2];
         const len = Math.hypot(dx, dy, dz) || 1;
-        const f = { C, N, th, axO: a3, axD: [dx/len, dy/len, dz/len], eps: CREASE_EPS };
+        const f = { C, N, th, axO: a3, axD: [dx/len, dy/len, dz/len], eps: Math.max(CREASE_EPS, (0.45 + 0.45 * H(i + 51.7)) * x2('kaiserOldCurve')) };
         foldsU.push(f); appliedK.push(f);
         if(foldsU.length >= 28) break;
       }
     }
-    const twist = 2.6 * aK * onF, warp2 = 0.85 * aK * onF, wt2 = this._foldPhK * 0.7 * onF;   // ひねり/うねりも onset で 0 から。運動は Kaiser 比の正規化位相
+    const twist = 2.4 * aK * onF * x2('kaiserOldTwist'), warp2 = 0.75 * aK * onF * x2('kaiserOldTwist'), wt2 = this._foldPhK * 0.7 * onF;   // ひねり/うねりも onset で 0 から。運動は Kaiser 比の正規化位相
     // 折り上がりの重心と広がりをサンプル計測 → 中央化 + 平紙の半径を超えたときだけ縮小。
     // 2系の折りでフラップが外へ広がっても単体パスと同等の画面占有に収まる (単体相当の状態では等倍)。
     const foldAll = (q)=>{
@@ -8122,7 +8158,9 @@ void main(){
     const dists = fitSamples.map(P => Math.hypot(P[0]-ctrT[0], P[1]-ctrT[1], P[2]-ctrT[2])).sort((a,b)=>a-b);
     const sprawl = dists[Math.min(dists.length - 1, Math.floor(dists.length * 0.88))];
     const R0 = Math.hypot(asp, 1) * 0.92;                           // 平紙の半径よりやや小さめを基準サイズに
-    const fitT = Math.max(0.55, Math.min(1, R0 / Math.max(sprawl, 1e-4)));
+    // Drape (kaiserOld) はカメラを寄せ引きしない (等倍のまま。Drape の割合だけ等倍へ寄せる)
+    const kShare = onF * (aK / Math.max(1e-4, aK + aO + aN + aR));
+    const fitT = 1 + (Math.max(0.55, Math.min(1, R0 / Math.max(sprawl, 1e-4))) - 1) * (1 - kShare);
     // 時間ベースの平滑(フレームレート非依存)+ レート制限で急なサイズ/位置変化を抑える。
     const aFit = 1 - Math.exp(-fdt / 0.34);                         // サイズは特にゆっくり追従
     const aCtr = 1 - Math.exp(-fdt / 0.24);
@@ -8136,17 +8174,22 @@ void main(){
       this._foldFit = nf;
     }
     const ctr = this._foldCtr;
-    const hs = this._holeScale();                        // ブラックホール周期スケール
+    const hs = 1 + (this._holeScale() - 1) * (1 - kShare);   // ブラックホール周期スケール (Drape は寄せ引きしないので吸い込まない)
     const fitScale = this._foldFit * hs;
 
-    const rollR = 0.36;
-    let rollAng = this._foldClock * 0.12;
-    if(beatMode){
+    // Roll のサブパラメータ (0..1、Angle 以外は 0.5 = 従来)
+    const rv = (k, d)=>{ const x = +(App.post || {})[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };
+    const rSpin = rv('fx3dRollSpin', 0.5), rAng0 = rv('fx3dRollAngle', 0) * Math.PI * 2;
+    const rollEnd = -0.15 - (rv('fx3dRollDepth', 0.5) - 0.5) * 1.4;   // 巻き終わりの線の位置 (巻く向きの画面の半分の長さに対する比。0.5 = 従来の -0.15)
+    const rollR = 0.36 * Math.pow(2, rv('fx3dRollRadius', 0.5) * 2 - 1);
+    this._rollPh = (this._rollPh || 0) + fdt * 0.12 * rSpin * 2;      // 向きの回転は位相を積み上げる (Spin を動かしても向きが飛ばない)
+    let rollAng = rAng0 + this._rollPh;
+    if(beatMode && rSpin > 0.001){
       const bid = Math.floor(beatId), fr = beatId - bid;
       const ease = 1 - Math.pow(1 - Math.min(1, fr / 0.24), 3);
       const a0 = H(bid * 3.17 + 5.1) * Math.PI * 2, a1 = H((bid + 1) * 3.17 + 5.1) * Math.PI * 2;
       const da = ((a1 - a0 + Math.PI * 3) % (Math.PI * 2)) - Math.PI;
-      rollAng = a0 + da * ease;
+      rollAng = rAng0 + a0 + da * ease;
     }
     const rollDir = [Math.cos(rollAng), Math.sin(rollAng)];
     // 巻き始めの線は紙の外から、量に応じて内へ (全開で紙の 6 割ほどが渦巻きに入る)。平らな残り + 渦巻きの塊の中心を画面中央へ寄せる
@@ -8154,19 +8197,19 @@ void main(){
     // Roll だけのとき (折り・Needle・Uzumaki・3D FX なし) は紙を巻く向きに 2 倍へ伸ばし (絵はミラー)、平らな側の紙の縁を見せない
     const rollM = this._rollPaperM(aN, aO, aK, aR, uzOn);
     const rollExt = Math.abs(rollDir[0]) * asp + Math.abs(rollDir[1]);   // 巻く向きの画面の半分の長さ (外接矩形)
-    const rollOff = rollExt * rollM + (-0.15 * rollExt - rollExt * rollM) * rW;
+    const rollOff = rollExt * rollM + (rollEnd * rollExt - rollExt * rollM) * rW;
     // 広げた紙は平らな残りが画面の外まで続くので寄せない。広げないとき (折りと重ねたとき) は塊を中央へ
     // 平らだった側の弧: 巻き始めから紙の端までで合わせて 0.6 rad ほど曲がる (量に比例。巻き始めの線が画面の外にあるうちから紙全体がゆるく丸まる)
-    const rollK = (0.6 * rW) / Math.max(0.5, rollOff + rollExt * rollM);
+    const rollK = (1.2 * rv('fx3dRollCurl', 0.5) * rW) / Math.max(0.5, rollOff + rollExt * rollM);
     const rollShift = rollM > 1 ? 0 : rW * 0.5 * (-rollExt + Math.min(rollOff, rollExt) + 2 * rollR);
 
     const ROLL_D = 0.8, ROLL_WIDE = 0.4;
     const T2 = this._foldClock;
     // Roll が主役 (Origami / Kaiser が弱い) ほど、近く・広角・深い俯角のカメラで巻物を画面いっぱいにパースを効かせて見せる
     const rDom = Math.min(1, aR / 0.35) * (1 - Math.min(1, 2 * Math.max(aO, aK)));
-    const rCam = rDom * onF;
-    const orb = aK * (0.34 * Math.sin(T2 * 0.19) + 0.16 * Math.sin(T2 * 0.077));
-    const elv = aK * (0.22 * Math.sin(T2 * 0.143) + 0.08);
+    const rCam = Math.min(1, rDom * rv('fx3dRollCam', 0.5) * 2) * onF;
+    const orb = aK * (0.34 * Math.sin(T2 * 0.19) + 0.16 * Math.sin(T2 * 0.077)) * x2('kaiserOldCam');
+    const elv = aK * (0.22 * Math.sin(T2 * 0.143) + 0.08) * x2('kaiserOldCam');
     // カメラ距離: 単体パスの遠い方を基準に、両方の折り系が強い分だけさらに引く。
     // 2系の折りが重なると塊の密度/高さが増えて大きく見えるため、その分の画角余裕。
     // 片方が 0 に近いときは単体パスと同一距離 → 単体⇔統合の切替でサイズが飛ばない。
@@ -8181,7 +8224,7 @@ void main(){
     const eye0 = [D * Math.cos(elv) * Math.sin(orb), D * Math.sin(elv), D * Math.cos(elv) * Math.cos(orb)];
     const rAx = [-rollDir[1], rollDir[0]];
     const rAxExt = Math.abs(rAx[0]) * asp + Math.abs(rAx[1]);          // 筒の軸方向の紙の半分の長さ = 筒の端
-    const rTube = -0.15 * rollExt + rollR;                              // 渦巻きの中心 (巻く向きの位置)
+    const rTube = rollEnd * rollExt + rollR;                              // 渦巻きの中心 (巻く向きの位置)
     const sw = 0.12 * Math.sin(T2 * 0.13), sw2 = 0.1 * Math.sin(T2 * 0.17);
     const at = (d, x, z)=>[rollDir[0] * d + rAx[0] * x, rollDir[1] * d + rAx[1] * x, z];
     const eyeR = at(rTube - 0.75 + sw2, rAxExt + 0.12 + sw, ROLL_D);
@@ -8318,12 +8361,12 @@ void main(){
   // ★ 新しい Post FX を足したら、画面を変形・加工するもの (色調補正は除く) はここにも入れる。
   _fx3dChainIdle(p){
     if(!p) return true;
-    // 合成シェーダ内の画面変形・加工 (Tunnel / Slice / Ring Slice / Mondrian / Rings / Voxel / Rain / Auto Map)、
-    // Water・Boltzmann、マチエール (Relief / Bleed / Impasto / Chrome / Gloss)、3D 欄の Photo / Slicer / Layers / Diorama / Points / Box / Blinds / Gravity / Globe (画面段)。
+    // 合成シェーダ内の画面変形・加工 (Slice / Mondrian / Rings / Voxel / Rain / Auto Map)、
+    // Water・Boltzmann、マチエール (Relief / Bleed / Impasto / Chrome / Gloss)、3D 欄の Photo / Slicer / Layers / Diorama / Points / Box / Blinds / Gravity / Globe / Extrude (画面段)。
     // Color 段 (Grad Map / Bri / Con / Hue / Gamma / Invert / Posterize / Vignette / Vibrance) は連鎖の最後に掛かるのでここには入れない。
-    const keys = ['candy','slice','ringSlice','split','rings','specWarp','zoomPump','shatter','voxel','rain','paletteAmt','sketch','boltz',
+    const keys = ['slice','split','rings','specWarp','zoomPump','shatter','aPop','voxel','rain','paletteAmt','sketch','boltz',
                   'sdfChrome','bleed','impasto','chrome','gloss','fx3dPhoto','fx3dSlicer','fx3dLayer',
-                  'fx3dDiorama','fx3dPoints','fx3dCubes','fx3dBlinds','fx3dGravity','fx3dGlobe'];
+                  'fx3dDiorama','fx3dPoints','fx3dCubes','fx3dBlinds','fx3dTunnel','fx3dGravity','fx3dGlobe','fx3dExtrude'];
     for(const k of keys) if(Math.abs(+p[k] || 0) > 0.001) return false;
     if(typeof Overlay !== 'undefined' && Overlay.initialized && Overlay.P.enabled && Overlay.strokes.length) return false;   // IMAGON 描画中
     if(this._presetTr && this._presetTr.on) return false;                                                              // プリセット切替トランジション中
@@ -8434,7 +8477,7 @@ void main(){
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uRes'), w, h);
     gl.uniform2f(U('uGrid'), GRID[0], GRID[1]);
-    gl.uniformMatrix4fv(U('uView'), false, F.view);
+    gl.uniformMatrix4fv(U('uView'), false, this._stretchView(F.view));
     gl.uniformMatrix4fv(U('uProj'), false, this.osProj(F.proj));
     gl.uniform1f(U('uShade'), F.shade);
     gl.uniform1f(U('uBgDark'), F.bgDark);
@@ -8693,16 +8736,17 @@ vec3 fx3dFoldShade(vec3 c){
     const aO = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiser) || 0));    // Origami
     const aK = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiserOld) || 0)); // Kaiser
     const aU = safe ? 0 : Math.max(0, Math.min(1, +(p && p.uzumaki) || 0));   // Uzumaki
-    const aR = safe ? 0 : Math.max(0, Math.min(1, +(p && p.fx3dRoll) || 0));   // Roll (単体でも統合パスで描く)
+    const aR = safe ? 0 : Math.max(0, Math.min(1, +(p && p.fx3dRoll) || 0));   // Roll (単体でも統合パスで描く。Kaiser・Soft を上げた Origami も同じ)
+    const oSoft = aO > 0.001 && +((App.post || {}).kaiserSoft || 0) > 0.001;   // Origami Soft: 丸い折り目は格子の紙 (統合パス) で描く (単体のベクター折りは鋭い折り専用)
     const active = (aN > 0.001 ? 1 : 0) + (aO > 0.001 ? 1 : 0) + (aK > 0.001 ? 1 : 0);
     // fold 2 系以上、Needle、または fold 1 系以上 + Uzumaki で統合パス起動 (折った紙そのものを螺旋に複製)
     const uzOn = aU > 0.001;
     this._foldStackTookUzumaki = false;
-    if((!(aR > 0.001) && active < 2 && !(uzOn && active >= 1) && !((this._foldStackForce || this._fx3dFlatStack || aN > 0.001) && active >= 1) && !this._gravFold) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
+    if((!(aR > 0.001) && !(aK > 0.001) && !oSoft && active < 2 && !(uzOn && active >= 1) && !((this._foldStackForce || this._fx3dFlatStack || aN > 0.001) && active >= 1) && !this._gravFold) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
     this._foldStackActive = true;
     if(uzOn) this._foldStackTookUzumaki = true;
     // Uzumaki 統合時はグリッドを粗く (頂点数 = カード枚数 × セル数 を抑える)
-    const GRID = uzOn ? (this._gravFold > 0 ? [56, 32] : [36, 21]) : (this._gravFold > 0 ? [160, 90] : (this._rollPaperM(aN, aO, aK, aR, uzOn) > 1 ? [200, 112] : this._foldStackGrid));   // Gravity の場は漏斗が深いので細かく / Roll だけ = 広げた紙のぶん細かく
+    const GRID = uzOn ? (this._gravFold > 0 ? [56, 32] : [36, 21]) : (this._gravFold > 0 ? [160, 90] : (aK > 0.001 ? [600, 336] : ((this._rollPaperM(aN, aO, aK, aR, uzOn) > 1 || oSoft) ? [200, 112] : this._foldStackGrid)));   // Gravity の場は漏斗が深いので細かく / Roll だけ = 広げた紙のぶん細かく / Drape = 強いひねりで格子のマスが引き伸ばされ、切り抜きの縁がマスごとに折れてのこぎり状になるので細かく (600×336 でも負荷はほぼ同じ)
     const UZ = uzOn ? this._uzuParams(aU, this._finalFBO.w, this._finalFBO.h) : null;
     const w = this._finalFBO.w, h = this._finalFBO.h;
     if(!this._foldStackTmp || this._foldStackTmp.w !== w || this._foldStackTmp.h !== h){
@@ -8751,7 +8795,7 @@ vec3 fx3dFoldShade(vec3 c){
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uRes'), w, h);
     gl.uniform2f(U('uGrid'), GRID[0], GRID[1]);
-    gl.uniformMatrix4fv(U('uView'), false, uzOn ? UZ.view : view);
+    gl.uniformMatrix4fv(U('uView'), false, this._stretchView(uzOn ? UZ.view : view));
     gl.uniformMatrix4fv(U('uProj'), false, uzOn ? UZ.proj : proj);
     gl.uniform1f(U('uShade'), shade);
     gl.uniform1f(U('uBgDark'), bgDark);
@@ -8790,11 +8834,14 @@ vec3 fx3dFoldShade(vec3 c){
       gl.uniform1f(U('uNvMargin'), nvM);
       Fx3d.spikeUniforms(gl, P, { a: F.aN * F.onF, beat: F.beatId, bm: F.beatMode ? 1 : 0, hit: F.hit, t: F.nt, scat: F.scat, len: F.nm.len, thick: F.nm.thick, sides: F.nm.sides });
       gl.uniform1f(U('uMode'), 2.0);
+      gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);   // 紙の縁 (抜いた背景との境) を MSAA でなめらかに
       gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * this.needleCellVerts(nvGx, nvGy, nvSub));
     } else {
       gl.uniform1f(U('uMode'), 1.0);
+      gl.enable(gl.SAMPLE_ALPHA_TO_COVERAGE);
       gl.drawArrays(gl.TRIANGLES, 0, (uzOn ? UZ.N : 1) * GRID[0] * GRID[1] * 6);
     }
+    gl.disable(gl.SAMPLE_ALPHA_TO_COVERAGE);
     gl.disable(gl.DEPTH_TEST);
     gl.bindVertexArray(null);
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._foldStackTmp.fbo);
@@ -8802,155 +8849,6 @@ vec3 fx3dFoldShade(vec3 c){
     gl.blitFramebuffer(0,0,w,h, 0,0,w,h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return true;
-  },
-
-  _applyKaiserOldPost(p, safe){
-    // Kaiser (グリッドメッシュのリボン裂け折り。Kaiser_202607152021.zip 由来)
-    const gl = this.gl;
-    const amount = safe ? 0 : Math.max(0, Math.min(1, +(p && p.kaiserOld) || 0));
-    if(amount <= 0.001 || !this.kaiserOldProg || !this._finalFBO) return;
-    const w = this._finalFBO.w, h = this._finalFBO.h;
-    if(!this._kaiserOldTmp || this._kaiserOldTmp.w !== w || this._kaiserOldTmp.h !== h){
-      if(this._kaiserOldTmp){ gl.deleteTexture(this._kaiserOldTmp.tex); gl.deleteFramebuffer(this._kaiserOldTmp.fbo); if(this._kaiserOldTmp.depth) gl.deleteRenderbuffer(this._kaiserOldTmp.depth); }
-      const t = this._mkRGBA8FBO(w, h);
-      const depth = gl.createRenderbuffer();
-      gl.bindRenderbuffer(gl.RENDERBUFFER, depth);
-      gl.renderbufferStorage(gl.RENDERBUFFER, gl.DEPTH_COMPONENT16, w, h);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, t.fbo);
-      gl.framebufferRenderbuffer(gl.FRAMEBUFFER, gl.DEPTH_ATTACHMENT, gl.RENDERBUFFER, depth);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      t.depth = depth;
-      this._kaiserOldTmp = t;
-    }
-    if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
-
-    const K = this._kaiserOldK;
-    const asp = w / Math.max(1, h);
-    const hit = (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0;
-    const tn = now();
-    this._kaiserOldClock = (this._kaiserOldClock || 0) + Math.max(0, Math.min(0.1, tn - (this._kaiserOldLastT != null ? this._kaiserOldLastT : tn)));
-    this._kaiserOldLastT = tn;
-    const T = this._kaiserOldClock * (0.55 + 0.45 * amount);
-    // onset エンベロープ: デッドゾーン(実効0)を抜けた 0 付近で変形量を 0 から立ち上げる。
-    // 折り角・ひねり・カメラ・背景すべてに掛け、amount→0 で「平らな紙=元映像」に収束させる。
-    const onF = (a=>{ const t = Math.max(0, Math.min(1, a / 0.16)); return t*t*(3-2*t); })(amount);
-    const H = (n)=>{ const x = Math.sin(n * 12.9898) * 43758.5453; return x - Math.floor(x); };
-    // Beat 対応 = リセット: beat モードでは拍ごとに seed を切替 → 別の折りへハードカット(毎回違うフレーム)
-    const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat');
-    const bs = beatMode ? Math.floor((App.visualBeat ? App.visualBeat() : ((typeof BPM !== 'undefined' && BPM.beatCount) ? BPM.beatCount() : 0))) * 19.73 : 0;
-    const rodrigues = (P, O, D, th)=>{
-      const rx = P[0]-O[0], ry = P[1]-O[1], rz = P[2]-O[2];
-      const ct = Math.cos(th), st = Math.sin(th);
-      const dp = D[0]*rx + D[1]*ry + D[2]*rz;
-      const cx = D[1]*rz - D[2]*ry, cy = D[2]*rx - D[0]*rz, cz = D[0]*ry - D[1]*rx;
-      return [ O[0] + rx*ct + cx*st + D[0]*dp*(1-ct),
-               O[1] + ry*ct + cy*st + D[1]*dp*(1-ct),
-               O[2] + rz*ct + cz*st + D[2]*dp*(1-ct) ];
-    };
-    const folds = [];
-    const foldPt = (q)=>{
-      let P = [q[0], q[1], 0];
-      for(const f of folds){
-        const s = (q[0]-f.C[0])*f.N[0] + (q[1]-f.C[1])*f.N[1];
-        let k = Math.max(0, Math.min(1, -s / 0.0022));   // VS と同じシャープさ
-        if(k > 0) P = rodrigues(P, f.axO, f.axD, f.th * k);
-      }
-      return P;
-    };
-    const nAct = Math.min(K, Math.ceil(amount * K + 1e-6));
-    for(let i = 0; i < nAct; i++){
-      const wgt = Math.max(0, Math.min(1, amount * K - i));
-      const ang = H(i + 3.7 + bs) * Math.PI * 2 + 0.15 * Math.sin(T * 0.21 + i * 1.7);
-      const N = [Math.cos(ang), Math.sin(ang)];
-      const Dir = [-Math.sin(ang), Math.cos(ang)];
-      const off = (H(i + 9.1 + bs) * 2 - 1) * 0.92 * Math.pow(0.87, i);   // 折り線を広く散らす → 前の折りを横切り裂ける
-      const C = [N[0] * off, N[1] * off];
-      const sp = 0.31 + 0.27 * H(i + 17.2 + bs);
-      const ph = H(i + 41.6 + bs) * Math.PI * 2;
-      const sgn = (H(i + 27.9 + bs) < 0.5) ? -1 : 1;
-      // 折り角を大きく(最大 ~1.6π)振る → フラップが1回転近く回って他層を貫き、めっちゃ交差する
-      const th = onF * sgn * wgt * (Math.PI * (0.85 + 0.95 * Math.sin(T * sp + ph)) + 0.5 * hit);
-      const L = 0.55;
-      const a3 = foldPt([C[0] - Dir[0]*L, C[1] - Dir[1]*L]);
-      const b3 = foldPt([C[0] + Dir[0]*L, C[1] + Dir[1]*L]);
-      let dx = b3[0]-a3[0], dy = b3[1]-a3[1], dz = b3[2]-a3[2];
-      const len = Math.hypot(dx, dy, dz) || 1;
-      folds.push({C, N, th, axO: a3, axD: [dx/len, dy/len, dz/len]});
-    }
-
-    // 折り上がりの重心 (粗いサンプル点に全折りを適用して平均) → 画面中央に固定するため VS で減算
-    let ctr = [0, 0, 0], ccnt = 0;
-    for(let gy = 0; gy < 4; gy++) for(let gx = 0; gx < 7; gx++){
-      const P = foldPt([ (gx/6 - 0.5) * 2 * asp, (gy/3 - 0.5) * 2 ]);
-      ctr[0] += P[0]; ctr[1] += P[1]; ctr[2] += P[2]; ccnt++;
-    }
-    ctr = [ctr[0]/ccnt, ctr[1]/ccnt, ctr[2]/ccnt];
-
-    const T2 = this._kaiserOldClock;
-    const orb = amount * (0.34 * Math.sin(T2 * 0.19) + 0.16 * Math.sin(T2 * 0.077));
-    const elv = amount * (0.22 * Math.sin(T2 * 0.143) + 0.08);
-    // 広角レンズ: FOV を広く (f 小)。近すぎたので少し引いて程よい距離に。
-    // 値が上がるほど少し引く相対感は維持。蛇腹プリーツ/直交ひねりで外に広がるぶん引く。
-    // onset シームレス: amount→0 で f(=1.35, 平らな紙が画面を満たす距離)へ収束 → 元映像と連続。
-    const D = 1.35 + ((1.75 + 0.5 * amount) - 1.35) * onF;
-    const eye = [D * Math.cos(elv) * Math.sin(orb), D * Math.sin(elv), D * Math.cos(elv) * Math.cos(orb)];
-    const norm3 = (v)=>{ const l = Math.hypot(v[0],v[1],v[2]) || 1; return [v[0]/l, v[1]/l, v[2]/l]; };
-    const zc = norm3(eye);
-    const xc = norm3([zc[2], 0, -zc[0]]);
-    const yc = [ zc[1]*xc[2]-zc[2]*xc[1], zc[2]*xc[0]-zc[0]*xc[2], zc[0]*xc[1]-zc[1]*xc[0] ];
-    const dotv = (a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
-    const view = [ xc[0],yc[0],zc[0],0, xc[1],yc[1],zc[1],0, xc[2],yc[2],zc[2],0, -dotv(xc,eye),-dotv(yc,eye),-dotv(zc,eye),1 ];
-    const f = 1.35, zn = 0.03, zf = 30.0;   // 広角 (fovY ≈ 73°)
-    const proj = [ f/asp,0,0,0, 0,f,0,0, 0,0,(zf+zn)/(zn-zf),-1, 0,0,2*zf*zn/(zn-zf),0 ];
-    const shade = Math.min(1, Math.max(0, amount / 0.22));
-    const hs = this._holeScale();                        // ブラックホール周期スケール
-    const bgDark = Math.max(onF, 1 - hs);   // 吸い込み(hs→0)で背景を黒へ
-
-    const P = this.kaiserOldProg;
-    gl.useProgram(P);
-    gl.bindVertexArray(this._emptyVAO);
-    gl.disable(gl.BLEND);
-    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LESS);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this._kaiserOldTmp.fbo);
-    gl.viewport(0, 0, w, h);
-    gl.clearColor(0, 0, 0, 1); gl.clearDepth(1.0);
-    this._fx3dBgNeed = true;
-    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this._finalFBO.tex);
-    const U = (n)=>gl.getUniformLocation(P, n);
-    gl.uniform1i(U('uTex'), 0);
-    gl.uniform2f(U('uRes'), w, h);
-    gl.uniform2f(U('uGrid'), this._kaiserOldGrid[0], this._kaiserOldGrid[1]);
-    gl.uniformMatrix4fv(U('uView'), false, view);
-    gl.uniformMatrix4fv(U('uProj'), false, proj);
-    gl.uniform1f(U('uShade'), shade);
-    gl.uniform1f(U('uBgDark'), bgDark);
-    gl.uniform1f(U('uTwist'), 2.6 * amount * onF);        // 巨大なひねり (onset で 0 から立ち上げ)
-    gl.uniform1f(U('uWarp2'), 0.85 * amount * onF);       // 大域うねりワープ量 (蛇腹プリーツ含む)
-    gl.uniform1f(U('uWt2'), T * 0.7 * onF);               // ひねり位相も onset でゼロ化 (定数回転項が残らない)
-    gl.uniform1f(U('uCollapse'), hs);                     // ブラックホール: 周期的に画面中央へ吸い込む
-    gl.uniform3f(U('uCenter'), ctr[0], ctr[1], ctr[2]);
-    gl.uniform3f(U('uEye'), eye[0], eye[1], eye[2]);
-    gl.uniform1i(U('uFoldN'), folds.length);
-    for(let i = 0; i < folds.length; i++){
-      const fd = folds[i];
-      gl.uniform2f(U('uCreaseP['+i+']'), fd.C[0], fd.C[1]);
-      gl.uniform2f(U('uCreaseN['+i+']'), fd.N[0], fd.N[1]);
-      gl.uniform1f(U('uTheta['+i+']'), fd.th);
-      gl.uniform3f(U('uAxisO['+i+']'), fd.axO[0], fd.axO[1], fd.axO[2]);
-      gl.uniform3f(U('uAxisD['+i+']'), fd.axD[0], fd.axD[1], fd.axD[2]);
-    }
-    gl.uniform1f(U('uMode'), 0.0);
-    gl.drawArrays(gl.TRIANGLES, 0, 3);
-    gl.uniform1f(U('uMode'), 1.0);
-    gl.drawArrays(gl.TRIANGLES, 0, this._kaiserOldGrid[0] * this._kaiserOldGrid[1] * 6);
-    gl.disable(gl.DEPTH_TEST);
-    gl.bindVertexArray(null);
-    gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this._kaiserOldTmp.fbo);
-    gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, this._finalFBO.fbo);
-    gl.blitFramebuffer(0,0,w,h, 0,0,w,h, gl.COLOR_BUFFER_BIT, gl.NEAREST);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
 
   _applyKaiserPost(p, safe){
@@ -9009,12 +8907,15 @@ vec3 fx3dFoldShade(vec3 c){
     if(!this._emptyVAO) this._emptyVAO = gl.createVertexArray();
 
     // ── 折りパラメータ ──
-    const K = 14, spd = 1.35, CYC = 23, SEED = 57.3;
+    // サブパラメータ (統合パスの _foldBuild と同じ。デッドゾーン前の値 App.post を読む)
+    const fv = (k, d)=>{ const x = +(App.post || {})[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : d; };
+    const x2 = (k)=>fv(k, 0.5) * 2;
+    const K = Math.round(1 + 13 * fv('kaiserFolds', 1)), spd = 1.35, CYC = 23, SEED = 57.3;
     const asp = w / Math.max(1, h);
     const hit = (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0;
     // 折り専用の実時間クロック (beat モードの App.speed 脈動に影響されない)
     const tn = now();
-    this._kaiserClock = (this._kaiserClock || 0) + Math.max(0, Math.min(0.1, tn - (this._kaiserClockLastT != null ? this._kaiserClockLastT : tn)));
+    this._kaiserClock = (this._kaiserClock || 0) + Math.max(0, Math.min(0.1, tn - (this._kaiserClockLastT != null ? this._kaiserClockLastT : tn))) * x2('kaiserSpeed');
     this._kaiserClockLastT = tn;
     const T = this._kaiserClock * (0.9 + 0.9 * amount) * spd;
     // onset エンベロープ: デッドゾーンを抜けた 0 付近で変形量を 0 から立ち上げ、元映像へ連続。
@@ -9034,12 +8935,12 @@ vec3 fx3dFoldShade(vec3 c){
       const wgt = Math.max(0, Math.min(1, amount * K - i));        // この折りの活性率 (連続に立ち上がる)
       const ang = H(i + 3.7 + cs) * Math.PI * 2;
       const N = [Math.cos(ang), Math.sin(ang)];
-      const off = (H(i + 9.1 + cs) * 2 - 1) * 0.80 * Math.pow(0.88, i);
+      const off = (H(i + 9.1 + cs) * 2 - 1) * 0.80 * x2('kaiserSpread') * Math.pow(0.88, i);
       const C = [N[0] * off, N[1] * off];
       const sp = 0.55 + 0.55 * H(i + 17.2 + cs);
       const ph = H(i + 41.6 + cs) * Math.PI * 2;
       const sgn = (H(i + 27.9 + cs) < 0.5) ? -1 : 1;               // 山折り / 谷折り
-      const th = onF * genv * sgn * wgt * (Math.PI * (0.52 + 0.46 * Math.sin(T * sp + ph)) + 0.6 * hit);
+      const th = onF * genv * sgn * wgt * (Math.PI * (0.52 + 0.46 * Math.sin(T * sp + ph)) + 0.6 * hit) * x2('kaiserAngle');
       if(Math.abs(th) > 1e-4) folds.push({C, N, th});
     }
 
@@ -9226,7 +9127,7 @@ vec3 fx3dFoldShade(vec3 c){
     const U = (n)=>gl.getUniformLocation(P, n);
     gl.uniform1i(U('uTex'), 0);
     gl.uniform2f(U('uOvM'), ovS ? ovS.m[0] : 0, ovS ? ovS.m[1] : 0);
-    gl.uniformMatrix4fv(U('uView'), false, view);
+    gl.uniformMatrix4fv(U('uView'), false, this._stretchView(view));
     gl.uniformMatrix4fv(U('uProj'), false, proj);
     {
       // 紙全体の 3D 回転 (折り重心起点) + 深折り時のスケール補償。onset で 0 から立ち上げ。
@@ -9692,8 +9593,8 @@ vec3 fx3dFoldShade(vec3 c){
       p.img.data.set(buf);
       // 透明部分には市松模様を敷く。putImageData は alpha ごと上書きしてしまうので、
       // 一度オフスクリーンに置いてから drawImage で市松の上へ alpha 合成する。
-      // Slot A だけは出力と同じく「A の背景色」で埋める (下地が何色になるか見えるように)。
-      if(key === 'A'){
+      // Slot A だけは出力と同じく「A の背景色」で埋める (下地が何色になるか見えるように)。A BG = 透過 (None) なら B と同じ市松。
+      if(key === 'A' && App.slotABg !== 'none'){
         const bg = App.bgAColor();
         p.ctx.setTransform(1, 0, 0, 1, 0, 0);
         p.ctx.fillStyle = 'rgb(' + Math.round(bg[0]*255) + ',' + Math.round(bg[1]*255) + ',' + Math.round(bg[2]*255) + ')';
@@ -9847,7 +9748,7 @@ vec3 fx3dFoldShade(vec3 c){
         } }
       // Grad Map / Hue / Invert が変わったら (フェード中も) すぐ追従
       { const p = App.post || {};
-        const csig = [p.gradMix||0, p.hue||0, p.hueAuto||0, (p.inv||0) > 0.5 ? 1 : 0,
+        const csig = [p.gradMix||0, p.hue||0, (p.inv||0) > 0.5 ? 1 : 0,
                       (p.gradStops||[]).map(o=>o.t.toFixed(2)+':'+o.rgb.map(v=>v.toFixed(2)).join(',')).join('|')].join('/');
         if(this._mixColorSig !== csig){ this._mixColorSig = csig; this._mixReq = this._mixReq || 'all'; } }
       if(!this._mixReq && t - this._mixPrevAt < 2.0) return;   // 2 秒ごと (要求があれば即時)
@@ -10049,7 +9950,7 @@ vec3 fx3dFoldShade(vec3 c){
     }
     const bz = !!(Math.abs(post.boltz||0) > 0.001) && typeof Boltzmann !== 'undefined';
     if(bz && !this._bzPrev) this._bzCapture = true;
-    const pkVal = Math.max(+post.pollockGloss || 0, +post.pollockMatt || 0, +post.pollockFlat || 0);
+    const pkVal = Math.max(+post.pollockGloss || 0, +post.pollockMatt || 0, +post.pollockFlat || 0, +post.pollockMetal || 0);
     const pk = !!(pkVal > 0.001 && typeof PollockFX !== 'undefined');
     if(pk && !this._pkPrev) this._pkCapture = true;
     // beat モード時は 1 小節(4拍)ごとにワープ場をリセット。
@@ -10244,7 +10145,7 @@ vec3 fx3dFoldShade(vec3 c){
       if(typeof TextDeform === 'undefined') return;
       if(!TextDeform.initialized) TextDeform.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      TextDeform.update(slotScaledBeat, 1/60, target.w, target.h);
+      TextDeform.update(slotScaledBeat, 1/60, target.w, target.h, slotBeat);   // 実際の拍も渡す (Timing の BPM / ×A)
       TextDeform.render({ fbo: target.fbo, w: target.w, h: target.h, opaque: slotKey !== 'B' });   // Slot B は背景 (紙) を塗らず実 alpha で透過 (下の Slot A を見せる)
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
@@ -10495,6 +10396,17 @@ vec3 fx3dFoldShade(vec3 c){
       ChromeType.update({ beat: slotScaledBeat, clock: slot._clock });
       const target = slot.fbos[slot.fbIdx];
       ChromeType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
+    if(slot.kind === 'glitchtype'){
+      if(typeof GlitchType === 'undefined') return;
+      if(!GlitchType.initialized) GlitchType.init(this.gl);
+      const target = slot.fbos[slot.fbIdx];
+      GlitchType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -11514,7 +11426,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], ringSlice:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], sharpen:[0,1], crisp:[0,1], shock:[0,1], inkBleed:[0,1], hatch:[0,1], hatchDensity:[0,1], hatchFlow:[0,1], hatchLength:[0,1], hatchLayers:[1,4], hatchWobble:[0,1], hatchMix:[0,1], hatchAngle:[0,1], hatchTex:[0,1], hatchGrain:[0,1], hatchBreak:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], specWarp:[0,1], zoomPump:[0,1], shatter:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], dither:[0,1], candy:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], uzumaki:[0,1], fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dPoints:[0,1], fx3dPointsDensity:[60,400], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], needleThick:[-1,1], needleLen:[-1,1], needleSides:[3,5], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dRoll:[0,1], fx3dDepth:[0,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelTrack:[0,1], novelLead:[0,1], novelSwitch:[0,1], novelCluster:[0,1], novelGrid:[0,1], novelVary:[0,1], novelSep:[0,1], novelTone:[0,1], novelShape:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], bleed:[0,1], impasto:[0,1], chrome:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], sliceLine:[0,1], sliceCount:[0,1], sliceMove:[0,1], sliceAngle:[0,1], ringsLine:[0,1], ringsCount:[0,1], ringsTwist:[0,1], ringsWobble:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], sharpen:[0,1], crisp:[0,1], shock:[0,1], inkBleed:[0,1], hatch:[0,1], hatchDensity:[0,1], hatchFlow:[0,1], hatchLength:[0,1], hatchLayers:[1,4], hatchWobble:[0,1], hatchMix:[0,1], hatchAngle:[0,1], hatchTex:[0,1], hatchGrain:[0,1], hatchBreak:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], specWarp:[0,1], zoomPump:[0,1], shatter:[0,1], aPop:[0,1], aPopCount:[1,32], aPopSize:[2,400], aPopSides:[2,12], aPopZoom:[0,1], aPopLine:[0,1], aPopShade:[0,1], aPopSpin:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], pollockMetal:[0,1], pollockSize:[0,1], pollockLength:[0,1], pollockDensity:[0,1], pollockDrops:[0,1], pollockCurve:[0,1], pollockLife:[0,1], pollockRelief:[0,1],  boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], aShardsMove:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], colorTemp:[-1,1], colorTint:[-1,1], mixHueRed:[-1,1], mixHueOrange:[-1,1], mixHueYellow:[-1,1], mixHueGreen:[-1,1], mixHueAqua:[-1,1], mixHueBlue:[-1,1], mixHuePurple:[-1,1], mixHueMagenta:[-1,1], mixSatRed:[-1,1], mixSatOrange:[-1,1], mixSatYellow:[-1,1], mixSatGreen:[-1,1], mixSatAqua:[-1,1], mixSatBlue:[-1,1], mixSatPurple:[-1,1], mixSatMagenta:[-1,1], mixLumRed:[-1,1], mixLumOrange:[-1,1], mixLumYellow:[-1,1], mixLumGreen:[-1,1], mixLumAqua:[-1,1], mixLumBlue:[-1,1], mixLumPurple:[-1,1], mixLumMagenta:[-1,1],  dither:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], kaiserFolds:[0,1], kaiserSpeed:[0,1], kaiserAngle:[0,1], kaiserSpread:[0,1], kaiserSoft:[0,1], kaiserOldFolds:[0,1], kaiserOldSpeed:[0,1], kaiserOldAngle:[0,1], kaiserOldSpread:[0,1], kaiserOldCurve:[0,1], kaiserOldTwist:[0,1], kaiserOldCam:[0,1], uzumaki:[0,1], uzumakiCards:[0,1], uzumakiTwist:[0,1], uzumakiSpread:[0,1], uzumakiDepth:[0,1], uzumakiShrink:[0,1], uzumakiCard:[0,1], uzumakiSpin:[0,1], uzumakiCam:[0,1],  fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dPhotoCurl:[0,1], fx3dPhotoCurlAxis:[0,1], fx3dPhotoFlutter:[0,1], fx3dPhotoCorner:[0,1], fx3dPhotoSpin:[0,1], fx3dBlindsAngle:[0,1], fx3dBlindsSpeed:[0,1], fx3dBlindsWave:[0,1], fx3dBlindsOpen:[0,1], fx3dBlindsGap:[0,1], fx3dBlindsRandom:[0,1],  fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dDioramaSwing:[0,1], fx3dDioramaSpeed:[0,1], fx3dDioramaPan:[-1,1], fx3dDioramaTilt:[-1,1], fx3dDioramaZoom:[-1,1], fx3dPoints:[0,1], fx3dPointsDensity:[60,1200], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], needleThick:[-1,1], needleLen:[-1,1], needleSides:[3,5], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dTunnel:[0,1], fx3dTunnelSpeed:[0,1], fx3dTunnelRadius:[0,1], fx3dTunnelTwist:[0,1], fx3dTunnelCurve:[0,1], fx3dTunnelBump:[0,1], fx3dTunnelPulse:[0,1], fx3dTunnelTile:[0,1], fx3dTunnelRound:[0,1], fx3dTunnelSpin:[0,1], fx3dTunnelFlip:[0,1], fx3dTunnelBendX:[-1,1], fx3dTunnelBendY:[-1,1], fx3dTunnelFog:[0,1], fx3dTunnelShine:[0,1], fx3dTunnelEdge:[0,1], fx3dTunnelTilt:[-1,1], fx3dTunnelPan:[-1,1], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dExtrude:[0,1], fx3dExtrudeDepth:[0,1], fx3dExtrudeTilt:[0,1], fx3dExtrudeSpin:[0,1], fx3dExtrudeShade:[0,1], fx3dExtrudeTwist:[-1,1], fx3dExtrudeRound:[0,1], fx3dRoll:[0,1], fx3dRollRadius:[0,1], fx3dRollDepth:[0,1], fx3dRollAngle:[0,1], fx3dRollSpin:[0,1], fx3dRollCurl:[0,1], fx3dRollCam:[0,1],  fx3dDepth:[0,1], fx3dStretchX:[-1,1], fx3dStretchY:[-1,1], fx3dStretchZ:[-1,1], fx3dZoom:[-1,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelTrack:[0,1], novelLead:[0,1], novelSwitch:[0,1], novelCluster:[0,1], novelGrid:[0,1], novelVary:[0,1], novelSep:[0,1], novelTone:[0,1], novelShape:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], riverTwist:[0,1], riverSpeed:[0,1], riverWidth:[0,1], riverFlow:[0,1], riverLight:[0,1], riverFog:[0,1], riverSway:[0,1],  bleed:[0,1], impasto:[0,1], chrome:[0,1], chromeBump:[0,1], chromeEdge:[0,1], chromeCon:[0,1], chromeTint:[0,1], chromeSpec:[0,1], chromeSharp:[0,1], chromeRim:[0,1], chromeLight:[0,1], chromeObj:[0,1], sdfChromeObj:[0,1], bleedObj:[0,1], impastoObj:[0,1], glossObj:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -11721,7 +11633,7 @@ const MIDI = {
   _paramLabel(pname){
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', hatch:'Hatching', hatchDensity:'Density', hatchFlow:'Flow', hatchLength:'Length', hatchLayers:'Layers', hatchWobble:'Wobble', hatchMix:'Color Mix', hatchAngle:'Angle', hatchTex:'Paper Texture', hatchTool:'Tool', hatchGrain:'Grain', hatchBreak:'Break', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', hueRot:'Hue Rotate', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', ringSlice:'Ring Slice', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', candy:'Tunnel', origami:'Needle', needleScatter:'Needle Scatter', needleThick:'Needle Thick', needleLen:'Needle Length', needleSides:'Needle Sides', kaiser:'Origami', kaiserOld:'Kaiser', uzumaki:'Uzumaki', fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dRoll:'Roll', fx3dDepth:'3D Depth', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dMix:'3D Mix', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Passage', bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', hatch:'Hatching', hatchDensity:'Density', hatchFlow:'Flow', hatchLength:'Length', hatchLayers:'Layers', hatchWobble:'Wobble', hatchMix:'Color Mix', hatchAngle:'Angle', hatchTex:'Paper Texture', hatchTool:'Tool', hatchGrain:'Grain', hatchBreak:'Break', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', aPop:'Pop Up', aPopCount:'Pop Count', aPopSize:'Pop Size', aPopSides:'Pop Sides', aPopZoom:'Pop Zoom', aPopLine:'Pop Line', aPopShade:'Pop Shade', aPopSpin:'Pop Spin', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', pollockMetal:'Pollock Metal', pollockSize:'Pollock Size', pollockLength:'Pollock Length', pollockDensity:'Pollock Density', pollockDrops:'Pollock Drops', pollockCurve:'Pollock Curve', pollockLife:'Pollock Life', pollockRelief:'Pollock Relief',  voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', aShardsMove:'Shards Move', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', colorTemp:'Temperature', colorTint:'Tint', mixHueRed:'Mixer Hue Red', mixHueOrange:'Mixer Hue Orange', mixHueYellow:'Mixer Hue Yellow', mixHueGreen:'Mixer Hue Green', mixHueAqua:'Mixer Hue Aqua', mixHueBlue:'Mixer Hue Blue', mixHuePurple:'Mixer Hue Purple', mixHueMagenta:'Mixer Hue Magenta', mixSatRed:'Mixer Sat Red', mixSatOrange:'Mixer Sat Orange', mixSatYellow:'Mixer Sat Yellow', mixSatGreen:'Mixer Sat Green', mixSatAqua:'Mixer Sat Aqua', mixSatBlue:'Mixer Sat Blue', mixSatPurple:'Mixer Sat Purple', mixSatMagenta:'Mixer Sat Magenta', mixLumRed:'Mixer Lum Red', mixLumOrange:'Mixer Lum Orange', mixLumYellow:'Mixer Lum Yellow', mixLumGreen:'Mixer Lum Green', mixLumAqua:'Mixer Lum Aqua', mixLumBlue:'Mixer Lum Blue', mixLumPurple:'Mixer Lum Purple', mixLumMagenta:'Mixer Lum Magenta',  chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', sliceLine:'Slice Line', sliceCount:'Slice Count', sliceMove:'Slice Move', sliceAngle:'Slice Angle', ringsLine:'Rings Line', ringsCount:'Rings Count', ringsTwist:'Rings Twist', ringsWobble:'Rings Wobble', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', origami:'Needle', needleScatter:'Needle Scatter', needleThick:'Needle Thick', needleLen:'Needle Length', needleSides:'Needle Sides', kaiser:'Origami', kaiserOld:'Drape', kaiserFolds:'Origami Folds', kaiserSpeed:'Origami Speed', kaiserAngle:'Origami Angle', kaiserSpread:'Origami Spread', kaiserSoft:'Origami Soft', kaiserOldFolds:'Drape Folds', kaiserOldSpeed:'Drape Speed', kaiserOldAngle:'Drape Angle', kaiserOldSpread:'Drape Spread', kaiserOldCurve:'Drape Curve', kaiserOldTwist:'Drape Twist', kaiserOldCam:'Drape Cam', uzumaki:'Uzumaki', uzumakiCards:'Uzumaki Cards', uzumakiTwist:'Uzumaki Twist', uzumakiSpread:'Uzumaki Spread', uzumakiDepth:'Uzumaki Depth', uzumakiShrink:'Uzumaki Shrink', uzumakiCard:'Uzumaki Card', uzumakiSpin:'Uzumaki Spin', uzumakiCam:'Uzumaki Cam',  fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dPhotoCurl:'Photos Curl', fx3dPhotoCurlAxis:'Photos Curl Axis', fx3dPhotoFlutter:'Photos Flutter', fx3dPhotoCorner:'Photos Corner', fx3dPhotoSpin:'Photos Spin',  fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dDioramaSwing:'Diorama Swing', fx3dDioramaSpeed:'Diorama Speed', fx3dDioramaPan:'Diorama Pan', fx3dDioramaTilt:'Diorama Tilt', fx3dDioramaZoom:'Diorama Zoom', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dBlindsAngle:'Blinds Angle', fx3dBlindsSpeed:'Blinds Speed', fx3dBlindsWave:'Blinds Wave', fx3dBlindsOpen:'Blinds Open', fx3dBlindsGap:'Blinds Gap', fx3dBlindsRandom:'Blinds Random',  fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dTunnel:'Tunnel', fx3dTunnelSpeed:'Tunnel Speed', fx3dTunnelRadius:'Tunnel Radius', fx3dTunnelTwist:'Tunnel Twist', fx3dTunnelCurve:'Tunnel Curve', fx3dTunnelBump:'Tunnel Bump', fx3dTunnelPulse:'Tunnel Pulse', fx3dTunnelTile:'Tunnel Tile', fx3dTunnelRound:'Tunnel Round', fx3dTunnelSpin:'Tunnel Spin', fx3dTunnelFlip:'Tunnel Flip', fx3dTunnelBendX:'Tunnel Bend X', fx3dTunnelBendY:'Tunnel Bend Y', fx3dTunnelFog:'Tunnel Fog', fx3dTunnelShine:'Tunnel Shine', fx3dTunnelEdge:'Tunnel Edge', fx3dTunnelTilt:'Tunnel Tilt', fx3dTunnelPan:'Tunnel Pan', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dExtrude:'Extrude', fx3dExtrudeDepth:'Extrude Depth', fx3dExtrudeTilt:'Extrude Tilt', fx3dExtrudeSpin:'Extrude Spin', fx3dExtrudeShade:'Extrude Shade', fx3dExtrudeTwist:'Extrude Twist', fx3dExtrudeRound:'Extrude Round', fx3dExtrudeMode:'Extrude Mode', fx3dRoll:'Roll', fx3dRollRadius:'Roll Radius', fx3dRollDepth:'Roll Depth', fx3dRollAngle:'Roll Angle', fx3dRollSpin:'Roll Spin', fx3dRollCurl:'Roll Curl', fx3dRollCam:'Roll Cam',  fx3dDepth:'3D Depth', fx3dStretchX:'3D Stretch X', fx3dStretchY:'3D Stretch Y', fx3dStretchZ:'3D Stretch Z', fx3dZoom:'3D Zoom', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dMix:'3D Mix', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Passage', riverTwist:'Passage Twist', riverSpeed:'Passage Speed', riverWidth:'Passage Width', riverFlow:'Passage Flow', riverLight:'Passage Light', riverFog:'Passage Fog', riverSway:'Passage Sway',  bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', chromeBump:'Chrome Bump', chromeEdge:'Chrome Edge', chromeCon:'Chrome Contrast', chromeTint:'Chrome Tint', chromeSpec:'Chrome Spec', chromeSharp:'Chrome Sharp', chromeRim:'Chrome Rim', chromeLight:'Chrome Light', chromeObj:'Chrome Obj', sdfChromeObj:'Relief Obj', bleedObj:'Watercolor Obj', impastoObj:'Impasto Obj', glossObj:'Gloss Obj', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
   },
   async init(){
@@ -12357,7 +12269,7 @@ const MIDI = {
       const v = this.values[vk];
       if(typeof v !== 'number') continue;
       const [slotKey, pname] = k.split(':');
-      if(pname === '__post__boltz' || pname === '__post__pollockGloss' || pname === '__post__pollockMatt' || pname === '__post__pollockFlat') continue;  // 副作用(フレーム捕獲+フリーズ)があるため起動時に復元しない
+      if(pname === '__post__boltz' || pname === '__post__pollockGloss' || pname === '__post__pollockMatt' || pname === '__post__pollockFlat' || pname === '__post__pollockMetal') continue;  // 副作用(フレーム捕獲+フリーズ)があるため起動時に復元しない
       this._applyMapping(slotKey, pname, vk, v, true);
     }
   },
@@ -12910,6 +12822,8 @@ uniform float uGradMix; uniform vec3 uGradStops[8]; uniform float uGradPos[8]; u
 uniform float uCosGrad;
 uniform float uGamma;
 uniform float uInv, uVibrance, uPos, uVig;   // Color 段 (最終出力) 用。他の呼び出しは 0 = なし
+uniform float uTemp, uTint;   // 色温度 (+ = 暖色 / − = 寒色) と色被り補正 (+ = マゼンタ / − = グリーン)
+uniform float uMixOn; uniform float uMixH[8], uMixS[8], uMixL[8];   // Color Mixer: 帯ごとの色相 (1 = +180°)・彩度・明度。uMixOn = 0 でなし
 uniform float uUnsharp, uUnsharpR;
 uniform float uBlurAmt;
 vec3 hueShift(vec3 c, float h){
@@ -12988,9 +12902,8 @@ void main(){
     col = (uUnsharp > 0.0) ? max(col + uUnsharp*(col - blur), vec3(0.0))
                            : mix(col, blur, clamp(-uUnsharp, 0.0, 1.0));
   }
-  // 3) Color: Invert → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Gamma
-  //    Invert は明度 (HSL の L) だけ反転して色相を保つ。uInv は 0..1 の連続量 (Param Fade でなめらかに反転できる)
-  if(uInv > 0.001){ vec3 hsl = _rgb2hsl(col); hsl.z = mix(hsl.z, 1.0 - hsl.z, uInv); col = _hsl2rgb(hsl); }
+  // 3) Color: Gamma → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Temperature / Tint → Color Mixer → Invert
+  if(abs(uGamma - 1.0) > 0.0001) col = pow(max(col, 0.0), vec3(1.0/uGamma));   // Gamma (Brightness の前)
   if(abs(uBri) > 0.0001) col += uBri;
   if(abs(uCon - 1.0) > 0.001) col = (col-0.5)*uCon + 0.5;
   if(abs(uSat - 1.0) > 0.001){
@@ -13026,8 +12939,29 @@ void main(){
     float vd = distance(vUv, vec2(0.5));
     col *= 1.0 - smoothstep(0.3, 0.85, vd) * uVig;
   }
-  // 4) Gamma
-  col = pow(max(col, 0.0), vec3(1.0/uGamma));
+  // 色温度 / 色被り補正: 輝度を保ったまま R↔B (温度)・G↔マゼンタ (色被り) の比を変える
+  if(abs(uTemp) > 0.0001 || abs(uTint) > 0.0001){
+    vec3 wb = vec3(1.0 + 0.3*uTemp, 1.0, 1.0 - 0.3*uTemp) * vec3(1.0 + 0.15*uTint, 1.0 - 0.3*uTint, 1.0 + 0.15*uTint);
+    col *= wb / dot(wb, vec3(0.299, 0.587, 0.114));
+  }
+  // Color Mixer (Invert の前): 色相の帯 (赤 0° / 橙 30° / 黄 60° / 緑 120° / 水色 180° / 青 240° / 紫 270° / 赤紫 300°) ごとに色相・彩度・明度を動かす。帯の間は線形に補間
+  if(uMixOn > 0.5){
+    vec3 hsl = _rgb2hsl(clamp(col, 0.0, 1.0));
+    float hd = hsl.x * 360.0;
+    const float BC[9] = float[9](0.0, 30.0, 60.0, 120.0, 180.0, 240.0, 270.0, 300.0, 360.0);
+    int i0 = 7;
+    for(int i = 0; i < 8; i++) if(hd >= BC[i]) i0 = i;
+    int i1 = (i0 + 1) % 8;
+    float f = clamp((hd - BC[i0]) / (BC[i0 + 1] - BC[i0]), 0.0, 1.0);
+    float dh = mix(uMixH[i0], uMixH[i1], f), ds = mix(uMixS[i0], uMixS[i1], f), dl = mix(uMixL[i0], uMixL[i1], f);
+    float cw = smoothstep(0.0, 0.2, hsl.y);          // 無彩色に近い所は色の帯が決まらないので弱める
+    hsl.x = fract(hsl.x + dh * 0.5);
+    hsl.y = clamp(hsl.y * (1.0 + ds * cw), 0.0, 1.0);
+    hsl.z = clamp(dl >= 0.0 ? mix(hsl.z, 1.0, dl * 0.5 * cw) : hsl.z * (1.0 + dl * 0.5 * cw), 0.0, 1.0);
+    col = _hsl2rgb(hsl);
+  }
+  // Invert (Color の最後): 明度 (HSL の L) だけ反転して色相を保つ。uInv は 0..1 の連続量 (Param Fade でなめらかに反転できる)
+  if(uInv > 0.001){ vec3 hsl = _rgb2hsl(col); hsl.z = mix(hsl.z, 1.0 - hsl.z, uInv); col = _hsl2rgb(hsl); }
   frag = vec4(col, src0.a);          // alpha は素通し (スロットプレビューの実 alpha を保つ)
 }`;
 
@@ -13063,7 +12997,7 @@ function _applyMiniFxUniforms(gl, prog, W, H, flipY, postOverride){
   gl.uniform1f(U('uCon'),       dz(p.con != null ? p.con : 1));
   gl.uniform1f(U('uSat'),       dz(p.sat != null ? p.sat : 1));
   // Hue Shift: Grad Map ON = パレットの色相を回す(映像には掛けない) / OFF(通常色) = 映像へ掛ける。
-  gl.uniform1f(U('uHue'),       dz(p.hueImage != null ? p.hueImage : ((typeof App !== 'undefined' && App.imageHue) ? App.imageHue(p) : (p.hueAuto || 0))));
+  gl.uniform1f(U('uHue'),       dz(p.hueImage != null ? p.hueImage : ((typeof App !== 'undefined' && App.imageHue) ? App.imageHue(p) : 0)));
 
   gl.uniform1f(U('uGradMix'),   dz(p.gradMix || 0));
   _uploadGradStops(gl, U, p);
@@ -13073,6 +13007,10 @@ function _applyMiniFxUniforms(gl, prog, W, H, flipY, postOverride){
   gl.uniform1f(U('uVibrance'),  p.vibrance || 0);
   gl.uniform1f(U('uPos'),       p.pos || 0);
   gl.uniform1f(U('uVig'),       p.vig || 0);
+  gl.uniform1f(U('uTemp'),      p.colorTemp || 0);   // Color 段の分は呼び出し側が実効値 (デッドゾーン後) を渡す
+  gl.uniform1f(U('uTint'),      p.colorTint || 0);
+  gl.uniform1f(U('uMixOn'),     p.mixH ? 1 : 0);
+  if(p.mixH){ gl.uniform1fv(U('uMixH[0]'), p.mixH); gl.uniform1fv(U('uMixS[0]'), p.mixS); gl.uniform1fv(U('uMixL[0]'), p.mixL); }
   gl.uniform1f(U('uUnsharp'),   dz(p.unsharp || 0));
   gl.uniform1f(U('uUnsharpR'),  dz(App.unsharpRadiusFromValue ? App.unsharpRadiusFromValue(p.unsharp) : (p.unsharpRadius != null ? p.unsharpRadius : 1.5)));
   gl.uniform1f(U('uBlurAmt'),   dz(p.slit2 || 0));
@@ -13202,7 +13140,7 @@ void main(){ vUv = a*0.5+0.5; gl_Position = vec4(a,0.,1.); }`);
     gl.bindTexture(gl.TEXTURE_2D, this.srcFBO.tex);
     const s0 = post || ((typeof App !== 'undefined' && App.post) ? App.post : {});
     const grade = { bri: s0.bri, con: s0.con, sat: s0.sat,
-                    hue: s0.hue, hueAuto: s0.hueAuto, hueImage: s0.hueImage,
+                    hue: s0.hue, hueImage: s0.hueImage,
                     gradMix: s0.gradMix, gradStops: s0.gradStops, gradA: s0.gradA, gradB: s0.gradB,
                     gamma: s0.gamma };
     _applyMiniFxUniforms(gl, this.fxProg, this.W, this.H, false, grade);
@@ -13653,7 +13591,7 @@ const App = {
     const EP = (slot && slot.kind && this._engineP) ? this._engineP(slot.kind) : null;
     if(EP){
       // エンジンの背景色: paper (配列 or hex 文字列) / bgColor / bg の順で探す。slicer は bgMode も Color に切り替える
-      for(const key of ['paper', 'bgColor', 'bg']){
+      for(const key of (EP.bgMode !== undefined && Array.isArray(EP.bgColor)) ? ['bgColor', 'paper', 'bg'] : ['paper', 'bgColor', 'bg']){   // 背景を紙と別に持つエンジン (bgMode あり) は bgColor が背景
         const v = EP[key];
         const label = key + ' (' + slot.kind + ')';
         const refresh = ()=>{ if(UI.refreshAll) UI.refreshAll(); };
@@ -13665,14 +13603,15 @@ const App = {
     }
     return { label:'Slot A 背景色', get:()=>this.parseHexRgb(this.slotABg), set:(rgb)=>{ this.setSlotABg(toHexRgb(rgb)); }, refresh:()=>{ if(UI.refreshSlotABg) UI.refreshSlotABg(); } };
   },
+  // 'none' = 透過: 背景色なし。A BG の所は Grad Map を掛けず (合成内で掛け分ける)、#000000 の上に出す
   setSlotABg(hex){
     const m = /^#?([0-9a-f]{6})$/i.exec(String(hex || '').trim());
-    this.slotABg = m ? ('#' + m[1].toLowerCase()) : '#000000';
+    this.slotABg = hex === 'none' ? 'none' : m ? ('#' + m[1].toLowerCase()) : '#000000';
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -14220,22 +14159,23 @@ const App = {
   AUDIO_MOD_EXCLUDE: {
     inkBleedSpread:1, inkBleedFiber:1, inkBleedEdge:1, inkBleedNode:1, inkBleedSeed:1,
     hatchDensity:1, hatchFlow:1, hatchLength:1, hatchLayers:1, hatchWobble:1, hatchMix:1, hatchAngle:1, hatchTool:1, hatchGrain:1, hatchBreak:1,
-    inv:1, gamma:1, bri:1, con:1, sat:1, hue:1, hueRot:1, hueRotSpeed:1, hueAuto:1,
+    inv:1, gamma:1, bri:1, con:1, sat:1, hue:1, colorTemp:1, colorTint:1, mixHueRed:1, mixHueOrange:1, mixHueYellow:1, mixHueGreen:1, mixHueAqua:1, mixHueBlue:1, mixHuePurple:1, mixHueMagenta:1, mixSatRed:1, mixSatOrange:1, mixSatYellow:1, mixSatGreen:1, mixSatAqua:1, mixSatBlue:1, mixSatPurple:1, mixSatMagenta:1, mixLumRed:1, mixLumOrange:1, mixLumYellow:1, mixLumGreen:1, mixLumAqua:1, mixLumBlue:1, mixLumPurple:1, mixLumMagenta:1,
     palette:1, cosPalette:1, paletteAmt:1, gradMix:1, cosGrad:1, gradA:1, gradB:1, gradStops:1,
     gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, waveform:1,
-    aShards:1, aShardsCount:1, aShardsSides:1, aShardsSize:1, aShardsHole:1, aShardsLine:1,
-    // Slice / Ring Slice / Ring Blur: 値で常時掛ける切り裂き・ぼかしなので音で持ち上げない (2026-10-16)
-    slice:1, ringSlice:1, ringBlur:1, fbSteps:1, fbFade:1, fbResidueHold:1, fbResiduePull:1, fbResiduePoly:1, fbResidueFaceSize:1,
+    aShards:1, aShardsCount:1, aShardsSides:1, aShardsSize:1, aShardsHole:1, aShardsLine:1, aShardsMove:1,
+    aPopCount:1, aPopSize:1, aPopSides:1, aPopZoom:1, aPopLine:1, aPopShade:1, aPopSpin:1,
+    // Slice / Ring Blur: 値で常時掛ける切り裂き・ぼかしなので音で持ち上げない (2026-10-16)
+    slice:1, sliceLine:1, sliceCount:1, sliceMove:1, sliceAngle:1, ringsLine:1, ringsCount:1, ringsTwist:1, ringsWobble:1, ringBlur:1, fbSteps:1, fbFade:1, fbResidueHold:1, fbResiduePull:1, fbResiduePoly:1, fbResidueFaceSize:1,
     audioTarget:1, audioGain:1, audioBand:1, audioAttack:1, mir:1, fxaa:1,
     texNoiseScale:1, unsharpRadius:1, postScale:1, audioFx:1, audioFxAttack:1, audioFxRelease:1,
     // Material (質感): 音で暴れると絵肌が壊れるので対象外
-    sdfChrome:1, bleed:1, impasto:1, chrome:1, rain:1, sketch:1,
+    sdfChrome:1, bleed:1, impasto:1, chrome:1, chromeBump:1, chromeEdge:1, chromeCon:1, chromeTint:1, chromeSpec:1, chromeSharp:1, chromeRim:1, chromeLight:1, chromeObj:1, sdfChromeObj:1, bleedObj:1, impastoObj:1, glossObj:1, rain:1, sketch:1,
     gloss:1, glossBump:1, glossSharp:1, glossShine:1, glossWet:1, glossLight:1,
     novel:1, novelSize:1, novelThresh:1, novelColor:1, novelFlow:1, novelBg:1, novelTate:1, novelDepth:1, novelTrack:1, novelLead:1, novelSwitch:1, novelCluster:1, novelGrid:1, novelVary:1, novelSep:1, novelTone:1, novelShape:1,
     // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
-    fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dLayerEdge:1, fx3dScale:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleScatter:1, needleThick:1, needleLen:1, needleSides:1, fx3dDepth:1,
-    pollockGloss:1, pollockMatt:1, pollockFlat:1,
+    fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dPhotoCurl:1, fx3dPhotoCurlAxis:1, fx3dPhotoFlutter:1, fx3dPhotoCorner:1, fx3dPhotoSpin:1, fx3dBlindsAngle:1, fx3dBlindsSpeed:1, fx3dBlindsWave:1, fx3dBlindsOpen:1, fx3dBlindsGap:1, fx3dBlindsRandom:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dLayerEdge:1, fx3dScale:1,
+    fx3dDioramaLayers:1, fx3dDioramaSwing:1, fx3dDioramaSpeed:1, fx3dDioramaPan:1, fx3dDioramaTilt:1, fx3dDioramaZoom:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dStretchX:1, fx3dStretchY:1, fx3dStretchZ:1, fx3dZoom:1, fx3dTunnelSpeed:1, fx3dTunnelRadius:1, fx3dTunnelTwist:1, fx3dTunnelCurve:1, fx3dTunnelBump:1, fx3dTunnelPulse:1, fx3dTunnelTile:1, fx3dTunnelRound:1, fx3dTunnelSpin:1, fx3dTunnelFlip:1, fx3dTunnelBendX:1, fx3dTunnelBendY:1, fx3dTunnelFog:1, fx3dTunnelShine:1, fx3dTunnelEdge:1, fx3dTunnelTilt:1, fx3dTunnelPan:1, kaiserFolds:1, kaiserSpeed:1, kaiserAngle:1, kaiserSpread:1, kaiserSoft:1, kaiserOldFolds:1, kaiserOldSpeed:1, kaiserOldAngle:1, kaiserOldSpread:1, kaiserOldCurve:1, kaiserOldTwist:1, kaiserOldCam:1, uzumakiCards:1, uzumakiTwist:1, uzumakiSpread:1, uzumakiDepth:1, uzumakiShrink:1, uzumakiCard:1, uzumakiSpin:1, uzumakiCam:1, fx3dRollRadius:1, fx3dRollDepth:1, fx3dRollAngle:1, fx3dRollSpin:1, fx3dRollCurl:1, fx3dRollCam:1, riverTwist:1, riverSpeed:1, riverWidth:1, riverFlow:1, riverLight:1, riverFog:1, riverSway:1,  fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, fx3dExtrudeDepth:1, fx3dExtrudeTilt:1, fx3dExtrudeSpin:1, fx3dExtrudeShade:1, fx3dExtrudeTwist:1, fx3dExtrudeRound:1, needleScatter:1, needleThick:1, needleLen:1, needleSides:1, fx3dDepth:1,
+    pollockGloss:1, pollockMatt:1, pollockFlat:1, pollockMetal:1, pollockSize:1, pollockLength:1, pollockDensity:1, pollockDrops:1, pollockCurve:1, pollockLife:1, pollockRelief:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
     // Quality (画質補完) も量ではないので対象外
@@ -14309,13 +14249,12 @@ const App = {
   paramFadeBeats: 0.5,
   _paramFades: [],           // {key, from, to, t0, dur(実秒)}
   _gradFade: null,           // Grad 色替えの dip-to-zero: {fromMix, stops, targetMix, phase, t0, dur}
-  gradAuto: {mode:0, beats:8, cycle:null},   // Grad Auto: Grad Map が Grad Preset の間を変わり続ける (mode 1=ランダム)
-  // Hue Shift (手動スライダー / MIDI / プリセット適用 / Param Fade 補間 / 自動ローテート) の
+  // Hue Shift (手動スライダー / MIDI / プリセット適用 / Param Fade 補間) の
   // 変化を検出して、Grad Map のバーと Preset 欄のパレット一覧を描き直す。
   // DOM 再構築があるので、実際に値が動いたときだけ・最大 20fps に間引く。
   _syncHuePreview(){
     const P = this.post; if(!P) return;
-    const h = (P.hue || 0) + (P.hueAuto || 0);
+    const h = P.hue || 0;
     const now = (typeof performance !== 'undefined') ? performance.now() : Date.now();
     if(this._huePrev === undefined){ this._huePrev = h; return; }
     if(Math.abs(h - this._huePrev) < 0.0005) return;
@@ -14354,16 +14293,17 @@ const App = {
     inkBleedSeed:1, hatchLayers:1, hatchTool:1,
     palette:1, cosPalette:1, mir:1,
     // Post FX (inv / hue はフェード対象に変更: プリセット切替でも Param Fade でなめらかに反転・回頭する)
-    gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1, hueRot:1,
+    gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1,
     // Audio FX
-    gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, aShards:1, aShardsCount:1, aShardsSides:1, mosaic:1, shake:1, slice:1, ringSlice:1, split:1, pixsort:1, rings:1, specWarp:1, zoomPump:1, shatter:1,
+    gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, aShards:1, aShardsCount:1, aShardsSides:1, aShardsMove:1, mosaic:1, shake:1, slice:1, split:1, pixsort:1, rings:1, specWarp:1, zoomPump:1, shatter:1, aPop:1,
     // Glitch FX のうち音/拍で発火するもの (uHit/uOnset 駆動)。
     // フェードで強度が遅れて上がるとトリガーの瞬発力が鈍るため瞬時反映。
     glass:1, twist:1, origami:1, kaiser:1, kaiserOld:1,
     // 3D FX の離散値 (フェード中の中間値が無意味)
     fx3dScale:1, fx3dPhotoCount:1, fx3dSlicerPieces:1, fx3dLayerCount:1,
-    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleSides:1,
+    fx3dDioramaLayers:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, needleSides:1, fx3dTunnelEdge:1, 
     fx3dRoll:1,
+    fx3dOverscan:1,   // 0/5/10/15/20 の離散値。補間すると中間値が 0 扱いになり、切替中にスロットの FBO を何度も作り直す
   },
   applyPostFaded(target){
     const dur = this._fadeSec();
@@ -14424,15 +14364,6 @@ const App = {
       this._gradFade = { from, to: stops.map(s=>({t:s.t, rgb:s.rgb.slice()})), ts,
                          fromMix: cur, targetMix, t0: now(), dur };
     }
-  },
-  // Grad Auto: beats 拍ごとに次の Grad Preset を選び、次の選択までの時間いっぱい掛けて移る
-  _tickGradAuto(){
-    const a = this.gradAuto;
-    if(!a.mode){ a.cycle = null; return; }
-    const c = Math.floor(BPM.beatCount() / a.beats);
-    if(c === a.cycle) return;
-    a.cycle = c;
-    this.randomGradPreset(a.beats*60/Math.max(20, BPM.bpm));
   },
   _tickParamFades(){
     const t = now();
@@ -14584,35 +14515,6 @@ const App = {
     if(this._zoomKey.out) this.userZoom = Math.max(0.125, this.userZoom - this._zoomVel * dt);
   },
 
-  // 自動色相ローテート: 速度を smooth-random (低周波) で正負振動させながら位相を累積
-  _hueRotPhase:0,
-  _hueRotDirT:0,
-  _updateHueRot(dt){
-    const spRaw = this.post && this.post.hueRotSpeed || 0;
-    const sp = this.deadParam ? this.deadParam(spRaw) : spRaw;
-    if(sp < 0.001){
-      // 0 にしたら元の色相へ素早く減衰 (見た目はほぼ即時、ただしカクつき防止)
-      if(Math.abs(this._hueRotPhase) > 0.0005){
-        // 最短経路で 0 へ (0..1 ラップを考慮: 0.5 を境に左右どちらに行くか決定)
-        const ph = this._hueRotPhase;
-        const target = 0;
-        let diff = target - ph;
-        if(diff > 0.5) diff -= 1.0; else if(diff < -0.5) diff += 1.0;
-        const step = Math.sign(diff) * Math.min(Math.abs(diff), dt * 4.0); // 1/4 秒で 1 周ぶん
-        this._hueRotPhase = (ph + step + 1.0) % 1.0;
-      } else {
-        this._hueRotPhase = 0;
-      }
-      return;
-    }
-    // 0.4Hz 程度の三角合成 sin で方向 (符号) と速度倍率を作る
-    this._hueRotDirT += dt;
-    const t = this._hueRotDirT;
-    const dir = Math.sin(t * 0.41) * 0.7 + Math.sin(t * 0.93 + 1.7) * 0.5 + Math.sin(t * 0.19 + 3.1) * 0.4;
-    this._hueRotPhase = (this._hueRotPhase + dir * sp * dt) % 1.0;
-    if(this._hueRotPhase < 0) this._hueRotPhase += 1.0;
-  },
-
   _camTween: null,
   resetUserPanZoom(){
     // 1 beat かけて (0,0,zoom=1) へなめらかに戻す
@@ -14652,15 +14554,17 @@ const App = {
     hueLive:1,   // Hue ライブ適用世代のマーカー (postDefaults と同値を維持)
     gamma:1.0, sat:1.0, hue:0.0, bri:0.0, con:1.0,
     vig:0.0, chr:0.0, pix:0.0, mir:0,
+    colorTemp:0.0, colorTint:0.0,
+    mixHueRed:0.0, mixHueOrange:0.0, mixHueYellow:0.0, mixHueGreen:0.0, mixHueAqua:0.0, mixHueBlue:0.0, mixHuePurple:0.0, mixHueMagenta:0.0, mixSatRed:0.0, mixSatOrange:0.0, mixSatYellow:0.0, mixSatGreen:0.0, mixSatAqua:0.0, mixSatBlue:0.0, mixSatPurple:0.0, mixSatMagenta:0.0, mixLumRed:0.0, mixLumOrange:0.0, mixLumYellow:0.0, mixLumGreen:0.0, mixLumAqua:0.0, mixLumBlue:0.0, mixLumPurple:0.0, mixLumMagenta:0.0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
-    twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, slitScan:0.0, palette:8, paletteAmt:0,
-    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
-    fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
-    fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
+    twist:0.0, slice:0.0, sliceLine:0.5, sliceCount:0.5, sliceMove:0.5, sliceAngle:0, ringsLine:0.5, ringsCount:0.5, ringsTwist:0.5, ringsWobble:0.5, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, aPop:0.0, aPopCount:12, aPopSize:60, aPopSides:2, aPopZoom:0.5, aPopLine:0.5, aPopShade:0.5, aPopSpin:0.5, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, pollockMetal:0.0, pollockSize:0.5, pollockLength:0.5, pollockDensity:0.5, pollockDrops:0.5, pollockCurve:0.5, pollockLife:0.5, pollockRelief:0.5, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, aShardsMove:0.5, slitScan:0.0, palette:8, paletteAmt:0,
+    dither:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, kaiserFolds:1, kaiserSpeed:0.5, kaiserAngle:0.5, kaiserSpread:0.5, kaiserSoft:0, kaiserOldFolds:1, kaiserOldSpeed:0.5, kaiserOldAngle:0.5, kaiserOldSpread:0.5, kaiserOldCurve:0.5, kaiserOldTwist:0.5, kaiserOldCam:0.5, uzumaki:0.0, uzumakiCards:0.5, uzumakiTwist:0.5, uzumakiSpread:0.5, uzumakiDepth:0.5, uzumakiShrink:0.5, uzumakiCard:0.5, uzumakiSpin:0.5, uzumakiCam:0.5,
+    fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dPhotoCurl:0.65, fx3dPhotoCurlAxis:1, fx3dPhotoFlutter:0.4, fx3dPhotoCorner:0.45, fx3dPhotoSpin:0.35, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
+    fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dDioramaSwing:0.5, fx3dDioramaSpeed:0.5, fx3dDioramaPan:0, fx3dDioramaTilt:0, fx3dDioramaZoom:0, fx3dPoints:0.0, fx3dPointsDensity:400, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5, fx3dBlindsAngle:0.5, fx3dBlindsSpeed:0.5, fx3dBlindsWave:0.5, fx3dBlindsOpen:0.5, fx3dBlindsGap:0, fx3dBlindsRandom:0.5,
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dTunnel:0.0, fx3dTunnelSpeed:0.5, fx3dTunnelRadius:0.5, fx3dTunnelTwist:0.6, fx3dTunnelCurve:0.5, fx3dTunnelBump:0.4, fx3dTunnelPulse:0.4, fx3dTunnelTile:0.4, fx3dTunnelRound:0, fx3dTunnelSpin:0.5, fx3dTunnelFlip:0.5, fx3dTunnelBendX:0, fx3dTunnelBendY:0, fx3dTunnelFog:0.4, fx3dTunnelShine:0.5, fx3dTunnelEdge:0, fx3dTunnelTilt:0, fx3dTunnelPan:0, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dExtrude:0.0, fx3dExtrudeDepth:0.5, fx3dExtrudeTilt:0.5, fx3dExtrudeSpin:0.3, fx3dExtrudeShade:0.5, fx3dExtrudeTwist:0.0, fx3dExtrudeRound:0.0, fx3dExtrudeMode:'flat', fx3dRoll:0.0, fx3dRollRadius:0.5, fx3dRollDepth:0.5, fx3dRollAngle:0, fx3dRollSpin:0.5, fx3dRollCurl:0.5, fx3dRollCam:0.5, fx3dDepth:0.5, fx3dStretchX:0, fx3dStretchY:0, fx3dStretchZ:0, fx3dZoom:0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     hatch:0, hatchDensity:0.5, hatchFlow:0.8, hatchLength:0.5, hatchLayers:3, hatchWobble:0.3, hatchMix:0, hatchAngle:0.25, hatchInk:'#1e1e1e', hatchPaper:'#f2eee4', hatchTex:0, hatchTool:0, hatchGrain:0.5, hatchBreak:0.3,
-    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
+    sdfChrome:0.0, river:0.0, riverTwist:0.5, riverSpeed:0.5, riverWidth:0.5, riverFlow:0.5, riverLight:0.5, riverFog:0.5, riverSway:0.5,  bleed:0.0, impasto:0.0, chrome:0.0, chromeBump:0.5, chromeEdge:0.5, chromeCon:0.5, chromeTint:0.35, chromeSpec:0.5, chromeSharp:0.5, chromeRim:0.5, chromeLight:0.5, chromeObj:1, sdfChromeObj:1, bleedObj:1, impastoObj:1, glossObj:1, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
@@ -14674,7 +14578,6 @@ const App = {
     audioGain:0.5, // 音声検知の感度(FFT入力倍率)。大きいほど小音量でも反応(energy/onset/hit/uFFT 全体に効く)
     audioBand:0.0, // 音域: 0=低音 → 1=高音 (H48 棘 / Audio FX hit が拾う帯域)
     audioAttack:0.5, // アタック: 0=持続(サステイン) / 1=トランジェント強調
-    hueRotSpeed:0.0, // 自動色相ローテート速度 (0..2 cycles/sec、方向はランダムに揺れる)
   },
   // 外部 JSON (defaults.json / startup.json) 由来の post 値を有効レンジへ丸める。
   //   範囲外の値がそのまま入ると、UI を開くまで気付かないまま最大量の効果がかかり続けるため。
@@ -14776,21 +14679,21 @@ const App = {
   // Post FX のグループ既定値: 各見出し (Quality / Material / …) の Save で現在値を
   // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
   POST_GROUPS: {
-    color:      ['inv','gamma','bri','con','sat','vibrance','gradMix','hue','hueRotSpeed','vig','pos'],
+    color:      ['inv','gamma','bri','con','sat','vibrance','gradMix','hue','vig','pos','colorTemp','colorTint','mixHueRed','mixHueOrange','mixHueYellow','mixHueGreen','mixHueAqua','mixHueBlue','mixHuePurple','mixHueMagenta','mixSatRed','mixSatOrange','mixSatYellow','mixSatGreen','mixSatAqua','mixSatBlue','mixSatPurple','mixSatMagenta','mixLumRed','mixLumOrange','mixLumYellow','mixLumGreen','mixLumAqua','mixLumBlue','mixLumPurple','mixLumMagenta'],
     quality:    ['clarity','denoise','deband','fxaa'],
-    material:   ['sdfChrome','bleed','impasto','chrome','gloss','glossBump','glossSharp','glossShine','glossWet','glossLight','novel','novelSize','novelThresh','novelColor','novelFlow','novelBg','novelTate','novelDepth','novelTrack','novelLead','novelSwitch','novelCluster','novelGrid','novelVary','novelSep','novelTone','novelShape','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat'],
+    material:   ['sdfChrome','bleed','sdfChromeObj','impasto','impastoObj','chrome','chromeBump','chromeEdge','chromeCon','chromeTint','chromeSpec','chromeSharp','chromeRim','chromeLight','chromeObj','gloss','glossObj','bleedObj','glossBump','glossSharp','glossShine','glossWet','glossLight','novel','novelSize','novelThresh','novelColor','novelFlow','novelBg','novelTate','novelDepth','novelTrack','novelLead','novelSwitch','novelCluster','novelGrid','novelVary','novelSep','novelTone','novelShape','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat','pollockMetal','pollockSize','pollockLength','pollockDensity','pollockDrops','pollockCurve','pollockLife','pollockRelief'],
     texture:    ['scn','grn','texNoise','texNoiseScale'],
-    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','waveform','mosaic','shake','specWarp','zoomPump','shatter','pixsort','gain'],
+    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','aShardsMove','waveform','mosaic','shake','specWarp','zoomPump','shatter','aPop','aPopCount','aPopSize','aPopSides','aPopZoom','aPopLine','aPopShade','aPopSpin','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
-    pattern:    ['candy','slice','ringSlice','split','rings','voxel'],
-    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dGlobe','fx3dGlobeDetail','origami','needleScatter','needleThick','needleLen','needleSides','kaiser','kaiserOld','fx3dRoll','fx3dDepth','uzumaki','river','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dMix','fx3dOverscan'],
+    pattern:    ['slice','sliceLine','sliceCount','sliceMove','sliceAngle','split','rings','ringsLine','ringsCount','ringsTwist','ringsWobble','voxel'],
+    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dPhotoCurl','fx3dPhotoCurlAxis','fx3dPhotoFlutter','fx3dPhotoCorner','fx3dPhotoSpin','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dDioramaSwing','fx3dDioramaSpeed','fx3dDioramaPan','fx3dDioramaTilt','fx3dDioramaZoom','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dBlindsAngle','fx3dBlindsSpeed','fx3dBlindsWave','fx3dBlindsOpen','fx3dBlindsGap','fx3dBlindsRandom','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dTunnel','fx3dTunnelSpeed','fx3dTunnelRadius','fx3dTunnelTwist','fx3dTunnelCurve','fx3dTunnelBump','fx3dTunnelPulse','fx3dTunnelTile','fx3dTunnelRound','fx3dTunnelSpin','fx3dTunnelFlip','fx3dTunnelBendX','fx3dTunnelBendY','fx3dTunnelFog','fx3dTunnelShine','fx3dTunnelEdge','fx3dTunnelTilt','fx3dTunnelPan','fx3dGlobe','fx3dGlobeDetail','fx3dExtrude','fx3dExtrudeDepth','fx3dExtrudeTilt','fx3dExtrudeSpin','fx3dExtrudeShade','fx3dExtrudeTwist','fx3dExtrudeRound','fx3dExtrudeMode','origami','needleScatter','needleThick','needleLen','needleSides','kaiser','kaiserFolds','kaiserSpeed','kaiserAngle','kaiserSpread','kaiserSoft','kaiserOld','kaiserOldFolds','kaiserOldSpeed','kaiserOldAngle','kaiserOldSpread','kaiserOldCurve','kaiserOldTwist','kaiserOldCam','fx3dRoll','fx3dRollRadius','fx3dRollDepth','fx3dRollAngle','fx3dRollSpin','fx3dRollCurl','fx3dRollCam','fx3dDepth','fx3dStretchX','fx3dStretchY','fx3dStretchZ','fx3dZoom','uzumaki','uzumakiCards','uzumakiTwist','uzumakiSpread','uzumakiDepth','uzumakiShrink','uzumakiCard','uzumakiSpin','uzumakiCam','river','riverTwist','riverSpeed','riverWidth','riverFlow','riverLight','riverFog','riverSway','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dMix','fx3dOverscan'],
     blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline','unsharp','unsharpRadius','sharpen','crisp','shock'],
     glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
   },
   // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
   POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion',
     pos:'texture', vibrance:'quality', boltz:'distortion', split:['glitch','audioFx'], rings:['glitch','audioFx'], voxel:['glitch','texture'], blm:'texture',
-    candy:'distortion', slice:'glitch', ringSlice:'glitch', ringBlur:'glitch', unsharp:'quality', unsharpRadius:'quality' },
+    slice:'glitch', ringBlur:'glitch', unsharp:'quality', unsharpRadius:'quality' },
   // Ink Bleed 欄 (data-kind="inkBleed") は専用の保存先 vj.def.inkBleed
   INK_BLEED_KEYS: ['inkBleed', 'inkBleedSpread', 'inkBleedFiber', 'inkBleedEdge', 'inkBleedNode', 'inkBleedSeed', 'inkBleedPaper',
     'hatch', 'hatchDensity', 'hatchFlow', 'hatchLength', 'hatchLayers', 'hatchWobble', 'hatchMix', 'hatchAngle', 'hatchInk', 'hatchPaper', 'hatchTex', 'hatchTool', 'hatchGrain', 'hatchBreak'],
@@ -14831,6 +14734,15 @@ const App = {
       if(valid) d[key] = (key === 'inkBleedSeed' || key === 'hatchLayers' || key === 'hatchTool') ? Math.round(value) : value;
     }
   },
+  // 効果の量 (メインのスライダー)。欄の Save では保存し (起動時・欄の Reset はその値)、R / Esc ではこれだけ 0 (FX オフ) にする。
+  //   サブパラメータ・Color / Quality / Texture の調整・3D の設定 (Depth / Stretch / Zoom)・Drive・Sharpen / Crisp は R / Esc でも保存値へ
+  POST_AMOUNT_KEYS: new Set(['rain','sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','novel','pollockGloss','pollockMatt','pollockFlat','pollockMetal',
+    'fx3dExtrude','fx3dPhoto','fx3dSlicer','fx3dLayer','fx3dDiorama','fx3dPoints','fx3dCubes','fx3dBlinds','fx3dTunnel','fx3dGlobe','fx3dGravity',
+    'kaiser','kaiserOld','fx3dRoll','river','uzumaki','origami',
+    'slice','split','rings','voxel','slitScan','barcode','glitchTrail','pix','chr','twist',
+    'mblur','glass','blm','shock','outline','dither','ringBlur','slit2','filmBlur',
+    'shake','specWarp','zoomPump','shatter','aPop','aScan','aRgb','aShock','aExplode','mosaic','gain','aStrobe','aShards','waveform','pixsort',
+    'fbAmount','fbAdd','fbMultiply','fbResidue','hatch','inkBleed']),
   savePostGroupDefault(group){
     const keys = this.POST_GROUPS[group]; if(!keys) return;
     const values = Object.assign({}, this.postGroupSaved(group));   // 他欄へ移したキーの旧保存値 (POST_KEY_FROM の引き継ぎ元) を消さない
@@ -14858,15 +14770,17 @@ const App = {
     hueLive:1,   // Hue ライブ適用世代のマーカー (旧保存 = 焼き込み済みストップ との判別用)
     gamma:1.0, sat:1.0, hue:0.0, bri:0.0, con:1.0,
     vig:0.0, chr:0.0, pix:0.0, mir:0,
+    colorTemp:0.0, colorTint:0.0,
+    mixHueRed:0.0, mixHueOrange:0.0, mixHueYellow:0.0, mixHueGreen:0.0, mixHueAqua:0.0, mixHueBlue:0.0, mixHuePurple:0.0, mixHueMagenta:0.0, mixSatRed:0.0, mixSatOrange:0.0, mixSatYellow:0.0, mixSatGreen:0.0, mixSatAqua:0.0, mixSatBlue:0.0, mixSatPurple:0.0, mixSatMagenta:0.0, mixLumRed:0.0, mixLumOrange:0.0, mixLumYellow:0.0, mixLumGreen:0.0, mixLumAqua:0.0, mixLumBlue:0.0, mixLumPurple:0.0, mixLumMagenta:0.0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
-    twist:0.0, slice:0.0, ringSlice:0.0, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, slitScan:0.0, palette:8, paletteAmt:0,
-    dither:0.0, candy:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, uzumaki:0.0,
-    fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
-    fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dPoints:0.0, fx3dPointsDensity:200, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dRoll:0.0, fx3dDepth:0.5, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
+    twist:0.0, slice:0.0, sliceLine:0.5, sliceCount:0.5, sliceMove:0.5, sliceAngle:0, ringsLine:0.5, ringsCount:0.5, ringsTwist:0.5, ringsWobble:0.5, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, aPop:0.0, aPopCount:12, aPopSize:60, aPopSides:2, aPopZoom:0.5, aPopLine:0.5, aPopShade:0.5, aPopSpin:0.5, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, pollockMetal:0.0, pollockSize:0.5, pollockLength:0.5, pollockDensity:0.5, pollockDrops:0.5, pollockCurve:0.5, pollockLife:0.5, pollockRelief:0.5, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, aShardsMove:0.5, slitScan:0.0, palette:8, paletteAmt:0,
+    dither:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, kaiserFolds:1, kaiserSpeed:0.5, kaiserAngle:0.5, kaiserSpread:0.5, kaiserSoft:0, kaiserOldFolds:1, kaiserOldSpeed:0.5, kaiserOldAngle:0.5, kaiserOldSpread:0.5, kaiserOldCurve:0.5, kaiserOldTwist:0.5, kaiserOldCam:0.5, uzumaki:0.0, uzumakiCards:0.5, uzumakiTwist:0.5, uzumakiSpread:0.5, uzumakiDepth:0.5, uzumakiShrink:0.5, uzumakiCard:0.5, uzumakiSpin:0.5, uzumakiCam:0.5,
+    fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dPhotoCurl:0.65, fx3dPhotoCurlAxis:1, fx3dPhotoFlutter:0.4, fx3dPhotoCorner:0.45, fx3dPhotoSpin:0.35, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
+    fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dDioramaSwing:0.5, fx3dDioramaSpeed:0.5, fx3dDioramaPan:0, fx3dDioramaTilt:0, fx3dDioramaZoom:0, fx3dPoints:0.0, fx3dPointsDensity:400, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5, fx3dBlindsAngle:0.5, fx3dBlindsSpeed:0.5, fx3dBlindsWave:0.5, fx3dBlindsOpen:0.5, fx3dBlindsGap:0, fx3dBlindsRandom:0.5,
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dTunnel:0.0, fx3dTunnelSpeed:0.5, fx3dTunnelRadius:0.5, fx3dTunnelTwist:0.6, fx3dTunnelCurve:0.5, fx3dTunnelBump:0.4, fx3dTunnelPulse:0.4, fx3dTunnelTile:0.4, fx3dTunnelRound:0, fx3dTunnelSpin:0.5, fx3dTunnelFlip:0.5, fx3dTunnelBendX:0, fx3dTunnelBendY:0, fx3dTunnelFog:0.4, fx3dTunnelShine:0.5, fx3dTunnelEdge:0, fx3dTunnelTilt:0, fx3dTunnelPan:0, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dExtrude:0.0, fx3dExtrudeDepth:0.5, fx3dExtrudeTilt:0.5, fx3dExtrudeSpin:0.3, fx3dExtrudeShade:0.5, fx3dExtrudeTwist:0.0, fx3dExtrudeRound:0.0, fx3dExtrudeMode:'flat', fx3dRoll:0.0, fx3dRollRadius:0.5, fx3dRollDepth:0.5, fx3dRollAngle:0, fx3dRollSpin:0.5, fx3dRollCurl:0.5, fx3dRollCam:0.5, fx3dDepth:0.5, fx3dStretchX:0, fx3dStretchY:0, fx3dStretchZ:0, fx3dZoom:0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
     hatch:0, hatchDensity:0.5, hatchFlow:0.8, hatchLength:0.5, hatchLayers:3, hatchWobble:0.3, hatchMix:0, hatchAngle:0.25, hatchInk:'#1e1e1e', hatchPaper:'#f2eee4', hatchTex:0, hatchTool:0, hatchGrain:0.5, hatchBreak:0.3,
-    sdfChrome:0.0, river:0.0, bleed:0.0, impasto:0.0, chrome:0.0, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
+    sdfChrome:0.0, river:0.0, riverTwist:0.5, riverSpeed:0.5, riverWidth:0.5, riverFlow:0.5, riverLight:0.5, riverFog:0.5, riverSway:0.5,  bleed:0.0, impasto:0.0, chrome:0.0, chromeBump:0.5, chromeEdge:0.5, chromeCon:0.5, chromeTint:0.35, chromeSpec:0.5, chromeSharp:0.5, chromeRim:0.5, chromeLight:0.5, chromeObj:1, sdfChromeObj:1, bleedObj:1, impastoObj:1, glossObj:1, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
     waveform:0.0,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
@@ -14880,7 +14794,6 @@ const App = {
     audioGain:0.5, // 音声検知の感度(FFT入力倍率)。大きいほど小音量でも反応(energy/onset/hit/uFFT 全体に効く)
     audioBand:0.0, // 音域: 0=低音 → 1=高音 (H48 棘 / Audio FX hit が拾う帯域)
     audioAttack:0.5, // アタック: 0=持続(サステイン) / 1=トランジェント強調
-    hueRotSpeed:0.0, // 自動色相ローテート速度 (0..2 cycles/sec、方向はランダムに揺れる)
   };},
   mouse:{x:0,y:0,dx:0,dy:0, down:false},
   mouseCapture:false,   // M キーで iMouse 取得を ON/OFF。起動時の値は設定パネルの iMouse (vj.mouseCapture、既定=拾わない)
@@ -14932,6 +14845,7 @@ const App = {
     PRESETS.push({ name:'★ RHIZOME 積層', kind:'rzstack', ch:[], src:'' });
     PRESETS.push({ name:'★ RHIZOME 筒と網', kind:'rztube', ch:[], src:'' });
     PRESETS.push({ name:'★ CHROME TYPE (有機 3D 文字)', kind:'chrometype', ch:[], src:'' });
+    PRESETS.push({ name:'★ GLITCH TYPE (Swiss)', kind:'glitchtype', ch:[], src:'' });
     LOAD('Loading settings…', 28);
     // サーバー共通の既定値 (defaults.json) を localStorage より先に適用
     await this.applyServerDefaults();
@@ -15345,6 +15259,7 @@ ${outBlock}
     if(typeof Pen!=='undefined' && Pen.initialized){ Pen.clock = 0; if(Pen.strokes){ Pen.strokes.length = 0; for(let i=0;i<(Pen.P.count||0);i++) Pen.strokes.push(Pen.makeRandomStroke(-Pen._rand(0,1.5))); } }
     if(typeof Boltzmann!=='undefined' && Boltzmann.initialized) Boltzmann.seeded = false;   // 次フレームで再シード
     if(typeof Fude!=='undefined' && Fude.initialized) Fude.restart();   // 書き順を一画目へ
+    if(typeof GlitchType!=='undefined' && GlitchType.initialized && GlitchType.restart) GlitchType.restart();
     if(typeof GrayScott!=='undefined' && GrayScott.initialized && GrayScott.reseed) GrayScott.reseed();
     if(typeof Ugomeki!=='undefined' && Ugomeki.initialized && Ugomeki.reseed){ Ugomeki.reseed(); Ugomeki._typeT = 0; Ugomeki._mdStartBeat = null; }   // 文字ごとの揺れを再ランダム化＋書き出しを先頭へ
     if(typeof TextDeform!=='undefined' && TextDeform.initialized){   // 変形を全解除して組版し直し(初期フレーム)
@@ -16063,7 +15978,6 @@ ${outBlock}
       const dt = this._lastTickT ? Math.min(0.1, (tNow - this._lastTickT)/1000) : 0;
       this._lastTickT = tNow;
       this._updateUserPanZoom(dt);
-      this._updateHueRot(dt);
       this._checkPendingPreset();
       Inputs.updateDynamic();
       Audio.update();
@@ -16102,7 +16016,6 @@ ${outBlock}
         UI.refreshMix(true);
       }
       UI._refreshStageHint();
-      this._tickGradAuto();
       this._tickParamFades();   // Param Fade: post 数値パラメータの補間を進める
       this._syncHuePreview();   // Hue Shift の変化をグラデバー / パレット一覧へ即反映
       GL._pollCompiles();       // 非同期シェーダコンパイルの完了確認・差し替え
@@ -16243,14 +16156,12 @@ ${outBlock}
     s.bKey = false; s.bKeyWhite = false; s.blendOver = false;   // キー透過フラグを一旦リセット(@bkey シェーダ / ribbon で再設定)
     // 溶解FX(Boltzmann)中の切替: スイッチは維持し、新シェーダを数フレーム描画してから再捕獲して溶かし直す
     if(Math.abs(this.deadParam ? this.deadParam(this.post.boltz||0) : (this.post.boltz||0)) > 0.001){ GL._bzCaptureWait = 5; }
-    { const pk = Math.max(this.post.pollockGloss||0, this.post.pollockMatt||0, this.post.pollockFlat||0);
+    { const pk = Math.max(this.post.pollockGloss||0, this.post.pollockMatt||0, this.post.pollockFlat||0, this.post.pollockMetal||0);
       if((this.deadParam ? this.deadParam(pk) : pk) > 0.001){ GL._pkCaptureWait = 5; } }
     // シェーダ/モード切替時は overlay の古いストロークをリセット
     if(typeof Overlay !== 'undefined' && Overlay.clear) Overlay.clear();
     // 非シェーダ種別は in-shader cos grad を持たない → 汎用 cos grad を適用させる
     s.cosGradInShader = false;
-    // shader / mode / movie 切替時は Auto Map の色相(自動ローテート位相)を初期化
-    this._hueRotPhase = 0;
     // Layer (非シェーダ) プリセットの場合
     if(p.kind === 'layer'){
       s.kind = 'layer';
@@ -16501,6 +16412,16 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'glitchtype'){
+      s.kind = 'glitchtype';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'glitchtype';
+      if(typeof GlitchType !== 'undefined' && !GlitchType.initialized) GlitchType.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('glitchtype');
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'surrealfloat'){
       s.kind = 'surrealfloat';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'surrealfloat';
@@ -16622,6 +16543,7 @@ ${outBlock}
         return (typeof RhizomeKinds !== 'undefined' && RhizomeKinds[kind]) ? RhizomeKinds[kind].P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
       case 'chrometype': return (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null;
+      case 'glitchtype': return (typeof GlitchType !== 'undefined' && GlitchType.P) ? GlitchType.P : null;
       case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
       case 'textdeform': return (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.P : null;
@@ -16679,6 +16601,12 @@ ${outBlock}
     if(typeof Overlay !== 'undefined'){
       d.overlay = clone(Overlay.PDefaults || Overlay.P);
       d.overlayBrushParams = clone(Overlay.brushParams || {});
+    }
+    // 各欄の Save の保存値 (vj.def.post.* / vj.def.inkBleed) を重ねる = R / Esc / プリセット読込が戻す先にサブパラメータ・調整値の保存値が入る
+    //   (起動時の post には保存値が当たっていないため。効果の量は R / Esc では 0 にする = POST_AMOUNT_KEYS)
+    if(this.postDefaults && this.postFactoryDefaults){
+      const pd = this.postDefaults(), fac = this.postFactoryDefaults();
+      for(const k in pd) if(JSON.stringify(pd[k]) !== JSON.stringify(fac[k])) d.post[k] = clone(pd[k]);
     }
     this._factoryDefaults = factory;
     this._presetDefaults = d;
@@ -16926,8 +16854,10 @@ ${outBlock}
     if(typeof MIDI !== 'undefined' && MIDI.armPickup) MIDI.armPickup();   // つまみ位置とズレるので取り込み待ちへ
     const post0 = (this._presetDefaults && this._presetDefaults.post) || (F && F.post);
     if(post0){
-      if(opts.faded && this._fadeBeats() > 0) this.applyPostFaded(clone(post0));   // R: 拍数かけて戻す
-      else Object.assign(this.post, clone(post0));                                 // Esc / Preset0: 瞬時
+      const target = clone(post0);
+      for(const k of this.POST_AMOUNT_KEYS) if(typeof target[k] === 'number') target[k] = 0;   // 効果の量は 0 (FX オフ)。保存値はサブパラメータ・調整値だけ戻す
+      if(opts.faded && this._fadeBeats() > 0) this.applyPostFaded(target);   // R: 拍数かけて戻す
+      else Object.assign(this.post, target);                                 // Esc / Preset0: 瞬時
     }
 
     // 3) Mix / Transition (起動時の値 → 保存済みデフォルトを再適用)
@@ -16994,7 +16924,6 @@ ${outBlock}
   _blankResetCore(){
     // リセットは 3 秒後の autosave で vj.state に焼き付くため、直前状態を undo へ確定させる
     this._undoPushNow();
-    this.gradAuto.mode = 0;
 
     // 1) 両スロットを「なし(透明)」に (転換は挟まない)
     this.transBeats = 0; this.transStyle = 0;
@@ -17210,7 +17139,6 @@ ${outBlock}
       bpm: BPM.bpm, crossfade: this.crossfade, blendMode: this.blendMode, gamma: this.gamma,
       slotABg: this.slotABg,
       slotBOffsetBeats: this.slotBOffsetBeats || 0,
-      gradAuto: { mode:this.gradAuto.mode, beats:this.gradAuto.beats },
       transBeats: this.transBeats,
       transStyle: this.transStyle,
       post: this.post,
@@ -17242,6 +17170,7 @@ ${outBlock}
 	      rztube: (typeof RhizomeTube !== 'undefined' && RhizomeTube.P) ? RhizomeTube.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
 	      chrometype: (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null,
+	      glitchtype: (typeof GlitchType !== 'undefined' && GlitchType.P) ? GlitchType.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
 	      textdeform: (typeof TextDeform !== 'undefined' && TextDeform.P) ? TextDeform.stateP() : null,   // Canvas の焼き付け中も本体の Look を保存する
@@ -17651,7 +17580,7 @@ ${outBlock}
     // 保存: Shader / Mix(Blend・crossfade) / Visual Beat / Overlay / Post FX / 各mode。除外: テンポ・Transition・Style・Audio FX。
     delete data.bpm;
     delete data.beatMode;                    // beat / drone は演奏中に手で決めるライブ設定
-    delete data.transBeats; delete data.transStyle; delete data.gradAuto;
+    delete data.transBeats; delete data.transStyle;
     if(data.post){
       const AUDIO_FX = ['audioTarget','audioGain','audioBand','audioAttack','aScan','aRgb','aStrobe','aShock','aExplode'];
       AUDIO_FX.forEach(k => delete data.post[k]);   // Post FX は保存 / Audio FX のみ除外
@@ -17976,10 +17905,10 @@ ${outBlock}
   //   Grad Map ON のときは Grad 出力の色相が回る = パレットを回すのと同じ色になる
   //   (hueShift は線形変換なので「ストップを回してから写像」と「写像後に回す」は同一)。
   //   焼き込み・確定を廃止したので、値を戻せば色も必ず元に戻る (可逆)。
-  //   手動 Hue は 1.0 = 180°(*0.5) / 自動ローテートは加算。
+  //   手動 Hue は 1.0 = 180°(*0.5)。
   imageHue(p){
     const P = p || this.post || {};
-    return (P.hue || 0) * 0.5 + (P.hueAuto || 0);
+    return (P.hue || 0) * 0.5;
   },
   // Hue Shift (post.hue) を掛けたストップを返す (プレビュー表示用。出力はシェーダが Grad 後段でライブに回す)。
   hueRotatedStops(stops){
@@ -18163,18 +18092,11 @@ ${outBlock}
     }
     return sorted();
   },
-  // 登録済みの Grad Preset からランダムに選び、dur 秒かけて移る (直前と同じものは避ける)
-  randomGradPreset(dur){
-    const list = (typeof UI !== 'undefined' && UI._gradStore) ? UI._gradStore.list : [];
-    const ok = [];
-    list.forEach((it, i)=>{ if(it && it.stops && i !== 9 && i !== this._activeGradPreset) ok.push(i); });   // 9 は通常色 (OFF) の番号
-    if(ok.length) this.applyGradPreset(ok[Math.floor(Math.random()*ok.length)], true, dur);
-  },
-  applyGradPreset(n, quiet, dur){   // n: 0..8 = Grad Preset (キー 1〜9) / 9 = 通常色 = Grad Map OFF (キー 0)
+  // n: 0..8 = Grad Preset (キー 1〜9) / 9 = 通常色 = Grad Map OFF (キー 0)。fromList = Grad 一覧の行から選んだ (10 番目以降も OFF ではなくそのグラデを当てる)
+  applyGradPreset(n, quiet, dur, fromList){
     const ge = (typeof UI !== 'undefined') ? UI._gradEditor : null;
     if(!ge) return;
-    if(n === 9){                        // 通常色: Grad Map を切るだけ (Hue Shift はライブのまま = 色は確定しない)
-      this.gradAuto.mode = 0;
+    if(n === 9 && !fromList){                        // 通常色: Grad Map を切るだけ (Hue Shift はライブのまま = 色は確定しない)
       this._gradFade = null;            // 移行中の Grad が終わったときに gradMix を戻さないように
       this._gradPreview = null;
       this.fadePostNum('gradMix', 0, dur);
@@ -18194,7 +18116,7 @@ ${outBlock}
     // ストップは保存色のまま適用する (焼き込みなし)。Hue Shift はシェーダで Grad 出力の
     // 後段にライブで掛かるので、見た目は従来 (回したパレット) と同一で、かつ可逆。
     this.fadeGradTo(item.stops.map(s=>({t:s.t, rgb:s.rgb.slice()})), targetMix, dur);
-    this._activeGradPreset = n;
+    this._activeGradPreset = (fromList && n >= 9) ? -1 : n;   // 9 は「通常色」の印なので、一覧の 10 番目以降はクイックバーを光らせない
     if(UI.refreshPost) UI.refreshPost();
     if(UI._refreshGradList) UI._refreshGradList();
     if(!quiet) toast('Grad: '+item.name);
@@ -18250,7 +18172,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -18312,7 +18234,7 @@ ${outBlock}
     this._confirm(msg, ()=>{
       const data = this._collectState();
       // バンクには BPM / Transition は含めない (テンポ・演出は維持したまま構成だけ切替)
-      delete data.bpm; delete data.transBeats; delete data.transStyle; delete data.gradAuto;
+      delete data.bpm; delete data.transBeats; delete data.transStyle;
       try{ localStorage.setItem('vj.bank.'+n, JSON.stringify(data)); }catch(e){}
       if(UI && UI.refreshBanks) UI.refreshBanks();
       toast('Bank '+n+' に保存');
@@ -18581,7 +18503,7 @@ ${outBlock}
     try{ entries = this._validateDefaultsFile(JSON.parse(await file.text())); }
     catch(e){ toast('読み込み失敗: ' + e.message); return; }
     if(!entries.length){ toast('読み込める Save 値がありません'); return; }
-    this._confirm('Save 値 ' + entries.length + ' 件を上書きしますか？ ファイルにないキーは残ります。共有が ON の場合は他の端末にも同期します。', ()=>{
+    this._confirm('Save 値 ' + entries.length + ' 件を上書きしますか？ ファイルにないキーは残ります。' + (this._defsOn() ? '共有が ON なので他の端末にも同期します。' : Prefs.on('shareDefaults', '1') ? 'オフライン設定なのでこの端末だけに読み込みます。' : 'この端末だけに読み込みます (共有は OFF)。'), ()=>{
       const previous = new Map(), written = [];
       try{
         for(const [k] of entries) previous.set(k, localStorage.getItem('vj.def.' + k));
@@ -18630,21 +18552,30 @@ ${outBlock}
       let base;
       try{ const r = await fetch('defaults_visual.json', {cache:'no-cache'}); base = await r.json(); }catch(e){ toast('基準値を読めませんでした'); return; }
       if(!base || typeof base !== 'object' || Array.isArray(base)){ toast('基準値が不正です'); return; }
-      const keys = [];
-      for(let i = 0; i < localStorage.length; i++){ const key = localStorage.key(i); if(key && key.indexOf('vj.def.') === 0) keys.push(key.slice(7)); }
-      for(const k of keys) if(this._isVisualDefKey(k)) localStorage.removeItem('vj.def.' + k);
-      for(const k in base) localStorage.setItem('vj.def.' + k, JSON.stringify(base[k]));
+      // 端末の Visual の Save 値を基準値に置き換える (サーバーへ送れたとき、または共有しないときだけ)
+      const applyLocal = ()=>{
+        const keys = [];
+        for(let i = 0; i < localStorage.length; i++){ const key = localStorage.key(i); if(key && key.indexOf('vj.def.') === 0) keys.push(key.slice(7)); }
+        for(const k of keys) if(this._isVisualDefKey(k)) localStorage.removeItem('vj.def.' + k);
+        for(const k in base) localStorage.setItem('vj.def.' + k, JSON.stringify(base[k]));
+      };
       if(!Net.offline() && Prefs.on('shareDefaults', '1')){
-        try{
+        // 先にサーバーへ送り、通ったときだけ端末を書き換える (端末だけ戻すと、再読み込みで基準値と元の値が混ざって広がる)。
+        // 送受信の列に入れて、直前の Save や 60 秒ごとの取り込みと追い越し合わないようにする
+        let ok = false;
+        await this._defsRun(async ()=>{
           const r = await fetch(this._defsUrl(), {cache:'no-store'});
           const server = r.ok ? await r.json() : null;
-          if(server && typeof server === 'object' && !Array.isArray(server)){
-            for(const k of Object.keys(server)) if(this._isVisualDefKey(k)) delete server[k];
-            Object.assign(server, base);
-            await fetch(this._defsUrl(), {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(server)});
-          }
-        }catch(e){ toast('サーバーへの反映に失敗 (この端末だけ戻しました)'); }
+          if(!server || typeof server !== 'object' || Array.isArray(server)) return;
+          for(const k of Object.keys(server)) if(this._isVisualDefKey(k)) delete server[k];
+          Object.assign(server, base);
+          // Visual の項目が減るのは意図どおりなので、件数の急減を拒む store.php の安全装置 (409) を force で外す
+          const w = await fetch(this._defsUrl() + '&force=1', {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(server)});
+          ok = w.ok;
+        });
+        if(!ok){ toast('サーバーに反映できませんでした (何も変更していません)'); return; }
       }
+      applyLocal();
       location.reload();
     });
   },
@@ -18721,6 +18652,26 @@ ${outBlock}
     if(!p || !p.src) return null;
     return { sk: p.name === sk.presetName ? sk : Object.assign({}, sk, { presetName: p.name }), src: p.src };
   },
+  // 保存したスロット (sk) を読むときのシェーダのコード: fresh なら、エディタで編集していないものはいまのプリセットのコード
+  _freshSlotSrc(sk, fresh){
+    const fi = fresh && !sk.edited && sk.presetName ? this._presetIndexByName(sk.presetName) : -1;
+    return fi >= 0 && PRESETS[fi].src ? PRESETS[fi].src : sk.src;
+  },
+  // 先読みコンパイル (GL.precompile) の入口: Visual タイル / 保存プリセットのタイルにホバーしたとき
+  precompilePreset(idx){
+    if(PRESETS[idx] && PRESETS[idx].replacedBy) idx = this._presetIndexByName(PRESETS[idx].replacedBy);
+    const p = PRESETS[idx];
+    if(p && p.src && !this.modeKinds.includes(p.kind)) GL.precompile(p.src);
+  },
+  precompileState(state){   // presetApply と同じ解決 (freshShaders)
+    for(const k of ['A', 'B']){
+      const sk = state && state.slots && state.slots[k];
+      if(!sk || (sk.kind && sk.kind !== 'shader')) continue;
+      if(!sk.src){ if(sk.presetName) this.precompilePreset(this._presetIndexByName(sk.presetName)); continue; }
+      const rep = this._replacedSlotState(sk);
+      GL.precompile(rep ? rep.src : this._freshSlotSrc(sk, true));
+    }
+  },
   _flushPendingSlotRestores(){
     this._extShadersLoaded = true;
     this._markReplacedShaders();
@@ -18731,9 +18682,7 @@ ${outBlock}
       const sk = pend[k];
       const rep = this._replacedSlotState(sk);
       if(rep){ this._restoreShaderSlot(k, rep.sk, rep.src); continue; }
-      const fi = sk.presetName ? this._presetIndexByName(sk.presetName) : -1;
-      const fresh = fi >= 0 && PRESETS[fi].src ? PRESETS[fi] : null;
-      this._restoreShaderSlot(k, sk, fresh ? fresh.src : sk.src);
+      this._restoreShaderSlot(k, sk, this._freshSlotSrc(sk, true));
     }
     if(keys.length && typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
   },
@@ -18829,7 +18778,6 @@ ${outBlock}
         else { this.beatScale = bs; this.setSpeed(bs); }
       }
       if(typeof s.crossfade==='number') this.crossfade = s.crossfade;
-      if(s.gradAuto){ this.gradAuto.mode = s.gradAuto.mode || 0; this.gradAuto.beats = s.gradAuto.beats || 8; }
       if(typeof s.slotBOffsetBeats==='number'){ this.slotBOffsetBeats = s.slotBOffsetBeats; const bo=$('#mixBOffset'); if(bo){ bo.value = s.slotBOffsetBeats; const bv=$('#mixBOffsetVal'); if(bv) bv.textContent = s.slotBOffsetBeats.toFixed(2); } }
       if(s.blendMode){ this.blendMode = s.blendMode; const cb=document.querySelector('#cfBlend'); if(cb) cb.value = s.blendMode; }
       if(typeof s.slotABg === 'string') this.setSlotABg(s.slotABg);
@@ -18847,6 +18795,7 @@ ${outBlock}
         const sp = this.sanitizePost(this.migrateFeedbackPost(Object.assign({},s.post)));   // Auto Map 量(paletteAmt)も保存値どおり復元する
         if(presetDefaults){
           const target = Object.assign({}, presetDefaults.post || {});
+          for(const k of this.POST_AMOUNT_KEYS) if(typeof target[k] === 'number') target[k] = 0;   // プリセットに無い FX は掛けない (効果の量の保存値は使わない)
           // Audio FX はプリセット保存対象外なので、切替前の値を維持する。
           const AUDIO_FX = ['audioTarget','audioGain','audioBand','audioAttack','aScan','aRgb','aStrobe','aShock','aExplode'];
           for(const k of AUDIO_FX) if(this.post[k] !== undefined) target[k] = this.post[k];
@@ -18858,6 +18807,7 @@ ${outBlock}
       }
       else if(presetDefaults){
         const target = Object.assign({}, presetDefaults.post || {});
+        for(const k of this.POST_AMOUNT_KEYS) if(typeof target[k] === 'number') target[k] = 0;
         const AUDIO_FX = ['audioTarget','audioGain','audioBand','audioAttack','aScan','aRgb','aStrobe','aShock','aExplode'];
         for(const k of AUDIO_FX) if(this.post[k] !== undefined) target[k] = this.post[k];
         if(_fadeB > 0) this.applyPostFaded(target);
@@ -18915,7 +18865,7 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
@@ -18983,9 +18933,7 @@ ${outBlock}
           // 旧版を指していれば、保存プリセット・Undo でも新版に差し替える
           const rep = this._replacedSlotState(sk);
           if(rep){ this._restoreShaderSlot(k, rep.sk, rep.src); continue; }
-          const fi = opts.freshShaders && !sk.edited && sk.presetName ? this._presetIndexByName(sk.presetName) : -1;
-          const fresh = fi >= 0 && PRESETS[fi].src ? PRESETS[fi] : null;
-          this._restoreShaderSlot(k, sk, fresh ? fresh.src : sk.src);
+          this._restoreShaderSlot(k, sk, this._freshSlotSrc(sk, opts.freshShaders));
         }
       }
       // スロット表示/サムネのハイライトを同期
@@ -19003,6 +18951,12 @@ ${outBlock}
 =================================================================== */
 const UI = {
   thumbCanvases: [],
+  // タイルに 120ms 留まったら先読みコンパイル (なぞって通り過ぎただけのタイルはコンパイルしない)
+  _precompileOnHover(el, fn){
+    let t = 0;
+    el.addEventListener('mouseenter', ()=>{ clearTimeout(t); t = setTimeout(fn, 120); });
+    el.addEventListener('mouseleave', ()=>{ clearTimeout(t); });
+  },
   activePresetIdx: {A:-1, B:-1},
 
   init(){
@@ -19225,6 +19179,9 @@ void mainImage(out vec4 o, in vec2 f){
       bgA.addEventListener('input', ()=>{ App.setSlotABg(bgA.value); App._undoSchedule(); });
       const bgR = $('#slotABgReset');
       if(bgR) bgR.addEventListener('click', ()=>{ App.setSlotABg('#000000'); App._undoSchedule(); });
+      const bgC = $('#slotABgClear');
+      if(bgC) bgC.addEventListener('click', ()=>{ App.setSlotABg(App.slotABg === 'none' ? '#000000' : 'none'); App._undoSchedule(); });
+      if(UI.refreshSlotABg) UI.refreshSlotABg();
     }
     // ---- Type Deformer (mode/textdeform*.js) ----
     //   data-tdp = TextDeform.P のキー。値は P に直接書く (Save = この Visual のデフォルト保存。Look 単位の保存は Save New)
@@ -20055,6 +20012,7 @@ void mainImage(out vec4 o, in vec2 f){
           else if(kind && kind.indexOf('post:') === 0) App.resetPostGroupDefault(kind.slice(5));
           else if(kind === 'sparam') App.clearShaderParamDefaults(App.activeSlot);
           else if(kind === 'image') UI.resetImageDefault();
+          else if(kind && kind.indexOf('glitchtype:') === 0) UI.resetGlitchTypeBlock(kind.slice(11));   // Glitch Type はブロックの値だけ戻す
           else App.resetEngineDefault(kind);
           return;
         }
@@ -20074,6 +20032,7 @@ void mainImage(out vec4 o, in vec2 f){
         else if(kind === 'audioDetect') App.saveAudioDetectDefault();
         else if(kind === 'fb') App.saveFbDefault();
         else if(kind && kind.indexOf('post:') === 0) App.savePostGroupDefault(kind.slice(5));
+        else if(kind && kind.indexOf('glitchtype:') === 0) App.saveEngineDefault('glitchtype');   // ブロックの Save も Glitch Type 全体を保存
         else if(kind === 'sparam') App.saveShaderParamDefaults(App.activeSlot);
         else if(kind === 'image') UI.saveImageDefault();
         else App.saveEngineDefault(kind);
@@ -21204,7 +21163,6 @@ void mainImage(out vec4 o, in vec2 f){
         if(UI._gradEditor) UI._gradEditor.render();      // グラデバー
         if(UI._refreshGradList) UI._refreshGradList();   // Preset 欄のパレット一覧
       }); }
-    slid('pxHueRot','hueRotSpeed', f2);
     slid('pxBri',  'bri',  f2);
     // Contrast: GUI は -1〜+1(中央0=中立)。実 con は乗数 0〜2(con = slider + 1)。MIDI(postRange [0,2])と同じ実値域。
     { const el = $('#pxCon'), val = $('#pxConVal');
@@ -21215,6 +21173,46 @@ void mainImage(out vec4 o, in vec2 f){
         el.addEventListener('input', ()=>{ App.post.con = App.snapPost('con', ParamValues.read(el) + 1.0); if(val) val.textContent = f2(ParamValues.read(el)); });
       } }
     slid('pxVig',  'vig',  f2);
+    slid('pxColorTemp', 'colorTemp', f2);
+    slid('pxColorTint', 'colorTint', f2);
+    slid('pxMixHueRed', 'mixHueRed', f2);
+    slid('pxMixHueOrange', 'mixHueOrange', f2);
+    slid('pxMixHueYellow', 'mixHueYellow', f2);
+    slid('pxMixHueGreen', 'mixHueGreen', f2);
+    slid('pxMixHueAqua', 'mixHueAqua', f2);
+    slid('pxMixHueBlue', 'mixHueBlue', f2);
+    slid('pxMixHuePurple', 'mixHuePurple', f2);
+    slid('pxMixHueMagenta', 'mixHueMagenta', f2);
+    slid('pxMixSatRed', 'mixSatRed', f2);
+    slid('pxMixSatOrange', 'mixSatOrange', f2);
+    slid('pxMixSatYellow', 'mixSatYellow', f2);
+    slid('pxMixSatGreen', 'mixSatGreen', f2);
+    slid('pxMixSatAqua', 'mixSatAqua', f2);
+    slid('pxMixSatBlue', 'mixSatBlue', f2);
+    slid('pxMixSatPurple', 'mixSatPurple', f2);
+    slid('pxMixSatMagenta', 'mixSatMagenta', f2);
+    slid('pxMixLumRed', 'mixLumRed', f2);
+    slid('pxMixLumOrange', 'mixLumOrange', f2);
+    slid('pxMixLumYellow', 'mixLumYellow', f2);
+    slid('pxMixLumGreen', 'mixLumGreen', f2);
+    slid('pxMixLumAqua', 'mixLumAqua', f2);
+    slid('pxMixLumBlue', 'mixLumBlue', f2);
+    slid('pxMixLumPurple', 'mixLumPurple', f2);
+    slid('pxMixLumMagenta', 'mixLumMagenta', f2);
+    { // Color Mixer: Hue / Sat / Lum はタブ (一つだけ選ぶ)。選んだ項目の帯の行だけを表示し、値は表示に関係なく掛かる (端末ごとに選択を覚える)
+      const box = $('#pxMixerShow');
+      let cur = 'Hue'; try{ const v = localStorage.getItem('vj.ui.mixerTab'); if(v) cur = v; }catch(e){}
+      const apply = ()=>{
+        box.querySelectorAll('button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.grp === cur ? 'true' : 'false'));
+        document.querySelectorAll('[data-mixgrp]').forEach(r=>{ r.style.display = r.dataset.mixgrp === cur ? '' : 'none'; });
+      };
+      box.addEventListener('click', (e)=>{
+        const b = e.target.closest('button'); if(!b) return;
+        cur = b.dataset.grp;
+        try{ localStorage.setItem('vj.ui.mixerTab', cur); }catch(e){}
+        apply();
+      });
+      apply(); }
     slid('pxChr',  'chr',  f3);
     slid('pxPix',  'pix',  fi);
     slid('pxScn',  'scn',  f2);
@@ -21236,14 +21234,6 @@ void mainImage(out vec4 o, in vec2 f){
         });
       } }
     slid('pxGradMix','gradMix', f2);
-    { const m = $('#pxGradAuto'), b = $('#pxGradAutoBeats');
-      // Off にしたときは右で選んだ拍数を掛けて通常色へ戻る (切り替え中の Grad も含めて滑らかに消える)
-      m.addEventListener('change', ()=>{
-        const v = parseInt(m.value, 10);
-        if(v) App.gradAuto.mode = v;
-        else App.applyGradPreset(9, false, App.gradAuto.beats * 60 / Math.max(20, BPM.bpm));
-      });
-      b.addEventListener('change', ()=>{ App.gradAuto.beats = parseFloat(b.value); App.gradAuto.cycle = null; }); }
     slid('pxPaletteAmt','paletteAmt', f2);
     { const pa = $('#pxPaletteAmt'); if(pa) pa.addEventListener('input', ()=>{ if(Math.abs(App.post.paletteAmt||0) > 0.001 && App.post.palette !== 8){ App.post.palette = 8; } }); }
     const hexToRGB = (h)=>{ h=h.replace('#',''); return [parseInt(h.slice(0,2),16)/255, parseInt(h.slice(2,4),16)/255, parseInt(h.slice(4,6),16)/255]; };
@@ -21291,9 +21281,9 @@ void mainImage(out vec4 o, in vec2 f){
       // Post の Hue Shift (YIQ 回転。シェーダ hueShift と同一の行列) を表示色に反映する。
       // 実際の出力は Grad Map → Hue Shift の順なので、バーも同じ見え方になる。
       _hueShifted(rgb){
-        // 最終段のアップロードと同一式: dz(hue*0.5 + hueAuto)
+        // 最終段のアップロードと同一式: dz(hue*0.5)
         const P = (typeof App !== 'undefined') ? App.post : null;
-        const h = (P && App.deadParam) ? App.deadParam((P.hue || 0) * 0.5 + (P.hueAuto || 0)) : 0;
+        const h = (P && App.deadParam) ? App.deadParam((P.hue || 0) * 0.5) : 0;
         if(Math.abs(h) < 0.001) return rgb;
         const [r,g,b] = rgb;
         const y = 0.299*r + 0.587*g + 0.114*b;
@@ -21522,14 +21512,14 @@ void mainImage(out vec4 o, in vec2 f){
       scroll.dataset.pscroll = 'y';
       box.appendChild(scroll);
       items.forEach((it, n)=>{
-        const key = (n===9)?'0':(n<9?String(n+1):'·');
+        const key = n < 9 ? String(n + 1) : '·';   // 0 キーは通常色 (Grad Map OFF) なので 10 番目以降に数字は付けない
         const row = mkRow(key, it.css, it.name);
         row.draggable = true;
         row.addEventListener('dragstart', e=>{ e.dataTransfer.setData('text/plain', String(n)); e.dataTransfer.effectAllowed='move'; row.style.opacity='0.4'; });
         row.addEventListener('dragend', ()=>{ row.style.opacity=''; });
         row.addEventListener('dragover', e=>{ e.preventDefault(); e.dataTransfer.dropEffect='move'; });
         row.addEventListener('drop', e=>{ e.preventDefault(); const from=parseInt(e.dataTransfer.getData('text/plain'),10); if(!isNaN(from)) GradStore.move(from, n); });
-        row.addEventListener('click', ()=> App.applyGradPreset(n));
+        row.addEventListener('click', ()=> App.applyGradPreset(n, false, undefined, true));
         if(it.saved != null){
           const si = it.saved, nm = it.name;
           const mkBtn = (icon, title, slot, fn)=>{ const b=document.createElement('span'); b.className='ico-btn grad-row-btn'; b.title=title;
@@ -21615,7 +21605,14 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxBlm',  'blm',  f2);
     slid('pxTwist','twist',f2);
     slid('pxSlice','slice',f2);
-    slid('pxRingSlice','ringSlice',f2);
+    slid('pxSliceLine', 'sliceLine', f2);
+    slid('pxSliceCount', 'sliceCount', f2);
+    slid('pxSliceMove', 'sliceMove', f2);
+    slid('pxSliceAngle', 'sliceAngle', f2);
+    slid('pxRingsLine', 'ringsLine', f2);
+    slid('pxRingsCount', 'ringsCount', f2);
+    slid('pxRingsTwist', 'ringsTwist', f2);
+    slid('pxRingsWobble', 'ringsWobble', f2);
     slid('pxRingBlur','ringBlur',f2);
     slid('pxSplit','split',f2);
     slid('pxMos',  'mosaic',f2);
@@ -21650,7 +21647,6 @@ void mainImage(out vec4 o, in vec2 f){
     const inkBleedPaper = $('#pxInkBleedPaper');
     if(inkBleedPaper) inkBleedPaper.addEventListener('input', ()=>{ App.post.inkBleedPaper = inkBleedPaper.value; });
     slid('pxDither','dither', f2);
-    slid('pxCandy','candy', f2);
     slid('pxOrigami','origami', f2);
     slid('pxNeedleScatter','needleScatter', f2);
     slid('pxNeedleThick','needleThick', f2);
@@ -21658,10 +21654,35 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxNeedleSides','needleSides', fi);
     slid('pxKaiser','kaiser', f2);
     slid('pxKaiserOld','kaiserOld', f2);
+    slid('pxKaiserFolds', 'kaiserFolds', f2);
+    slid('pxKaiserSpeed', 'kaiserSpeed', f2);
+    slid('pxKaiserAngle', 'kaiserAngle', f2);
+    slid('pxKaiserSpread', 'kaiserSpread', f2);
+    slid('pxKaiserSoft', 'kaiserSoft', f2);
+    slid('pxKaiserOldFolds', 'kaiserOldFolds', f2);
+    slid('pxKaiserOldSpeed', 'kaiserOldSpeed', f2);
+    slid('pxKaiserOldAngle', 'kaiserOldAngle', f2);
+    slid('pxKaiserOldSpread', 'kaiserOldSpread', f2);
+    slid('pxKaiserOldCurve', 'kaiserOldCurve', f2);
+    slid('pxKaiserOldTwist', 'kaiserOldTwist', f2);
+    slid('pxKaiserOldCam', 'kaiserOldCam', f2);
     slid('pxUzumaki','uzumaki', f2);
+    slid('pxUzumakiCards', 'uzumakiCards', f2);
+    slid('pxUzumakiTwist', 'uzumakiTwist', f2);
+    slid('pxUzumakiSpread', 'uzumakiSpread', f2);
+    slid('pxUzumakiDepth', 'uzumakiDepth', f2);
+    slid('pxUzumakiShrink', 'uzumakiShrink', f2);
+    slid('pxUzumakiCard', 'uzumakiCard', f2);
+    slid('pxUzumakiSpin', 'uzumakiSpin', f2);
+    slid('pxUzumakiCam', 'uzumakiCam', f2);
     slid('pxFx3dPhoto','fx3dPhoto', f2);
     slid('pxFx3dPhotoCount','fx3dPhotoCount', fi);
     slid('pxFx3dPhotoCrop','fx3dPhotoCrop', v=>(v|0)+'%');
+    slid('pxFx3dPhotoCurl', 'fx3dPhotoCurl', f2);
+    slid('pxFx3dPhotoCurlAxis', 'fx3dPhotoCurlAxis', f2);
+    slid('pxFx3dPhotoFlutter', 'fx3dPhotoFlutter', f2);
+    slid('pxFx3dPhotoCorner', 'fx3dPhotoCorner', f2);
+    slid('pxFx3dPhotoSpin', 'fx3dPhotoSpin', f2);
     slid('pxFx3dSlicer','fx3dSlicer', f2);
     slid('pxFx3dSlicerPieces','fx3dSlicerPieces', fi);
     slid('pxFx3dLayer','fx3dLayer', f2);
@@ -21670,22 +21691,69 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dLayerEdge','fx3dLayerEdge', f2);
     slid('pxFx3dDiorama','fx3dDiorama', f2);
     slid('pxFx3dDioramaLayers','fx3dDioramaLayers', fi);
+    slid('pxFx3dDioramaSwing','fx3dDioramaSwing', f2);
+    slid('pxFx3dDioramaSpeed','fx3dDioramaSpeed', f2);
+    slid('pxFx3dDioramaPan','fx3dDioramaPan', f2);
+    slid('pxFx3dDioramaTilt','fx3dDioramaTilt', f2);
+    slid('pxFx3dDioramaZoom','fx3dDioramaZoom', f2);
     slid('pxFx3dPoints','fx3dPoints', f2);
     slid('pxFx3dPointsDensity','fx3dPointsDensity', fi);
     slid('pxFx3dCubes','fx3dCubes', f2);
     slid('pxFx3dBlinds','fx3dBlinds', f2);
     slid('pxFx3dBlindsCount','fx3dBlindsCount', fi);
     slid('pxFx3dBlindsTwist','fx3dBlindsTwist', f2);
+    slid('pxFx3dBlindsAngle', 'fx3dBlindsAngle', f2);
+    slid('pxFx3dBlindsSpeed', 'fx3dBlindsSpeed', f2);
+    slid('pxFx3dBlindsWave', 'fx3dBlindsWave', f2);
+    slid('pxFx3dBlindsOpen', 'fx3dBlindsOpen', f2);
+    slid('pxFx3dBlindsGap', 'fx3dBlindsGap', f2);
+    slid('pxFx3dBlindsRandom', 'fx3dBlindsRandom', f2);
     slid('pxFx3dGravity','fx3dGravity', f2);
     slid('pxFx3dGravitySpin','fx3dGravitySpin', f2);
     slid('pxFx3dGravityDepth','fx3dGravityDepth', f2);
     slid('pxFx3dGravityFlip','fx3dGravityFlip', f2);
     slid('pxFx3dGravityWave','fx3dGravityWave', f2);
     slid('pxFx3dGravityPoints','fx3dGravityPoints', fi);
+    slid('pxFx3dTunnel','fx3dTunnel', f2);
+    slid('pxFx3dTunnelSpeed', 'fx3dTunnelSpeed', f2);
+    slid('pxFx3dTunnelRadius', 'fx3dTunnelRadius', f2);
+    slid('pxFx3dTunnelTwist', 'fx3dTunnelTwist', f2);
+    slid('pxFx3dTunnelCurve', 'fx3dTunnelCurve', f2);
+    slid('pxFx3dTunnelBump', 'fx3dTunnelBump', f2);
+    slid('pxFx3dTunnelPulse', 'fx3dTunnelPulse', f2);
+    slid('pxFx3dTunnelTile', 'fx3dTunnelTile', f2);
+    slid('pxFx3dTunnelRound', 'fx3dTunnelRound', f2);
+    slid('pxFx3dTunnelSpin', 'fx3dTunnelSpin', f2);
+    slid('pxFx3dTunnelFlip', 'fx3dTunnelFlip', f2);
+    slid('pxFx3dTunnelBendX', 'fx3dTunnelBendX', f2);
+    slid('pxFx3dTunnelBendY', 'fx3dTunnelBendY', f2);
+    slid('pxFx3dTunnelFog', 'fx3dTunnelFog', f2);
+    slid('pxFx3dTunnelShine', 'fx3dTunnelShine', f2);
+    slid('pxFx3dTunnelEdge', 'fx3dTunnelEdge', fi);
+    slid('pxFx3dTunnelTilt', 'fx3dTunnelTilt', f2);
+    slid('pxFx3dTunnelPan', 'fx3dTunnelPan', f2);
     slid('pxFx3dGlobe','fx3dGlobe', f2);
     slid('pxFx3dGlobeDetail','fx3dGlobeDetail', fi);
+    slid('pxFx3dExtrude','fx3dExtrude', f2);
+    slid('pxFx3dExtrudeDepth','fx3dExtrudeDepth', f2);
+    slid('pxFx3dExtrudeTilt','fx3dExtrudeTilt', f2);
+    slid('pxFx3dExtrudeSpin','fx3dExtrudeSpin', f2);
+    slid('pxFx3dExtrudeShade','fx3dExtrudeShade', f2);
+    slid('pxFx3dExtrudeTwist','fx3dExtrudeTwist', f2);
+    slid('pxFx3dExtrudeRound','fx3dExtrudeRound', f2);
+    { const sm = $('#pxFx3dExtrudeMode'); if(sm){ sm.value = App.post.fx3dExtrudeMode === 'depth' ? 'depth' : 'flat'; sm.addEventListener('change', ()=>{ App.post.fx3dExtrudeMode = sm.value; }); } }
     slid('pxFx3dRoll','fx3dRoll', f2);
+    slid('pxFx3dRollRadius', 'fx3dRollRadius', f2);
+    slid('pxFx3dRollDepth', 'fx3dRollDepth', f2);
+    slid('pxFx3dRollAngle', 'fx3dRollAngle', f2);
+    slid('pxFx3dRollSpin', 'fx3dRollSpin', f2);
+    slid('pxFx3dRollCurl', 'fx3dRollCurl', f2);
+    slid('pxFx3dRollCam', 'fx3dRollCam', f2);
     slid('pxFx3dDepth','fx3dDepth', f2);
+    slid('pxFx3dStretchX','fx3dStretchX', f2);
+    slid('pxFx3dStretchY','fx3dStretchY', f2);
+    slid('pxFx3dStretchZ','fx3dStretchZ', f2);
+    slid('pxFx3dZoom','fx3dZoom', f2);
     { const cb = $('#pxCode3D');   // Code の 3D 深度 (既定 ON。端末ごとに保存)
       if(cb){
         try{ App.code3D = localStorage.getItem('vj.code3D') !== '0'; }catch(e){}
@@ -21711,6 +21779,14 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxSpecWarp', 'specWarp', f2);
     slid('pxZoomPump', 'zoomPump', f2);
     slid('pxShatter', 'shatter', f2);
+    slid('pxAPop', 'aPop', f2);
+    slid('pxAPopCount', 'aPopCount', fi);
+    slid('pxAPopSize', 'aPopSize', fi);
+    slid('pxAPopSides', 'aPopSides', fi);
+    slid('pxAPopZoom', 'aPopZoom', f2);
+    slid('pxAPopLine', 'aPopLine', f2);
+    slid('pxAPopShade', 'aPopShade', f2);
+    slid('pxAPopSpin', 'aPopSpin', f2);
     slid('pxFbAmount', 'fbAmount', f2);
     { const box=$('#pxFbMode'); if(box) box.addEventListener('click',(e)=>{
         const b = e.target.closest('button[data-type]'); if(!b) return;
@@ -21738,9 +21814,29 @@ void mainImage(out vec4 o, in vec2 f){
       }); }
     slid('pxSdfChrome', 'sdfChrome', f2);
     slid('pxRiver',     'river',     f2);
+    slid('pxRiverTwist', 'riverTwist', f2);
+    slid('pxRiverSpeed', 'riverSpeed', f2);
+    slid('pxRiverWidth', 'riverWidth', f2);
+    slid('pxRiverFlow', 'riverFlow', f2);
+    slid('pxRiverLight', 'riverLight', f2);
+    slid('pxRiverFog', 'riverFog', f2);
+    slid('pxRiverSway', 'riverSway', f2);
     slid('pxBleed',   'bleed',   f2);
     slid('pxImpasto', 'impasto', f2);
     slid('pxChrome',  'chrome',  f2);
+    slid('pxChromeBump', 'chromeBump', f2);
+    slid('pxChromeEdge', 'chromeEdge', f2);
+    slid('pxChromeCon', 'chromeCon', f2);
+    slid('pxChromeTint', 'chromeTint', f2);
+    slid('pxChromeSpec', 'chromeSpec', f2);
+    slid('pxChromeSharp', 'chromeSharp', f2);
+    slid('pxChromeRim', 'chromeRim', f2);
+    slid('pxChromeLight', 'chromeLight', f2);
+    slid('pxChromeObj', 'chromeObj', f2);
+    slid('pxSdfChromeObj', 'sdfChromeObj', f2);
+    slid('pxBleedObj', 'bleedObj', f2);
+    slid('pxImpastoObj', 'impastoObj', f2);
+    slid('pxGlossObj', 'glossObj', f2);
     slid('pxGloss', 'gloss', f2);
     slid('pxGlossBump', 'glossBump', f2);
     slid('pxGlossSharp', 'glossSharp', f2);
@@ -21790,6 +21886,14 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxPollockGloss', 'pollockGloss', f2);
     slid('pxPollockMatt',  'pollockMatt',  f2);
     slid('pxPollockFlat',  'pollockFlat',  f2);
+    slid('pxPollockMetal', 'pollockMetal', f2);
+    slid('pxPollockSize', 'pollockSize', f2);
+    slid('pxPollockLength', 'pollockLength', f2);
+    slid('pxPollockDensity', 'pollockDensity', f2);
+    slid('pxPollockDrops', 'pollockDrops', f2);
+    slid('pxPollockCurve', 'pollockCurve', f2);
+    slid('pxPollockLife', 'pollockLife', f2);
+    slid('pxPollockRelief', 'pollockRelief', f2);
     App.post.boltz = +App.post.boltz || 0;   // 旧チェックボックス時代の boolean 保存値を数値へ
     slid('pxBoltz',  'boltz',  f2);
     { const el = $('#pxATarget');
@@ -21823,6 +21927,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxAShardsSize', 'aShardsSize', f2);
     slid('pxAShardsHole', 'aShardsHole', f2);
     slid('pxAShardsLine', 'aShardsLine', f2);
+    slid('pxAShardsMove', 'aShardsMove', f2);
     slid('pxAExplode', 'aExplode', f2);
     slid('pxWaveform', 'waveform', f2);
     slid('pxSlitScan', 'slitScan', f2);
@@ -22001,10 +22106,35 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxGamma', p.gamma, f2);
     set('pxSat',   (p.sat != null ? p.sat : 1.0) - 1.0, f2, true);
     set('pxHue',   p.hue,   f3);
-    set('pxHueRot',p.hueRotSpeed || 0, f2);
     set('pxBri',   p.bri,   f2);
     set('pxCon',   (p.con != null ? p.con : 1.0) - 1.0,   f2, true);   // con はオフセット表示なので生値表記しない
     set('pxVig',   p.vig,   f2);
+    set('pxColorTemp', p.colorTemp || 0, f2);
+    set('pxColorTint', p.colorTint || 0, f2);
+    set('pxMixHueRed', p.mixHueRed || 0, f2);
+    set('pxMixHueOrange', p.mixHueOrange || 0, f2);
+    set('pxMixHueYellow', p.mixHueYellow || 0, f2);
+    set('pxMixHueGreen', p.mixHueGreen || 0, f2);
+    set('pxMixHueAqua', p.mixHueAqua || 0, f2);
+    set('pxMixHueBlue', p.mixHueBlue || 0, f2);
+    set('pxMixHuePurple', p.mixHuePurple || 0, f2);
+    set('pxMixHueMagenta', p.mixHueMagenta || 0, f2);
+    set('pxMixSatRed', p.mixSatRed || 0, f2);
+    set('pxMixSatOrange', p.mixSatOrange || 0, f2);
+    set('pxMixSatYellow', p.mixSatYellow || 0, f2);
+    set('pxMixSatGreen', p.mixSatGreen || 0, f2);
+    set('pxMixSatAqua', p.mixSatAqua || 0, f2);
+    set('pxMixSatBlue', p.mixSatBlue || 0, f2);
+    set('pxMixSatPurple', p.mixSatPurple || 0, f2);
+    set('pxMixSatMagenta', p.mixSatMagenta || 0, f2);
+    set('pxMixLumRed', p.mixLumRed || 0, f2);
+    set('pxMixLumOrange', p.mixLumOrange || 0, f2);
+    set('pxMixLumYellow', p.mixLumYellow || 0, f2);
+    set('pxMixLumGreen', p.mixLumGreen || 0, f2);
+    set('pxMixLumAqua', p.mixLumAqua || 0, f2);
+    set('pxMixLumBlue', p.mixLumBlue || 0, f2);
+    set('pxMixLumPurple', p.mixLumPurple || 0, f2);
+    set('pxMixLumMagenta', p.mixLumMagenta || 0, f2);
     set('pxChr',   p.chr,   v=>ParamValues.format(v, {step:0.0005}, f3));
     set('pxPix',   p.pix,   fi);
     set('pxScn',   p.scn,   f2);
@@ -22018,14 +22148,19 @@ void mainImage(out vec4 o, in vec2 f){
       if(out) out.textContent = f2(u);
     }
     set('pxGradMix',  p.gradMix || 0, f2);
-    { const m = $('#pxGradAuto'), b = $('#pxGradAutoBeats');
-      if(m) m.value = String(App.gradAuto.mode); if(b) b.value = String(App.gradAuto.beats); }
     if(UI._gradEditor) UI._gradEditor.render();   // Grad Map エディタを現状の stops で再描画
     set('pxPos',   p.pos,   fi);
     set('pxBlm',   p.blm,   f2);
     set('pxTwist', p.twist, f2);
     set('pxSlice', p.slice, f2);
-    set('pxRingSlice', p.ringSlice || 0, f2);
+    set('pxSliceLine', p.sliceLine != null ? p.sliceLine : 0.5, f2);
+    set('pxSliceCount', p.sliceCount != null ? p.sliceCount : 0.5, f2);
+    set('pxSliceMove', p.sliceMove != null ? p.sliceMove : 0.5, f2);
+    set('pxSliceAngle', p.sliceAngle != null ? p.sliceAngle : 0, f2);
+    set('pxRingsLine', p.ringsLine != null ? p.ringsLine : 0.5, f2);
+    set('pxRingsCount', p.ringsCount != null ? p.ringsCount : 0.5, f2);
+    set('pxRingsTwist', p.ringsTwist != null ? p.ringsTwist : 0.5, f2);
+    set('pxRingsWobble', p.ringsWobble != null ? p.ringsWobble : 0.5, f2);
     set('pxRingBlur', p.ringBlur || 0, f2);
     set('pxSplit', p.split || 0, f2);
     set('pxMos',   p.mosaic,f2);
@@ -22053,7 +22188,6 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxHatchPaper', p.hatchPaper || '#f2eee4');
     if($('#pxHatchTool')) $('#pxHatchTool').value = String(p.hatchTool|0);
     set('pxDither', p.dither || 0, f2);
-    set('pxCandy', p.candy || 0, f2);
     set('pxOrigami', p.origami || 0, f2);
     set('pxNeedleScatter', p.needleScatter != null ? p.needleScatter : 0.6, f2);
     set('pxNeedleThick', p.needleThick || 0, f2);
@@ -22061,10 +22195,35 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxNeedleSides', p.needleSides != null ? p.needleSides : 5, fi);
     set('pxKaiser', p.kaiser || 0, f2);
     set('pxKaiserOld', p.kaiserOld || 0, f2);
+    set('pxKaiserFolds', p.kaiserFolds != null ? p.kaiserFolds : 1, f2);
+    set('pxKaiserSpeed', p.kaiserSpeed != null ? p.kaiserSpeed : 0.5, f2);
+    set('pxKaiserAngle', p.kaiserAngle != null ? p.kaiserAngle : 0.5, f2);
+    set('pxKaiserSpread', p.kaiserSpread != null ? p.kaiserSpread : 0.5, f2);
+    set('pxKaiserSoft', p.kaiserSoft != null ? p.kaiserSoft : 0, f2);
+    set('pxKaiserOldFolds', p.kaiserOldFolds != null ? p.kaiserOldFolds : 1, f2);
+    set('pxKaiserOldSpeed', p.kaiserOldSpeed != null ? p.kaiserOldSpeed : 0.5, f2);
+    set('pxKaiserOldAngle', p.kaiserOldAngle != null ? p.kaiserOldAngle : 0.5, f2);
+    set('pxKaiserOldSpread', p.kaiserOldSpread != null ? p.kaiserOldSpread : 0.5, f2);
+    set('pxKaiserOldCurve', p.kaiserOldCurve != null ? p.kaiserOldCurve : 0.5, f2);
+    set('pxKaiserOldTwist', p.kaiserOldTwist != null ? p.kaiserOldTwist : 0.5, f2);
+    set('pxKaiserOldCam', p.kaiserOldCam != null ? p.kaiserOldCam : 0.5, f2);
     set('pxUzumaki', p.uzumaki || 0, f2);
+    set('pxUzumakiCards', p.uzumakiCards != null ? p.uzumakiCards : 0.5, f2);
+    set('pxUzumakiTwist', p.uzumakiTwist != null ? p.uzumakiTwist : 0.5, f2);
+    set('pxUzumakiSpread', p.uzumakiSpread != null ? p.uzumakiSpread : 0.5, f2);
+    set('pxUzumakiDepth', p.uzumakiDepth != null ? p.uzumakiDepth : 0.5, f2);
+    set('pxUzumakiShrink', p.uzumakiShrink != null ? p.uzumakiShrink : 0.5, f2);
+    set('pxUzumakiCard', p.uzumakiCard != null ? p.uzumakiCard : 0.5, f2);
+    set('pxUzumakiSpin', p.uzumakiSpin != null ? p.uzumakiSpin : 0.5, f2);
+    set('pxUzumakiCam', p.uzumakiCam != null ? p.uzumakiCam : 0.5, f2);
     set('pxFx3dPhoto', p.fx3dPhoto || 0, f2);
     set('pxFx3dPhotoCount', p.fx3dPhotoCount, fi);
     set('pxFx3dPhotoCrop', p.fx3dPhotoCrop, v=>(v|0)+'%');
+    set('pxFx3dPhotoCurl', p.fx3dPhotoCurl != null ? p.fx3dPhotoCurl : 0.65, f2);
+    set('pxFx3dPhotoCurlAxis', p.fx3dPhotoCurlAxis != null ? p.fx3dPhotoCurlAxis : 1, f2);
+    set('pxFx3dPhotoFlutter', p.fx3dPhotoFlutter != null ? p.fx3dPhotoFlutter : 0.4, f2);
+    set('pxFx3dPhotoCorner', p.fx3dPhotoCorner != null ? p.fx3dPhotoCorner : 0.45, f2);
+    set('pxFx3dPhotoSpin', p.fx3dPhotoSpin != null ? p.fx3dPhotoSpin : 0.35, f2);
     set('pxFx3dSlicer', p.fx3dSlicer || 0, f2);
     set('pxFx3dSlicerPieces', p.fx3dSlicerPieces, fi);
     set('pxFx3dLayer', p.fx3dLayer || 0, f2);
@@ -22073,22 +22232,69 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxFx3dLayerEdge', p.fx3dLayerEdge || 0, f2);
     set('pxFx3dDiorama', p.fx3dDiorama || 0, f2);
     set('pxFx3dDioramaLayers', p.fx3dDioramaLayers, fi);
+    set('pxFx3dDioramaSwing', p.fx3dDioramaSwing != null ? p.fx3dDioramaSwing : 0.5, f2);
+    set('pxFx3dDioramaSpeed', p.fx3dDioramaSpeed != null ? p.fx3dDioramaSpeed : 0.5, f2);
+    set('pxFx3dDioramaPan', p.fx3dDioramaPan || 0, f2);
+    set('pxFx3dDioramaTilt', p.fx3dDioramaTilt || 0, f2);
+    set('pxFx3dDioramaZoom', p.fx3dDioramaZoom || 0, f2);
     set('pxFx3dPoints', p.fx3dPoints || 0, f2);
     set('pxFx3dPointsDensity', p.fx3dPointsDensity, fi);
     set('pxFx3dCubes', p.fx3dCubes || 0, f2);
     set('pxFx3dBlinds', p.fx3dBlinds || 0, f2);
     set('pxFx3dBlindsCount', p.fx3dBlindsCount, fi);
     set('pxFx3dBlindsTwist', p.fx3dBlindsTwist, f2);
+    set('pxFx3dBlindsAngle', p.fx3dBlindsAngle != null ? p.fx3dBlindsAngle : 0.5, f2);
+    set('pxFx3dBlindsSpeed', p.fx3dBlindsSpeed != null ? p.fx3dBlindsSpeed : 0.5, f2);
+    set('pxFx3dBlindsWave', p.fx3dBlindsWave != null ? p.fx3dBlindsWave : 0.5, f2);
+    set('pxFx3dBlindsOpen', p.fx3dBlindsOpen != null ? p.fx3dBlindsOpen : 0.5, f2);
+    set('pxFx3dBlindsGap', p.fx3dBlindsGap != null ? p.fx3dBlindsGap : 0, f2);
+    set('pxFx3dBlindsRandom', p.fx3dBlindsRandom != null ? p.fx3dBlindsRandom : 0.5, f2);
     set('pxFx3dGravity', p.fx3dGravity || 0, f2);
     set('pxFx3dGravitySpin', p.fx3dGravitySpin, f2);
     set('pxFx3dGravityDepth', p.fx3dGravityDepth != null ? p.fx3dGravityDepth : 0.5, f2);
     set('pxFx3dGravityFlip', p.fx3dGravityFlip != null ? p.fx3dGravityFlip : 0.5, f2);
     set('pxFx3dGravityWave', p.fx3dGravityWave != null ? p.fx3dGravityWave : 0.5, f2);
     set('pxFx3dGravityPoints', p.fx3dGravityPoints != null ? p.fx3dGravityPoints : 2, fi);
+    set('pxFx3dTunnel', p.fx3dTunnel || 0, f2);
+    set('pxFx3dTunnelSpeed', p.fx3dTunnelSpeed != null ? p.fx3dTunnelSpeed : 0.5, f2);
+    set('pxFx3dTunnelRadius', p.fx3dTunnelRadius != null ? p.fx3dTunnelRadius : 0.5, f2);
+    set('pxFx3dTunnelTwist', p.fx3dTunnelTwist != null ? p.fx3dTunnelTwist : 0.6, f2);
+    set('pxFx3dTunnelCurve', p.fx3dTunnelCurve != null ? p.fx3dTunnelCurve : 0.5, f2);
+    set('pxFx3dTunnelBump', p.fx3dTunnelBump != null ? p.fx3dTunnelBump : 0.4, f2);
+    set('pxFx3dTunnelPulse', p.fx3dTunnelPulse != null ? p.fx3dTunnelPulse : 0.4, f2);
+    set('pxFx3dTunnelTile', p.fx3dTunnelTile != null ? p.fx3dTunnelTile : 0.4, f2);
+    set('pxFx3dTunnelRound', p.fx3dTunnelRound != null ? p.fx3dTunnelRound : 0, f2);
+    set('pxFx3dTunnelSpin', p.fx3dTunnelSpin != null ? p.fx3dTunnelSpin : 0.5, f2);
+    set('pxFx3dTunnelFlip', p.fx3dTunnelFlip != null ? p.fx3dTunnelFlip : 0.5, f2);
+    set('pxFx3dTunnelBendX', p.fx3dTunnelBendX != null ? p.fx3dTunnelBendX : 0, f2);
+    set('pxFx3dTunnelBendY', p.fx3dTunnelBendY != null ? p.fx3dTunnelBendY : 0, f2);
+    set('pxFx3dTunnelFog', p.fx3dTunnelFog != null ? p.fx3dTunnelFog : 0.4, f2);
+    set('pxFx3dTunnelShine', p.fx3dTunnelShine != null ? p.fx3dTunnelShine : 0.5, f2);
+    set('pxFx3dTunnelEdge', p.fx3dTunnelEdge || 0, fi);
+    set('pxFx3dTunnelTilt', p.fx3dTunnelTilt != null ? p.fx3dTunnelTilt : 0, f2);
+    set('pxFx3dTunnelPan', p.fx3dTunnelPan != null ? p.fx3dTunnelPan : 0, f2);
     set('pxFx3dGlobe', p.fx3dGlobe || 0, f2);
     set('pxFx3dGlobeDetail', p.fx3dGlobeDetail, fi);
+    set('pxFx3dExtrude', p.fx3dExtrude || 0, f2);
+    set('pxFx3dExtrudeDepth', p.fx3dExtrudeDepth != null ? p.fx3dExtrudeDepth : 0.5, f2);
+    set('pxFx3dExtrudeTilt', p.fx3dExtrudeTilt != null ? p.fx3dExtrudeTilt : 0.5, f2);
+    set('pxFx3dExtrudeSpin', p.fx3dExtrudeSpin != null ? p.fx3dExtrudeSpin : 0.3, f2);
+    set('pxFx3dExtrudeShade', p.fx3dExtrudeShade != null ? p.fx3dExtrudeShade : 0.5, f2);
+    set('pxFx3dExtrudeTwist', p.fx3dExtrudeTwist || 0, f2);
+    set('pxFx3dExtrudeRound', p.fx3dExtrudeRound || 0, f2);
+    if($('#pxFx3dExtrudeMode')) $('#pxFx3dExtrudeMode').value = p.fx3dExtrudeMode === 'depth' ? 'depth' : 'flat';
     set('pxFx3dRoll', p.fx3dRoll || 0, f2);
+    set('pxFx3dRollRadius', p.fx3dRollRadius != null ? p.fx3dRollRadius : 0.5, f2);
+    set('pxFx3dRollDepth', p.fx3dRollDepth != null ? p.fx3dRollDepth : 0.5, f2);
+    set('pxFx3dRollAngle', p.fx3dRollAngle != null ? p.fx3dRollAngle : 0, f2);
+    set('pxFx3dRollSpin', p.fx3dRollSpin != null ? p.fx3dRollSpin : 0.5, f2);
+    set('pxFx3dRollCurl', p.fx3dRollCurl != null ? p.fx3dRollCurl : 0.5, f2);
+    set('pxFx3dRollCam', p.fx3dRollCam != null ? p.fx3dRollCam : 0.5, f2);
     set('pxFx3dDepth', p.fx3dDepth != null ? p.fx3dDepth : 0.5, f2);
+    set('pxFx3dStretchX', p.fx3dStretchX || 0, f2);
+    set('pxFx3dStretchY', p.fx3dStretchY || 0, f2);
+    set('pxFx3dStretchZ', p.fx3dStretchZ || 0, f2);
+    set('pxFx3dZoom', p.fx3dZoom || 0, f2);
     if($('#pxFx3dScale')) $('#pxFx3dScale').value = String(p.fx3dScale);
     if($('#pxFx3dBg')) $('#pxFx3dBg').value = p.fx3dBg === 'color' ? 'color' : 'auto';
     if($('#pxFx3dPop')) $('#pxFx3dPop').value = ['back','elastic','bounce','out','off'].includes(p.fx3dPop) ? p.fx3dPop : 'back';
@@ -22107,6 +22313,14 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxSpecWarp', p.specWarp || 0, f2);
     set('pxZoomPump', p.zoomPump || 0, f2);
     set('pxShatter', p.shatter || 0, f2);
+    set('pxAPop', p.aPop || 0, f2);
+    set('pxAPopCount', p.aPopCount != null ? p.aPopCount : 12, fi);
+    set('pxAPopSize', p.aPopSize != null ? p.aPopSize : 60, fi);
+    set('pxAPopSides', p.aPopSides != null ? p.aPopSides : 2, fi);
+    set('pxAPopZoom', p.aPopZoom != null ? p.aPopZoom : 0.5, f2);
+    set('pxAPopLine', p.aPopLine != null ? p.aPopLine : 0.5, f2);
+    set('pxAPopShade', p.aPopShade != null ? p.aPopShade : 0.5, f2);
+    set('pxAPopSpin', p.aPopSpin != null ? p.aPopSpin : 0.5, f2);
     // トグルボタン列 (.toggle-btns) の選択表示
     const press = (box, isOn)=> box.querySelectorAll('button[data-type]').forEach(b=> b.setAttribute('aria-pressed', isOn(b.dataset.type) ? 'true' : 'false'));
     { const box=$('#pxFbMode'); if(box){ const m=['add','multiply','residue'].includes(p.fbMode)?p.fbMode:'residue'; press(box, t=>t===m); }
@@ -22134,6 +22348,14 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxPollockGloss', p.pollockGloss || 0, f2);
     set('pxPollockMatt',  p.pollockMatt  || 0, f2);
     set('pxPollockFlat',  p.pollockFlat  || 0, f2);
+    set('pxPollockMetal', p.pollockMetal || 0, f2);
+    set('pxPollockSize', p.pollockSize != null ? p.pollockSize : 0.5, f2);
+    set('pxPollockLength', p.pollockLength != null ? p.pollockLength : 0.5, f2);
+    set('pxPollockDensity', p.pollockDensity != null ? p.pollockDensity : 0.5, f2);
+    set('pxPollockDrops', p.pollockDrops != null ? p.pollockDrops : 0.5, f2);
+    set('pxPollockCurve', p.pollockCurve != null ? p.pollockCurve : 0.5, f2);
+    set('pxPollockLife', p.pollockLife != null ? p.pollockLife : 0.5, f2);
+    set('pxPollockRelief', p.pollockRelief != null ? p.pollockRelief : 0.5, f2);
     if($('#pxMir')) $('#pxMir').value = String(p.mir|0);
     if($('#pxInv')) $('#pxInv').checked = (p.inv || 0) > 0.5;
     if($('#pxFxaa')) $('#pxFxaa').checked = !!p.fxaa;
@@ -22306,7 +22528,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -22400,6 +22622,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'rztube') ? 'RHIZOME\n筒と網'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
                      : (p.kind === 'chrometype') ? 'CHROME\nTYPE'
+                     : (p.kind === 'glitchtype') ? 'GLITCH\nTYPE'
                      : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
                      : (p.kind === 'spacetype') ? 'SPACE\nTYPE'
@@ -22443,6 +22666,7 @@ void mainImage(out vec4 o, in vec2 f){
         tile.appendChild(eb); }
       tile.addEventListener('mouseenter', ()=>{ Preview.hoveredIdx = i; });
       tile.addEventListener('mouseleave', ()=>{ if(Preview.hoveredIdx === i) Preview.hoveredIdx = -1; });
+      UI._precompileOnHover(tile, ()=>App.precompilePreset(i));
       tile.addEventListener('contextmenu', e=>{ e.preventDefault(); });
       tile.addEventListener('click', ()=>{ App.transitionTo(i); });
       // 全タイル: 下段 Slot A/B プレビューへドラッグ投入可 (シェーダ並べ替えとは独立に index を記録)
@@ -22693,7 +22917,6 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // 色パイプライン (出力全体 = 合成プレビューにのみ表示。A/B プレビューは Post FX 非適用)
     if(on(P.gradMix))  main.push({ t:'GRAD', title:'Grad Map' + (dz(P.gradMix) < 0 ? ' (反転)' : '') });
-    if(on(P.hueRot))   main.push({ t:'HUE ROT', title:'Hue Rotate' });
     if(on(P.hue))      main.push({ t:'HUE', title:'Hue Shift' });
     if(on(P.inv))      main.push({ t:'INV', title:'Invert' });
     if(on(P.sat, 0.01) && Math.abs(dz(P.sat) - 1) > 0.01) main.push({ t:'SAT', title:'Saturation' });
@@ -22799,7 +23022,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude' && slot.kind !== 'chrometype';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude' && slot.kind !== 'chrometype' && slot.kind !== 'glitchtype';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -22835,6 +23058,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isCT = slot.kind === 'chrometype';
     $$('.chrometype-mode').forEach(el => el.style.display = isCT ? '' : 'none');
     if(isCT && this.refreshChromeTypeParams) this.refreshChromeTypeParams();
+    const isGT = slot.kind === 'glitchtype';
+    $$('.glitchtype-mode').forEach(el => el.style.display = isGT ? '' : 'none');
+    if(isGT && this.refreshGlitchTypeParams) this.refreshGlitchTypeParams();
     const isT4 = slot.kind === 'tower4149';
     $$('.tower4149-mode').forEach(el => el.style.display = isT4 ? '' : 'none');
     if(isT4 && this.refreshTower4149Params) this.refreshTower4149Params();
@@ -23706,11 +23932,21 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
-    for(const [label,key] of [['Ink','ink'],['Paper','paper'],['Tail Color','tailCol']]){
+    {   // 背景 (紙とは別。既定は透過。Option のスポイトは bgColor に色を入れ、bgMode を 'color' にする)
+      const row = mkRow('bgMode');
+      const lab=document.createElement('label'); lab.textContent='BG';
+      const sel=document.createElement('select');
+      [['none','透過'],['color','色 (BG Color)']].forEach(([v,t])=>{ const o=document.createElement('option'); o.value=v; o.textContent=t; sel.appendChild(o); });
+      sel.value = P.bgMode === 'color' ? 'color' : 'none';
+      sel.addEventListener('change', ()=>{ P.bgMode = sel.value; App._undoSchedule && App._undoSchedule(); });
+      row.appendChild(lab); row.appendChild(sel);
+    }
+    for(const [label,key] of [['Ink','ink'],['Paper','paper'],['BG Color','bgColor'],['Tail Color','tailCol']]){
       const row = mkRow(key);
       const lab=document.createElement('label'); lab.textContent=label;
       const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
-      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255];
+        if(key === 'bgColor' && P.bgMode !== 'color'){ P.bgMode = 'color'; this.refreshWindflockParams(); } });   // 背景色を選んだら BG = 色に
       const val=document.createElement('div'); val.className='val'; val.textContent='';
       row.appendChild(lab); row.appendChild(col); row.appendChild(val);
     }
@@ -23986,6 +24222,178 @@ void mainImage(out vec4 o, in vec2 f){
     mkSel('AA', [[0, 'Off'], [2, '2x'], [4, '4x']], Math.round(P.aa || 0), v=>{ P.aa = parseInt(v, 10); }, true, 'aa');
     this.bindEngineHints(root, ChromeType);
   },
+  refreshGlitchTypeParams(){
+    const root = document.getElementById('glitchtypeParams'); if(!root) return;
+    const top = root.closest('.section');
+    document.querySelectorAll('.gt-block').forEach(el=>el.remove());
+    if(typeof GlitchType === 'undefined' || !GlitchType.initialized){
+      root.innerHTML = '<div class="help">GLITCH TYPE preset を選ぶと初期化されます</div>'; return;
+    }
+    const GT = GlitchType, P = GT.P;
+    const pct = v=>String(Math.round(v))+'%';
+    const int = v=>String(Math.round(v));
+    const f1 = v=>(+v).toFixed(1);
+    const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
+    const NO_DEAD = { seed:1, cols:1, weight:1, tracking:1 };
+    const NO_RAND = { size:1, margin:1, cols:1, weight:1, rate:1 };   // Random で変えない (読めなくなる・大きさが飛ぶ)
+    root.innerHTML = '';
+    // ブロック (欄) ごとに .section を作る。Save = 全体の保存 / Reset = そのブロックの値だけ保存値へ / Random = そのブロックだけ
+    let cur = root, after = top;
+    const block = (id, title)=>{
+      const sec = document.createElement('div');
+      sec.className = 'section glitchtype-mode gt-block';
+      const h = document.createElement('h3');
+      h.innerHTML = title + ' <span class="default-actions"><button class="saveDefBtn" data-kind="glitchtype:' + id + '" title="現在の値をデフォルトとして保存 (Glitch Type 全体)">Save</button><button class="resetDefBtn" data-kind="glitchtype:' + id + '" title="この欄の値だけ保存したデフォルトに戻す">Reset</button><button class="randDefBtn" data-kind="glitchtype:' + id + '" title="この欄の値をランダムに変える">Random 🎲</button></span>';
+      const body = document.createElement('div'); body.style.marginTop = '6px';
+      sec.appendChild(h); sec.appendChild(body);
+      after.after(sec); after = sec; cur = body;
+    };
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; cur.appendChild(row); return row; };
+    const mkSel = (label, key, opts, conv, noRand)=>{   // opts: [[value, name], ...]
+      const row = mkRow(key);
+      const lab=document.createElement('label'); lab.textContent=label;
+      const sel=document.createElement('select');
+      opts.forEach(([v, name])=>{ const o=document.createElement('option'); o.value=String(v); o.textContent=name; sel.appendChild(o); });
+      sel.value = String(P[key]); if(sel.selectedIndex < 0) sel.selectedIndex = 0;
+      if(noRand) sel.dataset.norand = '1';
+      sel.addEventListener('change', ()=>{ P[key] = conv ? conv(sel.value) : sel.value; App._undoSchedule && App._undoSchedule(); });
+      row.appendChild(lab); row.appendChild(sel);
+    };
+    const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+    const mkColor = (label, key)=>{
+      const row = mkRow(key);
+      const lab=document.createElement('label'); lab.textContent=label;
+      const col=document.createElement('input'); col.type='color'; col.value=toHex(P[key] || [0,0,0]);
+      col.dataset.default = toHex(GT.PDefaults[key] || P[key]);
+      col.addEventListener('input', ()=>{ const v=col.value; P[key]=[parseInt(v.slice(1,3),16)/255, parseInt(v.slice(3,5),16)/255, parseInt(v.slice(5,7),16)/255]; });
+      const val=document.createElement('div'); val.className='val';
+      row.appendChild(lab); row.appendChild(col); row.appendChild(val);
+    };
+    const slider = ([label, key, mi, ma, step, fmt])=>{
+      const row = mkRow(key);
+      const lab=document.createElement('label'); lab.textContent=label;
+      const inp=document.createElement('input'); inp.type='range'; inp.min=mi; inp.max=ma; inp.step=step; inp.value=P[key];
+      if(NO_RAND[key]) inp.dataset.norand = '1';
+      const show = (v)=> NO_DEAD[key] ? fmt(v) : disp(v, fmt);
+      const val=document.createElement('div'); val.className='val'; val.textContent=show(P[key]);
+      inp.addEventListener('input', ()=>{ P[key]=parseFloat(inp.value); val.textContent=show(P[key]); });
+      row.appendChild(lab); row.appendChild(inp); row.appendChild(val);
+    };
+    const onoff = (label, key)=> mkSel(label, key, [[0, 'Off'], [1, 'On']], v=>parseInt(v, 10));
+    const LANGS = [['fr', 'Français'], ['en', 'English'], ['ja', '日本語']];
+    // Text (最初の欄 = index.html の見出し Glitch Type)
+    mkSel('Mode', 'flow', [[1, 'Flow'], [0, 'Quote']], v=>parseInt(v, 10), true);
+    mkSel('Lang', 'lang', LANGS, null, true);
+    mkSel('Sub', 'sub', [['none', 'None']].concat(LANGS), null, true);
+    mkSel('Order', 'order', [[0, 'Sequence'], [1, 'Random']], v=>parseInt(v, 10));
+    {
+      const row = mkRow('author');
+      const lab=document.createElement('label'); lab.textContent='Author';
+      const inp=document.createElement('input'); inp.type='text'; inp.value=P.author || ''; inp.spellcheck=false;
+      inp.style.cssText='flex:1;min-width:0;font:inherit;font-size:12px;padding:3px 6px;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.15);border-radius:4px';
+      let composing=false;
+      inp.addEventListener('compositionstart', ()=>{ composing=true; });
+      inp.addEventListener('compositionend', ()=>{ composing=false; P.author=inp.value; });
+      inp.addEventListener('input', ()=>{ if(!composing) P.author=inp.value; });
+      inp.addEventListener('change', ()=>{ P.author=inp.value; App._undoSchedule && App._undoSchedule(); });
+      row.appendChild(lab); row.appendChild(inp);
+    }
+    {
+      const ta=document.createElement('textarea'); ta.value=P.custom; ta.rows=2; ta.spellcheck=false; ta.placeholder='Custom (空ならドゥルーズの引用。貼った文章を段落ごとに打つ)';
+      ta.dataset.pkey = 'custom';
+      ta.style.cssText='width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:13px;padding:6px;margin:4px 0;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.15);border-radius:4px';
+      let composing=false;
+      ta.addEventListener('compositionstart', ()=>{ composing=true; });
+      ta.addEventListener('compositionend', ()=>{ composing=false; P.custom=ta.value; });
+      ta.addEventListener('input', ()=>{ if(!composing) P.custom=ta.value; });
+      ta.addEventListener('change', ()=>{ P.custom=ta.value; App._undoSchedule && App._undoSchedule(); });
+      cur.appendChild(ta);
+    }
+    block('grid', 'Grid');
+    // Layout を選ぶと、その Layout の保存値を読む。Auto は組み替えのたびに引いた Layout の保存値で描く
+    mkSel('Layout', 'layout', [['auto', 'Auto']].concat(GT.LAYOUTS.map(n=>[n, n[0].toUpperCase() + n.slice(1)])), v=>{ if(v !== 'auto') GT.loadLayout(v); setTimeout(()=>this.refreshGlitchTypeParams(), 0); return v; }, true);
+    {
+      const row = mkRow('layoutVals');
+      const lab=document.createElement('label'); lab.textContent='Layout Save';
+      const box=document.createElement('div'); box.style.cssText='display:flex;gap:4px;flex:1;align-items:center;flex-wrap:wrap';
+      const saved = Object.keys(P.layoutVals || {}).filter(n=>GT.LAYOUTS.includes(n));
+      const one = P.layout !== 'auto';
+      const btn = (text, fn, title)=>{ const b=document.createElement('button'); b.textContent=text; b.title=title; b.disabled=!one; b.addEventListener('click', ()=>{ fn(); App.saveEngineDefault('glitchtype'); this.refreshGlitchTypeParams(); }); box.appendChild(b); };
+      btn('Save Layout', ()=>GT.saveLayout(P.layout), '今の見た目 (Type / Grid の段数・余白など / Lines / Color / Terminal) を、選んでいる Layout の保存値にする (デフォルトにも保存)');
+      btn('Clear', ()=>GT.clearLayout(P.layout), '選んでいる Layout の保存値を消す');
+      const st=document.createElement('span'); st.className='help'; st.style.cssText='font-size:10px;opacity:.7';
+      st.textContent = saved.length ? 'Saved: ' + saved.map(n=>n[0].toUpperCase() + n.slice(1)).join(', ') : (one ? '' : 'Layout を選ぶと保存できます');
+      box.appendChild(st);
+      row.appendChild(lab); row.appendChild(box);
+    }
+    mkSel('Layout Every', 'layoutEvery', [[0, 'Quote'], [0.25, '1/4'], [0.5, '1/2'], [1, '1'], [2, '2'], [4, '4'], [8, '8'], [16, '16'], [32, '32']], v=>parseFloat(v));
+    slider(['Cols', 'cols', 0, 24, 1, v=>v < 1 ? 'Auto' : int(v)]);
+    slider(['Margin', 'margin', 0, 300, 1, pct]);
+    mkSel('Band Align', 'bandAlign', [['cell', 'Cell'], ['line', 'Line'], ['free', 'Free']]);
+    mkSel('Rule Align', 'ruleAlign', [['column', 'Column'], ['gutter', 'Gutter'], ['center', 'Center']]);
+    onoff('Baseline', 'baseline');
+    slider(['Baseline Shift', 'baseShift', -100, 100, 1, pct]);
+    onoff('Meta', 'meta');
+    onoff('Keyword', 'keyword');
+    slider(['Grid Lines', 'grid', 0, 100, 1, pct]);
+    slider(['Kinetic', 'kinetic', 0, 200, 1, pct]);
+    slider(['Seed', 'seed', 0, 999, 1, int]);
+    block('type', 'Type');
+    mkSel('Font', 'font', GT.FONTS.map((f, i)=>[i === 0 ? '' : f.ff, f.name]), null, true);
+    slider(['Weight', 'weight', 200, 700, 100, int]);
+    onoff('Upper', 'upper');
+    slider(['Size', 'size', 30, 250, 1, pct]);
+    slider(['Leading', 'leading', 60, 200, 1, pct]);
+    slider(['Tracking', 'tracking', -120, 300, 5, int]);
+    mkSel('Main Style', 'mainStyle', [[0, 'Fill'], [1, 'Outline'], [2, 'Key Fill']], v=>parseInt(v, 10));
+    mkSel('Number Style', 'numStyle', [[0, 'Fill'], [1, 'Outline']], v=>parseInt(v, 10));
+    slider(['Stroke', 'stroke', 10, 400, 1, pct]);
+    slider(['Number Stroke', 'numStroke', 5, 400, 1, pct]);
+    block('lines', 'Lines');
+    slider(['Top Rule', 'topRuleW', 0, 800, 1, pct]);
+    slider(['Bottom Rule', 'botRuleW', 0, 800, 1, pct]);
+    slider(['Rule', 'ruleW', 0, 800, 1, pct]);
+    slider(['Accent Rule', 'accentW', 0, 800, 1, pct]);
+    slider(['Gauge Line', 'gaugeW', 0, 800, 1, pct]);
+    slider(['Grid Width', 'gridW', 25, 800, 1, pct]);
+    slider(['Cursor Width', 'cursorW', 25, 800, 1, pct]);
+    block('color', 'Color');
+    mkColor('Text', 'ink');
+    mkColor('Background', 'paper');
+    mkColor('Key', 'accent');
+    mkColor('Base', 'base');
+    mkColor('Scramble Color', 'scrColor');
+    block('typing', 'Typing');
+    slider(['Rate', 'rate', 0.5, 32, 0.5, f1]);
+    slider(['Scramble', 'scramble', 0, 8, 0.1, f1]);
+    slider(['Lead', 'lead', 0, 40, 1, int]);
+    slider(['Scramble Hz', 'scrHz', 1, 60, 1, int]);
+    mkSel('Charset', 'charset', Object.keys(GT.CHARSETS).map(k=>[k, k[0].toUpperCase() + k.slice(1)]));
+    slider(['Flash', 'flash', 0, 400, 1, pct]);
+    slider(['Hold', 'hold', 0, 32, 1, int]);
+    mkSel('Erase', 'erase', [['scramble', 'Scramble'], ['wipe', 'Wipe'], ['cut', 'Cut']]);
+    slider(['Erase Beats', 'eraseBeats', 0.25, 8, 0.25, v=>(+v).toFixed(2)]);
+    mkSel('Cursor', 'cursor', [[0, 'Off'], [1, 'Block'], [2, 'Bar'], [3, 'Underscore']], v=>parseInt(v, 10));
+    block('terminal', 'Terminal');
+    onoff('Gauge', 'gauge');
+    onoff('Ticker', 'ticker');
+    slider(['Ticker Rate', 'tickRate', 0.5, 32, 0.5, f1]);
+    block('d3', '3D');
+    onoff('3D Mode', 'depth3D');
+    slider(['Depth', 'depth', 0, 100, 1, pct]);
+    this.bindEngineHintsSections('.glitchtype-mode', GlitchType);
+  },
+  // Glitch Type のブロック単位の Reset: 全体を保存値へ戻してから、ほかのブロックの値は今のまま戻す
+  resetGlitchTypeBlock(id){
+    if(typeof GlitchType === 'undefined') return;
+    const keys = GlitchType.BLOCKS[id] || [];
+    const keep = {};
+    for(const k of Object.keys(GlitchType.P)) if(!keys.includes(k)) keep[k] = JSON.parse(JSON.stringify(GlitchType.P[k]));
+    App.resetEngineDefault('glitchtype');
+    Object.assign(GlitchType.P, keep);
+    GlitchType._lay = null;
+    this.refreshGlitchTypeParams();
+  },
   refreshSurrealParams(){
     const root = document.getElementById('surrealParams'); if(!root) return;
     if(typeof SurrealFloat === 'undefined' || !SurrealFloat.initialized){
@@ -24230,6 +24638,14 @@ void mainImage(out vec4 o, in vec2 f){
         ['Slant',     'slant',     -1,   1,   0.01, f2],
         ['Stretch',   'stretch',   0.3,  3,   0.01, f2],
       ]],
+      ['3D', [
+        ['Tilt X',    'tilt3dX',   -90,  90,  1,    deg],
+        ['Tilt Y',    'tilt3dY',   -90,  90,  1,    deg],
+        ['Spin',      'spin3d',    -4,   4,   0.05, f2],
+        ['Depth',     'depth3d',   0,    1,   0.01, f2],
+        ['Wave',      'wave3d',    0,    1,   0.01, f2],
+        ['Persp',     'persp3d',   0,    1,   0.01, f2],
+      ]],
       ['Color', [
         {sel:true, label:'Color',     key:'colorMode', opts:['指定色 (Ink / Paper)', 'セットから選ぶ', 'セットからランダム', '完全ランダム']},
         {sel:true, label:'Color Set', key:'colorSet',  opts:Fude.COLORS.map(c=>c.name)},
@@ -24238,7 +24654,7 @@ void mainImage(out vec4 o, in vec2 f){
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { smooth:1, merge:1, nibAngle:1, pressFreq:1, wobbleFreq:1, bristles:1, streak:1, bristleContrast:1, dryStart:1, refill:1,
       bleedScale:1, bleedTaps:1, splatSize:1, splatSpread:1, wrap:1, sizeMin:1, sizeMax:1, sizeSkew:1, area:1, aspect:1, penTime:1, easePow:1, strokeGap:1, writeBeats:1, holdBeats:1, fadeBeats:1, flow:1, boilRate:1, phase:1,
-      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, seed:1, tracking:1, leading:1, taperPow:1,
+      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, tilt3dX:1, tilt3dY:1, spin3d:1, seed:1, tracking:1, leading:1, taperPow:1,
       fineHair:1, rimDry:1, sheenAngle:1, sheenPower:1, inkGamma:1, bleedHalo:1, grainSize:1 };   // デッドゾーン表示をしない (設定値)
     root.innerHTML = '';
     const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
@@ -25714,6 +26130,8 @@ void mainImage(out vec4 o, in vec2 f){
     }
   },
   refreshAll(){
+    if(typeof GL !== 'undefined' && GL._compileHoldsUI && GL._compileHoldsUI()){ this._refreshAllPending = true; return; }
+    this._refreshAllPending = false;
     this.refreshKind3D();
     this.refreshMidiRelative();
     this.refreshAudioTransport();
@@ -25722,7 +26140,7 @@ void mainImage(out vec4 o, in vec2 f){
     this.refreshBPM();
     this.refreshInputs();
     this.refreshActiveThumb();
-    this.refreshPresetLib();
+    this.refreshPresetLib({ifChanged:true});
   },
 
   refreshChannels(){
@@ -25982,7 +26400,9 @@ void mainImage(out vec4 o, in vec2 f){
   },
 
   refreshSlotABg(){
-    const el = $('#slotABg'); if(el && el.value !== App.slotABg) el.value = App.slotABg;
+    const none = App.slotABg === 'none', hex = none ? '#000000' : App.slotABg;
+    const el = $('#slotABg'); if(el && el.value !== hex) el.value = hex;
+    const cl = $('#slotABgClear'); if(cl) cl.setAttribute('aria-pressed', none ? 'true' : 'false');
   },
   refreshMix(updateSlider=true){
     if(updateSlider) $('#cf').value = App.crossfade;
@@ -26057,9 +26477,14 @@ void mainImage(out vec4 o, in vec2 f){
       el.appendChild(row);
     }
   },
-  refreshPresetLib(){
+  refreshPresetLib(opts){
     const wrap = $('#presetList'); if(!wrap) return;
     const lib = App._loadPresetLib();
+    // refreshAll からの呼び出し (ifChanged) は、一覧 (名前・サムネ・Visual の並び) が前回と同じなら作り直さない (約 12ms)。
+    //   一覧を変える操作 (追加・上書き・削除・並べ替え・改名・サムネ・サーバー同期) は ifChanged なしで呼ぶ
+    const sig = lib.length + '|' + lib.map(p => (p && p.name || '') + ':' + (p && p.thumb ? p.thumb.length : 0)).join(',') + '|' + PRESETS.map(p => p && p.name).join(',');
+    if(opts && opts.ifChanged && sig === this._presetLibSig && wrap.childElementCount) return;
+    this._presetLibSig = sig;
     { const pc = $('#presetCount'); if(pc) pc.textContent = String(lib.length); }
     wrap.innerHTML = '';
     // 固定 Preset 0 のタイルは非表示 (同じ操作は Esc キーで行う)。
@@ -26159,6 +26584,7 @@ void mainImage(out vec4 o, in vec2 f){
       mkBtn('edit', 1, '名前変更', ()=>{ App._prompt('プリセット名', p.name || ('Preset '+(i+1)), (nn)=>{ App.presetRename(i, nn); UI.refreshPresetLib(); }); });
       mkBtn('refresh', 2, '現在の状態で上書き保存(更新)', ()=>App.presetOverwrite(i, p.name));
       tile.addEventListener('click', e=>{ if(e.shiftKey) App.presetOverwrite(i, p.name); else App.presetApply(i); });
+      UI._precompileOnHover(tile, ()=>App.precompileState(p.state));
       // ホバー = 毎フレーム優先描画 (シェーダプリセットは常時ラウンドロビンでアニメ。animatePresetThumbs)
       tile.addEventListener('mouseenter', ()=>{ entry.hover = true; });
       tile.addEventListener('mouseleave', ()=>{ entry.hover = false; });

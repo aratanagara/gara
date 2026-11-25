@@ -113,7 +113,7 @@ void main(){
       const nvp = sf ? Fx3d.prog(gl, 'pointsNeedle', NV_VS, NV_FS) : null;
       const p = nvp || Fx3d.prog(gl, 'points', VS, FS);
       if(!p) return false;
-      let D = Math.max(60, Math.min(400, Math.round(+(o.post && o.post.fx3dPointsDensity) || 200)));
+      let D = Math.max(60, Math.min(1200, Math.round(+(o.post && o.post.fx3dPointsDensity) || 400)));
       const om = o.ovM || [0, 0];
       const sides = sf && sf.sides != null ? sf.sides : 5;
       if(nvp){   // Needle: 頂点数 (点 × 辺数 × 3) が 1.5M を超えるなら点を粗くする (縦長・Overscan で増える)

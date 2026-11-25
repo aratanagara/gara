@@ -16,9 +16,9 @@ const Fx3d = {
     slicer: (typeof Slicer !== 'undefined') ? JSON.parse(JSON.stringify(Slicer.P)) : null,
   },
   inst: {},
-  ORDER: ['photo', 'slicer', 'layer', 'diorama', 'points', 'cubes', 'blinds', 'gravity', 'globe'],
+  ORDER: ['extrude', 'photo', 'slicer', 'layer', 'diorama', 'points', 'cubes', 'blinds', 'tunnel', 'gravity', 'globe'],   // Extrude は先頭 = 押し出した絵をほかの 3D FX の素材にする
   KEY: { photo: 'fx3dPhoto', slicer: 'fx3dSlicer', layer: 'fx3dLayer', diorama: 'fx3dDiorama', points: 'fx3dPoints',
-         cubes: 'fx3dCubes', blinds: 'fx3dBlinds', gravity: 'fx3dGravity', globe: 'fx3dGlobe' },
+         cubes: 'fx3dCubes', blinds: 'fx3dBlinds', tunnel: 'fx3dTunnel', gravity: 'fx3dGravity', globe: 'fx3dGlobe', extrude: 'fx3dExtrude' },
   // 自前レンダラ: name -> { render(gl, o) }。各 fx3d-<name>.js が Fx3d.EXTRA.<name> = {...} で登録する。
   //   o = { srcTex, fbo, w, h, e, k, asp, clock, beat, hit, beatMode, post }  (k = smooth(e) / hit = 0..1 / beatMode = beat モードか)
   //   戻り値: 描けたら true。透明背景・前乗算 (clear(0,0,0,0)、不透明な面は vec4(rgb,1)) で o.fbo へ描く。
@@ -265,7 +265,7 @@ vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : cl
     const view = [xc[0],yc[0],zc[0],0, xc[1],yc[1],zc[1],0, xc[2],yc[2],zc[2],0, -d(xc,eye),-d(yc,eye),-d(zc,eye),1];
     const f = 1.35, zn = 0.03, zf = 30.0;
     const proj = [f/asp,0,0,0, 0,f,0,0, 0,0,(zf+zn)/(zn-zf),-1, 0,0,2*zf*zn/(zn-zf),0];
-    return { view, proj, eye };
+    return { view: (typeof GL !== 'undefined' && GL._stretchView) ? GL._stretchView(view) : view, proj, eye };   // 3D Stretch X / Y / Z
   },
   // MSAA の色 + 深度 RBO (全レンダラで 1 つを共有)。描画後は resolve() で渡された fbo へ blit
   msaa(gl, w, h){
@@ -293,9 +293,8 @@ vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : cl
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
   // 紙のライティング (折り系 FS と同じ。dFdx / dFdy の面法線)。使う側は FS 先頭 (precision の後) へ連結し、
-  // fx3dLit(アルベド, ワールド座標, 目の位置, shade) を呼ぶ。shade = Fx3d.shade(k)
-  GLSL_LIT: `vec3 fx3dLit(vec3 alb, vec3 wp, vec3 eye, float shade){
-  vec3 N = normalize(cross(dFdx(wp), dFdy(wp)));
+  // fx3dLit(アルベド, ワールド座標, 目の位置, shade) を呼ぶ。shade = Fx3d.shade(k)。頂点で滑らかな法線を求めたエンジンは fx3dLitN(アルベド, 法線, …)
+  GLSL_LIT: `vec3 fx3dLitN(vec3 alb, vec3 N, vec3 wp, vec3 eye, float shade){
   vec3 V = normalize(eye - wp);
   if(dot(N, V) < 0.0) N = -N;
   vec3 L = normalize(vec3(2.4, 2.0, 3.0));
@@ -305,6 +304,7 @@ vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : cl
   vec3 res = alb * light + vec3(1.0) * spec * 0.10;
   return mix(alb, res, shade);
 }
+vec3 fx3dLit(vec3 alb, vec3 wp, vec3 eye, float shade){ return fx3dLitN(alb, normalize(cross(dFdx(wp), dFdy(wp))), wp, eye, shade); }
 `,
   shade(k){ return Math.min(1, k / 0.22); },
   // シェーダの深度で面を持ち上げる uniform (VS で fx3dRelief(uv) を呼ぶエンジン用。3D Depth × 表示中のシェーダの深度)
@@ -335,12 +335,22 @@ vec2 fx3dSrcC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? fx3dSrc(uv) : cl
     const asp = w / h;
     o._fx.w = k;
     if(name === 'photo'){
+      // Photos 専用の紙パラメータ。未保存時は既定値、明示的な 0 はそのまま使う
+      const paperParam = (key, def) => {
+        const raw = post[key] == null ? def : +post[key];
+        const v = Math.max(0, Math.min(1, Number.isFinite(raw) ? raw : def));
+        return App.deadParam ? App.deadParam(v) : v;
+      };
+      o._fx.curl = paperParam('fx3dPhotoCurl', 0.65);
+      o._fx.curlAxis = paperParam('fx3dPhotoCurlAxis', 1);
+      o._fx.flutter = paperParam('fx3dPhotoFlutter', 0.4);
+      o._fx.corner = paperParam('fx3dPhotoCorner', 0.45);
+      P.spin = 0.9 * paperParam('fx3dPhotoSpin', 0.35);
       const cropMax = Math.max(0.3, Math.min(1, (+post.fx3dPhotoCrop || 70) / 100));
       P.bg = [0, 0, 0]; P.softFocus = 0;
       P.count = this.popCount('photo', Math.max(4, Math.min(80, Math.round(+(post.fx3dPhotoCount) || 24))), true);   // 枚数を変えても既存の板は同じ (増減した分だけ弾む)
       P.cropMax = cropMax; P.cropMin = cropMax * 0.36;
       P.spread = 2 + 7 * e;
-      P.bend = F.bend * k;
       P.size = F.size * (0.8 + 0.6 * e);
       o.textures[0] = srcTex;
       o.texAspects[0] = asp;

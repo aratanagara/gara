@@ -1092,7 +1092,8 @@ void main(){
         const w0 = this._fx.w, d0 = 1 / Math.tan(fovRad * 0.5);
         ex *= w0; ey *= w0; ez = d0 + (ez - d0) * w0;
       }
-      const view = this.m4.lookAt([ex, ey, ez], [dz(this.P.lookX) * 0.01 * this.imgAsp, dz(this.P.lookY) * 0.01, 0], [0,1,0]);
+      let view = this.m4.lookAt([ex, ey, ez], [dz(this.P.lookX) * 0.01 * this.imgAsp, dz(this.P.lookY) * 0.01, 0], [0,1,0]);
+      if(this._fx && typeof GL !== 'undefined' && GL._stretchView) view = GL._stretchView(view);   // 3D FX のときだけ 3D Stretch X / Y / Z
       if(typeof GL !== 'undefined' && GL.osProj && GL._osCur){ const o = GL.osProj(proj); for(let i = 0; i < 16; i++) proj[i] = o[i]; }   // 3D Overscan: スロットに余白があれば画角を広げる (針・折りのフックも同じ投影)
       gl.uniformMatrix4fv(this.locs.u_proj, false, proj);
       gl.uniformMatrix4fv(this.locs.u_view, false, view);

@@ -258,6 +258,13 @@ const Fude = {
     rotate:0,         // 回転 (°)
     slant:0,          // 傾き
     stretch:1,        // 縦の伸び
+    // 3D: 骨格の頂点 (筆跡・飛沫) に Z を持たせて、回転と遠近を掛ける。全部 0 なら従来と同じ平面
+    tilt3dX:0,        // 前後の傾き (°)
+    tilt3dY:0,        // 左右の振り (°)
+    spin3d:0,         // 縦軸まわりの自転 (16 拍 = drone では 16 秒で 1 周 × この値)
+    depth3d:0,        // 文字ごとの奥行きの散らばり
+    wave3d:0,         // 面のうねり (奥行き方向の波)
+    persp3d:0.5,      // 遠近の強さ (0 = 平行投影)
   },
 
   // いま使う色 {ink, ink2, paper}。ランダムは Seed で決まるので書体や単語と一緒に切り替わる
@@ -1223,6 +1230,8 @@ float vn(vec2 p){
     const PLACE = `
 uniform vec2  uRes, uPos;
 uniform float uFit, uZoom, uRot, uSlant, uStretch, uSway, uTime;
+uniform vec3  u3Rot;    // 3D: 前後の傾き, 左右の振り (自転込み), 遠近 (rad / rad / 0..1)
+uniform vec2  u3Z;      // 3D: 文字ごとの奥行き, うねり
 mat2 rot2(float a){ float c=cos(a), s=sin(a); return mat2(c, s, -s, c); }
 vec4 place(vec2 p, vec3 ch){
   float cr = ch.z;
@@ -1232,7 +1241,19 @@ vec4 place(vec2 p, vec3 ch){
   q.x -= q.y*uSlant;
   q.y *= uStretch;
   q = rot2(uRot)*q;
-  vec2 px = q*uFit*uZoom + vec2(uPos.x, -uPos.y)*uRes*0.5;
+  vec2 px = q*uFit*uZoom;
+  if(u3Z.x > 0.0 || u3Z.y > 0.0 || u3Rot.x != 0.0 || u3Rot.y != 0.0){
+    // 3D: 頂点ごとに Z (文字ごとの奥行き + うねり) を与え、振り → 傾きの順に回して遠近で縮める
+    float H = uRes.y;
+    vec2 w = px/H;
+    float z = (cr - 0.5)*u3Z.x*0.9 + u3Z.y*0.12*sin(w.x*7.0 + w.y*3.0 + uTime*0.8);
+    vec3 v = vec3(px, z*H);
+    v.xz = rot2(u3Rot.y)*v.xz;
+    v.yz = rot2(u3Rot.x)*v.yz;
+    if(u3Rot.z > 0.0){ float D = H*mix(8.0, 1.1, u3Rot.z); v.xy *= D/max(D - v.z, H*0.05); }
+    px = v.xy;
+  }
+  px += vec2(uPos.x, -uPos.y)*uRes*0.5;
   return vec4(px/(uRes*0.5)*vec2(1.0, -1.0), 0.0, 1.0);
 }`;
 
@@ -1706,6 +1727,9 @@ void main(){
       gl.uniform1f(U(p,'uStretch'), +P.stretch||1);
       gl.uniform1f(U(p,'uSway'), dz(P.sway));
       gl.uniform1f(U(p,'uTime'), bt);
+      const d2r = Math.PI/180, spin = (+P.spin3d||0)*bt/16*Math.PI*2;
+      gl.uniform3f(U(p,'u3Rot'), (+P.tilt3dX||0)*d2r, (+P.tilt3dY||0)*d2r + spin, (+P.tilt3dX||+P.tilt3dY||+P.spin3d||dz(P.depth3d)||dz(P.wave3d)) ? dz(P.persp3d) : 0);
+      gl.uniform2f(U(p,'u3Z'), dz(P.depth3d), dz(P.wave3d));
     };
 
     if(this.indexCount > 0){
@@ -1923,6 +1947,12 @@ Fude.PARAM_HELP = {
   posX:'横位置',
   posY:'縦位置',
   rotate:'回転 (度)',
+  tilt3dX:'3D: 前後の傾き (度)',
+  tilt3dY:'3D: 左右の振り (度)',
+  spin3d:'3D: 縦軸まわりの自転。16 拍 (drone では 16 秒) で 1 周 × この値',
+  depth3d:'3D: 文字ごとに奥行きを散らす',
+  wave3d:'3D: 面を奥行き方向にうねらせる',
+  persp3d:'3D: 遠近の強さ (0 = 平行投影)',
   slant:'傾き',
   stretch:'縦の伸び',
   colorMode:'色の決め方。指定色 / セット / セットからランダム / 完全ランダム',

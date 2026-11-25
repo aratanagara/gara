@@ -172,6 +172,16 @@ vec3 bg_flower(vec2 fc){
   }
 
   if(hit < 0.5){ bgAlpha = 0.0; return vec3(0.0); }
+  // 当たった区間 [t-dt, t] を二分探索で詰める (固定ステップの段が刃の側面にギザギザの縞として出るのを消す)
+  {
+    float ta = max(t - dt, t0), tb = t;
+    for(int j=0; j<6; j++){
+      float tm = 0.5*(ta + tb);
+      vec3 pm = lo + ld*tm;
+      if(abs(pm.z) <= THICK * fl_height(pm.xy)) tb = tm; else ta = tm;
+    }
+    t = tb; hp = lo + ld*t;
+  }
   vjDepth = clamp(1.0 - (t - (camD - RAD)) / (2.0 * RAD), 0.0, 1.0);   // 深度 (外接球の手前 1 → 奥 0)。折り系・3D FX が紙をこれで持ち上げる
 
   // 法線: F(p)=abs(p.z)-THICK*h(p.xy) の勾配(実ジオメトリ → ノイズなし)

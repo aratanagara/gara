@@ -105,7 +105,9 @@ const WindFlock = {
     toneVar:0,        // 板ごとの明るさのばらつき (%)
     tailMix:0,        // 尾に向けて Tail Color へ染める量 (%)
     ink:[1, 1, 1],    // インク (線) の色
-    paper:[0, 0, 0],  // 紙 (板の内部・背景) の色
+    paper:[0, 0, 0],  // 紙 (板の内部) の色
+    bgMode:'none',    // 背景: none = 透過 (Slot A では A BG が見える) / color = BG Color で塗る
+    bgColor:[0, 0, 0],   // 背景色 (bgMode = color のとき)
     tailCol:[1, 0.35, 0.2],   // 尾の色 (tailMix > 0 のとき)
     paperAlpha:1.0,   // Slot B での紙の不透明度 (1=板は不透明なカード / 0=線だけ残して板の中は透ける)
   },
@@ -625,7 +627,8 @@ void main(){
     } else {
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     }
-    gl.clearColor(opaque ? paper[0] : 0, opaque ? paper[1] : 0, opaque ? paper[2] : 0, opaque ? 1 : 0);
+    const bgc = P.bgColor || [0,0,0], bgOn = P.bgMode === 'color';   // 背景は紙と別。既定は透過
+    gl.clearColor(bgOn ? bgc[0] : 0, bgOn ? bgc[1] : 0, bgOn ? bgc[2] : 0, bgOn ? 1 : 0);
     if(useMask){ gl.clear(gl.COLOR_BUFFER_BIT); }
     else { gl.clearDepth(1.0); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); }
     gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
@@ -715,7 +718,9 @@ WindFlock.PARAM_HELP = {
   hold:'動かすか、Phase の時刻で静止させるか',
   phase:'Hold で静止させるときの時刻 (秒)',
   ink:'インク (線) の色',
-  paper:'紙 (板の内部・背景) の色',
+  paper:'紙 (板の内部) の色',
+  bgMode:'背景。透過 = 塗らない (Slot A では A BG が見える) / 色 = BG Color で塗る',
+  bgColor:'背景色 (BG = 色のとき)',
   tailCol:'尾に染める色',
 };
 WindFlock.PARAM_NEEDS = {

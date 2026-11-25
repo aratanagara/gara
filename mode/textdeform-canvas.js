@@ -508,10 +508,10 @@ const TDCanvas = {
     else if(how === 'sweep') q.sort((a, b) => a.x - b.x || a.y - b.y);
     this._gunQ = q; this._gunHidden = new Set(q); this._gunStep = null;
   },
-  _gunTick(beat){
+  _gunTick(){
     if(!this._gunQ.length){ if(this._gunHidden.size) this._gunHidden.clear(); return; }
     if(TD.P.canvasTiming !== 'gun'){ this._gunQ = []; this._gunHidden.clear(); return; }
-    const step = Math.floor((beat || 0) * Math.max(1, +TD.P.canvasGunDiv || 4));
+    const step = Math.floor(TD.tBeat('canvasGunDiv') * Math.max(1, +TD.P.canvasGunDiv || 4));
     if(step === this._gunStep) return;
     this._gunStep = step;
     const list = this.stamps();
@@ -589,13 +589,13 @@ const TDCanvas = {
   _changed(){ if(typeof App !== 'undefined' && App._undoSchedule) App._undoSchedule(); if(this._onChange) try{ this._onChange(); }catch(e){} },
 
   // 拍の自動: P の canvasAuto* 拍ごとに 1 回 (拍の番号で数えるので、拍が戻ったときは数え直す)
-  _beatAuto(beat){
+  _beatAuto(){
     const P = TD.P;
     const tick = (key, slotKey, fn)=>{
       let every = +P[key] || 0;
       if(!(every > 0)){ this[slotKey] = null; return; }
       if(every < 1){ every = 1; P[key] = 1; }   // 最短は 1 拍 (1 拍より細かい保存値は 1 拍に丸める)
-      const slot = Math.floor((beat || 0) / every + 1e-6);
+      const slot = Math.floor(TD.tBeat(key) / every + 1e-6);
       if(this[slotKey] == null || slot < this[slotKey]){ this[slotKey] = slot; return; }
       if(slot !== this[slotKey]){ this[slotKey] = slot; fn(); }
     };
@@ -610,9 +610,9 @@ const TDCanvas = {
     });
     tick('canvasAutoAdd', '_addSlot', ()=>{ const p = this._emptiest(this.stamps(), 0.6); this.add(p.x, p.y); });
     tick('canvasAutoLayout', '_layoutSlot', ()=>{ this.layout('random'); });
-    // C Layout = Random (cycle): 2 / 4 / 8 / 16 拍 (beat xA を掛けた拍) からランダムに選んだ周期で、構成方法を入れ替える
+    // C Layout = Random (cycle): 2 / 4 / 8 / 16 拍 (数え方は C Layout の BPM / ×A) からランダムに選んだ周期で、構成方法を入れ替える
     if(P.canvasLayout === 'cycle'){
-      const b = beat || 0;
+      const b = TD.tBeat('canvasLayout');
       if(this._cycleNext == null || b < this._cycleNext - 64) this._cycleNext = b + CYCLE_BEATS[Math.floor(Math.random() * CYCLE_BEATS.length)];
       else if(b >= this._cycleNext){ this.layout('random'); this._cycleNext = b + CYCLE_BEATS[Math.floor(Math.random() * CYCLE_BEATS.length)]; }
     } else this._cycleNext = null;
@@ -634,18 +634,18 @@ const TDCanvas = {
     });
   },
   // ---- 毎フレーム (TextDeform.update から) ----
-  update(d, pulse, motion, beat){
+  update(d, pulse, motion){
     this._sync();
-    this._gunTick(beat);
+    this._gunTick();
     // On にしたとき空なら、選んでいるレイアウトで組む (Clear で空にしたときはそのまま)
     if(!this.stamps().length && !this._emptyOk) this.layout(TD.P.canvasLayout || 'hero');
-    this._beatAuto(beat);
+    this._beatAuto();
     // 押したままのドラッグ = 連射 (0.12 秒ごと)
     const g = this._drag;
     if(g && g.gun && performance.now() - this._gunAt > 120){ this._gunAt = performance.now(); this.add(g.u + (Math.random() - 0.5)*0.02, g.v + (Math.random() - 0.5)*0.02); }
     for(const inst of this._inst.values()){
       if(!inst._stamp) continue;   // 主役・焼き付けは分身を持たない
-      inst._t += d; inst._beatNow = beat || 0;
+      inst._t += d; inst._beatXA = TD._beatXA; inst._beatBpm = TD._beatBpm;
       if(inst._layoutDirty) inst._measureLayout();
       if(inst._metrics && inst._metrics.length) inst._randomFlipStep(pulse * motion * (inst._spd || 1));
     }

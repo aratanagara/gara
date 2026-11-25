@@ -12,3 +12,6 @@ images/*
 # サーバ上のプリセットデータ
 presets/presets.json
 presets/history/
+
+# Basic 認証のパスワードファイル (ハッシュのみ。本番には deploy.sh で上がる)
+.htpasswd

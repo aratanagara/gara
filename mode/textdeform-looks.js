@@ -149,6 +149,9 @@ const TDLooks = {
     if(this._autoSlot == null || slot < this._autoSlot){ this._autoSlot = slot; return; }
     if(slot === this._autoSlot || this._busy) return;
     this._autoSlot = slot;
+    const now = performance.now();
+    if(now - (this._autoAt || 0) < 400) return;   // ×A で極端に速くしても、読み込みが休みなく続いて固まらないように 0.4 秒は空ける
+    this._autoAt = now;
     this._busy = true;
     this.applyRandom().finally(()=>{ this._busy = false; });
   },

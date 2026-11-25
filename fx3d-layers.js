@@ -35,8 +35,19 @@ vec3 layerSurf(int pl, vec2 ab, out vec3 ctr){
 const VS = `#version 300 es
 precision highp float;
 uniform mat4 uView, uProj;
-out vec2 vUv; out vec2 vAb; out vec3 vW;
+out vec2 vUv; out vec2 vAb; out vec3 vW; out vec3 vN;
 ${SURF}
+// 板の面内座標 ab の点を、立体シェーダの深度で板の法線方向へ持ち上げた位置 (板の法線は差分で求める)
+vec3 liftSurf(int pl, vec2 ab, out vec3 ctr){
+  vec3 P = layerSurf(pl, ab, ctr), c2;
+  float rl = fx3dRelief(ab);
+  if(rl > 0.0){
+    const float E = 1e-3;
+    vec3 N = normalize(cross(layerSurf(pl, ab + vec2(E, 0.0), c2) - P, layerSurf(pl, ab + vec2(0.0, E), c2) - P));
+    P += N * rl;
+  }
+  return P;
+}
 void main(){
   int id = gl_VertexID, pl = id / ${PER}, q = id - pl * ${PER};
   int cell = q / 6, tv = q - cell * 6;
@@ -46,14 +57,12 @@ void main(){
   vAb = ab;
   ab = fx3dAB(ab);   // 3D Overscan: 板は画面の外 (素材の余白) まで載せる
   vec3 ctr, c2;
-  vec3 P = layerSurf(pl, ab, ctr);
-  {   // 立体シェーダの深度で板の面を持ち上げる (板の法線は差分で求める)
-    float rl = fx3dRelief(ab);
-    if(rl > 0.0){
-      const float E = 1e-3;
-      vec3 N = normalize(cross(layerSurf(pl, ab + vec2(E, 0.0), c2) - P, layerSurf(pl, ab + vec2(0.0, E), c2) - P));
-      P += N * rl;
-    }
+  vec3 P = liftSurf(pl, ab, ctr);
+  {   // 陰影の法線は、隣のマスの持ち上げた位置から頂点ごとに求める (三角形ごとに明るさが変わって網目に見えるのを防ぐ)
+    const float D = 1.0 / float(${SUB});
+    vec3 N = cross(liftSurf(pl, ab + vec2(D, 0.0), c2) - liftSurf(pl, ab - vec2(D, 0.0), c2),
+                   liftSurf(pl, ab + vec2(0.0, D), c2) - liftSurf(pl, ab - vec2(0.0, D), c2));
+    vN = normalize(N);
   }
   P = ctr + (P - ctr) * fx3dPop(float(pl));   // ポップ: 板ごとに中心から
   vUv = ab;
@@ -66,7 +75,7 @@ precision highp float;
 uniform mat4 uView, uProj;
 uniform vec2 uNvGrid;
 uniform float uNvSub;
-out vec2 vUv; out vec2 vAb; out vec3 vW;
+out vec2 vUv; out vec2 vAb; out vec3 vW; out vec3 vN;
 ${SURF}
 void main(){
   int per = (int(uNvGrid.x) + 2) * (int(uNvGrid.y) + 2) * 18 * int(uNvSub) * int(uNvSub);
@@ -87,18 +96,19 @@ void main(){
   P = ctr + (P - ctr) * fx3dPop(float(pl));
   vUv = ab;
   vW = P;
+  vN = vec3(0.0);   // 針の面は三角形ごとの陰影のまま (FS が差分の法線を使う)
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
 const FS = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec2 vAb; in vec3 vW;
+in vec2 vUv; in vec2 vAb; in vec3 vW; in vec3 vN;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uEdge;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
   vec4 t0 = texture(uTex, fx3dSrcC(vUv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
-  vec3 c = fx3dLit(t0.rgb, vW, uEye, uShade);
+  vec3 c = dot(vN, vN) > 0.25 ? fx3dLitN(t0.rgb, normalize(vN), vW, uEye, uShade) : fx3dLit(t0.rgb, vW, uEye, uShade);
   if(uEdge > 0.001){   // 板の縁の線 (Layers Edge。太さは画面上でほぼ一定)
     vec2 e = min(vAb, 1.0 - vAb) / max(fwidth(vAb), vec2(1e-5));
     c = mix(c, vec3(0.0), (1.0 - smoothstep(0.0, 1.0 + 3.0 * uEdge, min(e.x, e.y))) * uShade);

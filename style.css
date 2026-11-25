@@ -422,6 +422,10 @@ html[data-theme="light"] .help-table td:first-child{color:var(--acc)}
 }
 #side input[type=range]:not(.huebar)::-webkit-slider-runnable-track{height:var(--track);background:var(--line2)}
 #side input[type=range]:not(.huebar)::-moz-range-track{height:var(--track);background:var(--line2)}
+/* トラックにグラデーションを敷くスライダー (Color の Temperature / Tint / Color Mixer)。色は input の --trk で渡す (中央 = 補正なし) */
+#side input[type=range].grad-trk{--track:6px}
+#side input[type=range].grad-trk::-webkit-slider-runnable-track{background:var(--trk)}
+#side input[type=range].grad-trk::-moz-range-track{background:var(--trk)}
 #side input[type=range]:not(.huebar)::-webkit-slider-thumb{
   appearance:none;width:var(--thumb);height:var(--thumb);border:0;background:var(--fg);
   margin-top:calc((var(--track) - var(--thumb)) / 2);

@@ -365,6 +365,11 @@
      "file": "bg_uniflash.frag",
      "func": "bg_uniflash",
      "name": "Uni Flash"
+    },
+    {
+     "file": "bg_whitenoise.frag",
+     "func": "bg_whitenoise",
+     "name": "White Noise"
     }
    ],
    "exclude": [

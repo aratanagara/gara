@@ -73,7 +73,7 @@ vec3 gSurf(vec2 g, out vec2 uv, out float deep){
 const VS = `#version 300 es
 precision highp float;
 ${SURF}
-out vec2 vUv; out vec3 vW; out float vDeep;
+out vec2 vUv; out vec3 vW; out float vDeep; out vec3 vN;
 void main(){
   int id = gl_VertexID, quad = id / 6, tv = id - quad * 6;
   int iy = quad / ${COLS}, ix = quad - iy * ${COLS};
@@ -81,6 +81,12 @@ void main(){
   vec2 g = (vec2(float(ix), float(iy)) + ab) / vec2(${COLS}.0, ${ROWS}.0);
   vec2 uv; float deep;
   vec3 P = gSurf(g, uv, deep);
+  {   // 陰影の法線は、隣の格子点の位置から頂点ごとに求める (深度で持ち上げた所が三角形ごとの網目に見えるのを防ぐ)
+    const vec2 D = 1.0 / vec2(${COLS}.0, ${ROWS}.0);
+    vec2 uvd; float dd;
+    vN = normalize(cross(gSurf(g + vec2(D.x, 0.0), uvd, dd) - gSurf(g - vec2(D.x, 0.0), uvd, dd),
+                         gSurf(g + vec2(0.0, D.y), uvd, dd) - gSurf(g - vec2(0.0, D.y), uvd, dd)));
+  }
   P *= fx3dPop(0.0);   // ポップ: 布ごと中心から
   vUv = uv; vW = P; vDeep = deep;
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
@@ -92,7 +98,7 @@ ${SURF}
 uniform vec2 uNvGrid;
 uniform float uNvSub;
 uniform vec3 uEye;
-out vec2 vUv; out vec3 vW; out float vDeep;
+out vec2 vUv; out vec3 vW; out float vDeep; out vec3 vN;
 void main(){
   vec2 g; float w; vec2 key;
   fx3dNeedleVert(gl_VertexID, uNvGrid, uNvSub, vec2(3.3, 7.1), g, w, key);
@@ -107,11 +113,12 @@ void main(){
   vec3 P = P0 + N * (w * fx3dNeedleH(key, (uv - 0.5) * vec2(uGAsp, 1.0) * 3.2) * cell);
   P *= fx3dPop(0.0);
   vUv = uv; vW = P; vDeep = deep;
+  vN = vec3(0.0);   // 針の面は三角形ごとの陰影のまま (FS が差分の法線を使う)
   gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
 }`;
 const FS = `#version 300 es
 precision highp float;
-in vec2 vUv; in vec3 vW; in float vDeep;
+in vec2 vUv; in vec3 vW; in float vDeep; in vec3 vN;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade;
 out vec4 frag;
 ${Fx3d.GLSL_LIT}
@@ -119,7 +126,7 @@ void main(){
   vec2 u = fx3dSrc(vUv);                                         // 余白は素材の余白 (3D Overscan)、その外はミラー
   vec4 t0 = texture(uTex, u);
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
-  vec3 col = fx3dLit(t0.rgb, vW, uEye, uShade);
+  vec3 col = dot(vN, vN) > 0.25 ? fx3dLitN(t0.rgb, normalize(vN), vW, uEye, uShade) : fx3dLit(t0.rgb, vW, uEye, uShade);
   col *= mix(1.0, mix(0.2, 1.0, smoothstep(-2.4, -0.6, vDeep)), uShade);   // 喉の奥を暗く
   frag = vec4(fx3dFoldShade(col), 1.0);
 }`;

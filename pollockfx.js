@@ -14,6 +14,7 @@ const PollockFX = {
   _active:false, _fade:null, _tail:null, _lastAmount:0, _burstLeft:0,
   _paintAcc:0, _lastUpdateTime:0, _lastValue:null, _drawCtx:null, _liveAge:0,
   MAXW: 900,
+  opts:{ size:1, len:1, dens:1, drops:1, curve:1, life:1, relief:1 },   // 詳細 (app 側が毎フレーム入れる。1 = 従来)
   PRESET:{ minBrushSize:2, maxBrushSize:20, distortion:1.75, opacity:1.0, density:17500, strokeLen:225, curveAmount:1.75 },
 
   VS:`#version 300 es
@@ -30,6 +31,8 @@ uniform vec2 uSrcTexel;
 uniform float uAmount;
 uniform float uStyle;
 uniform float uFlat;   // 1 = フラット(単色+エンボスのみ)
+uniform float uMetal;  // 1 = メタル(液体金属)
+uniform float uRelief; // 陰影の強さ (1 = 従来)
 in vec2 v_uv;
 out vec4 frag;
 float sat(float x){ return clamp(x, 0.0, 1.0); }
@@ -241,13 +244,13 @@ void main(){
   vec2 matteMicro = vec2(impastoBroad - 0.5 + (ma - mb) * 0.22, impastoFine - 0.5 + (mc - mf) * 0.22) * impastoBody * 1.20 * matteDetail
                    + vec2(mediumFine - 0.5, dryGrain - 0.5) * impastoBody * (0.30 + matteDetail * 0.32);
   vec2 reliefMicro = mix(matteMicro, glossMicro, gloss);
-  vec3 reliefN = normalize(vec3(-gWide * mix(8.0 + 12.0 * amt, 4.5 + 8.0 * amt, gloss) + reliefMicro, 1.0));
+  vec3 reliefN = normalize(vec3((-gWide * mix(8.0 + 12.0 * amt, 4.5 + 8.0 * amt, gloss) + reliefMicro) * uRelief, 1.0));
   vec3 reliefL = normalize(vec3(-0.48, 0.62, 0.78));
   float reliefLit = dot(reliefN, reliefL);
   float reliefBase = (reliefLit - 0.62) * reliefCoverage;
   float reliefEdge = reliefRim * (0.34 + innerCoverage * 0.66);
   if(gloss > 0.5){
-    vec3 roundN = normalize(vec3(-g * (7.5 + 15.0 * amt) + glossMicro * 0.42, 1.0));
+    vec3 roundN = normalize(vec3((-g * (7.5 + 15.0 * amt) + glossMicro * 0.42) * uRelief, 1.0));
     vec3 roundL = normalize(vec3(-0.36, 0.48, 0.80));
     float roundLit = dot(roundN, roundL);
     float roundBody = smoothstep(0.055, 0.56, mBlur) * amt;
@@ -298,7 +301,7 @@ void main(){
     // mBlur(フチからの距離の代理)で丸い立ち上がりを作り、影のみで陰影を付ける(反射・明部なし)。
     float roundProfile = smoothstep(0.020, 0.44, mBlur);          // 0=フチ / 1=内側
     float roundShadow = (1.0 - roundProfile) * reliefCoverage;    // フチ側ほど丸く暗い落ち影
-    col -= matteColor * roundShadow * (0.20 + 0.14 * amt);
+    col -= matteColor * roundShadow * (0.20 + 0.14 * amt) * uRelief;
     col -= matteColor * max(-impastoShade, 0.0) * 0.30;           // 硬いエンボスは弱めに残す
     col -= matteColor * max(-reliefBase, 0.0) * 0.24;
     col -= matteColor * max(-toothShade, 0.0) * 0.30;
@@ -310,6 +313,25 @@ void main(){
     col = mix(col, matteColor * 0.94, clamp(reliefRim * 0.30, 0.0, 0.30));   // フチのテカリ抑制(角丸影に置換したため弱め)
     vec3 shadowTint = vec3(0.035, 0.040, 0.052) + matteColor * 0.08;
     col = mix(col, col * 0.78 + shadowTint * 0.22, clamp(matteDropShadow * 0.42, 0.0, 0.36));
+  }
+  if(uMetal > 0.5){
+    // メタル: 塗りの厚み (mBlur) を高さに見立てた法線で、空 / 地平 / 地面の環境と周りの絵を映す液体金属。
+    float solidM = smoothstep(0.025, 0.22, mBlur);
+    vec2 mg = (gWide * (10.0 + 14.0 * amt) + glossMicro * 0.25) * uRelief;
+    vec3 mN = normalize(vec3(-mg, 1.0));
+    vec3 Rm = reflect(vec3(0.0, 0.0, -1.0), mN);
+    float hz = Rm.y * 1.8 + (mBlur - 0.32) * 1.1 * uRelief + (medium - 0.5) * 0.40;
+    vec3 sky = mix(vec3(0.58, 0.63, 0.70), vec3(1.0), smoothstep(0.0, 0.9, hz));
+    vec3 ground = mix(vec3(0.05), vec3(0.36, 0.33, 0.30), smoothstep(-1.0, -0.04, hz));
+    vec3 env = mix(ground, sky, smoothstep(-0.035, 0.035, hz));
+    vec3 refl = texture(uSrc, clamp(baseUv + mN.xy * 0.07, vec2(0.001), vec2(0.999))).rgb;
+    float pmax = max(pickupColor.r, max(pickupColor.g, pickupColor.b));
+    vec3 tint = mix(vec3(1.0), pickupColor / max(0.25, pmax), 0.40);
+    vec3 metalCol = mix(env, env * (0.55 + refl * 1.1), 0.30) * tint;
+    float spec = pow(max(dot(Rm, normalize(vec3(-0.35, 0.55, 0.76))), 0.0), 60.0) * 1.6
+               + pow(max(dot(Rm, normalize(vec3(0.45, 0.30, 0.84))), 0.0), 16.0) * 0.30;
+    metalCol += vec3(spec) * solidM;
+    col = mix(src0Raw, clamp(metalCol, 0.0, 1.0), solidM);
   }
   if(uFlat > 0.5){
     // フラット: 線が覆うソース画素の平均を粗くポスタライズしたベタ単色(マーカーのイメージ)。
@@ -324,7 +346,7 @@ void main(){
     flatCol = floor(flatCol * 5.0 + 0.5) / 5.0;                    // 軽いポスタライズ(5階調)でベタ感・バンド抑制
     // インクの厚みエンボス: 塗りの「内側」フチ帯で基調色そのものを暗くする(外側AA帯=元ソース混ざりを避けグレー化しない)。
     float emb = smoothstep(0.03, 0.10, mBlur) * (1.0 - smoothstep(0.10, 0.42, mBlur));
-    vec3 inked = flatCol * (1.0 - emb * 0.30);                     // 基調色を暗く=厚みのエンボス(明部・反射なし)
+    vec3 inked = flatCol * (1.0 - min(1.0, emb * 0.30 * uRelief));                     // 基調色を暗く=厚みのエンボス(明部・反射なし)
     col = mix(src0Raw, clamp(inked, 0.0, 1.0), cover);
   }
   frag = vec4(clamp(col, 0.0, 1.0), 1.0);
@@ -847,13 +869,14 @@ void main(){
     const p = this.PRESET;
     const scale = Math.max(this.sw, this.sh) / 1000;
     const rough = 0.55 + amount * 1.75;
-    const brush = ((p.minBrushSize + p.maxBrushSize) * 0.5) * scale;
+    const o = this.opts;
+    const brush = ((p.minBrushSize + p.maxBrushSize) * 0.5) * scale * o.size;
     const point = this._pickPoint();
     const x = point.x, y = point.y;
     const maxDim = Math.max(this.sw, this.sh);
     const isLong = this._rand() < 0.84;
     const isFilament = isLong && this._rand() < 0.82;
-    const baseLen = p.strokeLen * scale * (0.20 + amount*0.48);
+    const baseLen = p.strokeLen * scale * (0.20 + amount*0.48) * o.len;
     const lenMode = isFilament ? 1.35 + this._rand()*2.25*rough : isLong ? 0.92 + this._rand()*1.55*rough : 0.16 + this._rand()*0.54*rough;
     const lengthSpread = Math.exp((this._rand() - 0.5) * 0.70 * rough);
     const len = Math.max(brush * 2.6, Math.min(maxDim * (isFilament ? 0.86 : isLong ? 0.60 : 0.24), baseLen * lenMode * lengthSpread));
@@ -867,7 +890,7 @@ void main(){
     const a = (followsEdge ? point.angle : this._rand() * Math.PI * 2) + (this._rand() - 0.5) * (isLong ? 0.80 : 1.55);
     const dirX = Math.cos(a), dirY = Math.sin(a);
     const nX = -dirY, nY = dirX;
-    const bend = len * (0.10 + p.curveAmount*0.035) * rough * (this._rand() < 0.5 ? -1 : 1);
+    const bend = len * (0.10 + p.curveAmount*0.035) * rough * o.curve * (this._rand() < 0.5 ? -1 : 1);
     const p0 = { x: x - dirX * len * 0.5, y: y - dirY * len * 0.5 };
     const p3 = { x: x + dirX * len * 0.5, y: y + dirY * len * 0.5 };
     const p1 = { x: p0.x + dirX*len*0.33 + nX*bend, y: p0.y + dirY*len*0.33 + nY*bend };
@@ -980,7 +1003,7 @@ void main(){
     ctx.restore();
 
     // Pools / satellite drops: blurred outside, sharp center.
-    if(!isFilament && this._rand() < 0.045 + amount*0.105){
+    if(!isFilament && this._rand() < (0.045 + amount*0.105) * o.drops){
       const dt = this._rand();
       const qp = this._bezier(p0, p1, p2, p3, dt);
       const dx = qp.x + (this._rand()-0.5) * width * 4.5;
@@ -1015,7 +1038,7 @@ void main(){
       }
       ctx.restore();
     }
-    if(this._rand() < (isFilament ? 0.085 + amount*0.18 : 0.24 + amount*0.56)){
+    if(this._rand() < (isFilament ? 0.085 + amount*0.18 : 0.24 + amount*0.56) * o.drops){
       const dt = 0.10 + this._rand() * 0.80;
       const qp = this._bezier(p0, p1, p2, p3, dt);
       const side = (this._rand() - 0.5) * brush * (0.9 + amount * 2.8);
@@ -1023,7 +1046,7 @@ void main(){
       const rr = brush * (0.24 + Math.pow(this._rand(), 0.45) * (this._rand() < 0.22 ? 1.25 : 0.58)) * (0.55 + amount * 0.55);
       this._roundDrop(qp.x + nX*side + dirX*along, qp.y + nY*side + dirY*along, c, rr, style, a + (this._rand()-0.5)*0.6);
     }
-    const extraDrops = Math.floor(amount * amount * (isFilament ? 2.5 : 5.5) + this._rand() * amount * 2.0);
+    const extraDrops = Math.floor((amount * amount * (isFilament ? 2.5 : 5.5) + this._rand() * amount * 2.0) * o.drops);
     for(let j=0; j<extraDrops; j++){
       if(this._rand() > 0.42 + amount * 0.48) continue;
       const dt = this._rand();
@@ -1034,12 +1057,12 @@ void main(){
       const rr = brush * (big ? 0.64 + this._rand()*1.45 : 0.20 + this._rand()*0.62) * (0.60 + amount * 0.75);
       this._roundDrop(qp.x + nX*side + dirX*along, qp.y + nY*side + dirY*along, c, rr, style, a + (this._rand()-0.5)*1.2);
     }
-    if(this._rand() < (isFilament ? 0.26 + amount*0.34 : 0.42 + amount*0.48)){
+    if(this._rand() < (isFilament ? 0.26 + amount*0.34 : 0.42 + amount*0.48) * o.drops){
       const dt = 0.15 + this._rand() * 0.70;
       const q = this._bezier(p0, p1, p2, p3, dt);
       this._splatterCluster(q.x, q.y, c, Math.max(width, brush * (0.50 + amount * 0.72)), style, amount, a);
     }
-    if(isLong && !isFilament && this._rand() < 0.045 + amount*0.16){
+    if(isLong && !isFilament && this._rand() < (0.045 + amount*0.16) * o.drops){
       const q = this._rand() < 0.5 ? p0 : p3;
       this._splatterCluster(q.x, q.y, c, Math.max(width * 0.72, brush * (0.36 + amount * 0.50)), style, amount, a);
     }
@@ -1074,14 +1097,14 @@ void main(){
     const eraseRate = (style === 'matt' ? 1.65 : 0.58)
                     + turnover * (style === 'matt' ? 3.30 : 1.05)
                     + lowDecay * lowDecay * (style === 'matt' ? 3.60 : 1.80);
-    const veil = 1 - Math.exp(-eraseRate * dt);
+    const veil = 1 - Math.exp(-eraseRate / this.opts.life * dt);
     const liveLag = Math.max(0.10, (style === 'matt' ? 0.98 : 0.24) - amount * (style === 'matt' ? 0.20 : 0.12));
     this._liveAge += dt;
     if(this._liveAge >= liveLag) this._promoteLiveToDead();
     this._decayDead(style, amount, veil);
 
     const burst = this._burstLeft > 0;
-    const baseRate = (style === 'matt' ? 38 : 29) + amount * (style === 'matt' ? 235 : 175);   // gloss は軽量化 (~25%減)
+    const baseRate = ((style === 'matt' ? 38 : 29) + amount * (style === 'matt' ? 235 : 175)) * this.opts.dens;   // gloss は軽量化 (~25%減)
     const motionBoost = 1 + delta * 0.85;
     this._paintAcc += baseRate * motionBoost * dt;
     let strokes = Math.floor(this._paintAcc);
@@ -1091,7 +1114,7 @@ void main(){
       this._paintAcc = 0;
     }
     if(burst) strokes += Math.round((style === 'matt' ? 12 : 6) + amount * (style === 'matt' ? 22 : 12) + this._rand() * (style === 'matt' ? 10 : 5));
-    strokes = Math.max(0, Math.min(style === 'matt' ? 64 : 36, strokes));
+    strokes = Math.max(0, Math.min(Math.round((style === 'matt' ? 64 : 36) * Math.max(1, this.opts.dens)), strokes));
     const livePulse = 0.025 + amount * 0.055;
     const prevDrawCtx = this._drawCtx;
     this._drawCtx = this.liveCtx || this.paintCtx;
@@ -1119,7 +1142,7 @@ void main(){
     this._dirty = false;
   },
 
-  render({srcTex, fbo, w, h, value, pulse, beat=0, bpm=120, transBeats=0, transStyle=0, time=0, flat=false}){
+  render({srcTex, fbo, w, h, value, pulse, beat=0, bpm=120, transBeats=0, transStyle=0, time=0, flat=false, metal=false}){
     if(!this.initialized) this.init(this.gl);
     const gl = this.gl;
     const amount = Math.min(1, Math.abs(value || 0));
@@ -1169,6 +1192,8 @@ void main(){
     gl.uniform1f(gl.getUniformLocation(this.prog, 'uAmount'), drawAmount);
     gl.uniform1f(gl.getUniformLocation(this.prog, 'uStyle'), style === 'gloss' ? 1 : -1);
     gl.uniform1f(gl.getUniformLocation(this.prog, 'uFlat'), flat ? 1 : 0);
+    gl.uniform1f(gl.getUniformLocation(this.prog, 'uMetal'), metal && !flat ? 1 : 0);
+    gl.uniform1f(gl.getUniformLocation(this.prog, 'uRelief'), this.opts.relief);
     this._flat = !!flat;
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);

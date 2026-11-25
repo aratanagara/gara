@@ -579,8 +579,7 @@ void main(){
       this._elCacheKeys.push(key);
       v.playbackRate = s.P.rate; v.muted = true;
       s.videoEl = v;
-      s.loaded = (v.readyState >= 2);
-      if(!s.loaded) v.addEventListener('loadeddata', ()=>{ s.loaded = true; }, {once:true});
+      this._watchLoaded(s, v);
       try{ v.currentTime = 0; }catch(e){}
       v.play().catch(err=>console.warn('video play:', err));
     } else {
@@ -589,8 +588,7 @@ void main(){
       v.src = mediaSrc;
       v.playbackRate = s.P.rate; v.muted = true;
       s.videoEl = v;
-      s.loaded = false;
-      v.addEventListener('loadeddata', ()=>{ s.loaded = true; }, {once:true});
+      this._watchLoaded(s, v);
       this._watchLoad(s, v, url, key, req);
       v.play().catch(err=>console.warn('video play:', err));
       this._elCache[key] = v; this._elCacheKeys.push(key);
@@ -699,6 +697,15 @@ void main(){
     return [];
   },
 
+  // s.loaded (= 描画にアップロードしてよい) を要素の状態に合わせる。シーク中の要素は readyState が一時的に 1 へ落ち、
+  // loadeddata は最初の 1 回しか来ないので、シーク中に同じ動画を読み直すと loaded が false のまま映像が止まっていた
+  // (クラッシュ復帰の再読み込みで同じ動画を 2 回読むときなど)。canplay / seeked でも戻す
+  _watchLoaded(s, v){
+    s.loaded = v.readyState >= 2;
+    if(s.loaded) return;
+    const on = ()=>{ if(s.videoEl === v && v.readyState >= 2){ s.loaded = true; for(const e of ['loadeddata', 'canplay', 'seeked']) v.removeEventListener(e, on); } };
+    for(const e of ['loadeddata', 'canplay', 'seeked']) v.addEventListener(e, on);
+  },
   loadFile(file, slotKey){
     if(!file) return;
     const s = this._slot(slotKey);
@@ -710,8 +717,7 @@ void main(){
     s.videoEl = v;
     s.src = url;
     s.fileName = file.name || '';
-    s.loaded = false;
-    v.addEventListener('loadeddata', ()=>{ s.loaded = true; }, {once:true});
+    this._watchLoaded(s, v);
     this._resetPlaybackState(s);
     v.play().catch(err=>console.warn('video play:', err));
   },

@@ -205,6 +205,8 @@ const TextDeform = {
     // Look (mode/textdeform-looks.js)。look = 'f:<上流プリセット id>' / 's:<保存 Look の名前>' / '' (未選択)
     look: '',
     lookEvery: 0,        // Look Auto: この拍数ごとに Look を引き直す (0 = Off)
+    // Timing の拍の数え方 (全 Look 共通): bpm = 実際の拍 (beat xA を掛けない) / xa = beat xA を掛けた拍。tBeat(キー) で読む
+    textEverySync: 'bpm', typeSpeedSync: 'bpm', lookEverySync: 'bpm', compRandEverySync: 'bpm', canvasGunDivSync: 'bpm', canvasJumpEverySync: 'bpm', canvasAutoLayoutSync: 'bpm', canvasAutoSwapSync: 'bpm', canvasAutoAddSync: 'bpm', canvasAutoClearSync: 'bpm', canvasLayoutSync: 'bpm',
     lookPool: 'all',     // Look の一覧・Random・Auto の対象: all / recommended (オススメ) / presets (全プリセット) / saved / 上流の family id
     lookRand: 'recommended',   // ランダム (🎲・Look Auto・Canvas のスタンプ選び) でプリセットから選ぶ範囲: off = ランダムを切る / recommended = オススメだけ / all = 全プリセット
     // 文字の出どころ: look = Look の文字 / random = テキストプリセットから textEvery 拍ごと / custom = textCustom
@@ -1105,19 +1107,22 @@ void main(){
   },
 
   // ================= vj フック =================
-  update(beat, dt, w, h){
+  // Timing の拍: P[キー + 'Sync'] が xa なら beat xA を掛けた拍、それ以外は実際の拍 (分身のスタンプは TDCanvas が本体の値を写す)
+  tBeat(key){ return (this.P[key + 'Sync'] === 'xa' ? this._beatXA : this._beatBpm) || 0; },
+  update(beat, dt, w, h, rawBeat){
     if(!this.initialized) return;
     if(!this._metrics || !this._metrics.length){ if(this._layoutDirty) this._measureLayout(); return; }
     if(this._layoutDirty) this._measureLayout();
     const P = this.P;
     const d = (dt > 0 && dt < 0.2) ? dt : 1/60;
     this._t += d;
-    this._beatNow = beat || 0;
+    this._beatXA = beat || 0;
+    this._beatBpm = Number.isFinite(rawBeat) ? rawBeat : this._beatXA;
     const beatMode = (typeof App !== 'undefined' && App.beatMode === 'beat');
     const bi = Math.floor(beat || 0);
     // Text: Random は P.textEvery 拍ごと (1/16〜16 拍。拍の端数で数える) に次の文字列へ (Look はそのまま)
     if(P.textMode === 'random'){
-      const every = Math.max(0.0625, +P.textEvery || 4), b = (beat || 0) / every;
+      const every = Math.max(0.0625, +P.textEvery || 4), b = this.tBeat('textEvery') / every;
       const slot = Math.floor(b + 1e-6);
       if(this._textSlot == null || slot < this._textSlot) this._textSlot = slot;
       else if(slot !== this._textSlot){
@@ -1127,15 +1132,15 @@ void main(){
         if(!typing) this.nextRandomText();
       }
     }
-    if(typeof TDLooks !== 'undefined') TDLooks.beatTick(beat);   // Look Auto
-    this._compRandTick(beat);
+    if(typeof TDLooks !== 'undefined') TDLooks.beatTick(this.tBeat('lookEvery'));   // Look Auto
+    this._compRandTick(this.tBeat('compRandEvery'));
     const sw = this._stage.offsetWidth || P.stageW, sh = this._stage.offsetHeight || P.stageW;
     const inBloom = this._t < (this._bloomUntil || 0);
     const beatPhase = (beat || 0) - bi;
     const pulse = this._rhythmPulse(beatMode, beatPhase), motion = this._dp(+P.rhythmMotion || 0);
     this._pulseNow = pulse; this._motionNow = motion;   // Vector 3D (TDVec) が読む
     if(typeof TDCanvas !== 'undefined'){
-      if(TDCanvas.active()) TDCanvas.update(d, pulse, motion, beat);
+      if(TDCanvas.active()) TDCanvas.update(d, pulse, motion);
       else if(TDCanvas._bake || TDCanvas._bakeQ.length || TDCanvas._inst.size || (TDCanvas._ghosts && TDCanvas._ghosts.length)) TDCanvas.release();   // Off にしたら焼き付けをやめて本体の Look を戻し、分身の絵も手放す
     }
     if(inBloom){
@@ -1364,7 +1369,7 @@ void main(){
   _typedCount(n){
     const P = this.P;
     if(P.typeOn !== 'on' || this._typeAll) return n;   // _typeAll = Canvas がスタンプを焼き付けている間
-    const beat = this._beatNow || 0, key = n + '|' + P.text;
+    const beat = this.tBeat('typeSpeed'), key = n + '|' + P.text;
     if(this._twKey !== key || beat < this._twStart){ this._twKey = key; this._twStart = beat; this._twShown = 0; }
     const cpb = Math.max(0.25, +P.typeSpeed || 2), hold = Math.max(0, +P.typeHold || 0);
     let ph = beat - this._twStart;

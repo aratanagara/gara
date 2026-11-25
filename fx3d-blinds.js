@@ -6,11 +6,24 @@
    返し方は拍ごとに 4 通り (起点からの波 / 一本おき / まばら / 中央から外へ)。drone は 0.5 拍/秒の仮想の拍で同じ動き。 */
 (function(){
 const SEG = 64, NMAX = 48;
+// 向きは従来の横 / 縦から ±90°。斜めでも画面を覆う大きさへ広げ、絵は元の画面座標に置く。
+const ORIENT = `
+uniform float uAsp;
+uniform vec2 uRot, uSpan;
+vec2 bRotate(vec2 p){ return vec2(uRot.x * p.x - uRot.y * p.y, uRot.y * p.x + uRot.x * p.y); }
+vec2 bUv(vec2 uv){
+  if(uRot.y == 0.0) return uv;
+  vec2 sc = vec2(uAsp, 1.0);
+  return bRotate((uv - 0.5) * sc * uSpan) / sc + 0.5;
+}
+`;
 // 帯の形: 帯 slat の面内座標 ab (x = 長さ方向 0..1, y = 幅方向 0..1) → 位置。uv = 絵の座標、Nn = 面の法線、vc = 帯の中心 (短辺方向 0..1)
 const SURF = `
+${ORIENT}
 uniform mat4 uView, uProj;
-uniform float uAsp, uN, uK, uTwist, uBeat, uHit, uVert, uPat, uOrg, uSgn, uSel;
-uniform float uEdge[${NMAX + 1}];   // 帯の境界 (短辺方向 -1..1 の位置。拍の区切りでだけ変わる)
+uniform float uN, uK, uTwist, uBeat, uHit, uVert, uPat, uOrg, uSgn, uSel;
+uniform float uWave, uOpen, uGap;
+uniform float uEdge[${NMAX + 1}];   // 帯の境界 (短辺方向 -1..1。本数・区画・Random が変わると更新)
 float h1(float p){ return fract(sin(p * 127.1 + 311.7) * 43758.5453); }
 float easeOut(float x){ float y = 1.0 - x; return 1.0 - y * y * y; }
 vec3 bSurf(int slat, vec2 ab, out vec2 uv, out vec3 Nn, out float vc, out vec3 Cs){
@@ -28,9 +41,12 @@ vec3 bSurf(int slat, vec2 ab, out vec2 uv, out vec3 Nn, out float vc, out vec3 C
   else { sel = 1.0; d = 0.4 * (1.0 - abs((i + 0.5) / uN * 2.0 - 1.0)); d = 0.4 - d; }        // 中央から外へ
   sel *= step(h1(i * 2.3 + uOrg * 0.7), uSel);
   d += 0.2 * u * uTwist;
+  // Wave: 0 は一斉、1 は従来、2 は波の遅れを反転。Twist の伝わる向きも一緒に変える。
+  d = uWave <= 1.0 ? d * uWave : mix(d, 0.4 + 0.2 * uTwist - d, uWave - 1.0);
   float th = 3.14159265 * easeOut(clamp((fract(uBeat) - d) / 0.5, 0.0, 1.0)) * sel * uSgn;
+  th += uOpen * uK;                                    // 返る動きに静的な開き角を足す (±90°)
   float x = (u - 0.5) * 2.0;                            // 長さ方向 -1..1
-  float hs = hh * (1.0 - 0.04 * uK);
+  float hs = hh * (1.0 - 0.04 * uK) * (1.0 - 0.9 * uGap * uK);
   vec3 P = vec3(x, yc + local * hs * cos(th), local * hs * sin(th));
   P.z += uK * (0.10 * sin(u * 3.0 + uBeat * 0.7 + i * 0.4) + 0.15 * uHit) * sin(abs(th));
   Nn = vec3(0.0, -sin(th), cos(th));
@@ -40,6 +56,11 @@ vec3 bSurf(int slat, vec2 ab, out vec2 uv, out vec3 Nn, out float vc, out vec3 C
   if(uVert > 0.5){ P = vec3(P.y * sc.x, P.x * sc.y, P.z); Nn = vec3(Nn.y, Nn.x, Nn.z); uv = vec2(vy, u); }
   else { P = vec3(P.x * sc.x, P.y * sc.y, P.z); uv = vec2(u, vy); }
   Cs = uVert > 0.5 ? vec3(yc * sc.x, 0.0, 0.0) : vec3(0.0, yc * sc.y, 0.0);   // 帯の中心
+  if(uRot.y != 0.0){
+    P.xy = bRotate(P.xy * uSpan);
+    Cs.xy = bRotate(Cs.xy * uSpan);
+    Nn = normalize(vec3(bRotate(Nn.xy / uSpan), Nn.z));
+  }
   vc = yc * 0.5 + 0.5;
   return P;
 }
@@ -54,7 +75,7 @@ void main(){
   vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
   vec3 Nn, Cs;
   vec3 P = bSurf(slat, vec2((float(seg) + ab.x) / ${SEG}.0, ab.y), vUv, Nn, vVc, Cs);
-  P += Nn * fx3dRelief(vUv);   // 立体シェーダの深度で帯の面を持ち上げる
+  P += Nn * fx3dRelief(bUv(vUv));   // 立体シェーダの深度で帯の面を持ち上げる
   P = Cs + (P - Cs) * fx3dPop(float(slat));   // ポップ: 帯ごとに中心から
   vW = P;
   vN = Nn;
@@ -82,9 +103,9 @@ void main(){
   vec3 B = (bSurf(slat, ab + vec2(0.0, E), uvd, Nd, vcd, Cd) - P0) / E;
   vec3 N = normalize(cross(T, B));
   if(dot(N, Nn) < 0.0) N = -N;
-  P0 += N * fx3dRelief(vUv);
+  P0 += N * fx3dRelief(bUv(vUv));
   float cell = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);
-  vec3 P = P0 + N * (w * fx3dNeedleH(key, (vUv - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
+  vec3 P = P0 + N * (w * fx3dNeedleH(key, (bUv(vUv) - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
   P = Cs + (P - Cs) * fx3dPop(float(slat));
   vBack = dot(Nn, uEye - P0) < 0.0 ? 1.0 : 0.0;
   vW = P;
@@ -93,6 +114,7 @@ void main(){
 }`;
 const FS = `#version 300 es
 precision highp float;
+${ORIENT}
 in vec2 vUv; in vec3 vW, vN; in float vVc, vBack;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uVert, uNv;
 out vec4 frag;
@@ -100,6 +122,9 @@ void main(){
   vec2 uv = vUv;
   bool back = uNv > 0.5 ? vBack > 0.5 : !gl_FrontFacing;
   if(back){ if(uVert > 0.5) uv.x = 2.0 * vVc - uv.x; else uv.y = 2.0 * vVc - uv.y; }   // 裏面は帯の中で反転 (返りきった帯が元の絵に戻る)
+  uv = bUv(uv);
+  // 斜め用に広げた帯のうち、素材の外側は切る (3D Overscan の余白は残す)。
+  if(uRot.y != 0.0 && (any(lessThan(uv, -uOvM)) || any(greaterThan(uv, 1.0 + uOvM)))) discard;
   vec4 t0 = texture(uTex, fx3dSrcC(uv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
   vec3 alb = t0.rgb;
@@ -116,11 +141,11 @@ function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get
 const h1 = (n, s)=>{ const x = Math.sin(n * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
 
 // 4 拍ごとの区画: 帯の向きと幅の配分 (広い帯と細い帯が混ざる。区画 0 は等幅 = 出始めは素直な帯)
-function partition(ep, N){
+function partition(ep, N, random){
   const E = new Float32Array(NMAX + 1);
   const w = [];
   let sum = 0;
-  for(let i = 0; i < N; i++){ const v = ep === 0 ? 1 : Math.pow(2, (h1(ep * 13.1 + i, 2.3) * 2 - 1) * 1.6); w.push(v); sum += v; }
+  for(let i = 0; i < N; i++){ const v = ep === 0 ? 1 : Math.pow(2, (h1(ep * 13.1 + i, 2.3) * 2 - 1) * 1.6 * random); w.push(v); sum += v; }
   let acc = 0;
   E[0] = -1;
   for(let i = 0; i < N; i++){ acc += w[i]; E[i + 1] = -1 + 2 * acc / sum; }
@@ -138,13 +163,23 @@ Fx3d.EXTRA.blinds = {
     const post = o.post || {};
     const N = Fx3d.popCount('blinds', Math.max(2, Math.min(NMAX, Math.round(+post.fx3dBlindsCount || 14))), false);   // 本数を変えると区切りが全部変わる = 全部縮んでから出直す
     const twist = Math.max(0, Math.min(1, o.dz(+post.fx3dBlindsTwist)));
+    // 中央が従来値の項目はデッドゾーンを通さない。Gap だけは 0 が追加効果なし。
+    const param = (key, def)=>{ const v = post[key] === undefined ? def : +post[key]; return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : def; };
+    const angle = (param('fx3dBlindsAngle', 0.5) - 0.5) * Math.PI;
+    const speed = param('fx3dBlindsSpeed', 0.5) * 2;
+    const wave = param('fx3dBlindsWave', 0.5) * 2;
+    const open = (param('fx3dBlindsOpen', 0.5) - 0.5) * Math.PI;
+    const gap = Math.max(0, Math.min(1, o.dz(param('fx3dBlindsGap', 0))));
+    const random = param('fx3dBlindsRandom', 0.5) * 2;
     const asp = o.asp, k = o.k, t = o.clock || 0;
-    const b = o.beatMode ? (o.beat || 0) : t * 0.5;
+    const c = Math.cos(angle), s = Math.sin(angle);
+    const spanX = Math.abs(c) + Math.abs(s) / asp, spanY = Math.abs(c) + Math.abs(s) * asp;
+    const b = (o.beatMode ? (o.beat || 0) : t * 0.5) * speed;
     const bid = Math.floor(b), ep = Math.floor(bid / 4);
     const vert = ep === 0 ? 0 : (h1(ep, 4.4) < 0.5 ? 1 : 0);
     const nUse = vert ? Math.max(2, Math.min(NMAX, Math.round(N * asp))) : N;   // 縦帯は本数を縦横比ぶん増やして帯の太さを揃える
-    const key = ep + ':' + nUse;
-    if(this._key !== key){ if(this._key != null && ep !== this._ep) Fx3d.popEpoch('blinds'); this._key = key; this._ep = ep; this._E = partition(ep, nUse); }   // 4 拍ごとの組み直しで帯が弾んで出直す
+    const key = ep + ':' + nUse + ':' + random;
+    if(this._key !== key){ if(this._key != null && ep !== this._ep) Fx3d.popEpoch('blinds'); this._key = key; this._ep = ep; this._E = partition(ep, nUse, random); }   // 4 拍ごとの組み直しで帯が弾んで出直す
     const pat = Math.floor(h1(bid, 7.7) * 4);
     const org = Math.floor(h1(bid, 1.9) * nUse);
     const sgn = h1(bid, 5.5) < 0.5 ? 1 : -1;
@@ -170,6 +205,11 @@ Fx3d.EXTRA.blinds = {
       gl.uniform1f(uloc(gl, pr, 'uN'), nUse);
       gl.uniform1f(uloc(gl, pr, 'uK'), k);
       gl.uniform1f(uloc(gl, pr, 'uTwist'), twist);
+      gl.uniform2f(uloc(gl, pr, 'uRot'), c, s);
+      gl.uniform2f(uloc(gl, pr, 'uSpan'), spanX, spanY);
+      gl.uniform1f(uloc(gl, pr, 'uWave'), wave);
+      gl.uniform1f(uloc(gl, pr, 'uOpen'), open);
+      gl.uniform1f(uloc(gl, pr, 'uGap'), gap);
       gl.uniform1f(uloc(gl, pr, 'uBeat'), b);
       gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
       gl.uniform1f(uloc(gl, pr, 'uVert'), vert);
