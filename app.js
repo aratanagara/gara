@@ -14751,7 +14751,7 @@ const App = {
     if(this._presetDefaults && this._presetDefaults.post){   // R / Esc / プリセット読込が戻す先 (起動時に取った値) も保存値へ
       for(const k of keys) if(this.post[k] !== undefined) this._presetDefaults.post[k] = JSON.parse(JSON.stringify(this.post[k]));
     }
-    try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs(); toast('デフォルト保存: ' + group); }
+    try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs('post.' + group); toast('デフォルト保存: ' + group); }
     catch(e){ toast('保存失敗'); }
   },
   // ライブ調整を捨てて保存値 (無ければ工場出荷値) へ戻す。保存自体は消さない
@@ -14927,7 +14927,7 @@ const App = {
           setTimeout(waitReady, 120);
           return;
         }
-        requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{ window.__vjLoadDone && window.__vjLoadDone(); }catch(_){} }));
+        requestAnimationFrame(()=>requestAnimationFrame(()=>{ try{ window.__vjLoadDone && window.__vjLoadDone(); }catch(_){} this._askHeldDefs(); }));
       };
       waitReady();
     });
@@ -16703,7 +16703,7 @@ ${outBlock}
     const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
     if(pd) Object.assign(pd, JSON.parse(JSON.stringify(P)));   // プリセット読込で欠けた項目を埋める値 (起動時に取った値) も保存値へ
     const sc = (kind === 'novel' && typeof NovelTerminal !== 'undefined' && NovelTerminal.snapScene) ? NovelTerminal.snapScene() : null;   // Novel は今の Scene の値も控える
-    try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(); toast('デフォルト保存: '+kind + (sc ? ' (Scene: ' + sc + ')' : '')); }
+    try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(kind); toast('デフォルト保存: '+kind + (sc ? ' (Scene: ' + sc + ')' : '')); }
     catch(e){ toast('保存失敗'); }
   },
   // ライブ調整を捨てて「デフォルト保存」した値へ戻す (保存が無ければ工場出荷値)。保存自体は消さない。
@@ -16730,7 +16730,7 @@ ${outBlock}
     if(!name){ toast('シェーダ名が不明です'); return; }
     const d = {};
     for(const p of slot.params){ p.value = ParamValues.shader(p); d[p.name] = Array.isArray(p.value) ? p.value.slice() : p.value; }
-    try{ localStorage.setItem('vj.def.sparam.' + name, JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: ' + name); }
+    try{ localStorage.setItem('vj.def.sparam.' + name, JSON.stringify(d)); this.uploadDefs('sparam.' + name); toast('デフォルト保存: ' + name); }
     catch(e){ toast('保存失敗'); }
   },
   applyShaderParamDefaults(slot){
@@ -16805,20 +16805,18 @@ ${outBlock}
     try{
       localStorage.setItem('vj.def.inkBleed', JSON.stringify(values));
       Object.assign(this._presetDefaults.post, values);
-      this.uploadDefs();
+      this.uploadDefs('inkBleed');
       toast('デフォルト保存: Ink Bleed');
     }catch(_){ toast('保存失敗'); }
   },
   // ─── Mix パネル(crossfade/blend/transition)のデフォルト値保存 ───────
   saveMixDefault(){
     const d = { crossfade:this.crossfade, blendMode:this.blendMode, slotABg:this.slotABg, mixControls:this._captureMixControls() };
-    try{ localStorage.setItem('vj.def.mix', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: mix'); }
+    try{ localStorage.setItem('vj.def.mix', JSON.stringify(d)); this.uploadDefs('mix'); toast('デフォルト保存: mix'); }
     catch(e){ toast('保存失敗'); }
   },
   // ─── Esc: 両スロットを「なし(透明)」+ 各パラメータをリセット ───────
   //   「リセット」の意味は各パネルの Reset ボタンと同じ = 起動時の値 + 保存済みデフォルト。
-  //   Preset 0 (presetBlankBoth) は applyServerDefaults() で defaults.json を fetch して
-  //   post / manga / layer を流し込むため「プリセットを読む」挙動になる。Esc はそれを避ける。
   // Post / Mix / Transition / 各 mode / Overlay / Pan・Zoom を保存値・初期値へ戻す (スロットは保持)。
   // R キー = これ単体 / Esc = 両スロットなし + これ。
   _undoPushNow(){
@@ -16965,7 +16963,7 @@ ${outBlock}
   // ─── Transition (拍数 / Style / Param Trans) のデフォルト値保存 ───────
   saveTransDefault(){
     const d = { transBeats:this.transBeats, transStyle:this.transStyle, paramFadeBeats:this.paramFadeBeats, paramFadeScope:this.paramFadeScope };
-    try{ localStorage.setItem('vj.def.transition', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: transition'); }
+    try{ localStorage.setItem('vj.def.transition', JSON.stringify(d)); this.uploadDefs('transition'); toast('デフォルト保存: transition'); }
     catch(e){ toast('保存失敗'); }
   },
   resetTransDefault(){
@@ -16995,7 +16993,7 @@ ${outBlock}
     const d = {};
     const rounded = this.paramValues('post', this.post);
     for(const k of this.AUDIO_DETECT_KEYS) d[k] = this.post[k] = rounded[k];
-    try{ localStorage.setItem('vj.def.audioDetect', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: audioDetect'); }
+    try{ localStorage.setItem('vj.def.audioDetect', JSON.stringify(d)); this.uploadDefs('audioDetect'); toast('デフォルト保存: audioDetect'); }
     catch(e){ toast('保存失敗'); }
   },
   applyAudioDetectDefault(){
@@ -17018,7 +17016,7 @@ ${outBlock}
   // ─── Motion Mode の Speed のデフォルト保存 (Drone / Beat はプリセット読込で戻る実行時の切替なので対象外) ───
   saveMotionDefault(){
     const d = { speed:this.speed };
-    try{ localStorage.setItem('vj.def.motion', JSON.stringify(d)); this.uploadDefs(); toast('デフォルト保存: motion'); }
+    try{ localStorage.setItem('vj.def.motion', JSON.stringify(d)); this.uploadDefs('motion'); toast('デフォルト保存: motion'); }
     catch(e){ toast('保存失敗'); }
   },
   resetMotionDefault(){
@@ -17034,7 +17032,7 @@ ${outBlock}
     if(typeof d.speed === 'number') this.setSpeed(d.speed);
   },
   saveAudioTransportDefault(){
-    try{ localStorage.setItem('vj.def.audioTransport', JSON.stringify(this.audioTime)); this.uploadDefs(); toast('デフォルト保存: audioTransport'); }
+    try{ localStorage.setItem('vj.def.audioTransport', JSON.stringify(this.audioTime)); this.uploadDefs('audioTransport'); toast('デフォルト保存: audioTransport'); }
     catch(e){ toast('保存失敗'); }
   },
   resetAudioTransportDefault(){
@@ -17848,19 +17846,6 @@ ${outBlock}
     if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
     toast('プリセットを追加');
   },
-  // 固定 Preset 0: 全パラメータをデフォルトに初期化 + 両スロットを「なし(透明)」に (上書き不可)
-  presetBlankBoth(){
-    const N = this.transBeats || 0, style = this.transStyle || 0;   // reset で消える前に退避
-    if(N > 0 && typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(N, style);  // 現出力を退避→クロスフェード
-    this.resetToDefaults();                 // 全 FX / 設定をデフォルトへ
-    const ni = PRESETS.findIndex(p=>p && p.kind==='none');
-    const idx = ni < 0 ? 0 : ni;
-    this.loadPreset(idx, 'A');              // 両スロットなし
-    this.loadPreset(idx, 'B');
-    if(this.resetUserPanZoom) this.resetUserPanZoom();
-    if(UI && UI.refreshAll) UI.refreshAll();
-    toast('Preset 0: 全パラメータ初期化');
-  },
   presetApply(i){
     const lib = this._loadPresetLib();
     const p = lib[i];
@@ -18216,7 +18201,7 @@ ${outBlock}
     names.splice(before ? ti : ti + 1, 0, fromName);
     const key = this._orderKeys[cat];
     try{ localStorage.setItem('vj.def.' + key, JSON.stringify(names)); }catch(e){}
-    this.uploadDefs();   // 並び順を全端末へ同期
+    this.uploadDefs(key);   // 並び順を全端末へ同期
     if(UI && UI.populatePresets) UI.populatePresets();
   },
   // Code / Shader のタイル (PRESETS の index) を同じ区分の中で動かす
@@ -18243,7 +18228,7 @@ ${outBlock}
   _coarse(){ return window.matchMedia('(pointer:coarse)').matches; },
   _undoHint(){ return this._coarse() ? '↶' : 'Cmd+Z'; },
   // Enter=OK / Esc=キャンセル に対応した確認モーダル (フルスクリーン/VJ でも確実に動作)
-  _confirm(message, onOk){
+  _confirm(message, onOk, onCancel){
     if(this.liveLocked('上書き・削除')) return;
     if(this._confirmClose) this._confirmClose();   // 既存があれば閉じる
     const ov = document.createElement('div');
@@ -18260,14 +18245,15 @@ ${outBlock}
     document.body.appendChild(ov);
     const close = ()=>{ try{ ov.remove(); }catch(e){} window.removeEventListener('keydown', onKey, true); this._confirmClose = null; };
     const doOk = ()=>{ close(); if(onOk) onOk(); };
+    const doCancel = ()=>{ close(); if(onCancel) onCancel(); };   // 別の確認に押し出されて閉じたときは呼ばない
     const onKey = (e)=>{
       if(e.key === 'Enter'){ e.preventDefault(); e.stopImmediatePropagation(); doOk(); }
-      else if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); close(); }
+      else if(e.key === 'Escape'){ e.preventDefault(); e.stopImmediatePropagation(); doCancel(); }
     };
     window.addEventListener('keydown', onKey, true);   // capture でアプリ側の keydown より先に処理
     ok.addEventListener('click', doOk);
-    cancel.addEventListener('click', close);
-    ov.addEventListener('click', e=>{ if(e.target === ov) close(); });   // 背景クリックでキャンセル
+    cancel.addEventListener('click', doCancel);
+    ov.addEventListener('click', e=>{ if(e.target === ov) doCancel(); });   // 背景クリックでキャンセル
     ok.focus();
     this._confirmClose = close;
   },
@@ -18314,32 +18300,6 @@ ${outBlock}
     toast('Bank '+n+' を呼出');
     this._undoSchedule();
   },
-  // 0 キー: すべての FX / 設定をデフォルトへ戻す (スロットのシェーダ選択は維持)
-  resetToDefaults(){
-    // 進行中の Param Fade を破棄してから直接代入する (でないと数フレーム後にフェードが上書きする)
-    this._paramFades.length = 0;
-    this._gradFade = null;
-    this._activeGradPreset = 9;   // gradMix を 0 へ戻すので「通常色」状態も合わせておく
-    if(typeof MIDI !== 'undefined' && MIDI.armPickup) MIDI.armPickup();   // つまみ位置とズレるので取り込み待ちへ
-    if(this.postDefaults) Object.assign(this.post, this.postDefaults());
-    this.crossfade = 1.0;
-    this.blendMode = 'mix';
-    this.slotVisible = {A:true, B:true};
-    this.gamma = 1.0;
-    this.transBeats = 0; this.transStyle = 0;
-    if(typeof Overlay !== 'undefined'){
-      Overlay.P.enabled = false;
-      if(Overlay.clear) Overlay.clear();
-    }
-    if(typeof Audio !== 'undefined'){ Audio.hit = 0; Audio.react = 0; }
-    Object.assign(this.audioTime, this.audioTimeDefaults());   // Audio Transport も初期値へ
-    this._audioSpeedMul = 1; this._atHitOn = false; this.timeDir = 1;
-    // デプロイ既定(defaults.json)を上書き適用してから UI 全更新
-    this.applyServerDefaults();
-    if(UI && UI.refreshAll) UI.refreshAll();
-    toast('すべてデフォルトに戻しました');
-    this._undoSchedule();
-  },
   // 自動保存 (定期 + 終了時)。最後に表示していた状態を復帰用に残す。
   _autosaveStart(){
     if(this._autosaveTimer) return;
@@ -18358,7 +18318,8 @@ ${outBlock}
   _defsUrl(){ return this._storeBase() + '?name=defs'; },
   _defsBase: null,   // 最後にサーバーと揃えたときの値 (キー → JSON 文字列)。この端末で変えたキーの見分けに使う
   _defsQ: null,      // 送受信を 1 本ずつ順に
-  _defsOn(){ return !Net.offline() && Prefs.on('shareDefaults', '1'); },
+  // 共有の ON / OFF は起動時の値で固定する (設定ペインの表示どおり次回起動から効く。途中で ON にすると、サーバーと揃えていない一式を送ってしまう)
+  _defsOn(){ if(this._defsOnBoot === undefined) this._defsOnBoot = !Net.offline() && Prefs.on('shareDefaults', '1'); return this._defsOnBoot; },
   _localDefs(){
     const out = {};
     for(let i = 0; i < localStorage.length; i++){
@@ -18393,6 +18354,46 @@ ${outBlock}
     try{ localStorage.setItem('vj.defsBase', JSON.stringify(next)); }catch(e){}
   },
   _defsRun(fn){ return (this._defsQ = (this._defsQ || Promise.resolve()).then(fn).catch(()=>{})); },
+  // 他の端末へ送らずに残しているキー (キー → {v: 控えた時点の値, s: 'ask' = 共有 ON になったら尋ねる / 'local' = 送らないと答えた})。
+  //   値が控えから変わったら (= 共有 ON のまま改めて Save した) 控えを捨て、普段どおり送る。
+  _defsHold(){
+    let h = null;
+    try{ h = JSON.parse(localStorage.getItem('vj.defsHold') || 'null'); }catch(e){}
+    if(!h || typeof h !== 'object' || Array.isArray(h)) return {};
+    const local = this._localDefs();
+    let pruned = false;
+    for(const k of Object.keys(h)) if(!h[k] || h[k].v !== local[k]){ delete h[k]; pruned = true; }
+    if(pruned) this._setDefsHold(h);
+    return h;
+  },
+  _setDefsHold(h){ try{ if(Object.keys(h).length) localStorage.setItem('vj.defsHold', JSON.stringify(h)); else localStorage.removeItem('vj.defsHold'); }catch(e){} },
+  _holdDefs(keys, state){
+    const h = this._defsHold(), local = this._localDefs();
+    for(const k of keys) if(k in local) h[k] = {v: local[k], s: state};
+    this._setDefsHold(h);
+  },
+  _releaseDefs(keys){
+    const h = this._defsHold();
+    for(const k of keys) delete h[k];
+    this._setDefsHold(h);
+  },
+  // 同意を得て送るときの送信と結果の表示 (公開版のように送れない端末でも、失敗を黙らない)
+  async _pushDefsReport(){
+    const res = await this._defsRun(()=>this._pushDefs());
+    toast(res === null ? '他の端末と同じ値でした' : res ? '他の端末へ同期しました' : '同期できませんでした (この端末だけに残っています)');
+  },
+  // 共有 OFF の間に Save した値が残っていて、いま共有 ON なら、送ってよいか尋ねる
+  _askHeldDefs(){
+    if(!this._defsOn()) return;
+    const h = this._defsHold(), keys = Object.keys(h).filter(k => h[k].s === 'ask');
+    if(!keys.length) return;
+    // Cancel・背景クリック・Esc は「送らない」でもう尋ねない (共有 ON のまま改めて Save すれば普段どおり送る)。
+    //   答えずに閉じた (別の確認が開いた・Live Lock で開けなかった) ときは 'ask' のまま、次の起動でもう一度尋ねる
+    this._confirm('共有 OFF の間に Save した値が ' + keys.length + ' 件あります。他の端末へ同期していいですか？ (Cancel ならこの端末だけに残します)', ()=>{
+      this._releaseDefs(keys);
+      this._pushDefsReport();
+    }, ()=>this._holdDefs(keys, 'local'));
+  },
   async _loadServerDefs(){
     if(!this._defsOn()) return;
     await this._defsRun(async ()=>{
@@ -18416,16 +18417,17 @@ ${outBlock}
   // この端末で変えたキー (と消したキー) だけを、今のサーバーの一式へ差し込んで送る
   async _pushDefs(){
     if(this._storeWritable && !this._storeWritable()) return;   // github.io の公開版は、書き込み鍵のない端末からは共有ストアへ書かない
-    const local = this._localDefs(), base = this._defsBase || {};
-    const changed = Object.keys(local).filter(k => local[k] !== base[k]);
+    const local = this._localDefs(), base = this._defsBase || {}, hold = this._defsHold();
+    const changed = Object.keys(local).filter(k => local[k] !== base[k] && !(k in hold));
     const removed = this._defsBase ? Object.keys(base).filter(k => !(k in local)) : [];
-    if(!changed.length && !removed.length) return;
+    if(!changed.length && !removed.length) return null;
     const server = await this._fetchServerDefs();
-    if(!server) return;
+    if(!server) return false;
     for(const k of changed){ try{ server[k] = JSON.parse(local[k]); }catch(e){} }
     for(const k of removed) delete server[k];
     const r = await fetch(this._defsUrl(), {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(server)});
     if(r.ok) this._applyServerDefs(server);
+    return r.ok;
   },
   // S 番号の登録簿 shaders/sids.json ("S001" → プリセット名) を 名前 → 番号 にして持つ。
   //   追記のみ: シェーダを外しても番号は欠番として残し、再利用しない。
@@ -18441,8 +18443,20 @@ ${outBlock}
       this._shaderSids = m;
     }catch(e){ console.warn('shaders/sids.json not found or unreadable:', e); }
   },
-  uploadDefs(){
-    if(this._defsOn()) this._defsRun(()=>this._pushDefs());
+  // key: その Save で書いたキー (共有 ON なら、同じ値の Save でも控えを外して送る)
+  uploadDefs(key){
+    if(this._defsOn()){
+      if(key) this._releaseDefs([key]);
+      this._defsRun(()=>this._pushDefs());
+      return;
+    }
+    // 共有 OFF / オフライン: サーバーと揃えた控えと違うキーを控え、共有 ON で起動したときに尋ねる。
+    //   揃えたことがない端末は全キーを控える (サーバーにあるキーは起動時にサーバーの値になり、控えは自然に外れる)
+    let base = this._defsBase;
+    if(!base){ try{ const b = JSON.parse(localStorage.getItem('vj.defsBase') || 'null'); if(b && typeof b === 'object' && !Array.isArray(b)) base = b; }catch(e){} }
+    base = base || {};
+    const local = this._localDefs(), h = this._defsHold();
+    this._holdDefs(Object.keys(local).filter(k => local[k] !== base[k] && !(k in h)), 'ask');
   },
   // ─── 保存デフォルトの JSON 書き出し / 読み込み ──────────────────
   _isDefaultsFileKey(k){
@@ -18503,7 +18517,7 @@ ${outBlock}
     try{ entries = this._validateDefaultsFile(JSON.parse(await file.text())); }
     catch(e){ toast('読み込み失敗: ' + e.message); return; }
     if(!entries.length){ toast('読み込める Save 値がありません'); return; }
-    this._confirm('Save 値 ' + entries.length + ' 件を上書きしますか？ ファイルにないキーは残ります。' + (this._defsOn() ? '共有が ON なので他の端末にも同期します。' : Prefs.on('shareDefaults', '1') ? 'オフライン設定なのでこの端末だけに読み込みます。' : 'この端末だけに読み込みます (共有は OFF)。'), ()=>{
+    this._confirm('Save 値 ' + entries.length + ' 件をこの端末へ上書きしますか？ ファイルにないキーは残ります。', ()=>{
       const previous = new Map(), written = [];
       try{
         for(const [k] of entries) previous.set(k, localStorage.getItem('vj.def.' + k));
@@ -18518,7 +18532,6 @@ ${outBlock}
         return;
       }
       try{
-        this.uploadDefs();
         // Save と同じく、プリセットや R が使う控えの値も読み込み内容へ揃える。
         for(const [k, v] of entries){
           const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[k];
@@ -18539,6 +18552,14 @@ ${outBlock}
         if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
         toast('この端末へ Save 値を読み込みました (' + entries.length + ' 件)');
       }catch(e){ toast('Save 値は保存しましたが、画面への反映に失敗しました。再読み込みしてください'); }
+      // 他の端末へ送るのは、その都度尋ねてから。共有 OFF / オフラインなら控えて、共有 ON になったときに尋ねる
+      const keys = entries.map(([k]) => k);
+      this._holdDefs(keys, 'ask');   // 答えずに閉じたら、次の起動 (共有 ON) で尋ねる
+      if(!this._defsOn()) return;
+      this._confirm('読み込んだ ' + keys.length + ' 件を他の端末へ同期していいですか？ (Cancel ならこの端末だけに残します)', ()=>{
+        this._releaseDefs(keys);
+        this._pushDefsReport();
+      }, ()=>this._holdDefs(keys, 'local'));
     });
   },
   // Visual ごとのデフォルト (Params のエンジン別パラメータ・Shader Params) を defaults_visual.json の基準値へ戻す。
@@ -24495,6 +24516,40 @@ void mainImage(out vec4 o, in vec2 f){
     const BEAT_NAMES = ['Off', '1/32', '1/16', '1/8', '1/4', '1/2', '1', '2', '4', '8', '16', '32'];
     const EASE_OPTS = ['一定', 'Ease In (加速)', 'Ease Out (減速)', 'In-Out (加速→減速)', 'Out-In (途中で溜める)'];
     const groups = [
+      ['Canvas', [
+        {sel:true, label:'Canvas', key:'noteOn', opts:['Off', 'On (書き置きで画面を埋める)']},
+        {sel:true, label:'Canvas Layout', key:'noteLayout', opts:['Auto (周回ごとにランダム)'].concat(Fude.CV_LAYOUTS)},
+        {sel:true, label:'Constructivist Auto', key:'noteConstAuto', opts:['Off (Auto から外す)', 'On (Auto に含める)']},
+        ['Note Count', 'noteCount', 1,   24,  1,    int],
+        ['Note Scale', 'noteScale', 0.2, 3,   0.01, f2],
+        ['Note Write', 'noteWrite', 0.25,32,  0.25, beats],
+        ['Note Gap',   'noteGap',   0,   16,  0.25, beats],
+        ['Canvas Hold','noteHold',  0,   64,  1,    beats],
+        {sel:true, label:'When Full', key:'noteFull', opts:['白紙に戻す', '上書きし続ける (古い書き置きを薄める)']},
+        ['Dim',        'noteDim',   0,   1,   0.02, f2],
+      ]],
+      ['Constructivist Brush', [
+        {sel:true, label:'Constructivist Brush', key:'noteGeo', opts:['Off', 'On (帯・線・棒・円相を筆で書く)']},
+        ['Bands',       'nbBand',      0,     6,    1,     int],
+        ['Lines',       'nbLine',      0,     8,    1,     int],
+        ['Bars',        'nbBar',       0,     6,    1,     int],
+        ['Circles',     'nbCircle',    0,     4,    1,     int],
+        {sel:true, label:'Main Axis', key:'nbMainAxis', opts:['H (水平)', 'V (垂直)', 'HV random', 'Free (軸と同じ斜め)']},
+        ['Main Offset', 'nbMainOffset',0,     0.4,  0.01,  f2],
+        ['Thickness',   'nbThick',     0.001, 0.05, 0.001, v=>v.toFixed(3)],
+        ['Thick Mul',   'nbThickMul',  1,     8,    0.1,   f2],
+        ['Thick Ratio', 'nbThickRatio',0,     1,    0.01,  f2],
+        ['Thickness Var','nbThickVar', 0,     1,    0.01,  f2],
+        ['Length',      'nbLen',       0.2,   2,    0.01,  f2],
+        ['Length Var',  'nbLenVar',    0,     1,    0.01,  f2],
+        {sel:true, label:'Angle Snap', key:'nbSnap', opts:['Off', '15°', '30°', '45°', '90°']},
+        ['Angle Var',   'nbAngleVar',  0,     45,   1,     deg],
+        ['Spread',      'nbSpread',    0.2,   2,    0.01,  f2],
+        ['Opacity',     'nbOpacity',   0,     1,    0.01,  f2],
+        ['Dry',         'nbDry',       0,     1,    0.01,  f2],
+        {sel:true, label:'Brush Order', key:'nbOrder', opts:['書き置きの前 (下)', '書き置きの後 (上)', '混ぜる']},
+        ['Brush Write', 'nbWrite',     0,     16,   0.25,  beats],
+      ]],
       ['Beat', [
         {sel:true, label:'Beat Write', key:'beatMode', opts:['Off (beat=全文字列 / drone=Write の設定)', 'A: Beat ごとに 1 筆', 'B: Beat ごとに 1 文字', 'C: Beat ごとに全文字列']},
         {steps:true, label:'Bar Beats', key:'beatBar', vals:BEAT_VALS.slice(1), names:BEAT_NAMES.slice(1)},
@@ -24654,7 +24709,7 @@ void mainImage(out vec4 o, in vec2 f){
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { smooth:1, merge:1, nibAngle:1, pressFreq:1, wobbleFreq:1, bristles:1, streak:1, bristleContrast:1, dryStart:1, refill:1,
       bleedScale:1, bleedTaps:1, splatSize:1, splatSpread:1, wrap:1, sizeMin:1, sizeMax:1, sizeSkew:1, area:1, aspect:1, penTime:1, easePow:1, strokeGap:1, writeBeats:1, holdBeats:1, fadeBeats:1, flow:1, boilRate:1, phase:1,
-      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, tilt3dX:1, tilt3dY:1, spin3d:1, seed:1, tracking:1, leading:1, taperPow:1,
+      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, tilt3dX:1, tilt3dY:1, spin3d:1, seed:1, noteCount:1, noteScale:1, noteWrite:1, noteGap:1, noteHold:1, nbBand:1, nbLine:1, nbBar:1, nbCircle:1, nbMainOffset:1, nbThick:1, nbThickMul:1, nbThickRatio:1, nbThickVar:1, nbLen:1, nbLenVar:1, nbAngleVar:1, nbSpread:1, nbOpacity:1, nbDry:1, nbWrite:1, tracking:1, leading:1, taperPow:1,
       fineHair:1, rimDry:1, sheenAngle:1, sheenPower:1, inkGamma:1, bleedHalo:1, grainSize:1 };   // デッドゾーン表示をしない (設定値)
     root.innerHTML = '';
     const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
@@ -26487,8 +26542,6 @@ void mainImage(out vec4 o, in vec2 f){
     this._presetLibSig = sig;
     { const pc = $('#presetCount'); if(pc) pc.textContent = String(lib.length); }
     wrap.innerHTML = '';
-    // 固定 Preset 0 のタイルは非表示 (同じ操作は Esc キーで行う)。
-    // presetBlankBoth() 自体は 0 キー等から呼ばれるので残す。
     if(!lib.length){
       const empty = document.createElement('div');
       empty.className = 'help'; empty.style.cssText = 'font-size:10px;padding:6px 2px;grid-column:1/-1';

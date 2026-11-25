@@ -314,7 +314,7 @@ void main(){
     for(const k of this.FOLDER_KEYS) out[k] = st.P[k];
     all[st.P.folder] = out;
     try{ localStorage.setItem(this._folderParamKey, JSON.stringify(all)); }catch(e){ return false; }
-    if(typeof App !== 'undefined' && App.uploadDefs) App.uploadDefs();
+    if(typeof App !== 'undefined' && App.uploadDefs) App.uploadDefs('image.folderParams');
     return true;
   },
   clearFolderParams(key){
@@ -323,7 +323,7 @@ void main(){
     const all = this._storedFolderParams();
     delete all[st.P.folder];
     try{ localStorage.setItem(this._folderParamKey, JSON.stringify(all)); }catch(e){}
-    if(typeof App !== 'undefined' && App.uploadDefs) App.uploadDefs();
+    if(typeof App !== 'undefined' && App.uploadDefs) App.uploadDefs('image.folderParams');
   },
   hasFolderParams(dir){ return !!(dir && this._storedFolderParams()[dir]); },
 

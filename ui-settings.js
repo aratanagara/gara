@@ -91,7 +91,7 @@
     try { d = JSON.parse(localStorage.getItem('vj.def.transition') || '{}') || {}; } catch (_) {}
     d.paramFadeScope = v;
     try { localStorage.setItem('vj.def.transition', JSON.stringify(d)); } catch (_) {}
-    if(typeof App !== 'undefined' && App.uploadDefs) App.uploadDefs();   // この端末で変えたキーだけサーバーへ
+    if(typeof App !== 'undefined' && App.uploadDefs) App.uploadDefs('transition');   // この端末で変えたキーだけサーバーへ
   }
 
   // 歯車 / Help = 右パネルを Settings / Help に切り替える。開いている間は Slot A/B とタブを隠す (#side.side-sub)。

@@ -826,5 +826,6 @@ const TDCanvas = {
   },
   async removeSaved(i){ await this.loadSaved(); if(!this.saved[i]) return; this.saved.splice(i, 1); await this._save(); }
 };
+TDCanvas.LAYOUTS = LAYOUTS;   // FUDE の Canvas (書き置き) も同じ配置を使う
 globalThis.TDCanvas = TDCanvas;
 })();
