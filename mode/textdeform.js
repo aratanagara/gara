@@ -335,7 +335,7 @@ void main(){
   },
 
   // Canvas の焼き付け中なら中断して本体の Look に戻してから書く (焼き終わりの戻しで、書いた値が消えないように)
-  _endBake(){ if(typeof TDCanvas !== 'undefined' && TDCanvas._bake) TDCanvas.cancelBake(); },
+  _endBake(){ if(typeof (this._modules || globalThis).TDCanvas !== 'undefined' && (this._modules || globalThis).TDCanvas._bake) (this._modules || globalThis).TDCanvas.cancelBake(); },
   setParams(over){
     this._endBake();
     Object.assign(this.P, over || {});
@@ -415,11 +415,11 @@ void main(){
     this._applyStageStyle();
     this._createSpans(this.P.text);
     // Look が空 (保存デフォルトの無い Reset / R / Esc) なら既定の Look を当てる (素の文字だけに戻さない)
-    if(!this.P.look && typeof TDLooks !== 'undefined') TDLooks.start();
+    if(!this.P.look && typeof (this._modules || globalThis).TDLooks !== 'undefined') (this._modules || globalThis).TDLooks.start();
   },
   // 保存・Undo 用の P。Canvas がスタンプの Look を焼き付けるために本体の Look を一時的に替えているあいだは、控えた本体の Look を返す
   stateP(){
-    const b = (typeof TDCanvas !== 'undefined') ? TDCanvas._bake : null;
+    const b = (typeof (this._modules || globalThis).TDCanvas !== 'undefined') ? (this._modules || globalThis).TDCanvas._bake : null;
     if(!b) return this.P;
     const o = JSON.parse(JSON.stringify(this.P)), s = b.saved;
     Object.assign(o, JSON.parse(JSON.stringify(s.style)), { text: s.text, look: s.look, surf: s.surf });
@@ -427,15 +427,16 @@ void main(){
   },
   // Canvas の主役スタンプ: 本体の Look を (Surface / Vector 3D ごと) w×h の透明な別キャンバスに描いて返す
   _renderHero(w, h, zoomMul){
-    const cv = this._heroCv || (this._heroCv = document.createElement('canvas'));
+    const cv = this._heroCv || (this._heroCv = TDPixels.createCanvas());
     const hctx = this._heroCtx || (this._heroCtx = cv.getContext('2d'));
     const keep = { canvas: this.canvas, ctx: this.ctx, fit: this._fit, bg: this.P.transparentBg, zoom: this.P.zoom };
+    this._outputCanvas = keep.canvas;
     this.canvas = cv; this.ctx = hctx; this._heroPass = true; this.P.transparentBg = true; this._fitDirty = true;
     if(zoomMul) this.P.zoom = (+keep.zoom || 1) * zoomMul;   // 伸び縮みで切れないよう広く描くぶん縮める (TDCanvas.draw)
-    try{ this._renderToCanvas(w, h); }
+    try{ if(this._renderToCanvas(w, h) === false) return null; }
     finally{
       this.canvas = keep.canvas; this.ctx = keep.ctx; this._fit = keep.fit; this.P.transparentBg = keep.bg; this.P.zoom = keep.zoom;
-      this._heroPass = false; this._fitDirty = true;
+      this._heroPass = false; this._outputCanvas = null; this._fitDirty = true;
     }
     return cv;
   },
@@ -444,7 +445,7 @@ void main(){
     this._t = 0;
     this._bloomUntil = 0; this._nextBloomCheck = 0;
     this._textSlot = null;
-    if(typeof TDLooks !== 'undefined'){ TDLooks._autoSlot = null; TDLooks.load(); }
+    if(typeof (this._modules || globalThis).TDLooks !== 'undefined'){ (this._modules || globalThis).TDLooks._autoSlot = null; (this._modules || globalThis).TDLooks.load(); }
     this.applyP();   // Look が未選択なら既定の Look を当てる
   },
 
@@ -1132,16 +1133,16 @@ void main(){
         if(!typing) this.nextRandomText();
       }
     }
-    if(typeof TDLooks !== 'undefined') TDLooks.beatTick(this.tBeat('lookEvery'));   // Look Auto
+    if(typeof (this._modules || globalThis).TDLooks !== 'undefined') (this._modules || globalThis).TDLooks.beatTick(this.tBeat('lookEvery'));   // Look Auto
     this._compRandTick(this.tBeat('compRandEvery'));
     const sw = this._stage.offsetWidth || P.stageW, sh = this._stage.offsetHeight || P.stageW;
     const inBloom = this._t < (this._bloomUntil || 0);
     const beatPhase = (beat || 0) - bi;
     const pulse = this._rhythmPulse(beatMode, beatPhase), motion = this._dp(+P.rhythmMotion || 0);
     this._pulseNow = pulse; this._motionNow = motion;   // Vector 3D (TDVec) が読む
-    if(typeof TDCanvas !== 'undefined'){
-      if(TDCanvas.active()) TDCanvas.update(d, pulse, motion);
-      else if(TDCanvas._bake || TDCanvas._bakeQ.length || TDCanvas._inst.size || (TDCanvas._ghosts && TDCanvas._ghosts.length)) TDCanvas.release();   // Off にしたら焼き付けをやめて本体の Look を戻し、分身の絵も手放す
+    if(typeof (this._modules || globalThis).TDCanvas !== 'undefined'){
+      if((this._modules || globalThis).TDCanvas.active()) (this._modules || globalThis).TDCanvas.update(d, pulse, motion);
+      else if((this._modules || globalThis).TDCanvas._bake || (this._modules || globalThis).TDCanvas._bakeQ.length || (this._modules || globalThis).TDCanvas._inst.size || ((this._modules || globalThis).TDCanvas._ghosts && (this._modules || globalThis).TDCanvas._ghosts.length)) (this._modules || globalThis).TDCanvas.release();   // Off にしたら焼き付けをやめて本体の Look を戻し、分身の絵も手放す
     }
     if(inBloom){
       // 構成的な一斉変形: 大きな半径のレンズを一直線にスイープ → 行/列がまとめて伸びる
@@ -1165,27 +1166,27 @@ void main(){
       this._randomFlipStep(pulse * motion);
     }
     // Composition のループ位相を進める (mode/textdeform-comp.js)
-    if(typeof TDComp !== 'undefined') TDComp.advance(d * motion, pulse);
-    if(typeof TDSurf !== 'undefined') TDSurf.advance(d * motion, pulse);
+    if(typeof (this._modules || globalThis).TDComp !== 'undefined') (this._modules || globalThis).TDComp.advance(d * motion, pulse);
+    if(typeof (this._modules || globalThis).TDSurf !== 'undefined') (this._modules || globalThis).TDSurf.advance(d * motion, pulse);
   },
 
   // Comp Random (全 Look 共通): compRandEvery 拍 / 秒ごとに Composition をランダムに切り替える。
   // Comp Random が On なのに Composition が Off のときは、すぐ次の Composition を当てる
   _compRandTick(beat){
     const P = this.P, every = +P.compRandEvery || 0;
-    if(!(every > 0) || typeof TDComp === 'undefined'){ this._compRandSlot = null; return; }
+    if(!(every > 0) || typeof (this._modules || globalThis).TDComp === 'undefined'){ this._compRandSlot = null; return; }
     const slot = Math.floor((P.compRandUnit === 'sec' ? performance.now() / 1000 : (beat || 0)) / every + 1e-6);   // 秒は実時間 (this._t はフレーム数で進む)
-    if(this._compRandSlot == null || slot < this._compRandSlot || !TDComp.enabled()){ this._compRandSlot = slot; this.randomComposition(); return; }
+    if(this._compRandSlot == null || slot < this._compRandSlot || !(this._modules || globalThis).TDComp.enabled()){ this._compRandSlot = slot; this.randomComposition(); return; }
     if(slot !== this._compRandSlot){ this._compRandSlot = slot; this.randomComposition(); }
   },
   // Comp Random の対象から外す Composition (手動・Comp Saved では選べる)。ヘッドレス Chrome の計測で contourAtlas は 60fps → 6fps、
   // field は字の多い配置で 15〜46fps に落ちた (2026-11-21)
   COMP_RANDOM_HEAVY: ['contourAtlas', 'field'],
   randomComposition(){
-    if(typeof TDComp === 'undefined') return;
-    const ids = Object.keys(TDComp.defs).filter(id => !this.COMP_RANDOM_HEAVY.includes(id)), cur = TDComp.get();
+    if(typeof (this._modules || globalThis).TDComp === 'undefined') return;
+    const ids = Object.keys((this._modules || globalThis).TDComp.defs).filter(id => !this.COMP_RANDOM_HEAVY.includes(id)), cur = (this._modules || globalThis).TDComp.get();
     const pool = ids.length > 1 ? ids.filter(id => !(cur.enabled && id === cur.type)) : ids;
-    TDComp.set({ enabled: true, type: pool[Math.floor(Math.random()*pool.length)], seed: Math.floor(Math.random()*1e6) });
+    (this._modules || globalThis).TDComp.set({ enabled: true, type: pool[Math.floor(Math.random()*pool.length)], seed: Math.floor(Math.random()*1e6) });
     if(typeof UI !== 'undefined' && UI.refreshTextDeform) UI.refreshTextDeform();
   },
 
@@ -1605,10 +1606,22 @@ void main(){
   _renderToCanvas(w, h){
     const P = this.P;
     const cv = this.canvas, ctx = this.ctx;
-    if(cv.width !== w || cv.height !== h){ cv.width = w; cv.height = h; }
+    const output = !this._stamp && !this._heroPass;
+    if(output){
+      // 本体と texture の両方を予約。縮小時も upload までは旧 texture の分を残す。
+      let size = TDPixels.fit(w, h, 2, [cv, TDPixels]);
+      if(!size.w || !size.h) return false;
+      const old = TDPixels.texturePixels;
+      if(size.w*size.h < old) size = TDPixels.fit(size.w, size.h, 1, [cv]);
+      if(!size.w || !size.h) return false;
+      w = size.w; h = size.h;
+      TDPixels.texturePixels = Math.max(old, w*h);
+    }
+    if(!TDPixels.resize(cv, w, h)) return false;
+    w = cv.width; h = cv.height;
     const fx = this._readFx();
     // Canvas のスタンプ (分身 = this._stamp) と主役・焼き付け (_heroPass) は全体共通の Composition を描かない (Canvas の間は紙とスタンプのあいだに敷く)
-    const comp = !this._stamp && !this._heroPass && (typeof TDComp !== 'undefined' && TDComp.enabled());
+    const comp = !this._stamp && !this._heroPass && (typeof (this._modules || globalThis).TDComp !== 'undefined' && (this._modules || globalThis).TDComp.enabled());
     if(!P.transparentBg){
       ctx.setTransform(1,0,0,1,0,0); ctx.fillStyle = this.color('paper');
       if(fx.trail && !comp){ ctx.globalAlpha = 1 - fx.trail/100; ctx.fillRect(0,0,w,h); ctx.globalAlpha = 1; }   // 残像: 紙を薄く塗り重ねる
@@ -1616,12 +1629,12 @@ void main(){
     }
     else { ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); }
     // Canvas: 紙 → 本体の Composition → スタンプの順に重ねる (本体の文字は描かない)
-    if(!this._stamp && !this._heroPass && typeof TDCanvas !== 'undefined' && TDCanvas.active()){
+    if(!this._stamp && !this._heroPass && typeof (this._modules || globalThis).TDCanvas !== 'undefined' && (this._modules || globalThis).TDCanvas.active()){
       // 焼き付け中は本体の値がスタンプのものに替わっているので、焼き付けを始めたときの背景 (紙 + Composition) を敷く
-      const hold = TDCanvas._bake && TDCanvas._bgHold;
-      if(hold && hold.width === w && hold.height === h){ ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); ctx.drawImage(hold, 0, 0); }
-      else if(comp) TDComp.render(ctx, w, h, { noGuides: true });   // スタンプの下に敷くのでガイドの枠線は描かない
-      TDCanvas.draw(ctx, w, h);
+      const hold = (this._modules || globalThis).TDCanvas._bake && (this._modules || globalThis).TDCanvas._bgHold;
+      if(hold && hold.width && hold.height && (hold.width === w && hold.height === h || TDCanvas._bgScaled)){ ctx.setTransform(1,0,0,1,0,0); ctx.clearRect(0,0,w,h); if(hold.width === w && hold.height === h) ctx.drawImage(hold, 0, 0); else ctx.drawImage(hold, 0, 0, w, h); }
+      else if(comp) (this._modules || globalThis).TDComp.render(ctx, w, h, { noGuides: true });   // スタンプの下に敷くのでガイドの枠線は描かない
+      (this._modules || globalThis).TDCanvas.draw(ctx, w, h);
       // 本体の Look の周辺減光・グレインは、Canvas の間は画面全体に掛けない (C Main FX で戻せる)
       if(P.canvasMainFx) this._overlayFx(ctx, w, h, fx);
       ctx.setTransform(1,0,0,1,0,0);
@@ -1629,7 +1642,7 @@ void main(){
     }
     // Composition 有効時は生成シーン描画に切替 (文字の直接描画は行わない)。
     // エンジン読み込み中・生成失敗のとき (render が false) は素の文字を描く
-    if(comp && TDComp.render(ctx, w, h) !== false){
+    if(comp && (this._modules || globalThis).TDComp.render(ctx, w, h) !== false){
       this._overlayFx(ctx, w, h, fx);
       ctx.setTransform(1,0,0,1,0,0);
       return;
@@ -1656,14 +1669,14 @@ void main(){
       this._needPf = need;
     }
     // Vector 3D: 文字の輪郭の頂点を 3D で描く (Surface の効果は重ねない)
-    if(!this._stamp && typeof TDVec !== 'undefined' && TDVec.active()){
-      TDVec.draw(ctx, glyphs, { w, h, s, dx, dy, va });
+    if(!this._stamp && typeof (this._modules || globalThis).TDVec !== 'undefined' && (this._modules || globalThis).TDVec.active()){
+      (this._modules || globalThis).TDVec.draw(ctx, glyphs, { w, h, s, dx, dy, va });
       this._overlayFx(ctx, w, h, fx);
       ctx.setTransform(1,0,0,1,0,0);
       return;
     }
     // Surface: 効果が掛かる文字は元の字を sourceAlpha で薄め (hide なら描かない)、上に効果レイヤーを重ねる
-    const surf = (!this._stamp && typeof TDSurf !== 'undefined' && TDSurf.active()) ? TDSurf : null;
+    const surf = (!this._stamp && typeof (this._modules || globalThis).TDSurf !== 'undefined' && (this._modules || globalThis).TDSurf.active()) ? (this._modules || globalThis).TDSurf : null;
     const surfSrcA = surf ? surf.sourceAlpha() : 1;
     if(surf) surf.request(glyphs, w, h);
     // Operator を含む1パス描画。misreg のオフセットはフィット前のステージ座標系 (元アプリの page 座標に相当)
@@ -1746,6 +1759,7 @@ void main(){
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     try{ gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.canvas); }
     catch(e){ return; }
+    TDPixels.texturePixels = this.canvas.width*this.canvas.height;
 
     gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
     gl.viewport(0,0,w,h);
@@ -1965,7 +1979,7 @@ TextDeform.paramOn = function(key){
   if(/^vec/.test(key) && key !== 'vecMode') return !!P.vecMode && P.vecMode !== 'off';
   if(/^cv[A-Z]/.test(key)) return !!P.canvasOn;
   if(key === 'canvasGunDiv' || key === 'canvasGunOrder') return !!P.canvasOn && P.canvasTiming === 'gun';   // Canvas のばらつきは Canvas が On のときだけ
-  if(/^tdSurf/.test(key) && key !== 'tdSurfOn') return typeof TDSurf !== 'undefined' && !!TDSurf.cfg.enabled;
+  if(/^tdSurf/.test(key) && key !== 'tdSurfOn') return typeof (this._modules || globalThis).TDSurf !== 'undefined' && !!(this._modules || globalThis).TDSurf.cfg.enabled;
   if((/^tdComp/.test(key) && !/^tdComp(Type|Saved|Save|Del)$/.test(key)) || key === 'compAudio') return !!P.comp;
   return true;
 };

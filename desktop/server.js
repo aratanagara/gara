@@ -28,6 +28,7 @@ const MIME = {
 
 const IMG_RE = /\.(png|jpe?g|webp|gif|bmp)$/i;
 const VID_RE = /\.(mp4|webm|mov|m4v|ogv|ogg)$/i;
+const IMPORT_MARKER = '.gara-import';
 const DROP_FOLDER = 'drop';                  // ドロップした画像の取り込み先 images/<DROP_FOLDER>/
 const EXCLUDE_FOLDERS = new Set(['etc']);    // deploy.sh と同じ (CYBER UI が直接参照する UI 素材)
 // 素材オーバーレイの対象 (これ以外のパス = アプリ本体コードは常に同梱 root から配信)
@@ -84,7 +85,8 @@ function regenImages(root, fallbackRoot){
     if(!imgs.length) continue;
     // フォルダ manifest は書ける側 (primary) へ。primary に無いフォルダは fallback の manifest をそのまま使う
     if(inP){ try{ writeJson(path.join(base, name, 'manifest.json'), imgs); }catch(_){} }
-    folders.push({ name, dir: 'images/' + name, count: imgs.length, images: imgs });
+    const imported = inP && isImportFolder(path.join(base, name));
+    folders.push({ name, dir: 'images/' + name, count: imgs.length, images: imgs, imported, removable: !!(imported && !inF) });
   }
   // images/ 直下の画像: manifest (Layer のフォールバック) + 一覧の先頭に 1 枚ずつ single エントリ
   const isFile = (p)=>{ try{ return fs.statSync(p).isFile(); }catch(_){ return false; } };
@@ -92,7 +94,7 @@ function regenImages(root, fallbackRoot){
     && (isFile(path.join(base, f)) || (fbase && isFile(path.join(fbase, f)))));
   try{ writeJson(path.join(base, 'manifest.json'), rootImgs); }catch(_){}
   for(const f of rootImgs.slice().reverse()){
-    folders.unshift({ name: f.replace(/\.[^.]+$/, ''), dir: 'images/' + f, single: true, count: 1, images: [f] });
+    folders.unshift({ name: f.replace(/\.[^.]+$/, ''), dir: 'images/' + f, single: true, count: 1, images: [f], removable: isFile(path.join(base, f)) && !(fbase && fs.existsSync(path.join(fbase, f))) });
   }
   try{ writeJson(path.join(base, 'folders.json'), folders, 1); }catch(_){}
 }
@@ -155,32 +157,85 @@ function writable(root){
   try{ fs.accessSync(root, fs.constants.W_OK); return true; }catch(_){ return false; }
 }
 
-function importMedia(root, req, res, u){
+// Folder names are one path component; keep Japanese and replace platform-reserved characters.
+function importFolderName(raw){
+  if(String(raw).split(/[\\/]/).includes('..')) throw new Error('invalid folder');
+  return Array.from(String(raw).replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f]/g, '_').replace(/^[._]+/, '')).slice(0, 64).join('') || 'import';
+}
+// 印 (.gara-import) が無くても、以前の取り込みが作った drop / drop-YYYYMMDD-HHMMSS は取り込みフォルダとして扱う
+const LEGACY_IMPORT_RE = /^drop(-\d{8}-\d{6})?$/;
+function isImportFolder(dir){
+  try{
+    if(!fs.lstatSync(dir).isDirectory()) return false;
+    if(LEGACY_IMPORT_RE.test(path.basename(dir))) return true;
+    return fs.lstatSync(path.join(dir, IMPORT_MARKER)).isFile();
+  }catch(_){ return false; }
+}
+function ensureDir(dir){
+  try{ fs.mkdirSync(dir); }catch(e){ if(e.code !== 'EEXIST') throw e; }
+  if(!fs.lstatSync(dir).isDirectory()) throw new Error('not a directory: ' + path.basename(dir));
+}
+function numberedName(name, n){
+  const suffix = '-' + n;
+  return Array.from(name).slice(0, 64 - suffix.length).join('') + suffix;
+}
+function importMedia(root, fallbackRoot, req, res, u){
+  const rawFolder = u.searchParams.get('folder');
+  let folder;
+  try{ folder = rawFolder ? importFolderName(rawFolder) : DROP_FOLDER; }
+  catch(e){ sendJson(res, 400, { ok:false, error:e.message }); return; }
+  // Reserve one new folder per import, before uploading its files. mkdir is atomic, so
+  // overlapping drops cannot mix their contents. Check bundled names too (media overlay).
+  if(u.searchParams.get('create') === '1'){
+    try{
+      const base = path.join(root, 'images');
+      ensureDir(base);
+      let name = folder;
+      for(let n = 2;; n++){
+        if(!EXCLUDE_FOLDERS.has(name) && !existsEither('images/' + name, root, fallbackRoot)){
+          try{ fs.mkdirSync(path.join(base, name)); break; }catch(e){ if(e.code !== 'EEXIST') throw e; }
+        }
+        name = numberedName(folder, n);
+      }
+      fs.writeFileSync(path.join(base, name, IMPORT_MARKER), 'GARA imported images\n', {flag:'wx'});
+      sendJson(res, 200, {ok:true, folder:name, dir:'images/' + name});
+    }catch(e){ sendJson(res, 500, {ok:false, error:e.message}); }
+    return;
+  }
   const raw = String(u.searchParams.get('name') || '');
   const name = path.basename(raw).replace(/[\\/:*?"<>|]/g, '_').replace(/[\u0000-\u001f]/g, '');
   const isVid = VID_RE.test(name), isImg = IMG_RE.test(name);
-  if(!name || (!isVid && !isImg)){ sendJson(res, 400, { ok:false, error:'unsupported file: ' + raw }); return; }
-  // folder = まとめて投げた画像の取り込み先 (images/<folder>/)。英数と - _ だけ許す。無ければ images/drop/
-  const folder = String(u.searchParams.get('folder') || '').replace(/[^A-Za-z0-9_-]/g, '').slice(0, 64);
-  const relDir = isVid ? 'movies' : ('images/' + (folder || DROP_FOLDER));
+  if(!name || name.startsWith('.') || (!isVid && !isImg)){ sendJson(res, 400, { ok:false, error:'unsupported file: ' + raw }); return; }
+  const relDir = isVid ? 'movies' : ('images/' + folder);
   const dir = path.join(root, relDir);
-  let target;
+  let target, tmp, fd;
   try{
-    fs.mkdirSync(dir, { recursive: true });
-    // 同名は連番を付けて既存素材を上書きしない
+    ensureDir(path.join(root, isVid ? 'movies' : 'images'));
+    if(isImg){
+      if(EXCLUDE_FOLDERS.has(folder)) throw new Error('reserved folder');
+      const existed = fs.existsSync(dir);
+      ensureDir(dir);
+      // Existing drop/ is the legacy shared destination. Never mark a hand-made folder.
+      if(existed && folder !== DROP_FOLDER && !isImportFolder(dir)) throw new Error('not an import folder');
+      if(!isImportFolder(dir)) fs.writeFileSync(path.join(dir, IMPORT_MARKER), 'GARA imported images\n', {flag:'wx'});
+    }
     const ext = path.extname(name), stem = name.slice(0, name.length - ext.length);
-    target = path.join(dir, name);
-    for(let n = 1; fs.existsSync(target); n++) target = path.join(dir, stem + '-' + n + ext);
+    // Reserve the temporary file too, so concurrent uploads cannot overwrite one another.
+    for(let n = 0;; n++){
+      target = path.join(dir, n ? stem + '-' + n + ext : name);
+      tmp = target + '.part';
+      if(fs.existsSync(target)) continue;
+      try{ fd = fs.openSync(tmp, 'wx'); break; }catch(e){ if(e.code !== 'EEXIST') throw e; }
+    }
   }catch(e){ sendJson(res, 500, { ok:false, error: String(e && e.message || e) }); return; }
-  const tmp = target + '.part';
-  const ws = fs.createWriteStream(tmp);
+  const ws = fs.createWriteStream(tmp, {fd});
   const fail = (e)=>{ try{ fs.unlinkSync(tmp); }catch(_){} if(!res.headersSent) sendJson(res, 500, { ok:false, error: String(e && e.message || e) }); };
   ws.on('error', fail);
   req.on('aborted', ()=>{ try{ ws.destroy(); fs.unlinkSync(tmp); }catch(_){} });
   ws.on('finish', ()=>{
     try{
       fs.renameSync(tmp, target);
-      if(isVid) regenMovies(root); else regenImages(root);
+      if(isVid) regenMovies(root, fallbackRoot); else regenImages(root, fallbackRoot);
     }catch(e){ fail(e); return; }
     const file = path.basename(target);
     sendJson(res, 200, { ok:true, kind: isVid ? 'video' : 'image', dir: relDir, name: file, url: relDir + '/' + file });
@@ -188,22 +243,35 @@ function importMedia(root, req, res, u){
   req.pipe(ws);
 }
 
-// images/ 直下の 1 枚もの (Visual の個別画像) を削除する。フォルダや他の場所は対象外
-function deleteMedia(roots, res, u){
+// Root images and marked import folders move to _trash; bundled fallback is never modified.
+function deleteMedia(root, fallbackRoot, res, u){
   const rel = String(u.searchParams.get('path') || '');
-  const name = path.basename(rel);
-  if(!/^images\/[^/]+$/.test(rel) || !IMG_RE.test(name) || name.startsWith('.')){ sendJson(res, 400, { ok:false, error:'not deletable: ' + rel }); return; }
-  for(const root of roots){
-    const file = path.join(root, 'images', name);
-    let isFile = false;
-    try{ isFile = fs.statSync(file).isFile(); }catch(_){}
-    if(!isFile) continue;
-    try{ fs.unlinkSync(file); }catch(e){ sendJson(res, 500, { ok:false, error: String(e && e.message || e) }); return; }
-    try{ regenImages(roots[0], roots[1] || null); }catch(_){}
-    sendJson(res, 200, { ok:true, path: rel });
-    return;
+  const match = /^images\/([^/\\]+)$/.exec(rel), name = match && match[1];
+  if(!name || /^[._]/.test(name) || /[\u0000-\u001f\u007f]/.test(name)){
+    sendJson(res, 400, {ok:false, error:'not deletable: ' + rel}); return;
   }
-  sendJson(res, 404, { ok:false, error:'not found: ' + rel });
+  const file = path.join(root, 'images', name);
+  let st;
+  try{ st = fs.lstatSync(file); }catch(_){ sendJson(res, 404, {ok:false, error:'not found: ' + rel}); return; }
+  if((fallbackRoot && fs.existsSync(path.join(fallbackRoot, rel)))
+    || !(st.isFile() && IMG_RE.test(name) || st.isDirectory() && isImportFolder(file))){
+    sendJson(res, 403, {ok:false, error:'not deletable: ' + rel}); return;
+  }
+  try{
+    // Reject symlinks in the writable path, including an existing _trash.
+    ensureDir(path.join(root, 'images'));
+    const trash = path.join(root, 'images', '_trash');
+    ensureDir(trash);
+    const d = new Date(), p = n => String(n).padStart(2, '0');
+    const stamp = d.getFullYear() + p(d.getMonth()+1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    const base = name + '-' + stamp;
+    let dest = base;
+    for(let n = 2; fs.existsSync(path.join(trash, dest)); n++) dest = base + '-' + n;
+    if(st.isDirectory()) fs.renameSync(file, path.join(trash, dest));
+    else { fs.mkdirSync(path.join(trash, dest)); fs.renameSync(file, path.join(trash, dest, name)); }
+    regenImages(root, fallbackRoot);
+    sendJson(res, 200, {ok:true, path:rel, trash:'images/_trash/' + dest + '/'});
+  }catch(e){ sendJson(res, 500, {ok:false, error:e.message}); }
 }
 
 function serveFile(req, res, file, st){
@@ -290,8 +358,8 @@ function createServer(root, mediaRoot){
     if(urlPath === '/__media'){
       // GET = 取り込み可否の問い合わせ / POST = ファイル本体を取り込む
       if(req.method === 'GET'){ sendJson(res, 200, { ok:true, writable: writable(importRoot()), mediaRoot: mediaRoot || null, movies:'movies', images:'images/' + DROP_FOLDER }); return; }
-      if(req.method === 'POST'){ importMedia(importRoot(), req, res, u); return; }
-      if(req.method === 'DELETE'){ deleteMedia(mediaRoot ? [mediaRoot, root] : [root], res, u); return; }
+      if(req.method === 'POST'){ importMedia(importRoot(), mediaRoot && importRoot() === mediaRoot ? root : null, req, res, u); return; }
+      if(req.method === 'DELETE'){ deleteMedia(mediaRoot || root, mediaRoot ? root : null, res, u); return; }
       res.writeHead(405); res.end(); return;
     }
     if(urlPath === '/') urlPath = '/index.html';

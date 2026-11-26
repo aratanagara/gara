@@ -263,30 +263,48 @@ void main(){
 
   // ドラッグ&ドロップの臨時フォルダ (セッション限り。blob URL なのでリロードで消える)
   DROP_DIR: '(drop)',
-  // 臨時フォルダへ blob で追加し、そのフォルダの dir を返す。asFolder = まとめて投げた画像を新しい臨時フォルダにする
-  addDroppedFiles(files, asFolder){
-    let f;
-    if(asFolder){
-      const n = this.folders.filter(x => x && x._urls).length + 1;
-      f = { name:'ドロップ ' + n + ' (臨時)', dir:this.DROP_DIR + n, count:0, images:[], _urls:[] };
-      this.folders.unshift(f);
-    } else {
-      f = this._folderByDir(this.DROP_DIR);
-      if(!f){
-        f = { name:'ドロップ (臨時)', dir:this.DROP_DIR, count:0, images:[], _urls:[] };
-        this.folders.unshift(f);
-      }
-    }
-    let added = 0;
-    for(const file of (files || [])){
-      if(!file || !file.type || file.type.indexOf('image/') !== 0) continue;
+  // Optional folderName keeps the selected directory's name. IDs never reuse a live entry.
+  _dropSerial: 0,
+  addDroppedFiles(files, asFolder, folderName){
+    const list = Array.from(files || []).filter(file => file && !file.name.startsWith('.')
+      && (/^image\//.test(file.type || '') || /\.(png|jpe?g|webp|gif|bmp)$/i.test(file.name)));
+    if(!list.length) return '';
+    let dir;
+    do{ dir = this.DROP_DIR + (++this._dropSerial); }while(this._folderByDir(dir));
+    const base = folderName || (asFolder ? I18n.t('ドロップ') : list[0].name);
+    let label = base;
+    for(let n = 2; this.folders.some(f => f.name === label + I18n.t(' (臨時)')); n++) label = base + '-' + n;
+    const f = {name:label + I18n.t(' (臨時)'), dir, count:0, images:[], _urls:[], single:!asFolder};
+    for(const file of list){
+      let name = file.name;
+      const dot = name.lastIndexOf('.'), stem = dot > 0 ? name.slice(0, dot) : name, ext = dot > 0 ? name.slice(dot) : '';
+      for(let n = 2; f.images.includes(name); n++) name = stem + '-' + n + ext;
+      f.images.push(name);
       f._urls.push(URL.createObjectURL(file));
-      f.images.push(file.name || ('drop ' + (f._urls.length)));
-      added++;
     }
-    f.count = f._urls.length;
-    if(added) this.setFolder(f.dir);   // アクティブスロットへ
+    f.count = f.images.length;
+    this.folders.unshift(f);
+    this.setFolder(f.dir);
     return f.dir;
+  },
+
+  imageURL(folder, name){
+    return (folder.single ? folder.dir : folder.dir + '/' + name).split('/').map(encodeURIComponent).join('/');
+  },
+
+  // Clear live references only; saved presets/defaults remain compatible and untouched.
+  forgetFolder(dir){
+    const f = this._folderByDir(dir);
+    this.folders = this.folders.filter(f => f.dir !== dir);
+    for(const key of ['A', 'B']){
+      const st = this.S[key];
+      if(!st || st.P.folder !== dir) continue;
+      st.loadToken++;
+      st.P.folder = ''; st.P.image = '';
+      st.list = []; st.names = []; st.idx = 0;
+      st.texReady = false; st.nextAdvanceBeat = null;
+    }
+    if(f && f._urls) for(const url of f._urls) URL.revokeObjectURL(url);
   },
 
   // フォルダ内の特定の画像を選んで表示 (ローカル取り込み直後に、取り込んだ 1 枚を出す)
@@ -340,7 +358,7 @@ void main(){
     }
     st.names = (f.images || []).slice();
     // single エントリ (images/ 直下の 1 枚もの) は dir 自体がファイルパス
-    st.list = f._urls ? f._urls.slice() : (f.single ? [f.dir] : st.names.map(name => dir + '/' + name));
+    st.list = f._urls ? f._urls.slice() : st.names.map(name => this.imageURL(f, name));
     st.idx = 0;
     st.nextAdvanceBeat = null;
     if(st.P.image){
@@ -478,6 +496,7 @@ void main(){
     gl.viewport(0, 0, w, h);
     gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
     gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    if(!st.list.length){ gl.bindFramebuffer(gl.FRAMEBUFFER, null); return; }
     if(!st.texA) this._ensureTex(st);
     gl.useProgram(this.prog);
     gl.activeTexture(gl.TEXTURE0);

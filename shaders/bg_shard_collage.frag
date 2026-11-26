@@ -15,6 +15,12 @@
 //   切り替えは入れ替わり: 古い破片が順に一度ふくらんでから縮んで消え、新しい破片が pop で出る。0 で固定。
 //   構図: 三分割の焦点 2 つに主役の大きな破片を主方向で置く (画面の外へ切れる)。
 //   傾きは世代ごとの主方向 / 副方向にそろえる (uAlign)。焦点の近くほど密に大きく、離れるほど抜ける (uCluster)。
+//   Layout = Free (既定) は従来の構図。Axis / Hero / Grid / Frame / Diagonal / Stairs / Cross / Radial は
+//   構造の線へ破片を集める。Structure で間引きと中心の吸着、Line Width で集まる帯の幅を調整する。
+//   Axis は斜めの軸上に極端に大きな 1 枚を置き、小片を軸の片側へ寄せる非対称な構成。
+//   Angle Sys は OFF = 45° 刻み、ON = 30° 刻み。Snap で線の向きか直交方向へ傾きを丸める。
+//   軸の角度・位置は世代ごとに引き直す。Auto は世代ごとに 8 種から選ぶ。Center / Rotate / Mirror は共通。
+//   構成配置では主役を細く、升を細かく保ち、中・小片を線上に増やす。線の外は広く空けて構造を見せる。
 //   色は世代ごとの主色 55% / 差し色 25% / その他 20%。
 //   地色 (uGround = 4): 世代ごとに選んだ色へ、再生成の間隔いっぱいをかけてなめらかに移り、
 //   ちょうど切り替えの瞬間に次の色へ着く。再生成が無ければ 16 秒ごとに巡る。急には変わらない。
@@ -36,6 +42,11 @@
 // @param uZoomOut 0..200  = 35.0 @desc 引く量 (%)。大きさの呼吸と、世代ごとに小さくなる量
 // @param uAlign   0..100  = 85.0 @desc 破片の傾きを世代ごとの主方向にそろえる強さ (%)。0 でばらばら
 // @param uCluster 0..100  = 70.0 @desc 密集の偏り (%)。焦点の近くほど密に大きく、離れるほど抜ける。0 で一様
+// @param uLayout 0..9 = 0.0 @desc 構成配置。0 = Free / 1 = Axis / 2 = Hero / 3 = Grid / 4 = Frame / 5 = Diagonal / 6 = Stairs / 7 = Cross / 8 = Radial / 9 = Auto (世代ごと)
+// @param uAngleSys bool = false @when uLayout > 0.5 @desc 配置と傾きの角度の系。OFF = 45° 刻み (0/45/90/135)、ON = 30° 刻み (0/30/60/90/120/150)
+// @param uSnap 0..100 = 100.0 @when uLayout > 0.5 @desc 破片の傾きを配置の線の向きか直交方向へ丸める強さ (%)。100 で回転の揺れもそろう
+// @param uStructure 0..100 = 80.0 @when uLayout > 0.5 @desc 構造の線へ集める強さ (%)。線から遠い升を間引き、中心を升の届く範囲で線へ寄せる
+// @param uLineWidth 10..300 = 100.0 @when uLayout > 0.5 @desc 破片が集まる帯の幅 (%)。100 で標準、上げると線の周囲にも広がる
 // @param uDensity 20..100 = 78.0 @desc 升ごとに破片が置かれる割合 (%)
 // @param uScale   40..200 = 100.0 @desc 破片と升の大きさ (%)。上げると大きく少なくなる
 // @param uGap     0..200  = 0.0 @desc 破片の縁に出る地色の細い縁の幅 (%)。0 で枠線なし
@@ -75,6 +86,11 @@ uniform float uZoomIn;  // 寄る量 (%)。大きさの呼吸 (100 で約 1.9 �
 uniform float uZoomOut; // 引く量 (%)。大きさの呼吸 (100 で約 0.5 倍まで、35 で約 0.8 倍まで) と、世代ごとに小さくなる量
 uniform float uAlign;   // 傾きを世代ごとの主方向 (と副方向) にそろえる強さ (%)。0 でばらばら
 uniform float uCluster; // 密集の偏り (%)。焦点の近くほど密に大きく、離れるほど抜ける。0 で一様
+uniform float uLayout;
+uniform float uAngleSys;
+uniform float uSnap;
+uniform float uStructure;
+uniform float uLineWidth;
 uniform float uDensity; // 升ごとに破片が置かれる割合 (%)
 uniform float uScale;   // 破片と升の大きさ (%)
 uniform float uGap;     // 縁に出るソリッドな地色の幅 (%)。既定 0 で枠線なし。100 で 1080p の 2px ほど
@@ -580,6 +596,278 @@ void sc_hero(int k, vec2 p, float T, float seed, float scl, float drift, float m
   sd = sc_poly(p, ctr, ang, hl2, hw2, 0.0, hx, hy, hs, hp, hl, hj, hw, w0, w1, w2, morph * 0.15 * sin(T * 0.3 + mph));
 }
 
+// ─── 構成配置 (Free の関数・計算には入れない) ─────────────────
+struct sc_Layout {
+  int kind;
+  vec2 origin;
+  float angle;
+  vec2 axis;
+  vec2 normal;
+  float angleStep;
+  float side;
+  float spacing;
+  vec2 extent;
+  float strength;
+  float snap;
+  float width;
+};
+
+sc_Layout sc_layoutGen(float seedG){
+  sc_Layout c;
+  c.kind = int(clamp(floor(uLayout + 0.5), 1.0, 9.0));
+  if(c.kind == 9) c.kind = 1 + int(floor(sc_h1(seedG * 5.3 + 41.0) * 8.0));
+  c.angleStep = uAngleSys > 0.5 ? PI / 6.0 : PI / 4.0;
+  float r = sc_h1(seedG * 5.3 + 42.0);
+  c.angle = floor(r * (uAngleSys > 0.5 ? 6.0 : 4.0)) * c.angleStep;
+  if(c.kind == 1 || c.kind == 5){
+    // FUDE Axis と同じく斜めだけ。30° 系では ±30 / ±60°。
+    c.angle = (r < 0.5 ? -1.0 : 1.0) * c.angleStep;
+    if(uAngleSys > 0.5) c.angle *= 1.0 + floor(sc_h1(seedG * 5.3 + 43.0) * 2.0);
+  }
+  c.axis = vec2(cos(c.angle), sin(c.angle));
+  c.normal = vec2(-c.axis.y, c.axis.x);
+  c.side = sc_h1(seedG * 5.3 + 44.0) < 0.5 ? -1.0 : 1.0;
+  float aspect = resolution.x / max(resolution.y, 1.0);
+  c.origin = vec2((sc_h1(seedG * 5.3 + 45.0) - 0.5) * aspect * 0.28,
+                  (sc_h1(seedG * 5.3 + 46.0) - 0.5) * 0.22);
+  if(c.kind == 1) c.origin.x = -c.side * cos(c.angle) * aspect * 0.18;
+  c.spacing = mix(0.22, 0.36, sc_h1(seedG * 5.3 + 47.0));
+  c.extent = vec2(aspect * 0.34, 0.32);
+  if(c.kind == 4){
+    // 回った枠も四隅が画面内に入る大きさにする。
+    c.origin = clamp(c.origin, -vec2(aspect * 0.04, 0.04), vec2(aspect * 0.04, 0.04));
+    vec2 box = abs(c.axis) * c.extent.x + abs(c.normal) * c.extent.y;
+    c.extent *= min(1.0, min(aspect * 0.42 / box.x, 0.38 / box.y));
+  }
+  c.strength = clamp(uStructure, 0.0, 100.0) * 0.01;
+  c.snap = clamp(uSnap, 0.0, 100.0) * 0.01;
+  c.width = max(uLineWidth, 10.0) * 0.01;
+  return c;
+}
+
+// xy = 構造上の最寄り点、z = その線の向き (全て角度の系の刻み)。線自体は描かない。
+vec3 sc_layoutLine(vec2 p, sc_Layout c){
+  vec2 delta = p - c.origin;
+  vec2 q = vec2(dot(delta, c.axis), dot(delta, c.normal));
+  vec2 hit = vec2(q.x, 0.0);
+  float a = 0.0;
+  if(c.kind == 2){
+    hit.x = c.side * clamp(q.x * c.side, -0.30, 0.80);
+  } else if(c.kind == 3){
+    vec2 grid = floor(q / c.spacing + 0.5) * c.spacing;
+    if(abs(q.x - grid.x) < abs(q.y - grid.y)){
+      hit = vec2(grid.x, q.y); a = PI * 0.5;
+    } else hit = vec2(q.x, grid.y);
+  } else if(c.kind == 4){
+    vec2 sg = vec2(q.x < 0.0 ? -1.0 : 1.0, q.y < 0.0 ? -1.0 : 1.0);
+    vec2 v = vec2(sg.x * c.extent.x, clamp(q.y, -c.extent.y, c.extent.y));
+    vec2 h = vec2(clamp(q.x, -c.extent.x, c.extent.x), sg.y * c.extent.y);
+    if(dot(q - v, q - v) < dot(q - h, q - h)){ hit = v; a = PI * 0.5; }
+    else hit = h;
+  } else if(c.kind == 5){
+    // 3 本の平行な斜線。
+    hit.y = clamp(floor(q.y / c.spacing + 0.5), -1.0, 1.0) * c.spacing;
+  } else if(c.kind == 6){
+    // 階段は x+y の近い 3 段だけを調べる。各段に水平・垂直の 2 線分。
+    float base = floor((q.x + q.y) / (2.0 * c.spacing));
+    float best = 1e20;
+    for(int j = -1; j <= 1; j++){
+      float s = (base + float(j)) * c.spacing;
+      vec2 h = vec2(clamp(q.x, s, s + c.spacing), s);
+      vec2 v = vec2(s + c.spacing, clamp(q.y, s, s + c.spacing));
+      float dh = dot(q - h, q - h), dv = dot(q - v, q - v);
+      if(dh < best){ best = dh; hit = h; a = 0.0; }
+      if(dv < best){ best = dv; hit = v; a = PI * 0.5; }
+    }
+  } else if(c.kind == 7){
+    if(abs(q.x) < abs(q.y)){ hit = vec2(0.0, q.y); a = PI * 0.5; }
+  } else if(c.kind == 8){
+    // 45° 系は 8 本、30° 系は 12 本。最近の放射線を角度から直接選ぶ。
+    float theta = dot(q, q) > 1e-10 ? atan(q.y, q.x) : 0.0;
+    a = floor(theta / c.angleStep + 0.5) * c.angleStep;
+    vec2 ray = vec2(cos(a), sin(a));
+    hit = ray * max(dot(q, ray), 0.0);
+  }
+  return vec3(c.origin + hit.x * c.axis + hit.y * c.normal, c.angle + a);
+}
+
+float sc_layoutTilt(float ang, float lineAngle, float snap){
+  // 近い平行 / 直交の向きまで最短で丸める。100% なら turn の揺れも残さない。
+  float stepA = PI * 0.5;
+  float target = lineAngle + floor((ang - lineAngle) / stepA + 0.5) * stepA;
+  return mix(ang, target, snap);
+}
+
+// 構成配置だけの半径上限。sc_poly の頂点の揺れ・剪断・三角の頂点も含む保守的な上限。
+float sc_layoutReach(float hl2, float hw2, float tri, float hl, float hj, float hw,
+                     float w0, float w1, float w2, float shearW){
+  if(tri > 0.5){
+    return max(length(vec2(hl2, hw2 * 1.2)),
+               length(vec2((0.7 + abs(w0) * 2.0) * hl2, min(hw2 * mix(1.2, 2.4, hl), hl2 * 0.9))));
+  }
+  float wob = max(abs(w0), max(abs(w1), abs(w2)));
+  float shear = (hj - 0.5) * mix(0.3, 1.4, hw) * (uShearMul / 100.0) + shearW;
+  float y = hw2 * (1.0 + wob);
+  return length(vec2(hl2 * (1.0 + wob) + abs(shear) * y, y));
+}
+
+// 構成配置専用。既存 sc_shard / sc_hero は Free のまま維持する。
+void sc_shardConstruct(float lay, vec2 cell, float cs, vec2 p, float T, float seed, float dens, float drift, float turn,
+              float morph, float phase, bool old, float thA, float thB, float align, vec2 focus, float cluster,
+              sc_Layout cv, out float sd, out vec2 ctr, out float ang, out float idf, out int typ, out float prio){
+  sd = -1.0; ctr = vec2(0.0); ang = 0.0; idf = 0.0; typ = 5; prio = -1.0;
+  vec2 ctr0 = (cell + 0.5) * cs;
+  // 中心 ±0.5 升 + 多角形半径 0.72 升。届かない隣升は乱数・線の計算より前に除外。
+  vec2 cellDelta = abs(p - ctr0);
+  if(max(cellDelta.x, cellDelta.y) > cs * 1.24) return;
+  vec2 key = cell + vec2(lay * 37.0 + 5.0, seed * 0.731 + lay * 11.0);
+  vec3 line = sc_layoutLine(ctr0, cv);
+  float distanceToLine = length(ctr0 - line.xy);
+  // 線へ届く升を拾い、吸着後に細い帯を作る。升中心が帯の真上にある場合だけに限定しない。
+  float band = 0.025 * cv.width;
+  float onLine = 1.0 - smoothstep(band + cs * 0.20, band + cs * 0.55, distanceToLine);
+  if(cv.kind == 1){
+    float along = dot(ctr0 - cv.origin, cv.axis) * cv.side;
+    onLine *= smoothstep(-0.04, 0.10, along);
+  }
+  float structure = 1.0 - (1.0 - cv.strength) * (1.0 - cv.strength);
+  float near = 1.0 - smoothstep(0.25, 1.35, length(ctr0 - focus));
+  float w = mix(1.0, near, cluster);
+  float dk = lay > 1.5 ? uSmallDens : (lay > 0.5 ? uMidDens : 100.0);
+  float lineDensity = min(1.0, dens * (lay > 1.5 ? 1.85 : (lay > 0.5 ? 1.60 : 0.45)));
+  float probability = mix(dens * mix(0.30, 1.0, w), lineDensity * onLine, structure) * (dk / 100.0);
+  if(sc_h2(key + 8.0) >= probability) return;
+  idf = sc_h2(key + 11.0) * 97.0 + lay * 3.0 + seed * 0.01;
+  float hx = sc_h2(key + 1.0);
+  float hy = sc_h2(key + 2.0);
+  float ha = sc_h2(key + 3.0);
+  float hl = sc_h2(key + 4.0);
+  float hw = sc_h2(key + 5.0);
+  float hs = sc_h2(key + 6.0);
+  float hp = sc_h2(key + 7.0);
+  float hj = sc_h2(key + 9.0);
+  typ = sc_pick(sc_h2(key + 10.0), lay);
+  if(uPatternLock > 0.5) typ = int(floor(uPatternLock + 0.5)) - 1;
+  prio = hp * 0.70 + lay * 0.45;
+
+  // 出入り。小さすぎる破片は置かない (辺が潰れて升ごと塗られるのを防ぐ)
+  float sw = sc_swap(phase, hp * 0.8, old);
+  if(sw < 0.04) return;
+
+  ctr = ctr0 + (vec2(hx, hy) - 0.5) * 0.30 * cs;
+  if(uCellJitter != 100.0){ ctr = ctr0 + (vec2(hx, hy) - 0.5) * 0.30 * cs * (uCellJitter / 100.0); }
+  float ph = idf * 0.37;
+  ctr += drift * cs * 0.10 * vec2(sin(T * 0.21 + ph), cos(T * 0.17 + ph * 1.7));
+  // 吸着は最大 ±0.5 升。jitter / drift が大きいときも中心を元の升内に保つ。
+  vec2 pull = clamp(line.xy - ctr, vec2(-0.5 * cs), vec2(0.5 * cs));
+  ctr = ctr0 + clamp(ctr + pull * cv.strength - ctr0, vec2(-0.5 * cs), vec2(0.5 * cs));
+  ang = sc_tilt(ha, hs, thA, thB, align) + turn * 0.10 * sin(T * 0.07 + ph);
+  // 大半は線に沿わせ、小片の一部だけを直交するアクセントにする。
+  float heading = line.z + (lay > 1.5 && ha > 0.92 ? PI * 0.5 : 0.0);
+  ang += cv.snap * (mod(heading - ang + PI, TAU) - PI);
+  vec2 local = sc_rot(p - ctr, -ang);
+  if(dot(local, local) > cs * cs * 0.74 * 0.74) return;
+
+  float hl2 = cs * mix(0.48, 0.70, hl);
+  float mph = idf * 2.3;
+  hl2 *= (1.0 + morph * 0.16 * sin(T * 0.90 + mph)) * sw * (uShardLong / 100.0);
+  float hw2 = hl2 * mix(0.10, 0.24, hw);
+  hw2 *= (1.0 + morph * 0.18 * sin(T * 0.70 + mph * 1.7 + 1.3)) * (uShardThin / 100.0);
+  float wob = morph * 0.12;
+  float w0 = sin(T * 0.63 + mph) * wob;
+  float w1 = sin(T * 0.57 + mph * 1.3 + 2.0) * wob;
+  float w2 = sin(T * 0.51 + mph * 0.7 + 4.0) * wob;
+  float shearW = morph * 0.25 * sin(T * 0.45 + mph * 0.9);
+  float tri = step(hs, uTriShare != 100.0 ? 0.38 * (uTriShare / 100.0) : 0.38);
+  float bound = sc_layoutReach(hl2, hw2, tri, hl, hj, hw, w0, w1, w2, shearW);
+  // 最終半径は 0.72 升。中心の吸着を含めても ±1.22 升に収まる。
+  float room = cs * 0.72;
+  float fit = min(1.0, room / max(bound, 1e-5));
+  hl2 *= fit;
+  hw2 *= fit;
+  sd = sc_poly(local, vec2(0.0), 0.0, hl2, hw2, tri, hx, hy, ha, hp, hl, hj, hw, w0, w1, w2, shearW);
+}
+
+void sc_heroConstruct(int k, vec2 p, float T, float seed, float scl, float drift, float morph,
+             float phase, bool old, float thA, float focusBias,
+             sc_Layout cv, out float sd, out vec2 ctr, out float ang, out float idf, out int typ, out float prio){
+  sd = -1.0; ctr = vec2(0.0); ang = 0.0; idf = 0.0; typ = 7; prio = -1.0;
+  float fk = float(k);
+  vec2 pt = vec2(k == 0 ? -0.18 : 0.44, 0.0);
+  float sizeK = k == 0 ? 0.18 : 0.14;
+  if(cv.kind == 1){
+    pt = vec2(k == 0 ? 0.0 : 0.24, 0.0);
+    sizeK = k == 0 ? 0.48 : 0.13;
+  } else if(cv.kind == 2){
+    sizeK = k == 0 ? 0.42 : 0.14;
+  } else if(cv.kind == 3){
+    pt = vec2(k == 0 ? -cv.spacing : cv.spacing, k == 0 ? 0.0 : cv.spacing);
+    sizeK = k == 0 ? 0.16 : 0.13;
+  } else if(cv.kind == 4){
+    pt = vec2(k == 0 ? -cv.extent.x : cv.extent.x, k == 0 ? -0.08 : 0.08);
+    sizeK = 0.16;
+  } else if(cv.kind == 5){
+    pt = vec2(k == 0 ? -0.20 : 0.32, k == 0 ? 0.0 : cv.spacing);
+  } else if(cv.kind == 6){
+    pt = vec2(k == 0 ? -0.5 : 0.5, k == 0 ? -1.0 : 0.0) * cv.spacing;
+    sizeK = k == 0 ? 0.16 : 0.12;
+  } else if(cv.kind == 7){
+    pt = k == 0 ? vec2(-0.16, 0.0) : vec2(0.0, 0.25);
+    sizeK = 0.18;
+  } else if(cv.kind == 8){
+    pt = sc_rot(vec2(k == 0 ? 0.17 : 0.34, 0.0), k == 0 ? 0.0 : 2.0 * cv.angleStep);
+    sizeK = k == 0 ? 0.18 : 0.14;
+  }
+  if(cv.kind <= 2) pt.x *= cv.side;
+  pt *= uHeroSpread / 100.0;
+  pt = sc_layoutLine(cv.origin + sc_rot(pt, cv.angle), cv).xy;
+  float hx = sc_h1(seed * 3.1 + 23.0 + fk * 7.0);
+  float hy = sc_h1(seed * 3.1 + 24.0 + fk * 7.0);
+  float hl = sc_h1(seed * 3.1 + 25.0 + fk * 7.0);
+  float hw = sc_h1(seed * 3.1 + 26.0 + fk * 7.0);
+  float hp = sc_h1(seed * 3.1 + 27.0 + fk * 7.0);
+  float hj = sc_h1(seed * 3.1 + 28.0 + fk * 7.0);
+  float hs = sc_h1(seed * 3.1 + 29.0 + fk * 7.0);
+  idf = 200.0 + fk * 17.0 + seed * 0.01;
+  typ = sc_pick(sc_h1(seed * 3.1 + 30.0 + fk * 7.0), 0.0);
+  if(uPatternLock > 0.5) typ = int(floor(uPatternLock + 0.5)) - 1;
+  prio = 0.35 + hp * 0.45;
+  float sw = sc_swap(phase, 0.15 * fk, old);
+  if(sw < 0.04) return;
+  ctr = pt + (vec2(hx, hy) - 0.5) * 0.16 * focusBias;
+  float ph = idf * 0.37;
+  ctr += drift * 0.06 * vec2(sin(T * 0.19 + ph), cos(T * 0.15 + ph * 1.7));
+  ang = thA + (fk == 0.0 ? 0.0 : (hs - 0.5) * 0.5) + morph * 0.05 * sin(T * 0.11 + ph);
+  vec3 line = sc_layoutLine(ctr, cv);
+  ctr = mix(ctr, line.xy, cv.strength);
+  // Axis の小さい主役は軸を横切る。ほかは近い線の方向にそろえる。
+  float heading = line.z + (cv.kind == 1 && k == 1 ? PI * 0.5 : 0.0);
+  ang = sc_layoutTilt(heading + (ang - thA), heading, cv.snap);
+  float hl2 = mix(0.85, 1.15, hl) * clamp(scl, 0.70, 1.25) * sizeK;
+  if(uHeroSize != 100.0){ hl2 *= uHeroSize / 100.0; }
+  float hw2 = hl2 * mix(0.12, 0.24, hw);
+  if(uHeroThick != 100.0){ hw2 *= uHeroThick / 100.0; }
+  float mph = idf * 2.3;
+  hl2 *= (1.0 + morph * 0.15 * sin(T * 0.50 + mph)) * sw;
+  hw2 *= (1.0 + morph * 0.20 * sin(T * 0.40 + mph * 1.7 + 1.3)) * sw;
+  float wob = morph * 0.08;
+  float w0 = sin(T * 0.43 + mph) * wob;
+  float w1 = sin(T * 0.37 + mph * 1.3 + 2.0) * wob;
+  float w2 = sin(T * 0.31 + mph * 0.7 + 4.0) * wob;
+  float shearW = morph * 0.15 * sin(T * 0.3 + mph);
+  // 揺れ・剪断を含む外接矩形で面積を抑える。Axis/Hero の大も画面の約 1/4 未満。
+  float wobMax = max(abs(w0), max(abs(w1), abs(w2)));
+  float shear = (hj - 0.5) * mix(0.3, 1.4, hw) * (uShearMul / 100.0) + shearW;
+  float by = hw2 * (1.0 + wobMax);
+  float bx = hl2 * (1.0 + wobMax) + abs(shear) * by;
+  float aspect = resolution.x / max(resolution.y, 1.0);
+  float maxArea = aspect * (cv.kind <= 2 && k == 0 ? 0.22 : 0.025);
+  float fit = min(1.0, sqrt(maxArea / max(4.0 * bx * by, 1e-5)));
+  hl2 *= fit;
+  hw2 *= fit;
+  sd = sc_poly(p, ctr, ang, hl2, hw2, 0.0, hx, hy, hs, hp, hl, hj, hw, w0, w1, w2, shearW);
+}
+
 // 世代ごとに決まる値 (大きさ・密度・地色・主方向・焦点・色)
 void sc_gen(float seedG, float T, float vary, float scl0, float dens0,
             out float scl, out float dens, out float thA, out float thB, out vec2 focus,
@@ -704,35 +992,73 @@ vec3 bg_shard_collage(vec2 fc){
     float sd, ang, idf, prio;
     vec2 ctr;
     int typ;
-    // 主役 2 枚
-    for(int k = 0; k < 2; k++){
-      sc_hero(k, p, T, seedG, scl, drift, morph, phase, old, thA, 1.0, sd, ctr, ang, idf, typ, prio);
-      if(sd > -px){
-        if(prio > topPrio){
-          underSd = topSd; underPrio = topPrio; underCtr = topCtr; underAng = topAng; underId = topId; underTyp = topTyp; underPal = topPal;
-          topSd = sd; topPrio = prio; topCtr = ctr; topAng = ang; topId = idf; topTyp = typ; topPal = packed;
-        } else if(prio > underPrio){
-          underSd = sd; underPrio = prio; underCtr = ctr; underAng = ang; underId = idf; underTyp = typ; underPal = packed;
+    if(uLayout > 0.5){
+      sc_Layout cv = sc_layoutGen(seedG);
+      // 主役 2 枚
+      for(int k = 0; k < 2; k++){
+        sc_heroConstruct(k, p, T, seedG, scl, drift, morph, phase, old, thA, 1.0, cv, sd, ctr, ang, idf, typ, prio);
+        if(sd > -px){
+          if(prio > topPrio){
+            underSd = topSd; underPrio = topPrio; underCtr = topCtr; underAng = topAng; underId = topId; underTyp = topTyp; underPal = topPal;
+            topSd = sd; topPrio = prio; topCtr = ctr; topAng = ang; topId = idf; topTyp = typ; topPal = packed;
+          } else if(prio > underPrio){
+            underSd = sd; underPrio = prio; underCtr = ctr; underAng = ang; underId = idf; underTyp = typ; underPal = packed;
+          }
         }
       }
-    }
-    // 大・中・小の 3 層
-    for(int l = 0; l < 3; l++){
-      float lay = float(l);
-      float cs = (l == 0 ? 1.00 : (l == 1 ? 0.46 : 0.21)) * scl;
-      float dl = l == 0 ? 0.6 : dens;
-      vec2 cell0 = floor(p / cs);
-      for(int j = -1; j <= 1; j++){
-        for(int i = -1; i <= 1; i++){
-          sc_shard(lay, cell0 + vec2(float(i), float(j)), cs, p, T, seedG, dl, drift, turn, morph,
-                   phase, old, thA, thB, align, focus, cluster,
-                   sd, ctr, ang, idf, typ, prio);
-          if(sd > -px){
-            if(prio > topPrio){
-              underSd = topSd; underPrio = topPrio; underCtr = topCtr; underAng = topAng; underId = topId; underTyp = topTyp; underPal = topPal;
-              topSd = sd; topPrio = prio; topCtr = ctr; topAng = ang; topId = idf; topTyp = typ; topPal = packed;
-            } else if(prio > underPrio){
-              underSd = sd; underPrio = prio; underCtr = ctr; underAng = ang; underId = idf; underTyp = typ; underPal = packed;
+      // 大・中・小の 3 層
+      for(int l = 0; l < 3; l++){
+        float lay = float(l);
+        float cs = (l == 0 ? 0.32 : (l == 1 ? 0.14 : 0.065)) * clamp(scl, 0.65, 1.25);
+        float dl = l == 0 ? 0.6 : dens;
+        vec2 cell0 = floor(p / cs);
+        for(int j = -1; j <= 1; j++){
+          for(int i = -1; i <= 1; i++){
+            sc_shardConstruct(lay, cell0 + vec2(float(i), float(j)), cs, p, T, seedG, dl, drift, turn, morph,
+                     phase, old, thA, thB, align, focus, cluster,
+                     cv, sd, ctr, ang, idf, typ, prio);
+            if(sd > -px){
+              if(prio > topPrio){
+                underSd = topSd; underPrio = topPrio; underCtr = topCtr; underAng = topAng; underId = topId; underTyp = topTyp; underPal = topPal;
+                topSd = sd; topPrio = prio; topCtr = ctr; topAng = ang; topId = idf; topTyp = typ; topPal = packed;
+              } else if(prio > underPrio){
+                underSd = sd; underPrio = prio; underCtr = ctr; underAng = ang; underId = idf; underTyp = typ; underPal = packed;
+              }
+            }
+          }
+        }
+      }
+    } else {
+      // 主役 2 枚
+      for(int k = 0; k < 2; k++){
+        sc_hero(k, p, T, seedG, scl, drift, morph, phase, old, thA, 1.0, sd, ctr, ang, idf, typ, prio);
+        if(sd > -px){
+          if(prio > topPrio){
+            underSd = topSd; underPrio = topPrio; underCtr = topCtr; underAng = topAng; underId = topId; underTyp = topTyp; underPal = topPal;
+            topSd = sd; topPrio = prio; topCtr = ctr; topAng = ang; topId = idf; topTyp = typ; topPal = packed;
+          } else if(prio > underPrio){
+            underSd = sd; underPrio = prio; underCtr = ctr; underAng = ang; underId = idf; underTyp = typ; underPal = packed;
+          }
+        }
+      }
+      // 大・中・小の 3 層
+      for(int l = 0; l < 3; l++){
+        float lay = float(l);
+        float cs = (l == 0 ? 1.00 : (l == 1 ? 0.46 : 0.21)) * scl;
+        float dl = l == 0 ? 0.6 : dens;
+        vec2 cell0 = floor(p / cs);
+        for(int j = -1; j <= 1; j++){
+          for(int i = -1; i <= 1; i++){
+            sc_shard(lay, cell0 + vec2(float(i), float(j)), cs, p, T, seedG, dl, drift, turn, morph,
+                     phase, old, thA, thB, align, focus, cluster,
+                     sd, ctr, ang, idf, typ, prio);
+            if(sd > -px){
+              if(prio > topPrio){
+                underSd = topSd; underPrio = topPrio; underCtr = topCtr; underAng = topAng; underId = topId; underTyp = topTyp; underPal = topPal;
+                topSd = sd; topPrio = prio; topCtr = ctr; topAng = ang; topId = idf; topTyp = typ; topPal = packed;
+              } else if(prio > underPrio){
+                underSd = sd; underPrio = prio; underCtr = ctr; underAng = ang; underId = idf; underTyp = typ; underPal = packed;
+              }
             }
           }
         }

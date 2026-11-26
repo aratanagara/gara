@@ -4,12 +4,12 @@
  *   - load(): スクリプトを 1 回だけ読み込む (両方が同じファイルを頼んでも二重に実行しない)
  *   - params(): 上流の既定 params に、TextDeform の書体・組版・色を上書きしたもの
  * ============================================================================ */
-(function(){
+function createTDUpstream(TD, peers){
 'use strict';
-if(typeof TextDeform === 'undefined') return;
-const TD = TextDeform;
+peers = peers || globalThis;
+if(!TD) return;
 const BASE = 'mode/typedeformer/';
-const VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ''; })();
+const VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ((globalThis.TDUpstream && globalThis.TDUpstream.q || '').replace(/^\?v=/, '')); })();
 const q = VER ? '?v=' + VER : '';
 // メインスレッドでエンジンを作るときの一覧 (vj-surface-worker.js の importScripts と同じ順)
 const ENGINE = ['operator-registry.js', 'shared-surface-renderers.js', 'surface-state.js', 'render-context.js', 'render-envelope.js',
@@ -61,5 +61,7 @@ const TDUpstream = {
     return JSON.stringify([TD.family(), TD.weight(), P.fontSize, TD.leading(), P.fontOver, P.vertical, String(P.palOn), TD.color('ink'), TD.color('paper'), TD.color('accent'), P.paper, P.ink, P.accent, P.misregColorA, P.misregColorB]);
   }
 };
-globalThis.TDUpstream = TDUpstream;
-})();
+
+return TDUpstream;
+}
+if(typeof TextDeform !== 'undefined') globalThis.TDUpstream = createTDUpstream(TextDeform);

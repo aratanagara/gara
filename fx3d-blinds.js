@@ -5,7 +5,7 @@
    その拍頭で 4 拍ごとに帯の向き (横 ↔ 縦) と幅の配分 (広い帯・細い帯) を入れ替えるので、絵は跳ねずに構成が変わる。
    返し方は拍ごとに 4 通り (起点からの波 / 一本おき / まばら / 中央から外へ)。drone は 0.5 拍/秒の仮想の拍で同じ動き。 */
 (function(){
-const SEG = 64, NMAX = 48;
+const SEG = 128, WIDTH = 8, NMAX = 48;
 // 向きは従来の横 / 縦から ±90°。斜めでも画面を覆う大きさへ広げ、絵は元の画面座標に置く。
 const ORIENT = `
 uniform float uAsp;
@@ -23,6 +23,8 @@ ${ORIENT}
 uniform mat4 uView, uProj;
 uniform float uN, uK, uTwist, uBeat, uHit, uVert, uPat, uOrg, uSgn, uSel;
 uniform float uWave, uOpen, uGap;
+uniform vec3 uEye;
+uniform int uWidthSeg;
 uniform float uEdge[${NMAX + 1}];   // 帯の境界 (短辺方向 -1..1。本数・区画・Random が変わると更新)
 float h1(float p){ return fract(sin(p * 127.1 + 311.7) * 43758.5453); }
 float easeOut(float x){ float y = 1.0 - x; return 1.0 - y * y * y; }
@@ -64,30 +66,54 @@ vec3 bSurf(int slat, vec2 ab, out vec2 uv, out vec3 Nn, out float vc, out vec3 C
   vc = yc * 0.5 + 0.5;
   return P;
 }
+// 高さを使うフレームだけ、裏面の色と同じ帯内反転 UV で H を読む。
+vec3 bHeightSurf(int slat, vec2 ab, out vec2 uv, out vec3 N, out float vc, out vec3 Cs, out float back){
+  vec3 P = bSurf(slat, ab, uv, N, vc, Cs);
+  back = dot(uVert > 0.5 ? -N : N, uEye - P) < 0.0 ? 1.0 : 0.0;   // 縦帯は頂点の巻き順が逆
+  vec2 hu = uv;
+  if(back > 0.5){ if(uVert > 0.5) hu.x = 2.0 * vc - hu.x; else hu.y = 2.0 * vc - hu.y; }
+  return P + N * fx3dRelief(bUv(hu));
+}
+vec3 bHeightNormal(int slat, vec2 ab, vec3 N){
+  const vec2 D = vec2(1.0 / ${SEG}.0, 1.0 / ${WIDTH}.0);
+  vec2 uv; vec3 nd, cs; float vc, back;
+  vec3 n = cross(bHeightSurf(slat, ab + vec2(D.x, 0.0), uv, nd, vc, cs, back) - bHeightSurf(slat, ab - vec2(D.x, 0.0), uv, nd, vc, cs, back),
+                 bHeightSurf(slat, ab + vec2(0.0, D.y), uv, nd, vc, cs, back) - bHeightSurf(slat, ab - vec2(0.0, D.y), uv, nd, vc, cs, back));
+  return dot(n, n) > 1e-12 ? normalize(dot(n, N) < 0.0 ? -n : n) : N;
+}
 `;
 const VS = `#version 300 es
 precision highp float;
 ${SURF}
 out vec2 vUv; out vec3 vW, vN; out float vVc, vBack;
 void main(){
-  int id = gl_VertexID, slat = id / ${SEG * 6}, r = id - slat * ${SEG * 6};
-  int seg = r / 6, tv = r - seg * 6;
+  int per = ${SEG * 6} * uWidthSeg;
+  int id = gl_VertexID, slat = id / per, r = id - slat * per;
+  int cell = r / 6, tv = r - cell * 6, row = cell / ${SEG}, seg = cell - row * ${SEG};
   vec2 ab = (tv == 0 || tv == 3) ? vec2(0.0, 0.0) : (tv == 1) ? vec2(1.0, 0.0) : (tv == 2 || tv == 4) ? vec2(1.0, 1.0) : vec2(0.0, 1.0);
   vec3 Nn, Cs;
-  vec3 P = bSurf(slat, vec2((float(seg) + ab.x) / ${SEG}.0, ab.y), vUv, Nn, vVc, Cs);
-  P += Nn * fx3dRelief(bUv(vUv));   // 立体シェーダの深度で帯の面を持ち上げる
+  ab = vec2((float(seg) + ab.x) / ${SEG}.0, (float(row) + ab.y) / float(uWidthSeg));
+  vec3 P;
+  vBack = 0.0;
+  if(uFx3dHeightOn > 0.5){
+    P = bHeightSurf(slat, ab, vUv, Nn, vVc, Cs, vBack);
+    Nn = bHeightNormal(slat, ab, Nn);
+  } else {
+    P = bSurf(slat, ab, vUv, Nn, vVc, Cs);
+    P += Nn * fx3dRelief(bUv(vUv));
+  }
   P = Cs + (P - Cs) * fx3dPop(float(slat));   // ポップ: 帯ごとに中心から
   vW = P;
   vN = Nn;
-  vBack = 0.0;
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  vec2 hu = vUv;
+  if(vBack > 0.5){ if(uVert > 0.5) hu.x = 2.0 * vVc - hu.x; else hu.y = 2.0 * vVc - hu.y; }
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), bUv(hu)));
 }`;
 // Needle (最後に掛かる): 帯を GL.needleCellGLSL の針の面で覆い、面の法線方向へ突起 / 凹み (表の突起は裏から見ると凹み)。元の帯の代わりに描く。
 //   裏から見ている帯は絵を帯の中で反転する (元の帯の gl_FrontFacing の代わりに、土台の面の向きを vBack で渡す)
 const NV_VS = `#version 300 es
 precision highp float;
 ${SURF}
-uniform vec3 uEye;
 uniform vec2 uNvGrid;
 uniform float uNvSub;
 out vec2 vUv; out vec3 vW, vN; out float vVc, vBack;
@@ -104,23 +130,31 @@ void main(){
   vec3 N = normalize(cross(T, B));
   if(dot(N, Nn) < 0.0) N = -N;
   P0 += N * fx3dRelief(bUv(vUv));
+  float heightBack = 0.0;
+  if(uFx3dHeightOn > 0.5){
+    P0 = bHeightSurf(slat, ab, vUv, Nn, vVc, Cs, heightBack);
+    N = bHeightNormal(slat, ab, N);
+  }
   float cell = 0.5 * (length(T) / uNvGrid.x + length(B) / uNvGrid.y);
   vec3 P = P0 + N * (w * fx3dNeedleH(key, (bUv(vUv) - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
   P = Cs + (P - Cs) * fx3dPop(float(slat));
-  vBack = dot(Nn, uEye - P0) < 0.0 ? 1.0 : 0.0;
+  vBack = uFx3dHeightOn > 0.5 ? heightBack : (dot(Nn, uEye - P0) < 0.0 ? 1.0 : 0.0);
   vW = P;
   vN = N;
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  vec2 hu = vUv;
+  if(vBack > 0.5){ if(uVert > 0.5) hu.x = 2.0 * vVc - hu.x; else hu.y = 2.0 * vVc - hu.y; }
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), bUv(hu)));
 }`;
 const FS = `#version 300 es
 precision highp float;
 ${ORIENT}
 in vec2 vUv; in vec3 vW, vN; in float vVc, vBack;
 uniform sampler2D uTex; uniform vec3 uEye; uniform float uShade, uVert, uNv;
+uniform float uFx3dHeightOn;
 out vec4 frag;
 void main(){
   vec2 uv = vUv;
-  bool back = uNv > 0.5 ? vBack > 0.5 : !gl_FrontFacing;
+  bool back = uNv > 0.5 || uFx3dHeightOn > 0.5 ? vBack > 0.5 : !gl_FrontFacing;
   if(back){ if(uVert > 0.5) uv.x = 2.0 * vVc - uv.x; else uv.y = 2.0 * vVc - uv.y; }   // 裏面は帯の中で反転 (返りきった帯が元の絵に戻る)
   uv = bUv(uv);
   // 斜め用に広げた帯のうち、素材の外側は切る (3D Overscan の余白は残す)。
@@ -134,7 +168,7 @@ void main(){
   vec3 L = normalize(vec3(2.4, 2.0, 3.0));
   vec3 light = vec3(0.50, 0.48, 0.46) * max(0.0, dot(N, L)) + mix(vec3(0.60, 0.61, 0.64), vec3(0.72), N.y * 0.5 + 0.5);
   float spec = pow(max(0.0, dot(N, normalize(L + V))), 26.0);
-  frag = vec4(fx3dFoldShade(mix(alb, alb * light + vec3(spec * 0.10), uShade)), 1.0);
+  frag = vec4(fx3dFoldShade(fx3dShapeShade(mix(alb, alb * light + vec3(spec * 0.10), uShade), alb)), 1.0);
 }`;
 const U = {};
 function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get(p); if(l === undefined){ l = gl.getUniformLocation(p, n); m.set(p, l); } return l; }
@@ -161,6 +195,8 @@ Fx3d.EXTRA.blinds = {
     const pr = Fx3d.prog(gl, 'blinds', VS, FS);
     if(!pr) return false;
     const post = o.post || {};
+    const heightOn = !!(App.post.fx3dStack !== 'chain' && GL._fx3dHeight && GL._fx3dHeight.valid && GL._fx3dHeight.frame === GL.frame);
+    const widthSeg = heightOn || Fx3d.shapeFrame ? WIDTH : 1;   // H / 曲面のときだけ幅を細分。Chain は従来どおり
     const N = Fx3d.popCount('blinds', Math.max(2, Math.min(NMAX, Math.round(+post.fx3dBlindsCount || 14))), false);   // 本数を変えると区切りが全部変わる = 全部縮んでから出直す
     const twist = Math.max(0, Math.min(1, o.dz(+post.fx3dBlindsTwist)));
     // 中央が従来値の項目はデッドゾーンを通さない。Gap だけは 0 が追加効果なし。
@@ -203,6 +239,7 @@ Fx3d.EXTRA.blinds = {
       gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
       gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
       gl.uniform1f(uloc(gl, pr, 'uN'), nUse);
+      gl.uniform1i(uloc(gl, pr, 'uWidthSeg'), widthSeg);
       gl.uniform1f(uloc(gl, pr, 'uK'), k);
       gl.uniform1f(uloc(gl, pr, 'uTwist'), twist);
       gl.uniform2f(uloc(gl, pr, 'uRot'), c, s);
@@ -221,13 +258,23 @@ Fx3d.EXTRA.blinds = {
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'blinds');
       Fx3d.ovUniforms(gl, pr, o);
-      Fx3d.reliefUniforms(gl, pr, [1 / SEG, 1 / nUse]);   // 立体シェーダの深度で面を持ち上げる
-      Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+      Fx3d.reliefUniforms(gl, pr, [1 / SEG, 1 / nUse]);
+      if(heightOn){
+        // H の LOD は縦横・不等幅・斜めに合わせる。従来のスロット深度 LOD は変えない。
+        const om = o.ovM || [0, 0];
+        let widest = 0;
+        for(let i = 0; i < nUse; i++) widest = Math.max(widest, (this._E[i + 1] - this._E[i]) * 0.5);
+        const du = vert ? widest / widthSeg : (1 + 2 * om[0]) / SEG;
+        const dv = vert ? (1 + 2 * om[0]) / SEG : widest / widthSeg;
+        GL._fx3dHeightBind(pr, [Math.abs(c) * spanX * du + Math.abs(s) * spanY * dv / asp,
+          Math.abs(s) * spanX * du * asp + Math.abs(c) * spanY * dv]);
+      }
+      Fx3d.fold(gl, pr, cam.proj, 1.35, cam.view);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'blindsNeedle', NV_VS, FS) : null;
     if(nvp){
       // Needle: 帯ごとに長さ方向は画面の高さを 14 分割した間隔、幅方向は 2
-      const len = vert ? 2 : 2 * asp, gx = Math.max(2, Math.round(Fx3d.nvScale(len / (2 / 14)))), gy = 2;
+      const len = vert ? 2 : 2 * asp, gx = Math.max(2, Math.round(Fx3d.nvScale(len / (2 / 14)))), gy = heightOn ? WIDTH : 2;
       setU(nvp);
       gl.uniform1f(uloc(gl, nvp, 'uNv'), 1);
       gl.uniform2f(uloc(gl, nvp, 'uNvGrid'), gx, gy);
@@ -237,7 +284,7 @@ Fx3d.EXTRA.blinds = {
     } else {
       setU(pr);
       gl.uniform1f(uloc(gl, pr, 'uNv'), 0);
-      gl.drawArrays(gl.TRIANGLES, 0, nUse * SEG * 6);
+      gl.drawArrays(gl.TRIANGLES, 0, nUse * SEG * widthSeg * 6);
     }
     gl.bindVertexArray(null);
     Fx3d.resolve(gl, o.fbo, o.w, o.h);

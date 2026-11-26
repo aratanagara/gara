@@ -94,50 +94,50 @@ const Rhizome = {
 
   SPECS:[
     {sel:true, label:'Style', key:'style', opts:['網 (図 1)', '面と流れ (図 2)', '両方']},
-    ['Speed',    'speed',    0,   300, 1,   'pct'],
+    ['Speed',    'speed',    0,   300, 0.01,   'pct'],
     ['Life',     'life',     1,   32,  0.5, 'f2'],
     ['Nodes',    'nodes',    10,  400, 1,   'int'],
-    ['Links',    'links',    0,   300, 1,   'pct'],
-    ['Size',     'size',     10,  300, 1,   'pct'],
-    ['Tendrils', 'tendrils', 0,   300, 1,   'pct'],
-    ['Squares',  'squares',  0,   300, 1,   'pct'],
-    ['Arcs',     'arcs',     0,   300, 1,   'pct'],
-    ['Planes',   'planes',   0,   300, 1,   'pct'],
-    ['Figures',  'figures',  0,   100, 1,   'pct'],
-    ['Meander',  'meander',  0,   300, 1,   'pct'],
-    ['Band',     'band',     0,   200, 1,   'pct'],
-    ['Plane Size', 'planeSize', 40, 200, 1,  'pct'],
-    ['Meander Wave', 'meanderWave', 0, 300, 1, 'pct'],
-    ['Square Size', 'squareSize', 30, 300, 1, 'pct'],
-    ['Diamonds', 'diamonds', 0,   100, 1,   'pct'],
-    ['Diamond Flat', 'diamondFlat', 40, 200, 1, 'pct'],
-    ['Spread',   'spread',   10,  300, 1,   'pct'],
-    ['Link Range', 'linkRange', 40, 250, 1,  'pct'],
-    ['Lean',     'lean',     0,   300, 1,   'pct'],
-    ['Size Mix', 'sizeMix',  0,   150, 1,   'pct'],
-    ['Dot Size', 'dotSize',  30,  400, 1,   'pct'],
-    ['Line',     'line',     20,  400, 1,   'pct'],
-    ['Marker Fill', 'markerFill', 20, 100, 1, 'pct'],
-    ['Rim',      'rim',      20,  400, 1,   'pct'],
-    ['Marker Flat', 'markerFlat', 50, 200, 1, 'pct'],
-    ['Shade',    'shade',    0,   400, 1,   'pct'],
-    ['Marker Hue', 'markerHue', -180, 180, 1, 'deg'],
-    ['Line Hue', 'lineHue',  -180, 180, 1,  'deg'],
-    ['Arrow Hue', 'arrowHue', -180, 180, 1, 'deg'],
-    ['Arrowhead', 'arrowhead', 20, 300, 1,  'pct'],
-    ['Ink Pool', 'inkPool',  0,   300, 1,   'pct'],
-    ['Paper Grain', 'paperGrain', 0, 600, 1, 'pct'],
-    ['Pencil',   'pencil',   0,   200, 1,   'pct'],
-    ['Hand',     'hand',     0,   300, 1,   'pct'],
-    ['Boil',     'boil',     0,   300, 1,   'pct'],
-    ['Pop',      'pop',      0,   300, 1,   'pct'],
-    ['Kick',     'kick',     0,   200, 1,   'pct'],
-    ['Drift',    'drift',    0,   300, 1,   'pct'],
-    ['Rise',     'rise',     0,   100, 1,   'pct'],
+    ['Links',    'links',    0,   300, 0.01,   'pct'],
+    ['Size',     'size',     10,  300, 0.01,   'pct'],
+    ['Tendrils', 'tendrils', 0,   300, 0.01,   'pct'],
+    ['Squares',  'squares',  0,   300, 0.01,   'pct'],
+    ['Arcs',     'arcs',     0,   300, 0.01,   'pct'],
+    ['Planes',   'planes',   0,   300, 0.01,   'pct'],
+    ['Figures',  'figures',  0,   100, 0.01,   'pct'],
+    ['Meander',  'meander',  0,   300, 0.01,   'pct'],
+    ['Band',     'band',     0,   200, 0.01,   'pct'],
+    ['Plane Size', 'planeSize', 40, 200, 0.01,  'pct'],
+    ['Meander Wave', 'meanderWave', 0, 300, 0.01, 'pct'],
+    ['Square Size', 'squareSize', 30, 300, 0.01, 'pct'],
+    ['Diamonds', 'diamonds', 0,   100, 0.01,   'pct'],
+    ['Diamond Flat', 'diamondFlat', 40, 200, 0.01, 'pct'],
+    ['Spread',   'spread',   10,  300, 0.01,   'pct'],
+    ['Link Range', 'linkRange', 40, 250, 0.01,  'pct'],
+    ['Lean',     'lean',     0,   300, 0.01,   'pct'],
+    ['Size Mix', 'sizeMix',  0,   150, 0.01,   'pct'],
+    ['Dot Size', 'dotSize',  30,  400, 0.01,   'pct'],
+    ['Line',     'line',     20,  400, 0.01,   'pct'],
+    ['Marker Fill', 'markerFill', 20, 100, 0.01, 'pct'],
+    ['Rim',      'rim',      20,  400, 0.01,   'pct'],
+    ['Marker Flat', 'markerFlat', 50, 200, 0.01, 'pct'],
+    ['Shade',    'shade',    0,   400, 0.01,   'pct'],
+    ['Marker Hue', 'markerHue', -180, 180, 0.01, 'deg'],
+    ['Line Hue', 'lineHue',  -180, 180, 0.01,  'deg'],
+    ['Arrow Hue', 'arrowHue', -180, 180, 0.01, 'deg'],
+    ['Arrowhead', 'arrowhead', 20, 300, 0.01,  'pct'],
+    ['Ink Pool', 'inkPool',  0,   300, 0.01,   'pct'],
+    ['Paper Grain', 'paperGrain', 0, 600, 0.01, 'pct'],
+    ['Pencil',   'pencil',   0,   200, 0.01,   'pct'],
+    ['Hand',     'hand',     0,   300, 0.01,   'pct'],
+    ['Boil',     'boil',     0,   300, 0.01,   'pct'],
+    ['Pop',      'pop',      0,   300, 0.01,   'pct'],
+    ['Kick',     'kick',     0,   200, 0.01,   'pct'],
+    ['Drift',    'drift',    0,   300, 0.01,   'pct'],
+    ['Rise',     'rise',     0,   100, 0.01,   'pct'],
     ['Cycle',    'cycle',    4,   64,  1,   'int'],
-    ['Tilt',     'tilt',     20,  70,  1,   'deg'],
-    ['Yaw',      'yaw',      -90, 90,  1,   'deg'],
-    ['Perspective', 'camDist', 70, 300, 1,  'pct'],
+    ['Tilt',     'tilt',     20,  70,  0.01,   'deg'],
+    ['Yaw',      'yaw',      -90, 90,  0.01,   'deg'],
+    ['Perspective', 'camDist', 70, 300, 0.01,  'pct'],
     ['Seed',     'seed',     0,   99,  1,   'int'],
   ],
 
@@ -1711,61 +1711,61 @@ Rhizome._variant = function(draw, own, ownSpecs, useNet){
   return v;
 };
 const RhizomeFan = Rhizome._variant('_fan', {curves:100, fans:5, open:100, swirl:100, seeds:25, coil:100, discSize:100, seedSize:100, aim:100, stagger:100, lenMix:100, scatter:100, greenShare:22, dashed:18}, [
-  ['Curves', 'curves', 0,  300, 1, 'pct'],   // 扇 1 つの線の数 (%)
+  ['Curves', 'curves', 0,  300, 0.01, 'pct'],   // 扇 1 つの線の数 (%)
   ['Fans',   'fans',   1,  10,  1, 'int'],   // 同時に出る扇の枠の数
-  ['Open',   'open',   10, 300, 1, 'pct'],   // 扇の開き (%)
-  ['Swirl',  'swirl',  0,  300, 1, 'pct'],   // 線の巻き (%)
-  ['Seeds',  'seeds',  0,  100, 1, 'pct'],   // 先が黒い種になる割合 (%)
-  ['Coil',   'coil',   30, 300, 1, 'pct'],   // 線の根元のバネの大きさ (%)
-  ['Disc Size', 'discSize', 20, 300, 1, 'pct'],   // 先の円盤の大きさ (%)
-  ['Seed Size', 'seedSize', 30, 400, 1, 'pct'],   // 黒い種の大きさ (%)
-  ['Aim',    'aim',    0,  300, 1, 'pct'],   // 扇が画面の中ほどから外れる向きのばらつき (%。0 で全部が中心へ向く)
-  ['Stagger', 'stagger', 0, 200, 1, 'pct'],  // 線が順に伸び始めるずれ (%。0 で一斉)
-  ['Length Mix', 'lenMix', 0, 300, 1, 'pct'],   // 線の長さのばらつき (%。0 でそろう)
-  ['Scatter', 'scatter', 0, 400, 1, 'pct'],  // 線の向きのばらつき (%)
-  ['Green Share', 'greenShare', 0, 100, 1, 'pct'],   // 青でなく緑になる線の割合 (%)
-  ['Dashed', 'dashed', 0, 100, 1, 'pct'],    // 破線になる線の割合 (%)
+  ['Open',   'open',   10, 300, 0.01, 'pct'],   // 扇の開き (%)
+  ['Swirl',  'swirl',  0,  300, 0.01, 'pct'],   // 線の巻き (%)
+  ['Seeds',  'seeds',  0,  100, 0.01, 'pct'],   // 先が黒い種になる割合 (%)
+  ['Coil',   'coil',   30, 300, 0.01, 'pct'],   // 線の根元のバネの大きさ (%)
+  ['Disc Size', 'discSize', 20, 300, 0.01, 'pct'],   // 先の円盤の大きさ (%)
+  ['Seed Size', 'seedSize', 30, 400, 0.01, 'pct'],   // 黒い種の大きさ (%)
+  ['Aim',    'aim',    0,  300, 0.01, 'pct'],   // 扇が画面の中ほどから外れる向きのばらつき (%。0 で全部が中心へ向く)
+  ['Stagger', 'stagger', 0, 200, 0.01, 'pct'],  // 線が順に伸び始めるずれ (%。0 で一斉)
+  ['Length Mix', 'lenMix', 0, 300, 0.01, 'pct'],   // 線の長さのばらつき (%。0 でそろう)
+  ['Scatter', 'scatter', 0, 400, 0.01, 'pct'],  // 線の向きのばらつき (%)
+  ['Green Share', 'greenShare', 0, 100, 0.01, 'pct'],   // 青でなく緑になる線の割合 (%)
+  ['Dashed', 'dashed', 0, 100, 0.01, 'pct'],    // 破線になる線の割合 (%)
 ]);
 const RhizomePacks = Rhizome._variant('_packs', {rings:6, members:100, hub:100, float:35, ringSize:100, chain:80, runaway:12, cross:60, hubSize:100, memberMix:100, ringJitter:100}, [
   ['Rings',   'rings',   1,  12,  1, 'int'],   // 同時に出る輪の枠の数
-  ['Members', 'members', 10, 300, 1, 'pct'],   // 輪 1 つの楕円の数 (%)
-  ['Hub',     'hub',     0,  300, 1, 'pct'],   // 宙の一点の高さ (%)
-  ['Float',   'float',   0,  100, 1, 'pct'],   // 宙に浮く輪の割合 (%)
-  ['Ring Size', 'ringSize', 40, 250, 1, 'pct'],   // 輪の半径 (%)
-  ['Chain',   'chain',   0,  100, 1, 'pct'],   // 隣どうしを結ぶ短い線の割合 (%)
-  ['Runaway', 'runaway', 0,  100, 1, 'pct'],   // 輪を離れて逃げる楕円の割合 (%。Links に掛かる)
-  ['Cross',   'cross',   0,  200, 1, 'pct'],   // 別の輪へ渡る長い線の量 (%。Links に掛かる)
-  ['Hub Size', 'hubSize', 30, 400, 1, 'pct'],   // 宙の一点の楕円の大きさ (%)
-  ['Member Mix', 'memberMix', 0, 300, 1, 'pct'],   // 輪の楕円の大小の差 (%)
-  ['Ring Jitter', 'ringJitter', 0, 400, 1, 'pct'],   // 輪の上の並びの乱れ (%)
+  ['Members', 'members', 10, 300, 0.01, 'pct'],   // 輪 1 つの楕円の数 (%)
+  ['Hub',     'hub',     0,  300, 0.01, 'pct'],   // 宙の一点の高さ (%)
+  ['Float',   'float',   0,  100, 0.01, 'pct'],   // 宙に浮く輪の割合 (%)
+  ['Ring Size', 'ringSize', 40, 250, 0.01, 'pct'],   // 輪の半径 (%)
+  ['Chain',   'chain',   0,  100, 0.01, 'pct'],   // 隣どうしを結ぶ短い線の割合 (%)
+  ['Runaway', 'runaway', 0,  100, 0.01, 'pct'],   // 輪を離れて逃げる楕円の割合 (%。Links に掛かる)
+  ['Cross',   'cross',   0,  200, 0.01, 'pct'],   // 別の輪へ渡る長い線の量 (%。Links に掛かる)
+  ['Hub Size', 'hubSize', 30, 400, 0.01, 'pct'],   // 宙の一点の楕円の大きさ (%)
+  ['Member Mix', 'memberMix', 0, 300, 0.01, 'pct'],   // 輪の楕円の大小の差 (%)
+  ['Ring Jitter', 'ringJitter', 0, 400, 0.01, 'pct'],   // 輪の上の並びの乱れ (%)
 ]);
 const RhizomeStack = Rhizome._variant('_stack', {nodes:90, columns:3, layers:18, height:100, axes:15, arrows:100, colWidth:100, unravel:100, colSpread:100, tubeWidth:100, burst:100, linkRange:100, lean:100, sizeMix:100}, [
   ['Columns', 'columns', 0,  8,   1, 'int'],   // 同時に立つ柱の枠の数
   ['Layers',  'layers',  3,  40,  1, 'int'],   // 柱 1 本に積み重なる楕円の数
-  ['Height',  'height',  20, 300, 1, 'pct'],   // 柱と青い軸の高さ (%)
-  ['Axes',    'axes',    0,  100, 1, 'pct'],   // 網の楕円を青い縦の両矢印が貫く割合 (%)
-  ['Arrows',  'arrows',  0,  300, 1, 'pct'],   // 網の楕円から伸びる矢印の付いた線の量 (%)
-  ['Column Width', 'colWidth', 40, 200, 1, 'pct'],   // 柱の太さ (楕円の半径。%)
-  ['Unravel', 'unravel', 0,  300, 1, 'pct'],   // ほどけるときの傾き・うねり・離れ (%)
-  ['Column Spread', 'colSpread', 20, 150, 1, 'pct'],   // 柱どうしの横の間隔 (%)
-  ['Tube Width', 'tubeWidth', 50, 250, 1, 'pct'],   // 赤い筒の幅 (%)
-  ['Burst',   'burst',   0,  250, 1, 'pct'],   // 根元の楕円から地面に放射する矢印の本数 (%。100 で 4 本)
+  ['Height',  'height',  20, 300, 0.01, 'pct'],   // 柱と青い軸の高さ (%)
+  ['Axes',    'axes',    0,  100, 0.01, 'pct'],   // 網の楕円を青い縦の両矢印が貫く割合 (%)
+  ['Arrows',  'arrows',  0,  300, 0.01, 'pct'],   // 網の楕円から伸びる矢印の付いた線の量 (%)
+  ['Column Width', 'colWidth', 40, 200, 0.01, 'pct'],   // 柱の太さ (楕円の半径。%)
+  ['Unravel', 'unravel', 0,  300, 0.01, 'pct'],   // ほどけるときの傾き・うねり・離れ (%)
+  ['Column Spread', 'colSpread', 20, 150, 0.01, 'pct'],   // 柱どうしの横の間隔 (%)
+  ['Tube Width', 'tubeWidth', 50, 250, 0.01, 'pct'],   // 赤い筒の幅 (%)
+  ['Burst',   'burst',   0,  250, 0.01, 'pct'],   // 根元の楕円から地面に放射する矢印の本数 (%。100 で 4 本)
 ], true);
 const RhizomeTube = Rhizome._variant('_tube', {launches:2, cluster:10, curves:100, discs:70, rings:9, trails:35, netSize:100, tubeWidth:100, fanAngle:100, fanLen:100, discSize:100, tailLen:100, tubeBend:100, ringOpen:100}, [
   ['Launches', 'launches', 1, 4,   1, 'int'],   // 同時に出る「網 → 筒 → 扇」の枠の数
   ['Cluster',  'cluster',  4, 20,  1, 'int'],   // 網の楕円の数
-  ['Curves',   'curves',   0, 300, 1, 'pct'],   // 扇の青い線の数 (%)
-  ['Discs',    'discs',    0, 100, 1, 'pct'],   // 扇の線に円盤が付く割合 (%)
+  ['Curves',   'curves',   0, 300, 0.01, 'pct'],   // 扇の青い線の数 (%)
+  ['Discs',    'discs',    0, 100, 0.01, 'pct'],   // 扇の線に円盤が付く割合 (%)
   ['Rings',    'rings',    0, 20,  1, 'int'],   // 曲がる筒の輪の数
-  ['Trails',   'trails',   0, 100, 1, 'pct'],   // 円盤が緑の尾を引く割合 (%)
-  ['Net Size', 'netSize', 40, 250, 1, 'pct'],   // 網の楕円が散らばる広さ (%)
-  ['Tube Width', 'tubeWidth', 40, 200, 1, 'pct'],   // 筒の太さ (%)
-  ['Tube Bend', 'tubeBend', 0, 300, 1, 'pct'],   // 曲がる筒の曲がり (%。0 でまっすぐ後ろ)
-  ['Ring Open', 'ringOpen', 20, 250, 1, 'pct'],   // 筒の輪の開き (短い半径の比。%)
-  ['Fan Angle', 'fanAngle', 20, 250, 1, 'pct'],   // 扇の開き (%)
-  ['Fan Length', 'fanLen', 30, 200, 1, 'pct'],   // 扇の線の長さ (%)
-  ['Disc Size', 'discSize', 20, 300, 1, 'pct'],   // 遠くの円盤の大きさ (%)
-  ['Tail Length', 'tailLen', 30, 300, 1, 'pct'],   // 円盤の緑の尾の長さ (%)
+  ['Trails',   'trails',   0, 100, 0.01, 'pct'],   // 円盤が緑の尾を引く割合 (%)
+  ['Net Size', 'netSize', 40, 250, 0.01, 'pct'],   // 網の楕円が散らばる広さ (%)
+  ['Tube Width', 'tubeWidth', 40, 200, 0.01, 'pct'],   // 筒の太さ (%)
+  ['Tube Bend', 'tubeBend', 0, 300, 0.01, 'pct'],   // 曲がる筒の曲がり (%。0 でまっすぐ後ろ)
+  ['Ring Open', 'ringOpen', 20, 250, 0.01, 'pct'],   // 筒の輪の開き (短い半径の比。%)
+  ['Fan Angle', 'fanAngle', 20, 250, 0.01, 'pct'],   // 扇の開き (%)
+  ['Fan Length', 'fanLen', 30, 200, 0.01, 'pct'],   // 扇の線の長さ (%)
+  ['Disc Size', 'discSize', 20, 300, 0.01, 'pct'],   // 遠くの円盤の大きさ (%)
+  ['Tail Length', 'tailLen', 30, 300, 0.01, 'pct'],   // 円盤の緑の尾の長さ (%)
 ]);
 RhizomeFan.PARAM_HELP = Object.assign({}, Rhizome.PARAM_HELP, {
   curves:'扇 1 つの線の数',

@@ -22,37 +22,11 @@ const FUDE_POSTER_TYPES = 16;   // ポスターの型の数
 const FUDE_POSTER_UNIT = 6;     // ポスター型の座標: 画面の高さ=6 (筆の太さや飛沫の尺度を他の組み方と揃える)
 const FUDE_CELL = 192;          // 骨格抽出の 1 文字のキャンバス (px)
 const FUDE_EM = 150;            // 骨格抽出のフォントサイズ (px)
+// 配置定義と共通幾何は mode/construct-layout.js (既存の保存番号を維持)。
 // Canvas (書き置き): 1 つ書いて紙に焼き付けたら、レイアウトの次の位置へ移って書き続け、画面を埋めていく。
 // 配置は Type Deformer の Canvas と共有 (TDCanvas.LAYOUTS。大きい順に並ぶ)。絵は焼き付けで軽く、頂点データ (骨格の点列) は Fude.notes に残す
-const FUDE_CV_LAYOUTS = ['hero', 'grid', 'diagonal', 'frame', 'cascade', 'scatter', 'free', 'slash', 'scale', 'cross', 'radial', 'wedge', 'stairs', 'constructivist'];
-// constructivist (FUDE だけの型): 15〜45° の斜めの軸に、極端に大きい 1 つと小さい書き置きを片側へ寄せる (非対称)。
-// 縦書きを混ぜて軸や大と交差させる。plan.axis = 軸 (Constructivist Brush が On のとき、筆の帯・線・棒・円相をこの軸から作る)。位置は画面の 0..1 (y 下向き)、回転は時計回り (°)
-function fudeConstructivist(n){
-  const R = (a, b)=> a + Math.random()*(b - a), asp = 16/9;
-  const sg = Math.random() < 0.5 ? 1 : -1, ang = sg*R(15, 45), r = ang*Math.PI/180;
-  const ux = Math.cos(r)/asp, uy = Math.sin(r), vx = -Math.sin(r)/asp, vy = Math.cos(r);   // 軸の向き / 直交する向き (高さ 1 あたり)
-  const left = Math.random() < 0.5, side = left ? 1 : -1;
-  const hx = left ? R(0.28, 0.4) : R(0.6, 0.72), hy = R(0.38, 0.6);
-  const inside = (x, y)=> x > 0.07 && x < 0.93 && y > 0.09 && y < 0.91;
-  const out = [{ x:hx, y:hy, s:R(2.0, 2.6), rot:ang, vert:Math.random() < 0.25 }];
-  if(n > 1) out.push({ x:hx + ux*side*0.12, y:hy + uy*side*0.12, s:R(0.55, 0.75), rot:ang, vert:!out[0].vert });   // 大を横切る中くらいの 1 つ
-  const ts = [];
-  for(let j = 0; j < 28; j++){   // 軸の上の空いている側から順に。入らなければ反対側
-    const t = (j < 14 ? side : -side)*(0.36 + 0.13*(j % 14));
-    if(inside(hx + ux*t, hy + uy*t)) ts.push(t);
-  }
-  for(let i = out.length; i < n; i++){
-    const k = i % 3, t = ts.length ? ts[(i - 2) % ts.length] : side*(0.3 + 0.1*i);
-    const lap = Math.floor((i - 2)/Math.max(1, ts.length));
-    const o = k === 2 ? 0 : (k ? 1 : -1)*(0.05 + 0.06*lap + Math.random()*0.03);
-    let x = hx + ux*t + vx*o, y = hy + uy*t + vy*o;
-    x = Math.max(0.07, Math.min(0.93, x)); y = Math.max(0.09, Math.min(0.91, y));
-    // k=1: 軸に沿った横書き / k=2: 縦書きで軸を横切る / k=0: 軸に直交する横書き
-    out.push({ x, y, s:R(0.26, 0.48), rot:k === 0 ? ang - sg*90 : ang, vert:k === 2 });
-  }
-  out.axis = { ang, hx, hy, side };   // 筆の要素 (Constructivist Brush) は _cvBrushPlan がこの軸から作る
-  return out;
-}
+// Canvas の同時書き (Simultaneous): 2 つ目以降の書き置きは別の骨格・バッファ (レーン) に持ち、描くときだけ本体と入れ替える
+const FUDE_LANE_KEYS = ['vao', 'vbo', 'ibo', 'splatVAO', 'splatVBO', 'indexCount', 'splatCount', '_skel', '_bbox', '_box', '_nUnits', '_spdK', '_vt', '_note', '_curText', '_stylePick'];
 const FUDE_CV_BASE = 0.42;      // レイアウトの大きさ 1 = 画面の 42% (TDCanvas の BASE と同じ)
 const FUDE_NOTE_MAX = 200;      // 残す書き置きの頂点データの件数の上限 (超えたら古いものから捨てる。絵は紙に残る)
 const FUDE_NOTE_PTS = 300000;   // 残す頂点の合計の上限 (x, y, 太さ × 4 byte で約 3.6MB)
@@ -114,11 +88,22 @@ const fudeContrast = (a, b)=>{
 };
 
 // Word Set が空のときに読む文字列 (/ は改行)
+// 作者 (永良) の文章 (aratanagara.com のエッセイ・作品説明、anon-press の組版サンプル、小説の草稿) の語彙と響きから組んだ既定のワードセット。
+//   硬質な造語 (漢字語を助詞なしで連ねる) / やわらかい和語の動詞 / 2 行の言い切り (/ で改行)
 const FUDE_WORDS = [
-  '永遠', '夢', '無', '空', '風', '光', '心', '龍', '愛', '侘寂', '雪月花',
-  '一期一会', '花鳥風月', '色即是空', '諸行無常', '温故知新', '明鏡止水', '行雲流水', '不易流行',
-  '和敬清寂', '夢幻泡影', '森羅万象', '百花繚乱', '山紫水明', '春夏秋冬', '一日一生', '日日是好日',
-  '花/鳥/風/月', '春/夏/秋/冬', '色即是空/空即是色',
+  '天空諸機械', '足音連続体', '静止突撃', '降雨粉砕', '国家的無口', '修正不能', '停止不能', '電波喪失', '発汗弾丸', '着衣残像',
+  '共振自動施錠', '膝省略走法', '背景補完', '非描画', '永久周回', '死後人格', '眠り籠', '端末衣', '人体分離機', '筋肉都市',
+  '筋肉建築群', '墓型無人機', '余暇者階級', '青天井', '漂白', '立体映像', '蠕動', '髑髏', '雨天装置', '余白機関',
+  '罫線都市', '一画素', '紙折機', '無音加速', '硬質海', '薄明機関', '加速度文字', '頂点裂傷', '折畳構造', '渦巻装置',
+  '空白連続体', '沈黙機関', '鉄筋余白', '折紙戦線', '光学墓', '金属雲', '速度辞典', '頂点群', '紙面加速', '蒸発書体',
+  '無重力罫', '偽造天候', '骨格運動', '水晶機構', '遅延都市', '複製墓標', '冷却祝祭', '重力書庫', '羽根機械', '射影都市',
+  '微細戦車', '鋼鉄植物誌', '零時庁',
+  'たゆたう', 'ほどける', 'にじむ', 'ゆらぐ', 'ただよう', 'かすめる', 'まどろむ', 'ひるがえる', 'うつろう', 'とけあう',
+  'こぼれる', 'つむぐ', 'ほころぶ', 'ふるえる', 'かさなる', 'たなびく', 'むにむに', 'のびのびと', '引く', '払う',
+  '裂く', 'おりたたむ', 'ちらす', 'うずまく', 'うかぶ', '黙る', 'たちどまる', 'めぐる', 'ふきぬける', 'しみわたる',
+  'たわむ', 'ちぎれる', 'きしむ', 'よどむ', 'かすれる', 'すきとおる', 'ほのめく', 'しなる', 'ひそむ', 'とける',
+  '引く。/重ねない。', '何も出さない/勇気', '向かっている/着かない', '黙ると/街の音がする', '裂いて、伸びて/渦を巻く',
+  '紙を折るように/羽根が動く', '一枚の紙として/正しい', '骨格は残して/動きだけ戻す', '裸の表に/わずかな運動', '意味もなく/かっこいい',
 ];
 
 // Brush Rand で揺らすキー
@@ -183,13 +168,11 @@ const Fude = {
     shift:0,          // ずらし: 組の方向と直交にランダム (基線のばらつき)
     stagger:0,        // ずらし: 1 文字おきに互い違い
     stair:0,          // ずらし: 1 文字ごとに階段状に
-    scatterRot:0,     // 傾きのランダム (°)
     sizeMin:1,        // 大きさのランダムの下限 (倍)
     sizeMax:1,        // 大きさのランダムの上限 (倍)
     sizeSkew:1,       // 大きさの偏り (1=均等 / 大きいほど小さい字が多く、たまに大きい字)
     aspect:1,         // 文字の縦横比 (1=正方形、大きいほど横長)
     aspectRand:0,     // 縦横比のランダム
-    slantRand:0,      // 傾斜のランダム
     compose:1,        // ランダム配置: 1=構成 (階層・格子・構図) / 0=完全に乱数
     even:0.6,         // 完全に乱数のときの散らばりの均等さ (0=純粋な乱数)
     area:1,           // ランダム配置の広さ
@@ -250,6 +233,17 @@ const Fude = {
     inkGamma:1,       // 墨の濃淡のカーブ (1 より大きいと淡い部分が増える)
     edgeRing:0,       // 縁だけ濃く残す (中が抜けて輪郭になる)
     bleedHalo:100,    // にじみの滲み出し (%)
+    bleedStyle:0,     // にじみ方: 0=Soft (周りをぼかす) / 1=Ink (輪郭のシルエットを紙の繊維でゆがめて外へ広げる) / 2=Random (書くたびに Soft か Ink)
+    bleedRadius:1,    // にじみの届く範囲の倍率
+    bleedVar:0,       // にじみのばらつき (場所ごとに広がり・濃さが変わる)
+    bleedSpeed:0,     // 筆が遅い所ほどにじむ (角・打ち込み・止め・遅い画)
+    bleedPress:0,     // 筆圧で太った所ほどにじむ
+    bleedInk:0,       // 墨の濃い所ほどにじむ
+    bleedGrow:0,      // 書き始めからこの拍数で広がりきる (0 = すぐ)
+    speedSense:1,     // 筆の遅さの感度 (Speed Bleed / Speed Width 共通)
+    speedWidth:0,     // 筆が速いほど太細の差を小さくする
+    speedWidthCurve:1, // Speed Width の効き方 (大きいほど速い所だけに効く)
+    speedWidthVar:0,  // Speed Width の画ごとのばらつき
     grain:0.3,        // 紙の目
     grainSize:100,    // 紙の目の粗さ (%)
     paperMottle:0,    // 紙の雲むら (低周波の濃淡)
@@ -291,7 +285,6 @@ const Fude = {
     zoom:1,           // 拡大
     posX:0, posY:0,   // 位置 (-1..1)
     rotate:0,         // 回転 (°)
-    slant:0,          // 傾き
     stretch:1,        // 縦の伸び
     // 3D: 骨格の頂点 (筆跡・飛沫) に Z を持たせて、回転と遠近を掛ける。全部 0 なら従来と同じ平面
     tilt3dX:0,        // 前後の傾き (°)
@@ -301,20 +294,34 @@ const Fude = {
     wave3d:0,         // 面のうねり (奥行き方向の波)
     persp3d:0.5,      // 遠近の強さ (0 = 平行投影)
     noteOn:0,         // Canvas: 0=Off / 1=On (書き置きで画面を埋める)
+    angleSys:0,     // Canvas の角度の系: 0 = 45° 刻み (0/45/90/135) / 1 = 30° 刻み (0/30/60/90/120/150)。向き・配置・筆の線をそろえる
+    projection:0,   // Canvas の投影: 0 = Flat (画面に平らに置く) / 1 = Iso (部屋の隅の床・左の壁・右の壁に貼る。面の軸は Angle System の刻みの線)
     noteLayout:0,   // 0=Auto (周回ごとにランダム) / 1〜 = FUDE_CV_LAYOUTS の番号 + 1
     noteCount:7,    // 1 周回の書き置きの数 (密度)
+    noteSimul:1,    // 同時に書き始める書き置きの数 (1 = 1 つずつ)
+    // Canvas Layout: 型の配置に掛ける調整 (周回の頭で配置を引くときに掛かる)。既定は型のまま
+    cvAngle:0,      // 配置全体を画面の中心まわりに回す (°)
+    cvSpread:1,     // 配置の広がり (中心からの距離の倍率)
+    cvOffX:0,       // 配置全体を横へずらす (画面の幅 1 あたり)
+    cvOffY:0,       // 配置全体を縦へずらす (画面の高さ 1 あたり)
+    cvMirror:0,     // 配置の反転: 0=Off / 1=左右 / 2=上下 / 3=上下左右 / 4=周回ごとにランダム
+    cvNoteRot:0,    // 書き置きを一律に回す (°)
+    cvRotVar:0,     // 書き置きごとの回転のばらつき (± °)
+    cvSnap:0,       // 書き置きの角度を丸める: 0=Off / 1=15° / 2=30° / 3=45° / 4=90°
+    cvScaleVar:0,   // 書き置きごとの大きさのばらつき
     noteScale:1,    // 書き置きの大きさ
     noteWrite:4,    // 1 つ書く拍数
     noteGap:1,      // 焼き付けてから次を書き始めるまでの拍数
     noteHold:8,     // 埋まってから次の周回までの拍数
     noteFull:0,     // 埋まったら: 0=白紙に戻す / 1=上書きし続ける (古い書き置きを Dim だけ薄める)
     noteDim:0.5,    // 上書きのとき、次の周回で古い書き置きを薄める割合
-    noteConstAuto:1, // constructivist を Auto のランダム候補に: 0=含めない / 1=含める
     noteGeo:0,      // constructivist の筆の要素 (帯・線・棒・円相を筆で書く): 0=Off / 1=On
     nbBand:1,       // 筆の要素: 帯の数 (1 本目 = メインの線。0 で帯なし)
     nbLine:2,       // 細い線の数 (軸と平行)
     nbBar:1,        // 短い棒の数 (軸に直交)
     nbCircle:1,     // 円相の数
+    nbCircleSize:0.29, // 円相の直径 (画面の高さ 1 あたり)
+    nbCircleVar:0.38,  // 円相の大きさのばらつき (±割合)
     nbMainAxis:2,   // メインの線の向き: 0=水平 / 1=垂直 / 2=水平か垂直をランダム / 3=自由 (軸と同じ斜め)
     nbMainOffset:0.1, // メインの線を大きい書き置きからずらす量 (画面の高さ 1 あたり)
     nbThick:0.006,  // 細い線の半幅 (画面の高さ 1 あたり)。筆の書体設定とは別
@@ -370,7 +377,10 @@ const Fude = {
   // ===== 書き順を先頭へ (C キー) =====
   restart(){ this._t0 = null; this._cycle = 0; this._beatBase = null; this._cvReset(); this.nextSet(); },
   // 次のセットへ: 文字列を選び直して Seed を引き直す
-  nextSet(force){ this._pickText(); this.reseed(force); this._setChanged = true; },
+  nextSet(force){ this._pickText(); this._pickStyle(); this.reseed(force); this._bleedPick = Math.random() < 0.5 ? 0 : 1; this._setChanged = true; },
+  // Style = Random (番号 = FUDE_STYLES.length): 書くたびに楷書〜篆書から 1 つ引く。スライダー (P) は書き換えず、描くときだけその書体の値を使う
+  _styleRandom(){ return Math.round(this.P.style || 0) === FUDE_STYLES.length; },
+  _pickStyle(){ this._stylePick = this._styleRandom() ? 1 + Math.floor(Math.random()*(FUDE_STYLES.length - 1)) : 0; },
   // 周回での切替: 直前の画面を残して Transition で次のセットへ混ぜる (C と読込は app.js 側で掛かる)
   _trans(){
     const P = this.P, beats = +P.setTrans || 0, style = Math.round(P.setTransStyle ?? -1);
@@ -427,8 +437,38 @@ const Fude = {
     }
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
   },
-  _cvReset(){ this._cvs = null; this._note = null; this.notes = []; this._notePts = 0; this._sheetFill(); },
+  _cvReset(){ (this._lanes || []).forEach(L=>{ L.active = false; }); this._cvs = null; this._note = null; this.notes = []; this._notePts = 0; this._sheetFill(); },
+  // ジオメトリ (画のバッファと飛沫のバッファ) を作る。本体と同時書きのレーンで共有
+  _geomNew(){
+    const gl = this.gl, g = {};
+    const attr = (prog, name, size, stride, off)=>{
+      const loc = gl.getAttribLocation(prog, name);
+      if(loc < 0) return;
+      gl.enableVertexAttribArray(loc);
+      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride*4, off*4);
+    };
+    g.vao = gl.createVertexArray(); g.vbo = gl.createBuffer(); g.ibo = gl.createBuffer();
+    gl.bindVertexArray(g.vao);
+    gl.bindBuffer(gl.ARRAY_BUFFER, g.vbo);
+    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, g.ibo);
+    [['aPos',2,0],['aTan',2,2],['aA',4,4],['aB',4,8],['aC',3,12],['aD',3,15],['aE',4,18],['aF',1,22],['aG',2,23]].forEach(([n,s,o])=>attr(this.strokeProg, n, s, 25, o));
+    g.splatVAO = gl.createVertexArray(); g.splatVBO = gl.createBuffer();
+    gl.bindVertexArray(g.splatVAO);
+    gl.bindBuffer(gl.ARRAY_BUFFER, g.splatVBO);
+    [['aPos',2,0],['aDir',2,2],['aS',3,4],['aD',3,7],['aU',2,10]].forEach(([n,s,o])=>attr(this.splatProg, n, s, 12, o));
+    gl.bindVertexArray(null);
+    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    return g;
+  },
+  _laneNew(){ return Object.assign(this._geomNew(), { indexCount:0, splatCount:0, _skel:null, _bbox:[1, 1], _box:null, _nUnits:[0, 0], _spdK:1, _vt:this._vt, _note:null, _curText:null, active:false }); },
+  _laneSwap(L){ for(const k of FUDE_LANE_KEYS){ const v = this[k]; this[k] = L[k]; L[k] = v; } },
+  _lanesFree(){
+    const gl = this.gl;
+    (this._lanes || []).forEach(L=>{ gl.deleteVertexArray(L.vao); gl.deleteBuffer(L.vbo); gl.deleteBuffer(L.ibo); gl.deleteVertexArray(L.splatVAO); gl.deleteBuffer(L.splatVBO); });
+    this._lanes = null;
+  },
   _cvRelease(){
+    this._lanesFree();
     const gl = this.gl;
     if(this.sheetTex){ gl.deleteTexture(this.sheetTex); gl.deleteFramebuffer(this.sheetFBO); }
     this.sheetTex = this.sheetFBO = null; this.sheetW = this.sheetH = 0;
@@ -438,24 +478,42 @@ const Fude = {
   _cvStep(bt, bpb){
     const P = this.P;
     let c = this._cvs;
-    if(!c || bt < c.t) c = this._cvs = { ph:'pass', t:bt, idx:0, plan:null, name:'' };   // 時計の巻き戻しでは引き直す
+    if(!c || bt < c.t) c = this._cvs = { ph:'pass', t:bt, idx:0, plan:null, name:'', pattern:'' };   // 時計の巻き戻しでは引き直す
     const B = k=> Math.max(0, +P[k] || 0)*bpb;
     if(c.ph === 'pass'){
       let name = FUDE_CV_LAYOUTS[Math.round(P.noteLayout || 0) - 1];
-      if(!name){   // Auto: 前と同じ型を続けない
-        const pool = Math.round(P.noteConstAuto ?? 1) === 1 ? FUDE_CV_LAYOUTS : FUDE_CV_LAYOUTS.filter(k=>k !== 'constructivist');
-        const prev = c.name; do name = pool[Math.floor(Math.random()*pool.length)]; while(name === prev);
+      let pattern = FUDE_CV_PATTERNS.find(([, types])=>types.includes(name)) || FUDE_CV_PATTERNS.find(([, types])=>types.includes(FUDE_CV_DROP[name]));
+      if(!pattern){   // Auto: 前と同じパターンを続けない
+        const pool = FUDE_CV_PATTERNS.filter(([label])=>label !== c.pattern);
+        pattern = pool[Math.floor(Math.random()*pool.length)];
       }
+      const types = pattern[1];
+      name = types[Math.floor(Math.random()*types.length)];
       const gen = name === 'constructivist' ? fudeConstructivist : TDCanvas.LAYOUTS[name];
-      c.name = name; c.plan = gen(Math.max(1, Math.round(+P.noteCount || 1))); c.idx = 0; c.ph = 'start';
+      c.name = name; c.pattern = pattern[0]; c.plan = gen(Math.max(1, Math.round(+P.noteCount || 1)), this._angleStep()); c.idx = 0; c.ph = 'start';
+      if(name !== 'constructivist') this._cvConstructivize(c.plan, name);
+      this._cvAdjust(c.plan);
       if(c.plan.axis && Math.round(P.noteGeo || 0) === 1){   // 筆の要素を書く順に並べる
         const br = this._cvBrushPlan(c.plan.axis), ord = Math.round(P.nbOrder || 0);
         if(ord === 1) c.plan = c.plan.concat(br);
         else if(ord === 2){ const pl = c.plan.slice(); br.forEach(b=>pl.splice(Math.floor(Math.random()*(pl.length + 1)), 0, b)); c.plan = pl; }
         else c.plan = br.concat(c.plan);
       }
+      if(this._isoOn()) this._cvIso(c.plan);
     }
     if(c.ph === 'start'){
+      // 同時書き: 2 つ目以降はレーンに骨格を作る (本体の文字と Seed は最後に本体の分を引き直す)
+      const n = Math.max(1, Math.min(8, Math.round(+P.noteSimul || 1), c.plan.length - c.idx));
+      c.n = n;
+      const lanes = this._lanes || (this._lanes = []);
+      lanes.forEach(L=>{ L.active = false; });
+      for(let j = 1; j < n; j++){
+        const L = lanes[j - 1] || (lanes[j - 1] = this._laneNew());
+        this._laneSwap(L);
+        this._note = c.plan[c.idx + j]; this._pickText(); this._pickStyle(); this.reseed(); this._build();
+        this._laneSwap(L);
+        L.active = true;
+      }
       this._note = c.plan[c.idx]; this.nextSet(); c.t = bt; c.ph = 'write';
       if(c.idx === 0) c.paper = Array.from(this._colors().paper);   // 紙の色は周回の頭で決める (配色ランダムでも書き置きごとに紙が変わらない)
     }
@@ -465,7 +523,7 @@ const Fude = {
       c.ph = 'gap'; c.t = bt;
       return { reveal:1, live:false, bake:true };
     }
-    if(c.ph === 'gap'){ if(bt - c.t >= B('noteGap')){ c.t = bt; c.ph = ++c.idx < c.plan.length ? 'start' : 'hold'; } }
+    if(c.ph === 'gap'){ if(bt - c.t >= B('noteGap')){ c.t = bt; c.idx += c.n || 1; c.ph = c.idx < c.plan.length ? 'start' : 'hold'; } }
     else if(c.ph === 'hold' && bt - c.t >= B('noteHold')){
       c.t = bt; c.ph = 'pass';
       if(Math.round(P.noteFull || 0) === 1) this._sheetFill(this._dz(P.noteDim));   // 上書き: 頂点データは上限まで残す
@@ -473,6 +531,19 @@ const Fude = {
     }
     return { reveal:0, live:false, bake:false };
   },
+  // 全 Layout に斜めの軸・縦横の混在・極端な大小を掛ける。向きは 0° / 45° / 90° / 135° の線にそろえる。
+  //   角度が自由な型 (FUDE_CV_FREE) は位置も、大きい書き置きから見た方向を一番近い 45° 刻みの線へ寄せる (距離は保つ)。格子・縁・十字の型は位置がもとから縦横の線上なのでそのまま
+  _cvConstructivize: ConstructLayout._cvConstructivize,
+  _angleStep: ConstructLayout._angleStep,
+  _isoOn(){ return Math.round(this.P.projection || 0) === 1; },
+  // アイソメ: 書き置き (筆の要素も) を、床・左の壁・右の壁のどれかの向きに貼る。位置はレイアウトのまま (箱には収めない)。
+  //   向き (o.face) は描くときに頂点へ掛ける (_faceMat)。面の軸は Angle System の刻みの線と縦の線なので、筆の線・帯はアイソメの 3 軸のどれかと平行になる
+  _cvIso: ConstructLayout._cvIso,
+  // 面の向き: 書き置きの横 (x) と縦 (y、下向き) を画面のどちらへ向けるか (y 下向きの px、列優先)。
+  //   床 = 横は右下、縦は左下 / 左の壁 = 横は隅へ向かう右上、縦は真下 / 右の壁 = 横は右下、縦は真下
+  _faceMat: ConstructLayout._faceMat,
+  // Canvas Layout の調整を配置に掛ける (位置は画面の 0..1・y 下向き、回転は時計回り °)。既定値なら何も変えない
+  _cvAdjust: ConstructLayout._cvAdjust,
   // constructivist の筆の要素を軸から作る。帯・線の長さ = 画面の幅 × 0.42 × s、円相の直径 = 画面の高さ × 0.42 × s (fit の 84% と BASE 0.42 から)。
   // brush.w = 筆の半幅 (骨格の座標 = em)。欲しい半幅 hw (画面の高さ 1 あたり) から逆算し、書体の筆の太さは使わない
   _cvBrushPlan(a){
@@ -480,10 +551,10 @@ const Fude = {
     const base = Math.max(0.0005, num('nbThick', 0.006)), mul = Math.max(1, num('nbThickMul', 3));
     const tv = Math.max(0, num('nbThickVar', 0.3)), ratio = Math.max(0, Math.min(1, num('nbThickRatio', 0.3)));
     const lenK = Math.max(0.05, num('nbLen', 1)), lv = Math.max(0, num('nbLenVar', 0.3)), av = Math.max(0, num('nbAngleVar', 8));
-    const step = [0, 15, 30, 45, 90][Math.round(num('nbSnap', 1))] || 0, spread = Math.max(0.05, num('nbSpread', 1));
+    const step0 = [0, 15, 30, 45, 90][Math.round(num('nbSnap', 1))] || 0, sys = this._angleStep(), spread = Math.max(0.05, num('nbSpread', 1));
     const hwOf = thick=> base*(thick ? mul : 1)*Math.max(0.2, 1 + (Math.random()*2 - 1)*tv);
     const lenOf = f=> f*lenK*Math.max(0.1, 1 + (Math.random()*2 - 1)*lv);
-    const snap = d=> step ? Math.round(d/step)*step : d;
+    const snap = d=>{ if(step0) d = Math.round(d/step0)*step0; return Math.round(d/sys)*sys; };   // Angle Snap のあと、必ず角度の系 (45° / 30° 刻み) にそろえる
     const across = d=>{ const r = d*Math.PI/180; return Math.abs(Math.cos(r)) + Math.abs(Math.sin(r))/asp; };   // 画面を横切る長さ (幅 1 あたり)
     const cl = v=> Math.max(0.04, Math.min(0.96, v));
     const r0 = a.ang*Math.PI/180, ux = Math.cos(r0)/asp, uy = Math.sin(r0), vx = -Math.sin(r0)/asp, vy = Math.cos(r0);
@@ -514,7 +585,7 @@ const Fude = {
       line('bar', a.hx + ux*t + vx*o, a.hy + uy*t + vy*o, lenOf(R(0.1, 0.25)), snap(a.ang + 90 + R(-av, av)), Math.random() < ratio, 2);
     }
     for(let i = 0; i < nc; i++){   // 円相: 大の反対側の空いている所
-      const d = lenOf(R(0.18, 0.4)), sc = Math.max(0.02, d/0.42), hw = hwOf(Math.random() < ratio);
+      const d = lenOf(Math.max(0.02, (+P.nbCircleSize || 0.29)*(1 + (Math.random()*2 - 1)*Math.max(0, +(P.nbCircleVar ?? 0.38))))), sc = Math.max(0.02, d/0.42), hw = hwOf(Math.random() < ratio);
       out.push({ x:cl(a.hx - a.side*R(0.05, 0.3)*spread), y:cl(a.hy < 0.5 ? R(0.62, 0.82) : R(0.18, 0.38)), s:sc, rot:R(0, 360), brush:{ type:'circle', w:hw/(0.42*sc), hw, thick:hw > base*1.5 } });
     }
     return out;
@@ -540,7 +611,7 @@ const Fude = {
     if(!k || !n) return;
     const P = this.P, col = this._colors();
     this.notes.push({ text:n.brush ? '' : String(this._text() || ''), seed:Math.round(P.seed || 0), layout:this._cvs ? this._cvs.name : '',
-      x:n.x, y:n.y, s:n.s, rot:n.rot, vert:!!n.vert, brush:n.brush || null, place, font:P.fontFamily, style:Math.round(P.style || 0),
+      x:n.x, y:n.y, s:n.s, rot:n.rot, vert:!!n.vert, brush:n.brush || null, place, font:P.fontFamily, style:this._styleRandom() ? (this._stylePick || 0) : Math.round(P.style || 0),
       ink:Array.from(col.ink), ink2:Array.from(col.ink2 || col.ink), paper:Array.from((this._cvs && this._cvs.paper) || col.paper),
       pts:k.pts, starts:k.starts, ci:k.ci, kind:k.kind });
     this._notePts += k.pts.length/3;
@@ -601,6 +672,7 @@ const Fude = {
     const st = FUDE_STYLES[i];
     this.P.style = i;
     if(st && st.p) Object.assign(this.P, st.p);
+    this._pickStyle();   // Random を選んだらすぐ 1 つ引く
   },
 
   // ===== グリフ → 骨格 =====
@@ -872,7 +944,7 @@ const Fude = {
     const cvNote = Math.round(P.noteOn||0) === 1 ? this._note : null;
     if(cvNote && cvNote.brush){   // constructivist の筆の要素: 文字の代わりに帯・線・円の画を 1 つ書く
       const k = this._variants()();
-      return [{ g:{ adv:1, strokes:this._brushStrokes(cvNote.brush) }, v:k.v, size:1, ax:1, x:0, y:0, rot:0, sk:0, absW:cvNote.brush.w }];
+      return [{ g:{ adv:1, strokes:this._brushStrokes(cvNote.brush) }, v:k.v, size:1, ax:1, x:0, y:0, rot:0, absW:cvNote.brush.w }];
     }
     let pick = Math.round(P.layout||0);
     if(cvNote && cvNote.vert !== undefined) pick = cvNote.vert ? 1 : 0;   // Canvas の constructivist は書き置きごとに縦横を決める
@@ -886,15 +958,14 @@ const Fude = {
     let sizeEach = false;                                  // true なら Layout Rand に関わらず 1 文字ごとに大きさを引く
     const sizeOf = ()=> sMin + (sMax-sMin)*Math.pow(sizeEach ? lr() : rr(0), skew);
     let scatter = this._dz(P.scatter), shift = this._dz(P.shift), stagger = this._dz(P.stagger), stair = this._dz(P.stair);
-    let rotMax = this._dz(P.scatterRot)*Math.PI/180;
-    let aspRand = this._dz(P.aspectRand), slantMax = this._dz(P.slantRand);
+    let aspRand = this._dz(P.aspectRand);
     if(pick === 4){
       // セットごとに配置の値も引き直す。lr()*lr() で穏やかな値を多く、たまに大きく振る
       const n = mtGraphemes(String(this._text()||'').replace(/\s/g, '')).length;
       sMin = 0.5 + lr()*0.5; sMax = 1 + lr()*lr()*1.8; skew = 1 + lr()*2;
       scatter = lr()*lr()*0.6; shift = lr()*lr()*0.8; stagger = (lr()-0.5)*lr()*1.2; stair = (lr()-0.5)*lr()*0.2;
-      rotMax = lr()*lr()*25*Math.PI/180;
-      aspRand = lr()*lr()*0.7; slantMax = lr()*lr()*0.4;
+      lr(); lr();   // 以前の傾きの分の乱数 (並びを変えないよう引いて捨てる)
+      aspRand = lr()*lr()*0.7; lr(); lr();
       align = Math.floor(lr()*3);
       wrap = (n > 4 && lr() < 0.6) ? Math.ceil(Math.sqrt(n)*(0.8 + lr()*0.6)) : 0;
     }
@@ -932,8 +1003,8 @@ const Fude = {
       const ax = along + (rr(2)-0.5)*scatter, ay = across + off + (rr(3)-0.5)*scatter;
       c.x = vertical ? -ay : ax;
       c.y = vertical ? ax : ay;
-      c.rot = (rr(4)-0.5)*2*rotMax;
-      c.sk = (rr(6)-0.5)*2*slantMax;
+      rr(4); rr(6);   // 以前の傾き・傾斜の分の乱数 (並びを変えないよう引いて捨てる)
+      c.rot = 0;
       cells.push(c);
     };
     if(composed){
@@ -1200,7 +1271,8 @@ const Fude = {
       m.nibOff = (vr()-0.5)*120*amt;
       return m;
     };
-    const setStyle = sm === 2 ? pickStyle() : null, setMul = bm === 2 ? pickMul() : null;
+    // Style = Random は書くたびに引いた書体 (Style Rand が 1文字ごと のときはそちらが優先)
+    const setStyle = (this._styleRandom() && this._stylePick && sm !== 1) ? FUDE_STYLES[this._stylePick].p : sm === 2 ? pickStyle() : null, setMul = bm === 2 ? pickMul() : null;
     const n = (sm === 1 || bm === 1) ? FUDE_VARIANTS : 1;
     const table = [];
     for(let i=0; i<n; i++){
@@ -1295,10 +1367,10 @@ const Fude = {
     return out;
   },
   // 1 画の位置・傾き・長さ・反りを Seed でずらす (書くたびに字形が変わる)
-  _strokeJitter(pts, rnd){
+  _strokeJitter(pts, rnd, keepDir){
     const v = this._vary();
     const n = pts.length, cx = (pts[0][0]+pts[n-1][0])/2, cy = (pts[0][1]+pts[n-1][1])/2;
-    const a = (rnd()-0.5)*0.2*v, sc = 1 + (rnd()-0.5)*0.26*v;
+    const a0 = (rnd()-0.5)*0.2*v, a = keepDir ? 0 : a0, sc = 1 + (rnd()-0.5)*0.26*v;   // keepDir: 向きは変えない (筆の要素)
     const ox = (rnd()-0.5)*0.05*v, oy = (rnd()-0.5)*0.05*v, bend = (rnd()-0.5)*0.09*v;
     const c = Math.cos(a), s = Math.sin(a);
     const dx = pts[n-1][0]-pts[0][0], dy = pts[n-1][1]-pts[0][1], m = Math.hypot(dx,dy)||1;
@@ -1319,17 +1391,17 @@ const Fude = {
     cells.forEach((c, ci)=>{
       const crand = rnd();
       // 1 文字全体のずれ (傾き・基線・大きさ)
-      const v = this._vary(), ca = (rnd()-0.5)*0.18*v + c.rot, cs = (1 + (rnd()-0.5)*0.16*v)*c.size;
-      const sy = (+this._val(c.v, 'stretch')||1) / Math.max(0.05, +P.stretch||1);   // 書体ごとの縦横比
+      const v = this._vary(), ca0 = (rnd()-0.5)*0.18*v, ca = c.absW ? c.rot : ca0 + c.rot, cs = (1 + (rnd()-0.5)*0.16*v)*c.size;   // 筆の要素 (absW) は傾けない (線の向きを 45° 刻みのまま)
+      const sy = c.absW ? 1 : (+this._val(c.v, 'stretch')||1) / Math.max(0.05, +P.stretch||1);   // 書体ごとの縦横比 (筆の要素は縦横を変えない = 45° の線が傾かない)
       const cox = (rnd()-0.5)*0.08*v, coy = (rnd()-0.5)*0.08*v, cc = Math.cos(ca), ss = Math.sin(ca);
       const inChar = [];
       c.g.strokes.forEach(src=>{
-        const sh = this._strokeShape(src, rnd, c.v);
-        this._strokeJitter(sh.pts, rnd);
+        const sh = c.absW ? { pts:Array.from({ length:src.length/3 }, (_, i)=>[src[i*3], src[i*3 + 1], src[i*3 + 2]]), kind:0 } : this._strokeShape(src, rnd, c.v);   // 筆の要素ははらい・波磔で端を曲げない
+        this._strokeJitter(sh.pts, rnd, !!c.absW);
         let wm = (1 + (rnd()-0.5)*0.9*v)*c.size; const dm = 1 + (rnd()-0.5)*1.4*v, tm = (1 + (rnd()-0.5)*1.6*v)*c.size;
         if(c.absW) wm = -c.absW;   // 筆の要素: 負 = 書体の筆の太さを使わない絶対の半幅
         for(const p of sh.pts){
-          const y = p[1]*cs*sy/c.ax, x = p[0]*cs*c.ax - y*c.sk;
+          const y = p[1]*cs*sy/c.ax, x = p[0]*cs*c.ax;
           p[0] = c.x + x*cc - y*ss + cox; p[1] = c.y + x*ss + y*cc + coy;
           minX=Math.min(minX,p[0]); maxX=Math.max(maxX,p[0]); minY=Math.min(minY,p[1]); maxY=Math.max(maxY,p[1]);
         }
@@ -1378,6 +1450,8 @@ const Fude = {
       const dur = L * (1 + (tr()-0.5)*1.8*this._dz(this._val(vt, 'speedVar')));   // 速い画は短く、遅い画は長く
       s.len = L; s.t0 = tAcc; s.t1 = tAcc + dur; tAcc = s.t1 + gap;
     }
+    { let sl = 0, sd = 0; for(const s of strokes){ sl += s.len; sd += s.t1 - s.t0; }   // 平均の速さ (画の長さ / 正規化した時間) の逆数
+      this._spdK = sl > 0 && sd > 0 ? (sd/tAcc)/sl : 1; }
     // 1 文字の中での書き順の時間 (Beat Write の B を筆で書くとき)
     const cRange = [];
     for(const s of strokes){
@@ -1489,16 +1563,16 @@ float vn(vec2 p){
 }`;
     const PLACE = `
 uniform vec2  uRes, uPos;
-uniform float uFit, uZoom, uRot, uSlant, uStretch, uSway, uTime;
+uniform float uFit, uZoom, uRot, uStretch, uSway, uTime;
 uniform vec3  u3Rot;    // 3D: 前後の傾き, 左右の振り (自転込み), 遠近 (rad / rad / 0..1)
 uniform vec2  u3Z;      // 3D: 文字ごとの奥行き, うねり
+uniform mat2  uFaceM;   // アイソメ: 書き置きを貼る面 (床・左の壁・右の壁) の向き。Flat は単位行列
 mat2 rot2(float a){ float c=cos(a), s=sin(a); return mat2(c, s, -s, c); }
 vec4 place(vec2 p, vec3 ch){
   float cr = ch.z;
   float a  = uSway*0.12*sin(uTime*0.35 + cr*40.0);
   vec2 off = uSway*0.05*vec2(sin(uTime*0.27 + cr*17.0), cos(uTime*0.31 + cr*29.0));
   vec2 q = rot2(a)*(p-ch.xy) + ch.xy + off;
-  q.x -= q.y*uSlant;
   q.y *= uStretch;
   q = rot2(uRot)*q;
   vec2 px = q*uFit*uZoom;
@@ -1513,6 +1587,7 @@ vec4 place(vec2 p, vec3 ch){
     if(u3Rot.z > 0.0){ float D = H*mix(8.0, 1.1, u3Rot.z); v.xy *= D/max(D - v.z, H*0.05); }
     px = v.xy;
   }
+  px = uFaceM*px;
   px += vec2(uPos.x, -uPos.y)*uRes*0.5;
   return vec4(px/(uRes*0.5)*vec2(1.0, -1.0), 0.0, 1.0);
 }`;
@@ -1530,8 +1605,9 @@ in float aF;     // 文字の番号
 in vec2 aG;      // 1 文字の中での書き順の時間 (0..1)
 uniform vec4  uVT[${FUDE_VARIANTS*5}];     // 筆の組 × 5 vec4
 uniform float uW0, uPressF, uWobbleF, uBreath, uReveal, uShown, uFrac, uGone;
+uniform float uSpdK, uSpdSense, uSpdW, uSpdWC, uSpdWV;   // 筆の速さ: 平均の速さの逆数, 感度, Speed Width, その効き方, ばらつき
 uniform int   uUnit;
-out float vS, vLen, vV, vW, vRand, vKind, vCurv, vIdx, vSLim, vDry, vGone, vSize;
+out float vS, vLen, vV, vW, vRand, vKind, vCurv, vIdx, vSLim, vDry, vGone, vSize, vSlow, vSwell;
 flat out int vId;
 vec4 T0, T1, T2, T3, T4;
 #define uFontW    T0.x
@@ -1568,10 +1644,11 @@ void main(){
   float ang = atan(aTan.y, aTan.x);
   W *= mix(1.0, 0.25 + 1.5*abs(sin(ang - uNibAng)), uNib);
   float sN = s/max(aE.z, 0.05);      // 字の大きさで割った距離 (大きい字でもゆらぎの見え方を変えない)
-  W *= 1.0 + uPress*(vn(vec2(sN*uPressF + rnd*91.0, rnd*7.0)) - 0.5)*1.4;
+  float md = 1.0;   // 太細の差 (筆圧・打ち込み・止め・角)。Speed Width で速い所ほど 1 に寄せる
+  md *= 1.0 + uPress*(vn(vec2(sN*uPressF + rnd*91.0, rnd*7.0)) - 0.5)*1.4;
   // 打ち込み
   float e = sN/(uW0*2.2);
-  W *= 1.0 + uEntry*exp(-e*e);
+  md *= 1.0 + uEntry*exp(-e*e);
   // 書き出しの細り
   float tIn = uTaperIn*uW0*aE.z;
   if(tIn > 1e-4) W *= 0.35 + 0.65*smoothstep(0.0, min(tIn, len*0.5), s);
@@ -1581,8 +1658,18 @@ void main(){
   float tOut = min(uTaperOut*uW0*aE.z*(1.0 + 2.0*h), len*0.85);
   W *= mix(1.0, pow(clamp(rem/max(tOut,1e-4), 0.0, 1.0), uTaperPow), h);
   float q = rem/(uW0*2.0*max(aE.z, 0.05));
-  W *= 1.0 + uTome*(1.0-h)*exp(-q*q);
-  W *= 1.0 + uCorner*curv;
+  md *= 1.0 + uTome*(1.0-h)*exp(-q*q);
+  md *= 1.0 + uCorner*curv;
+  // 筆の遅さ: 画の速さ (平均 = 1) と、角・打ち込み・止めの溜め
+  float spd = len/max(aB.z - aB.y, 1e-5)*uSpdK;
+  float dwell = max(curv, max(exp(-e*e)*0.8, (1.0 - h)*exp(-q*q)));
+  vSlow = clamp(0.5 + (0.75 - spd*(1.0 - 0.75*dwell))*uSpdSense, 0.0, 1.0);
+  vSwell = clamp((md - 1.0)*2.0, 0.0, 1.0);
+  if(uSpdW > 0.0){
+    float kf = uSpdW*pow(1.0 - vSlow, max(uSpdWC, 0.05))*(1.0 + (fract(rnd*43.758) - 0.5)*2.0*uSpdWV);
+    md = mix(md, 1.0, clamp(kf, 0.0, 1.0));
+  }
+  W *= md;
   W *= 1.0 + uBreath;
   W = max(W, 0.0025);
 
@@ -1606,8 +1693,9 @@ void main(){
 }`;
     const strokeFS = `#version 300 es
 precision highp float;
-in float vS, vLen, vV, vW, vRand, vKind, vCurv, vIdx, vSLim, vDry, vGone, vSize;
+in float vS, vLen, vV, vW, vRand, vKind, vCurv, vIdx, vSLim, vDry, vGone, vSize, vSlow, vSwell;
 flat in int vId;
+uniform float uSlowPool, uSwellPool;   // にじみ: 遅い所・筆圧で太った所の墨溜まりを足す
 uniform vec4  uVF[${FUDE_VARIANTS*2}];     // 筆の組 × 2 vec4
 uniform float uW0, uBristles, uStreak, uBContrast, uRefill;
 #define uKasure   F0.x
@@ -1661,6 +1749,7 @@ void main(){
   tone *= 1.0 - uTone*1.1*(1.0 - b);
   float rem = (L - s)/vW;
   float pool = uPool*clamp(smoothstep(0.65, 1.0, abs(x))*0.55 + vCurv*0.7 + exp(-rem*0.45)*(1.0 - vKind), 0.0, 1.0);
+  pool = min(1.0, pool + uSlowPool*vSlow + uSwellPool*vSwell);
   frag = vec4(a, a*tone, a*pool, a*0.25);
 }`;
     const splatVS = `#version 300 es
@@ -1711,30 +1800,66 @@ uniform float uDensity, uOverlap, uBleed, uBleedS, uFiber, uGrain, uSheen, uFade
 uniform float uSheenAng, uSheenPow, uGamma, uRing, uHalo, uGrainS, uMottle, uVig;
 uniform float uDepthOut;   // 1 = 墨のある所だけ一定の深度を書く (紙 = 外れ)
 uniform sampler2D uSheet;  // Canvas: 焼き付けた書き置き (premultiplied)
-uniform float uSheetOn, uLive, uDry;   // uLive = 0 で書いている途中の墨を出さない (焼き付けたあと)
+uniform float uSheetOn, uLive, uDry;
+uniform float uViewRot;   // Canvas: Rotate で画面全体 (紙の上の書き置きと書いている途中の墨) を中心まわりに回す (rad)
+uniform float uBleedR, uBleedVar, uBleedPool, uBleedInk, uGrow, uBleedStyle;   // にじみの範囲・ばらつき・墨溜まり・墨の濃さ・広がりの進み   // uLive = 0 で書いている途中の墨を出さない (焼き付けたあと)
 uniform int   uTaps;
 out vec4 frag;
 ${NOISE}
 void main(){
-  vec4 t = texture(uTex, vUv);
+  vec2 uv = vUv;
+  float inside = 1.0;
+  if(uViewRot != 0.0){
+    vec2 ar = vec2(uRes.x/uRes.y, 1.0), q = (vUv - 0.5)*ar;
+    float c = cos(uViewRot), sn = sin(uViewRot);
+    uv = vec2(c*q.x - sn*q.y, sn*q.x + c*q.y)/ar + 0.5;
+    inside = step(0.0, uv.x)*step(uv.x, 1.0)*step(0.0, uv.y)*step(uv.y, 1.0);   // 回して画面の外になった所は紙だけ
+  }
+  vec4 t = texture(uTex, uv)*inside;
   float a = t.r, tone = t.g, pool = t.b, over = t.a;
   vec2 asp = vec2(uRes.x/uRes.y, 1.0);
-  vec2 p = vUv*asp;
-  if(uTaps > 0){
+  vec2 p = uv*asp;
+  if(uBleedStyle > 0.5 && uBleed > 0.0){
+    // Ink: 輪郭のシルエットを変える。大きなうねりと紙の繊維の細かい毛羽で墨の縁をずらし、外へ広がった分だけ足す (中は削らない)
+    float R = uBleed*0.016*uBleedR*uGrow;
+    if(uBleedVar > 0.0) R *= max(0.1, 1.0 + uBleedVar*(vn(p*1.7 + 23.0)*2.0 - 1.0)*0.9);
+    // ノイズの格子を斜めに回して何段か重ねる (縦横にそろうと輪郭が角張る)
+    mat2 r1 = mat2(0.8, 0.6, -0.6, 0.8), r2 = mat2(0.28, 0.96, -0.96, 0.28);
+    vec2 pa = r1*p*uBleedS*1.2;
+    vec2 w1 = vec2(0.55*vn(pa) + 0.3*vn(r2*pa*2.03 + 1.7) + 0.15*vn(r1*pa*4.1 + 5.3),
+                   0.55*vn(pa + 7.0) + 0.3*vn(r2*pa*2.03 + 9.1) + 0.15*vn(r1*pa*4.1 + 2.9)) - 0.5;
+    vec2 qa = r2*p*uBleedS*7.0, qb = r1*p*uBleedS*7.0;
+    vec2 w2 = vec2(0.6*vn(vec2(qa.x*0.35, qa.y*2.2) + 3.0) + 0.4*vn(qb*1.7 + 4.0),
+                   0.6*vn(vec2(qb.x*2.2, qb.y*0.35) + 13.0) + 0.4*vn(qa*1.7 + 8.0)) - 0.5;
+    vec2 off = (w1*1.8 + w2*(0.6 + 1.4*uFiber))*R/asp;
+    vec4 t2 = texture(uTex, uv + off);
+    float k = uBleedPool*clamp(t2.b/max(t2.r, 0.02), 0.0, 1.0)*2.0;   // 墨溜まり (遅い所・筆圧) はさらに遠くまで
+    if(uBleedInk > 0.0) k += uBleedInk*clamp(t2.g/max(t2.r, 0.02), 0.0, 1.0)*1.5;
+    if(k > 0.0) t2 = max(t2, texture(uTex, uv + off*(1.0 + k)));
+    t2 *= uHalo;
+    t = max(t, t2);
+    a = t.r; tone = t.g; pool = t.b; over = t.a;
+  }
+  if(uTaps > 0 && uBleedStyle < 0.5){
     // にじみ: 紙の繊維ノイズでゆがめて周囲の墨を集める
-    float R = uBleed*0.022;
+    float R = uBleed*0.022*uBleedR*uGrow;
+    float bv = 1.0;
+    if(uBleedVar > 0.0){ bv = max(0.0, 1.0 + uBleedVar*(vn(p*1.7 + 23.0)*2.0 - 1.0)*0.9); R *= max(0.1, bv); }
     vec2 wv = vec2(vn(p*uBleedS), vn(p*uBleedS + 17.0)) - 0.5;
     wv += (vec2(vn(p*uBleedS*vec2(5.0, 0.7)), vn(p*uBleedS*vec2(0.7, 5.0))) - 0.5)*uFiber;
     float sum = 0.0;
     for(int i=0; i<uTaps; i++){
       float ang = float(i)*2.39996, rr = sqrt((float(i)+0.5)/float(uTaps));
       vec2 o = (vec2(cos(ang), sin(ang))*rr + wv*1.2)*R/asp;
-      sum += texture(uTex, vUv + o).r;
+      vec4 tt = texture(uTex, uv + o);
+      float wgt = tt.r;
+      if(uBleedInk > 0.0) wgt *= mix(1.0, clamp(tt.g/max(tt.r, 0.02), 0.0, 1.0)*1.6, uBleedInk);
+      sum += wgt + uBleedPool*tt.b*1.5;
     }
     sum /= float(uTaps);
     float fib = vn(p*uBleedS*3.0)*0.5 + 0.5;
     float halo = smoothstep(0.12, 0.62, sum*fib*1.4);
-    float wet = max(a, min(1.0, halo*0.82*uHalo));
+    float wet = max(a, min(1.0, halo*0.82*uHalo*min(bv, 2.0)));
     tone += (wet - a)*0.72;
     a = wet;
   }
@@ -1748,22 +1873,22 @@ void main(){
   if(uRing > 0.0){
     float rp = uRes.y/180.0;
     vec2 q = rp/uRes;
-    float nb = 0.25*(texture(uTex, vUv + vec2(q.x, 0.0)).r + texture(uTex, vUv - vec2(q.x, 0.0)).r + texture(uTex, vUv + vec2(0.0, q.y)).r + texture(uTex, vUv - vec2(0.0, q.y)).r);
+    float nb = 0.25*(texture(uTex, uv + vec2(q.x, 0.0)).r + texture(uTex, uv - vec2(q.x, 0.0)).r + texture(uTex, uv + vec2(0.0, q.y)).r + texture(uTex, uv - vec2(0.0, q.y)).r);
     float ring = clamp((t.r - nb)*3.0, 0.0, 1.0);
     dark *= mix(1.0, 0.2 + 0.8*ring, uRing);
   }
   vec3 ink = mix(uInk2, uInk, dark);
   if(uSheen > 0.0){
     vec2 px = 2.0/uRes;
-    float gx = texture(uTex, vUv + vec2(px.x, 0.0)).r - texture(uTex, vUv - vec2(px.x, 0.0)).r;
-    float gy = texture(uTex, vUv + vec2(0.0, px.y)).r - texture(uTex, vUv - vec2(0.0, px.y)).r;
+    float gx = texture(uTex, uv + vec2(px.x, 0.0)).r - texture(uTex, uv - vec2(px.x, 0.0)).r;
+    float gy = texture(uTex, uv + vec2(0.0, px.y)).r - texture(uTex, uv - vec2(0.0, px.y)).r;
     ink += uSheen*0.5*pow(clamp(dot(normalize(vec3(gx, gy, 0.6)), normalize(vec3(cos(uSheenAng), sin(uSheenAng), 0.6/0.7810250))), 0.0, 1.0), uSheenPow);
   }
   a = clamp(a, 0.0, 1.0)*uFade*uLive;
   vec3 paper = uPaper*(1.0 - uGrain*0.07*(tooth - 0.5));
   if(uMottle > 0.0) paper *= 1.0 - uMottle*0.3*(vn(p*3.0 + 41.0)*0.65 + vn(p*7.5 + 13.0)*0.35);
-  if(uVig > 0.0){ vec2 vc = vUv*2.0 - 1.0; paper *= 1.0 - uVig*0.55*smoothstep(0.35, 1.5, length(vc)); }
-  vec4 S = uSheetOn > 0.5 ? texture(uSheet, vUv) : vec4(0.0);   // 紙の上の書き置き → その上に書いている途中の墨
+  if(uVig > 0.0){ vec2 vc = uv*2.0 - 1.0; paper *= 1.0 - uVig*0.55*smoothstep(0.35, 1.5, length(vc)); }
+  vec4 S = uSheetOn > 0.5 ? texture(uSheet, uv)*inside : vec4(0.0);   // 紙の上の書き置き → その上に書いている途中の墨
   if(uOpaque > 0.5){ frag = vec4(mix(paper*(1.0 - S.a) + S.rgb, ink, a), 1.0); }
   else {
     float bo = S.a + uPaperAlpha*(1.0 - S.a);
@@ -1792,26 +1917,7 @@ void main(){
     this.splatProg = link(splatVS, splatFS, 'splat');
     this.compProg = link(compVS, compFS, 'comp');
 
-    const attr = (prog, name, size, stride, off)=>{
-      const loc = gl.getAttribLocation(prog, name);
-      if(loc < 0) return;
-      gl.enableVertexAttribArray(loc);
-      gl.vertexAttribPointer(loc, size, gl.FLOAT, false, stride*4, off*4);
-    };
-    this.vao = gl.createVertexArray();
-    this.vbo = gl.createBuffer();
-    this.ibo = gl.createBuffer();
-    gl.bindVertexArray(this.vao);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
-    gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
-    [['aPos',2,0],['aTan',2,2],['aA',4,4],['aB',4,8],['aC',3,12],['aD',3,15],['aE',4,18],['aF',1,22],['aG',2,23]].forEach(([n,s,o])=>attr(this.strokeProg, n, s, 25, o));
-    this.splatVAO = gl.createVertexArray();
-    this.splatVBO = gl.createBuffer();
-    gl.bindVertexArray(this.splatVAO);
-    gl.bindBuffer(gl.ARRAY_BUFFER, this.splatVBO);
-    [['aPos',2,0],['aDir',2,2],['aS',3,4],['aD',3,7],['aU',2,10]].forEach(([n,s,o])=>attr(this.splatProg, n, s, 12, o));
-    gl.bindVertexArray(null);
-    gl.bindBuffer(gl.ARRAY_BUFFER, null);
+    Object.assign(this, this._geomNew());
     this.emptyVAO = gl.createVertexArray();
 
     if(document.fonts && document.fonts.addEventListener){
@@ -1827,9 +1933,9 @@ void main(){
     if(Math.round(P.textPick || 0) === 0) this._curText = null;
     else if(this._curText === null) this._pickText();
     const sig = [this._text(), P.fontFamily, Math.round(P.bold||0), Math.round(P.layout||0), Math.round(P.align||0), P.tracking, P.leading, P.wrap,
-                 P.scatter, P.shift, P.stagger, P.stair, P.scatterRot, P.compose, P.aspect, P.aspectRand, P.slantRand, P.sizeMin, P.sizeMax, P.sizeSkew, P.even, P.area, (this._aspect||0).toFixed(2),
+                 P.scatter, P.shift, P.stagger, P.stair, P.compose, P.aspect, P.aspectRand, P.sizeMin, P.sizeMax, P.sizeSkew, P.even, P.area, (this._aspect||0).toFixed(2),
                  P.styleRand, P.fontRand, P.brushRand, P.brushAmt, P.layoutRand, P.link, P.linkThin, P.hataku, P.stretch,
-                 Math.round(P.smooth), P.spur, P.merge, P.hane, P.haraiLen, Math.round(P.seed||0), P.vary, P.strokeGap, P.speedVar, this._fontGen, this._noteSig()].join('\u0001');
+                 Math.round(P.smooth), P.spur, P.merge, P.hane, P.haraiLen, Math.round(P.seed||0), P.vary, P.strokeGap, P.speedVar, this._fontGen, this._noteSig(), this._styleRandom() ? this._stylePick : 0].join('\u0001');
     if(sig === this._sig) return;
     const t = performance.now();
     if(!force && this._sig && t - this._lastBuild < 90) return;   // スライダードラッグ中の連続再構築を間引く
@@ -1870,6 +1976,8 @@ void main(){
     const bpm = (typeof BPM !== 'undefined' && BPM.bpm) ? BPM.bpm : 120;
     const beatMode = !hold && (typeof App !== 'undefined' && App.beatMode === 'beat');
     const bt = (beatMode && opts.beat != null) ? opts.beat : clock * 6.0 * (bpm / 120);
+    // bt は beat ×A (drone では Speed。beat ×A と連動) の分だけ速く進む。拍の秒数もそれで割る (書く時間が短すぎるかの判定に使う)
+    const tempoK = Math.max(1/16, (typeof App === 'undefined') ? 1 : beatMode ? (App._normalizeBeatScale ? App._normalizeBeatScale(App.beatScale) : (App.beatScale || 1)) : (App.speed || 1));
     const fb = bt - Math.floor(bt);
     const kick = beatMode ? Math.pow(1 - fb, 4) : 0.5 + 0.5*Math.sin(bt*0.3);
     const audioReact = (typeof Audio !== 'undefined' && Audio.react) ? Math.max(0, Math.min(1, Audio.react)) : 0;
@@ -1896,7 +2004,7 @@ void main(){
       reveal = cv.reveal;
     } else if(beatM && beatMode){
       // beat モード: Bar Beats の中で全部を書き切る。A / B は Beat Rate で進み、収まらなければ詰める
-      const btSec = 60 / bpm, lead = (1/60) / btSec;       // lead: 切替の瞬間が白紙にならないよう 1 コマ先を見る
+      const btSec = 60 / bpm / tempoK, lead = (1/60) / btSec;       // lead: 切替の瞬間が白紙にならないよう 1 コマ先を見る
       const barBt = Math.max(1/32, +P.beatBar || 4), m = Math.floor(bt / barBt), t = bt - m*barBt;
       const atk = Math.max(0, Math.min(1, +P.penTime || 0));
       if(this._beatBase === null || m < this._beatBase) this._beatBase = m;
@@ -1926,7 +2034,7 @@ void main(){
       }
     } else if(beatM){
       // Beat Write (drone): 実際の拍の頭に揃えて 1 単位ずつ進める (drone の bt は実際の拍の 3 倍)
-      const btPerBeat = beatMode ? 1 : 3, btSec = 60 / bpm / btPerBeat;
+      const btPerBeat = beatMode ? 1 : 3, btSec = 60 / bpm / btPerBeat / tempoK;
       const stepBt = Math.max(1/32, +P.beatRate || 1) * btPerBeat, n = Math.floor(bt / stepBt), fr = bt / stepBt - n;
       const atk = Math.max(0, Math.min(1, +P.penTime || 0)), fadeBt = fbs * btPerBeat;
       // 筆で書く時間が 2 フレームも無いときは一気に出す。切替の瞬間が白紙にならないよう 1 コマ先を見る
@@ -1990,24 +2098,27 @@ void main(){
     gl.clear(gl.COLOR_BUFFER_BIT);
 
     const U = (p, n)=> (p._u[n] !== undefined) ? p._u[n] : (p._u[n] = gl.getUniformLocation(p, n));
+    // 1 つの骨格 (本体か同時書きのレーン) を墨の FBO に描く。置き場所を返す
+    const drawLane = ()=>{
+    const fit = Math.min(w*0.84/this._bbox[0], h*0.84/this._bbox[1]);
     // Canvas では書き置きのレイアウトの位置・大きさ・回転で書く (Zoom / Rotate はその上に掛ける)
     const nt = cvOn ? this._note : null;
     const plX = nt ? nt.x*2 - 1 : (+P.posX||0), plY = nt ? 1 - nt.y*2 : (+P.posY||0);
     const plZoom = Math.max(0.05, +P.zoom||1)*(nt ? nt.s*FUDE_CV_BASE/0.84*Math.max(0.05, +P.noteScale||1) : 1);
-    const plRot = (+P.rotate||0) + (nt ? nt.rot : 0);   // rot2 は y 下向きの座標で時計回り (Canvas2D の rotate と同じ向き)
+    const plRot = (cvOn ? 0 : (+P.rotate||0)) + (nt ? nt.rot : 0);   // rot2 は y 下向きの座標で時計回り (Canvas2D の rotate と同じ向き)。Canvas の Rotate は合成で画面全体に掛ける
     const setPlace = (p)=>{
       gl.uniform2f(U(p,'uRes'), w, h);
       gl.uniform2f(U(p,'uPos'), plX, plY);
       gl.uniform1f(U(p,'uFit'), fit);
       gl.uniform1f(U(p,'uZoom'), plZoom);
       gl.uniform1f(U(p,'uRot'), plRot*Math.PI/180);
-      gl.uniform1f(U(p,'uSlant'), +P.slant||0);
       gl.uniform1f(U(p,'uStretch'), +P.stretch||1);
       gl.uniform1f(U(p,'uSway'), dz(P.sway));
       gl.uniform1f(U(p,'uTime'), bt);
       const d2r = Math.PI/180, spin = (+P.spin3d||0)*bt/16*Math.PI*2;
       gl.uniform3f(U(p,'u3Rot'), (+P.tilt3dX||0)*d2r, (+P.tilt3dY||0)*d2r + spin, (+P.tilt3dX||+P.tilt3dY||+P.spin3d||dz(P.depth3d)||dz(P.wave3d)) ? dz(P.persp3d) : 0);
       gl.uniform2f(U(p,'u3Z'), dz(P.depth3d), dz(P.wave3d));
+      gl.uniformMatrix2fv(U(p,'uFaceM'), false, this._faceMat(nt && nt.face));
     };
 
     if(this.indexCount > 0){
@@ -2020,6 +2131,9 @@ void main(){
       setPlace(sp);
       const f = (n, v)=> gl.uniform1f(U(sp,n), v);
       f('uW0', W0); f('uPressF', +P.pressFreq||1); f('uWobbleF', +P.wobbleFreq||1);
+      f('uSpdK', this._spdK || 1); f('uSpdSense', Math.max(0, +(P.speedSense ?? 1)));
+      f('uSpdW', Math.max(0, Math.min(1, +P.speedWidth || 0))); f('uSpdWC', Math.max(0.05, +(P.speedWidthCurve ?? 1))); f('uSpdWV', Math.max(0, +P.speedWidthVar || 0));
+      f('uSlowPool', Math.max(0, +P.bleedSpeed || 0)); f('uSwellPool', Math.max(0, +P.bleedPress || 0));
       f('uBreath', kick*pulse*0.22 + au*0.3); f('uReveal', reveal); f('uShown', shown); f('uFrac', frac); f('uGone', gone);
       gl.uniform1i(U(sp,'uUnit'), unit);
       // 筆の組: スライダーをライブに効かせるため毎フレーム詰める
@@ -2066,6 +2180,15 @@ void main(){
       gl.blendEquation(gl.FUNC_ADD);
       gl.disable(gl.BLEND);
     }
+    return { nt, plX, plY, plZoom, plRot, fit };
+    };
+    const lanePlaces = [drawLane()];
+    const { nt, plX, plY, plZoom, plRot } = lanePlaces[0];
+    if(cvOn && this._lanes) for(const L of this._lanes){
+      if(!L.active) continue;
+      this._laneSwap(L); const pl = drawLane(); pl.lane = L; this._laneSwap(L);
+      lanePlaces.push(pl);
+    }
 
     // 合成
     gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo || null);
@@ -2089,13 +2212,17 @@ void main(){
     c('uDry', nt && nt.brush ? Math.max(0, Math.min(1, +P.nbDry || 0)) : 0);
     c('uOpaque', opaque ? 1 : 0); c('uPaperAlpha', dz(P.paperAlpha));
     c('uSheenAng', (+P.sheenAngle||0)*Math.PI/180); c('uSheenPow', Math.max(1, +P.sheenPower||1)); c('uGamma', Math.max(0.1, +P.inkGamma||1));
+    { const gb = Math.max(0, +P.bleedGrow || 0)*(beatMode ? 1 : 3), t0 = cvOn && this._cvs ? this._cvs.t : this._t0;   // にじみは書き始めから gb 拍で広がりきる
+      c('uGrow', gb > 0 && t0 !== null && t0 !== undefined ? 0.15 + 0.85*Math.max(0, Math.min(1, (bt - t0)/gb)) : 1); }
+    { const bst = Math.round(P.bleedStyle || 0); c('uBleedStyle', bst === 2 ? (this._bleedPick || 0) : bst); }   // Random は書くたび (nextSet) に引いた方 c('uBleedR', Math.max(0.05, +(P.bleedRadius ?? 1))); c('uBleedVar', Math.max(0, +P.bleedVar || 0));
+    c('uBleedPool', Math.max(0, Math.max(+P.bleedSpeed || 0, +P.bleedPress || 0))); c('uBleedInk', Math.max(0, +P.bleedInk || 0));
     c('uRing', dz(P.edgeRing)); c('uHalo', Math.max(0, +P.bleedHalo)/100); c('uGrainS', Math.max(0.1, +P.grainSize)/100);
     c('uMottle', dz(P.paperMottle)); c('uVig', dz(P.paperVignette));
     gl.uniform1i(U(cp,'uTaps'), taps);
     c('uDepthOut', kd ? 1 : 0);
     gl.uniform1i(U(cp,'uSheet'), 1);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, null); gl.activeTexture(gl.TEXTURE0);
-    c('uSheetOn', 0); c('uLive', 1);
+    c('uSheetOn', 0); c('uLive', 1); c('uViewRot', 0);   // 焼き付けは回さない (紙には回す前の向きで残す)
     gl.bindVertexArray(this.emptyVAO);
     if(cv && cv.bake){   // 書き終えた書き置きを紙に焼き付けて (premultiplied の over)、頂点データを残す
       gl.bindFramebuffer(gl.FRAMEBUFFER, this.sheetFBO);
@@ -2108,9 +2235,14 @@ void main(){
       gl.bindFramebuffer(gl.FRAMEBUFFER, opts.fbo || null);
       if(kd) gl.enable(gl.DEPTH_TEST);
       c('uOpaque', opaque ? 1 : 0); c('uPaperAlpha', dz(P.paperAlpha)); c('uDepthOut', kd ? 1 : 0);
-      this._cvKeep({ posX:plX, posY:plY, zoom:plZoom, rotate:plRot, fit, slant:+P.slant||0, stretch:+P.stretch||1, w, h });
+      for(const pl of lanePlaces){   // 同時書きのレーンも 1 つずつ残す
+        if(pl.lane) this._laneSwap(pl.lane);
+        this._cvKeep({ posX:pl.plX, posY:pl.plY, zoom:pl.plZoom, rotate:pl.plRot, viewRotate:+P.rotate||0, fit:pl.fit, stretch:+P.stretch||1, w, h });
+        if(pl.lane) this._laneSwap(pl.lane);
+      }
     }
     if(cvOn){
+      c('uViewRot', (+P.rotate||0)*Math.PI/180);
       gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.sheetTex); gl.activeTexture(gl.TEXTURE0);
       c('uSheetOn', 1); c('uLive', cv && cv.live ? 1 : 0);
     }
@@ -2129,15 +2261,25 @@ Fude.PDefaults = JSON.parse(JSON.stringify(Fude.P));
 Fude.STYLES = FUDE_STYLES;
 Fude.COLORS = FUDE_COLORS;
 Fude.CV_LAYOUTS = FUDE_CV_LAYOUTS;
+Fude.CV_PATTERNS = FUDE_CV_PATTERNS;
+// noteLayout の保存値をパターンの先頭の型の番号に直す (外した型は置き換え先へ)
+Fude.cvLayoutValue = v=>{
+  const n = FUDE_CV_LAYOUTS[Math.round(v || 0) - 1];
+  const pattern = FUDE_CV_PATTERNS.find(([, types])=>types.includes(n)) || FUDE_CV_PATTERNS.find(([, types])=>types.includes(FUDE_CV_DROP[n]));
+  return pattern ? FUDE_CV_LAYOUTS.indexOf(pattern[1][0]) + 1 : Math.round(v || 0);
+};
 Fude.PARAM_HELP = {
   noteOn:'Canvas: 1 つ書いて紙に焼き付けたら、レイアウトの次の位置へ移って書き続け、画面を埋めていく',
-  noteLayout:'書き置きの並べ方 (Type Deformer の Canvas と同じ型 + constructivist)。Auto は周回ごとにランダム',
-  noteConstAuto:'constructivist (斜めの軸・極端な大小・縦横の交差) を Auto のランダム候補に含めるか',
-  noteGeo:'constructivist の筆の要素: 帯・細い線・短い棒・円相を筆で書く (直線や図形は描かない)',
+  angleSys:'Canvas の角度の系。45° = 0 / 45 / 90 / 135°、30° = 0 / 30 / 60 / 90 / 120 / 150°。書き置きの向き・配置・筆の線がこの刻みにそろう (Rotate の分は回る)',
+  projection:'Canvas の投影。Flat = 画面に平らに置く / Iso = 書き置きを部屋の隅の床・左の壁・右の壁に貼る (面の軸は Angle System の刻みの線。45° × Iso、30° × Iso)',
+  noteLayout:'配置パターン (Constructivist の決まりは常に掛かる。向きと配置は Angle System の刻みの線にそろう)。Auto は周回ごとにランダム。2 つの型をまとめたパターンは周回ごとにどちらかを使う',
+  noteGeo:'帯・細い線・短い棒・円相を筆で書く (直線や図形は描かない)',
   nbBand:'筆の要素: 帯の数。1 本目がメインの線 (Main Axis の向き)。0 で帯なし',
   nbLine:'筆の要素: 軸と平行な線の数',
   nbBar:'筆の要素: 軸に直交する短い棒の数',
   nbCircle:'筆の要素: 円相の数',
+  nbCircleSize:'円相の直径 (画面の高さ 1 あたり)。Length・Length Var も掛かる',
+  nbCircleVar:'円相の大きさのばらつき (Circle Size に対する ±割合。0 で一定)',
   nbMainAxis:'メインの線の向き: 水平 / 垂直 / 水平か垂直をランダム / 自由 (軸と同じ斜め)',
   nbMainOffset:'メインの線を大きい書き置きからずらす量',
   nbThick:'細い線の半幅 (画面の高さ 1 あたり)。筆の書体設定とは別',
@@ -2154,6 +2296,16 @@ Fude.PARAM_HELP = {
   nbOrder:'筆の要素を書く順: 書き置きの前 / 後 / 混ぜる',
   nbWrite:'筆の要素 1 つを書く拍数 (0 = Note Write と同じ)',
   noteCount:'1 周回で書く書き置きの数 (密度)',
+  noteSimul:'同時に書き始める書き置きの数 (1 = 1 つずつ)',
+  cvAngle:'Canvas Layout: 配置全体を画面の中心まわりに回す (次の周回から)',
+  cvSpread:'Canvas Layout: 配置の広がり (中心からの距離の倍率)',
+  cvOffX:'Canvas Layout: 配置全体を横へずらす',
+  cvOffY:'Canvas Layout: 配置全体を縦へずらす',
+  cvMirror:'Canvas Layout: 配置の反転。左右 / 上下 / 上下左右 / 周回ごとにランダム',
+  cvNoteRot:'Canvas Layout: 書き置きを一律に回す',
+  cvRotVar:'Canvas Layout: 書き置きごとの回転のばらつき',
+  cvSnap:'Canvas Layout: 書き置きの角度を丸める刻み',
+  cvScaleVar:'Canvas Layout: 書き置きごとの大きさのばらつき',
   noteScale:'書き置きの大きさ',
   noteWrite:'1 つ書く拍数 (速さ)',
   noteGap:'焼き付けてから次を書き始めるまでの拍数',
@@ -2161,7 +2313,7 @@ Fude.PARAM_HELP = {
   noteFull:'埋まったら: 白紙に戻す (頂点データも消す) / 上書きし続ける (古い書き置きを Dim だけ薄めて重ねる)',
   noteDim:'上書きのとき、次の周回で古い書き置きを薄める割合',
   textPick:'書く文字列の選び方。Text のまま / Word Set からランダム / 順番',
-  style:'書の書体。選ぶと筆・骨格のスライダーに値が入る',
+  style:'書の書体。選ぶと筆・骨格のスライダーに値が入る。Random は書くたびに楷書〜篆書から 1 つ引く (スライダーは変えない)',
   fontFamily:'骨格を取る元のフォント',
   beatMode:'Beat ごとの書き方。Off / A 1 筆ずつ / B 1 文字ずつ / C 全文字列',
   beatBar:'beat モードで全部を書き切る拍数。この長さごとに次のセットへ',
@@ -2188,13 +2340,11 @@ Fude.PARAM_HELP = {
   shift:'組の方向と直交にずらすランダム (基線のばらつき)',
   stagger:'1 文字おきに互い違いにずらす量',
   stair:'1 文字ごとに階段状にずらす量',
-  scatterRot:'1 文字ごとの傾きのランダム (度)',
   sizeMin:'大きさのランダムの下限 (倍)',
   sizeMax:'大きさのランダムの上限 (倍)',
   sizeSkew:'大きさの偏り。大きいほど小さい字が多く、たまに大きい字',
   aspect:'文字の縦横比。大きいほど横長',
   aspectRand:'縦横比のランダム',
-  slantRand:'傾斜のランダム',
   compose:'ランダム配置の方式。完全に乱数 / ポスターの型',
   even:'完全に乱数のときの散らばりの均等さ。0 で純粋な乱数',
   area:'ランダム配置の広さ',
@@ -2251,6 +2401,17 @@ Fude.PARAM_HELP = {
   inkGamma:'墨の濃淡のカーブ。大きいと淡い部分が増える',
   edgeRing:'縁だけ濃く残す。中が抜けて輪郭になる',
   bleedHalo:'にじみの滲み出し',
+  bleedStyle:'にじみ方。Soft = 周りをぼかす / Ink = 輪郭のシルエットそのものを紙の繊維でゆがめて外へ広げる / Random = 書くたびに Soft か Ink',
+  bleedRadius:'にじみの届く範囲の倍率',
+  bleedVar:'にじみのばらつき。場所ごとに広がりと濃さが変わる',
+  bleedSpeed:'筆が遅い所ほどにじむ (角・打ち込み・止め・遅い画)',
+  bleedPress:'筆圧で太った所ほどにじむ',
+  bleedInk:'墨の濃い所ほどにじむ',
+  bleedGrow:'書き始めからこの拍数で広がりきる (0 = すぐ)',
+  speedSense:'筆の遅さの感度 (Speed Bleed / Speed Width 共通)',
+  speedWidth:'筆が速いほど太細の差 (筆圧・打ち込み・止め・角) を小さくする',
+  speedWidthCurve:'Speed Width の効き方。大きいほど速い所だけに効く',
+  speedWidthVar:'Speed Width の画ごとのばらつき',
   grain:'紙の目',
   grainSize:'紙の目の粗さ',
   paperMottle:'紙の雲むら (低周波の濃淡)',
@@ -2277,14 +2438,13 @@ Fude.PARAM_HELP = {
   zoom:'拡大',
   posX:'横位置',
   posY:'縦位置',
-  rotate:'回転 (度)',
+  rotate:'回転 (度)。Canvas のときは画面全体 (書き置きの並びと 0° / 45° / 90° の線ごと) を回す',
   tilt3dX:'3D: 前後の傾き (度)',
   tilt3dY:'3D: 左右の振り (度)',
   spin3d:'3D: 縦軸まわりの自転。16 拍 (drone では 16 秒) で 1 周 × この値',
   depth3d:'3D: 文字ごとに奥行きを散らす',
   wave3d:'3D: 面を奥行き方向にうねらせる',
   persp3d:'3D: 遠近の強さ (0 = 平行投影)',
-  slant:'傾き',
   stretch:'縦の伸び',
   colorMode:'色の決め方。指定色 / セット / セットからランダム / 完全ランダム',
   colorSet:'Color が「セットから選ぶ」のときのセット',
@@ -2292,7 +2452,7 @@ Fude.PARAM_HELP = {
   ink2:'淡い墨の色。Density が低いほど寄る',
   paper:'紙の色。Slot A では背景に敷く',
 };
-Fude.PARAM_NEEDS = {boilRate:'boil', bleedScale:'bleed', bleedFiber:'bleed', bleedTaps:'bleed', bleedHalo:'bleed', splatSize:'splatter', splatSpread:'splatter', sheenAngle:'sheen', sheenPower:'sheen', grainSize:'grain'};
+Fude.PARAM_NEEDS = {boilRate:'boil', bleedScale:'bleed', bleedFiber:'bleed', bleedTaps:'bleed', bleedHalo:'bleed', bleedStyle:'bleed', bleedRadius:'bleed', bleedVar:'bleed', bleedSpeed:'bleed', bleedPress:'bleed', bleedInk:'bleed', bleedGrow:'bleed', splatSize:'splatter', splatSpread:'splatter', sheenAngle:'sheen', sheenPower:'sheen', grainSize:'grain'};
 Fude.paramOn = function(key){
   const P = this.P, r = k=> Math.round(P[k] || 0);
   const beatMode = (typeof App !== 'undefined') && App.beatMode === 'beat';
@@ -2318,7 +2478,7 @@ Fude.paramOn = function(key){
   if(key === 'even' && (pick <= 1 || composed)) return false;
   if((key === 'sizeMin' || key === 'sizeMax' || key === 'sizeSkew') && pick === 2 && composed) return false;
   if((key === 'sizeMin' || key === 'sizeMax' || key === 'sizeSkew' || key === 'scatter' || key === 'shift' || key === 'stagger' || key === 'stair'
-      || key === 'scatterRot' || key === 'aspectRand' || key === 'slantRand' || key === 'align' || key === 'wrap') && pick === 4) return false;
+      || key === 'aspectRand' || key === 'align' || key === 'wrap') && pick === 4) return false;
   if(key === 'linkThin' && weak('link')) return false;
   if(key === 'pressFreq' && weak('pressure')) return false;
   if(key === 'wobbleFreq' && weak('wobble')) return false;

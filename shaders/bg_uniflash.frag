@@ -667,8 +667,10 @@ vec3 bg_uniflash(vec2 fc){
   float paper = clamp(uPaper, 0.0, 100.0) * 0.01;
   vec3 fillCol = vec3(paper);
   vec3 inkCol = mix(uInk, vec3(0.0), paper);
-  vec3 rgb = fillCol;
-  float a = paper;
+  // 原稿モードの白い紙は Slot A のときだけ敷く。Slot B では吹き出しの外を透かし、下の Slot A を見せる
+  //   (吹き出しの中の塗り fillCol と線は Slot B でも不透明のまま)
+  vec3 rgb = fillCol * uSlotIsA;
+  float a = paper * uSlotIsA;
 
   vec2 I = (fc - resolution * 0.5) / max(bgZoom, 0.001) + resolution * 0.5 + bgCamPx;
   vec2 p = (I - 0.5 * resolution) / resolution.y;

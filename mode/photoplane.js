@@ -57,38 +57,38 @@ const PhotoPlane = {
   },
   // 第 2 弾 param の UI 定義 [label,key,min,max,step,fmt,relayout]。refreshPhotoParams が既存行の後ろに並べる
   SPECS:[
-    ['Corner Round','cornerRound',0,100,1,v=>v.toFixed(0)+'%',false],
-    ['Frame Width','frameW',0,60,1,v=>v.toFixed(0)+'%',false],
-    ['Aspect Squash','aspectSq',0,200,5,v=>v.toFixed(0)+'%',false],
-    ['Twist','twist',-60,60,2,v=>v.toFixed(0)+'\u00b0',false],
+    ['Corner Round','cornerRound',0,100,0.01,v=>ParamValues.pct(v),false],
+    ['Frame Width','frameW',0,60,0.01,v=>ParamValues.pct(v),false],
+    ['Aspect Squash','aspectSq',0,200,0.01,v=>ParamValues.pct(v),false],
+    ['Twist','twist',-60,60,0.01,v=>ParamValues.deg(v),false],
     ['Fold','fold',-0.8,0.8,0.05,v=>v.toFixed(2),false],
-    ['Crop Zoom','cropZoom',60,300,5,v=>v.toFixed(0)+'%',false],
-    ['Cluster X','clX',30,150,5,v=>v.toFixed(0)+'%',false],
-    ['Cluster Y','clY',30,150,5,v=>v.toFixed(0)+'%',false],
-    ['Cluster Z','clZ',30,150,5,v=>v.toFixed(0)+'%',false],
-    ['Hollow','hollow',0,100,1,v=>v.toFixed(0)+'%',false],
-    ['Look Height','lookY',-5,5,0.25,v=>v.toFixed(2),false],
-    ['Cam Roll','camRoll',-90,90,1,v=>v.toFixed(0)+'\u00b0',false],
-    ['Roam Elev Range','roamEl',50,200,5,v=>v.toFixed(0)+'%',false],
-    ['Roam Dist Range','roamDist',0,200,5,v=>v.toFixed(0)+'%',false],
-    ['Spin Var','spinVar',0,200,5,v=>v.toFixed(0)+'%',false],
-    ['Axis Lock','axisLock',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Crop Zoom','cropZoom',60,300,0.01,v=>ParamValues.pct(v),false],
+    ['Cluster X','clX',30,150,0.01,v=>ParamValues.pct(v),false],
+    ['Cluster Y','clY',30,150,0.01,v=>ParamValues.pct(v),false],
+    ['Cluster Z','clZ',30,150,0.01,v=>ParamValues.pct(v),false],
+    ['Hollow','hollow',0,100,0.01,v=>ParamValues.pct(v),false],
+    ['Look Height','lookY',-5,5,0.01,v=>v.toFixed(2),false],
+    ['Cam Roll','camRoll',-90,90,0.01,v=>ParamValues.deg(v),false],
+    ['Roam Elev Range','roamEl',50,200,0.01,v=>ParamValues.pct(v),false],
+    ['Roam Dist Range','roamDist',0,200,0.01,v=>ParamValues.pct(v),false],
+    ['Spin Var','spinVar',0,200,0.01,v=>ParamValues.pct(v),false],
+    ['Axis Lock','axisLock',0,100,0.01,v=>ParamValues.pct(v),false],
     ['Swirl','swirl',-1,1,0.05,v=>v.toFixed(2),false],
-    ['Float','floatAmp',0,1.2,0.1,v=>v.toFixed(1),false],
-    ['Warp Y Ratio','warpYRatio',20,300,5,v=>v.toFixed(0)+'%',false],
-    ['Light Azimuth','lightAz',-180,180,5,v=>v.toFixed(0)+'\u00b0',false],
-    ['Light Elev','lightEl',-60,60,5,v=>v.toFixed(0)+'\u00b0',false],
-    ['Specular','spec',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Float','floatAmp',0,1.2,0.1,v=>v.toFixed(2),false],
+    ['Warp Y Ratio','warpYRatio',20,300,0.01,v=>ParamValues.pct(v),false],
+    ['Light Azimuth','lightAz',-180,180,0.01,v=>ParamValues.deg(v),false],
+    ['Light Elev','lightEl',-60,60,0.01,v=>ParamValues.deg(v),false],
+    ['Specular','spec',0,100,0.01,v=>ParamValues.pct(v),false],
     ['Spec Shine','specShine',2,128,2,v=>v.toFixed(0),false],
-    ['Rim','rim',0,100,1,v=>v.toFixed(0)+'%',false],
-    ['Fog','fog',0,100,1,v=>v.toFixed(0)+'%',false],
-    ['Fog Start','fogStart',0,30,0.5,v=>v.toFixed(1),false],
-    ['Hue Var','hueVar',0,180,5,v=>v.toFixed(0)+'\u00b0',false],
-    ['Bright Var','brightVar',0,100,1,v=>v.toFixed(0)+'%',false],
-    ['Soft Focus','softFocus',0,6,0.1,v=>v.toFixed(1),false],
-    ['Fringe','fringe',0,100,1,v=>v.toFixed(0)+'%',false],
-    ['Mosaic','mosaic',0,30,1,v=>v.toFixed(0)+'%',false],
-    ['Edge Fade','edgeFade',0,100,1,v=>v.toFixed(0)+'%',false],
+    ['Rim','rim',0,100,0.01,v=>ParamValues.pct(v),false],
+    ['Fog','fog',0,100,0.01,v=>ParamValues.pct(v),false],
+    ['Fog Start','fogStart',0,30,0.5,v=>v.toFixed(2),false],
+    ['Hue Var','hueVar',0,180,0.01,v=>ParamValues.deg(v),false],
+    ['Bright Var','brightVar',0,100,0.01,v=>ParamValues.pct(v),false],
+    ['Soft Focus','softFocus',0,6,0.1,v=>v.toFixed(2),false],
+    ['Fringe','fringe',0,100,0.01,v=>ParamValues.pct(v),false],
+    ['Mosaic','mosaic',0,30,0.01,v=>ParamValues.pct(v),false],
+    ['Edge Fade','edgeFade',0,100,0.01,v=>ParamValues.pct(v),false],
   ],
   // 色 param の UI 定義 [label,key]
   COLORS:[['Tint','tint'],['Frame Color','frameColor'],['Rim Color','rimColor']],
@@ -132,6 +132,7 @@ precision highp float;
 in vec2 aPos;   // -0.5..0.5
 in vec2 aUV;    // 0..1
 uniform mat4 uMVP, uModel;
+uniform float uHeightScale;
 uniform float uTime, uAspect, uScale, uSeed, uBendMul, uWarpAmp, uWarpFreq, uWarpYR, uFold, uTwist, uPaper;
 uniform vec2 uBend;      // 端の反り x,y
 uniform vec2 uPaperDir;  // FX の紙を曲げる方向 (板ごとに固定)
@@ -186,12 +187,14 @@ void main(){
     n = normalize(cross(displace(qp+vec2(e,0.0))-pc, displace(qp+vec2(0.0,e))-pc));
   }
   if(uNvOn > 0.5) pc += n * (nw * fx3dNeedleH(nkey, uvp * vec2(uAspect, 1.0) * 3.2) * min(0.5 * (uAspect / uNvGrid.x + 1.0 / uNvGrid.y), uNvCell));
+  vec2 sourceUv = mix(uCrop.xy, uCrop.zw, uvp);
+  pc += n * (fx3dHeight(sourceUv) * uHeightScale / max(abs(uScale), 1e-5));
   vec4 wp = uModel * vec4(pc*uScale, 1.0);
   vWorld = wp.xyz;
   vN = mat3(uModel) * n;
   vUv = mix(uCrop.xy, uCrop.zw, uvp);
   vL = uvp; vQ = qp;
-  gl_Position = uMVP * wp;
+  gl_Position = fx3dApply(fx3dShape(uMVP * wp, sourceUv));
 }`;
     const fs = `#version 300 es
 precision highp float;
@@ -234,9 +237,9 @@ void main(){
   if(uSpec > 0.0){ vec3 H = normalize(L+V); col += uSpec*pow(max(dot(N,H), 0.0), uShine); }
   if(uRim > 0.0) col += uRimCol*(uRim*pow(1.0 - max(dot(N,V), 0.0), 3.0));
   if(uFog > 0.0){ float f = 1.0 - exp(-uFog*max(length(uCam - vWorld) - uFogStart, 0.0)); col = mix(col, uFogCol, f); }
-  frag = vec4(col, 1.0);
+  frag = vec4(fx3dFoldShade(fx3dShapeShade(col, tex * uTint)), 1.0);
 }`;
-    this.prog = this._link(vs.replace('precision highp float;\n', 'precision highp float;\n' + GL.needleCellGLSL()), fs);
+    this.prog = this._link(vs.replace('precision highp float;\n', 'precision highp float;\n' + GL.reliefGLSL() + GL.fx3dShapeGLSL() + GL.fx3dHookGLSL() + GL.needleCellGLSL()), fs.replace('precision highp float;\n', 'precision highp float;\n' + GL.fx3dShapeShadeGLSL() + GL.fx3dShadeGLSL()));
     if(!this.prog){ this.initialized=true; this.ok=false; return; }
     this._buildGeo(28);
     // デフォルトのプレースホルダ (画像未ロード時): グレー市松
@@ -423,6 +426,10 @@ void main(){
     gl.clear(gl.COLOR_BUFFER_BIT|gl.DEPTH_BUFFER_BIT);
 
     gl.useProgram(this.prog); gl.bindVertexArray(this.vao);
+    GL._fx3dHeightBind(this.prog, [1 / 28, 1 / 28], !!this._fx);
+    gl.uniform1f(gl.getUniformLocation(this.prog, 'uHeightScale'), fxH * 0.5);
+    if(this._fx && typeof Fx3d !== 'undefined') Fx3d.fold(gl, this.prog, proj, fxD, view);
+    else { GL.fx3dShapeUniforms(this.prog, null, 0, null); GL.fx3dUniforms(this.prog, null, 0, null); }
     gl.uniformMatrix4fv(this.loc.uMVP,false,vp);
     gl.uniform1f(this.loc.uTime,t);
     gl.uniform3f(this.loc.uCam,eye[0],eye[1],eye[2]);
@@ -609,4 +616,17 @@ PhotoPlane.PARAM_HELP = {
   frameColor:'縁取りの色',
   rimColor:'リムライトの色',
 };
+
+// Params パネルの欄分け (UI.bindEngineHints → UI.engineBlocks)。ここに無い行は元のブロックに残る
+PhotoPlane.PARAM_GROUPS = [
+  ['Layout', ['count','size','sizeVar','spread','seed','clX','clY','clZ','hollow']],
+  ['Crop', ['cropMin','cropMax','stretch','cropZoom','aspectSq']],
+  ['Frame', ['cornerRound','frameW','edgeFade','frameColor']],
+  ['Motion', ['spin','autorot','beatPulse','spinVar','axisLock','swirl','floatAmp']],
+  ['Deform', ['bend','warpAmp','warpFreq','twist','fold','warpYRatio']],
+  ['Camera', ['fov','dist','camEl','lookY','camRoll','roamEl','roamDist']],
+  ['Light', ['ambient','lightAz','lightEl','spec','specShine','rim','rimColor']],
+  ['Color', ['bg','tint','hueVar','brightVar','fog','fogStart']],
+  ['Lens', ['softFocus','fringe','mosaic']],
+];
 PhotoPlane.PARAM_NEEDS = {specShine:'spec', rimColor:'rim', frameColor:'frameW', fogStart:'fog'};

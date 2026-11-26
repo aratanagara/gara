@@ -15,6 +15,7 @@
 const VS = `#version 300 es
 precision highp float;
 uniform sampler2D uTex;
+uniform highp int uSamples;   // 8。ANGLE が色比較ループを巨大展開しないよう uniform 上限
 out vec2 vNdc;
 flat out vec3 vBg;
 void main(){
@@ -25,22 +26,24 @@ void main(){
   vec2 pts[8] = vec2[8](vec2(0.02, 0.02), vec2(0.5, 0.02), vec2(0.98, 0.02), vec2(0.02, 0.5),
                         vec2(0.98, 0.5), vec2(0.02, 0.98), vec2(0.5, 0.98), vec2(0.98, 0.98));
   vec3 c[8];
-  for(int i = 0; i < 8; i++) c[i] = texture(uTex, fx3dSrc(pts[i])).rgb;
+  for(int i = 0; i < uSamples; i++) c[i] = texture(uTex, fx3dSrc(pts[i])).rgb;
   float best = 1e9; vBg = c[0];
-  for(int i = 0; i < 8; i++){
+  for(int i = 0; i < uSamples; i++){
     float s = 0.0;
-    for(int j = 0; j < 8; j++) s += length(c[i] - c[j]);
+    for(int j = 0; j < uSamples; j++) s += length(c[i] - c[j]);
     if(s < best){ best = s; vBg = c[i]; }
   }
 }`;
-const FS = `#version 300 es
+// レイ描画と高さ出力は maskV / hgtD / roundP を同じソースから使う。
+const SHAPE = `#version 300 es
 precision highp float;
 in vec2 vNdc;
 flat in vec3 vBg;
 uniform sampler2D uTex;
+uniform highp int uSamples;
 uniform vec3 uEye, uXc, uYc, uZc;
 uniform vec2 uRes;
-uniform float uAsp, uT, uShade, uUseAlpha, uSteps, uTwist, uMode, uRound, uRz;
+uniform float uAsp, uT, uShade, uUseAlpha, uSteps, uStepPx, uTwist, uMode, uRound, uRz;
 //RELIEF
 out vec4 frag;
 bool inB(vec2 uv){ return all(greaterThanEqual(uv, -uOvM)) && all(lessThanEqual(uv, 1.0 + uOvM)); }   // 余白の外は形なし (ミラーを押し出さない)
@@ -55,6 +58,9 @@ vec2 uvAt(vec3 d, float t){ return (uEye.xy + d.xy * t) / (2.0 * vec2(uAsp, 1.0)
 float twA(vec3 d, float t){ return uTwist * clamp(-(uEye.z + d.z * t) / max(uT, 1e-5), 0.0, 1.0); }
 vec2 rot(vec2 q, float a){ float c = cos(a), s = sin(a); return vec2(c * q.x - s * q.y, s * q.x + c * q.y); }
 vec2 tuv(vec3 d, float t){ return rot(uEye.xy + d.xy * t, -twA(d, t)) / (2.0 * vec2(uAsp, 1.0)) + 0.5; }   // 厚みの中の点 → 断面 (元の絵) の uv
+// 厚みの中を進む歩数: この画素のレイが前面から奥まで断面上を横に動く長さ (px) を uStepPx ごとに。上限 uSteps
+//   (カメラの傾きだけで決めると、傾き 0 でも遠近で見えている画面の端の側面が数枚の層に割れていた)。中点を挟んで、ひねりの弧も拾う
+int stepsFor(vec3 d, float t0, float t1){ float tm = 0.5 * (t0 + t1); vec2 a = tuv(d, t0), m = tuv(d, tm), b = tuv(d, t1); float L = length((m - a) * uRes) + length((b - m) * uRes); return int(clamp(ceil(L / uStepPx), 4.0, uSteps)); }
 // Depth: 0..1 の高さ (形の外は -1)。シェーダの深度を量 (3D Depth × 表示の割合) で割って 0..1 に戻す。深度が無ければ形の濃さ
 float hgtD(vec2 uv){
   float m = maskV(uv);
@@ -76,12 +82,23 @@ float roundP(vec2 uv){
   for(int i = 1; i <= 4; i++){
     float rr = float(i) * 0.25, o = 0.0;
     vec2 r = rr * uRound / uRes;
-    for(int j = 0; j < 8; j++) if(maskV(uv + r * RDIR[j]) < 0.35) o += 1.0;
+    for(int j = 0; j < uSamples; j++) if(maskV(uv + r * RDIR[j]) < 0.35) o += 1.0;
     if(o > 0.0){ dd = rr - 0.25 * o / 8.0; break; }
   }
   float s = clamp(dd, 0.0, 1.0);
   return sqrt(1.0 - (1.0 - s) * (1.0 - s));
 }
+`;
+const HEIGHT_FS = SHAPE + `
+void main(){
+  vec2 uv = fx3dAB(vNdc * 0.5 + 0.5);
+  float C = maskV(uv), H = uT * C;
+  if(uMode > 0.5) H = uT * max(hgtD(uv), 0.0);
+  else if(uRz > 0.0) H = C >= 0.35 ? uT - uRz * (1.0 - roundP(uv)) : 0.0;
+  // 最大厚み 0.5 を既存 relief の最大 0.3 に合わせる。k / Depth / Pop は uT に含む。
+  frag = vec4(0.6 * H, C, 0.0, 1.0);
+}`;
+const FS = SHAPE + `
 // 前面からの奥行き z の所で、断面 uv が中身か (Depth / Round 用)
 float zIn(vec3 d, float t){ return -(uEye.z + d.z * t); }
 bool solidAt(vec3 d, float t){
@@ -92,10 +109,27 @@ bool solidAt(vec3 d, float t){
 }
 // 面の奥行き (前面からの深さ)。Depth = 高さの地形 / Round = 縁の丸み
 float surfH(vec2 uv){ return uMode > 0.5 ? uT * (1.0 - max(hgtD(uv), 0.0)) : uRz * (1.0 - roundP(uv)); }
+// 側面の色と向き: 輪郭のにじみ (地の色・縁取り) を拾うと、その色が奥へ伸びて縞 = 紙を重ねた層に見える。
+//   輪郭から 3〜7px 内側を 3 点平均で拾い、向きも広めの幅の勾配で取る (厚み 0 付近は従来どおりその場の色 = 元画面と一致)
+vec2 sideN(vec2 uvH){
+  vec2 e = 3.0 / uRes;
+  vec2 g = vec2(maskV(uvH + vec2(e.x, 0.0)) - maskV(uvH - vec2(e.x, 0.0)), maskV(uvH + vec2(0.0, e.y)) - maskV(uvH - vec2(0.0, e.y)));
+  return dot(g, g) > 1e-8 ? -normalize(g) : vec2(0.0);
+}
+vec4 sideCol(vec2 uvH, vec2 n2){
+  vec2 st = n2 / uRes * min(1.0, uT / 0.02);
+  vec4 c = vec4(0.0); float w = 0.0;
+  for(int i = 0; i < 3; i++){                 // 細い線では内側の点が反対側の地へ抜けるので、形の中の点だけを使う
+    vec2 q = uvH - st * (3.0 + 2.0 * float(i));
+    float m = step(0.5, maskV(q));
+    c += src(q) * m; w += m;
+  }
+  return w > 0.0 ? c / w : src(uvH - st);
+}
 // Depth / Round: 前面も含めてレイで判定する
 vec4 shapedMain(vec3 d, float t0, float t1, vec2 uv0){
-  int N = int(uSteps);
-  float dt = (t1 - t0) / uSteps, ta = t0, tb = -1.0;
+  int N = stepsFor(d, t0, t1);
+  float dt = (t1 - t0) / float(N), ta = t0, tb = -1.0;
   if(solidAt(d, t0)) tb = t0;
   else for(int i = 1; i <= N; i++){
     float t = t0 + dt * float(i);
@@ -112,9 +146,8 @@ vec4 shapedMain(vec3 d, float t0, float t1, vec2 uv0){
   vec4 c; vec3 nW;
   if(uMode < 0.5 && z >= uRz - 1e-5 && uRz < uT){
     // 角丸より奥 = 側面 (Flat と同じ: 縁の色を少し内側から拾い、形の勾配の法線)
-    vec2 g = vec2(maskV(uvH + vec2(e.x, 0.0)) - maskV(uvH - vec2(e.x, 0.0)), maskV(uvH + vec2(0.0, e.y)) - maskV(uvH - vec2(0.0, e.y)));
-    vec2 n2 = dot(g, g) > 1e-8 ? -normalize(g) : vec2(0.0);
-    c = src(uvH - n2 * e * min(1.0, uT / 0.02));
+    vec2 n2 = sideN(uvH);
+    c = sideCol(uvH, n2);
     nW = vec3(rot(normalize(vec2(n2.x / uAsp, n2.y) + 1e-6), twA(d, tb)), 1e-3);
   } else {
     // 面 (前面・角丸・深度の地形): 色は縁の近くなら少し内側から拾う (輪郭のにじみに地の色が混ざるため)、法線は面の奥行きの勾配
@@ -144,8 +177,8 @@ void main(){
   vec4 B = vec4(0.0);
   if(cov < 0.999){
     // 厚みの中を奥へ進み、最初に形へ入った所 = 側面
-    int N = int(uSteps);
-    float dt = (t1 - t0) / uSteps, ta = t0, tb = -1.0;
+    int N = stepsFor(d, t0, t1);
+    float dt = (t1 - t0) / float(N), ta = t0, tb = -1.0;
     for(int i = 1; i <= N; i++){
       float t = t0 + dt * float(i);
       if(maskV(tuv(d, t)) >= 0.35){ tb = t; break; }   // 0.5 より低め: 1px の細い線も途切れずに壁になる
@@ -154,9 +187,8 @@ void main(){
     if(tb > 0.0){
       for(int j = 0; j < 5; j++){ float tm = 0.5 * (ta + tb); if(maskV(tuv(d, tm)) >= 0.35) tb = tm; else ta = tm; }
       vec2 uvH = tuv(d, tb), e = 1.5 / uRes;
-      vec2 g = vec2(maskV(uvH + vec2(e.x, 0.0)) - maskV(uvH - vec2(e.x, 0.0)), maskV(uvH + vec2(0.0, e.y)) - maskV(uvH - vec2(0.0, e.y)));
-      vec2 n2 = dot(g, g) > 1e-8 ? -normalize(g) : vec2(0.0);                    // 形の外向き
-      vec4 c = src(uvH - n2 * e * min(1.0, uT / 0.02));                          // 縁の色を少し内側から拾う (厚み 0 付近はその場の色 = 元画面と一致)
+      vec2 n2 = sideN(uvH);                                                      // 形の外向き
+      vec4 c = sideCol(uvH, n2);                                                 // 縁の色を内側から拾う (厚み 0 付近はその場の色 = 元画面と一致)
       vec3 col = uUseAlpha > 0.5 ? c.rgb / max(c.a, 1e-3) : c.rgb;
       vec3 N = normalize(vec3(rot(normalize(vec2(n2.x / uAsp, n2.y) + 1e-6), twA(d, tb)), 1e-3));   // 断面の法線をひねりの分だけ回す
       float lit = max(dot(N, normalize(vec3(-0.45, 0.8, 0.4))), 0.0);
@@ -176,14 +208,30 @@ const num = (v, d)=>{ v = +v; return isFinite(v) ? v : d; };
 Fx3d.EXTRA.extrude = {
   ov: true,
   render(gl, o){
-    const pr = Fx3d.prog(gl, 'extrude', VS, this._fs || (this._fs = FS.replace('//RELIEF', GL.reliefGLSL())));   // 深度 (vjRelief) は FS で読む
+    const H = o.heightOnly ? GL._fx3dHeightTarget(o.w, o.h) : null;
+    if(H){ H.valid = false; if(!H.ready) return false; }
+    const pr = o.heightOnly
+      ? Fx3d.prog(gl, 'extrudeHeight', VS, this._hfs || (this._hfs = HEIGHT_FS.replace('//RELIEF', GL.reliefGLSL())))
+      : Fx3d.prog(gl, 'extrude', VS, this._fs || (this._fs = FS.replace('//RELIEF', GL.reliefGLSL())));   // 深度 (vjRelief) は FS で読む
     if(!pr) return false;
     const post = o.post || {}, asp = o.asp, k = o.k, t = o.clock || 0;
     const dep = o.dz(num(post.fx3dExtrudeDepth, 0.5)), tilt = o.dz(num(post.fx3dExtrudeTilt, 0.5));
     const spin = o.dz(num(post.fx3dExtrudeSpin, 0.3)), shade = o.dz(num(post.fx3dExtrudeShade, 0.5));
     const tw = k * o.dz(num(post.fx3dExtrudeTwist, 0)) * Math.PI / 2;   // ひねり (厚み全体で最大 ±90°)
+    if(!o.heightOnly && post.fx3dExtrudeMode === 'rock' && typeof RockMesh !== 'undefined'){
+      // Rock: 表示中のシェーダが SDF を持つ (S035 Flowing Metal) なら、その形をポリゴンに。帯の配置と模様を関数で持つ (S091 SigInt Bands) なら、帯を厚みのある板に。
+      //   見えているスロットを優先し (A → B。3D Slot で指定があればそのスロットだけ)、見えていないスロットのシェーダは使わない。どちらでもなければ Depth と同じ
+      const keys = post.fx3dSlot === 'A' ? ['A'] : post.fx3dSlot === 'B' ? ['B'] : ['A', 'B'];
+      const cf = Math.max(0, Math.min(1, App.crossfade != null ? +App.crossfade : 0));
+      const seen = k=> App.slotVisibleAmount(k) > 0 && (keys.length === 1 || (k === 'A' ? cf < 0.999 : cf > 0.001));
+      for(const sk of keys.filter(seen).sort((a, b)=> (a === 'B' ? cf : 1 - cf) > (b === 'B' ? cf : 1 - cf) ? -1 : 1)){
+        const sl = GL.slots[sk];
+        if(RockMesh.supports(sl) && this._rockMesh(gl, o, post, k, t, sl)) return true;
+        if(typeof BandMesh !== 'undefined' && BandMesh.supports(sl) && this._rockMesh(gl, o, post, k, t, sl, true)) return true;
+      }
+    }
     const T = k * (0.03 + 0.47 * dep) * Fx3d.popAt('extrude', 0);   // 厚み (画面の高さ = 2)。3D Pop で弾んで出る
-    const mode = post.fx3dExtrudeMode === 'depth' ? 1 : 0;
+    const mode = (post.fx3dExtrudeMode === 'depth' || post.fx3dExtrudeMode === 'rock') ? 1 : 0;
     const rPx = mode ? 0 : o.dz(num(post.fx3dExtrudeRound, 0)) * 24 * (o.h / 1080);   // 角丸の半径 (px。1080p で最大 24px)
     const Rz = Math.min(T, rPx / (o.h / 2));                                          // 角丸の深さ (画面の座標。厚みを超えない)
     let ph;
@@ -191,14 +239,10 @@ Fx3d.EXTRA.extrude = {
     else ph = t * spin * 1.2;
     const tl = k * tilt * 0.75;   // 傾き (全開で約 43°)
     const az = tl * Math.sin(ph + 0.8), el = tl * (0.45 + 0.25 * Math.cos(ph * 0.7));
-    const cam = Fx3d.camera(asp, az, el, 1.35 + 0.3 * k * tilt);
-    const v = cam.view;
-    // 厚みの中を進む歩数: 画面上での奥行きの長さ (px) の 1 px ごと (粗いと細い線の側面が縞になる)
-    const Lpx = T * Math.hypot(Math.sin(az), Math.sin(el)) / Math.max(0.3, Math.cos(tl)) * (o.h / 2) * 1.6;
-    const sw = Math.abs(tw) * Math.hypot(asp, 1) * (o.h / 2);   // ひねりで断面の端が動く長さ (px)
-    const steps = mode ? Math.max(4, Math.min(96, Math.ceil((Lpx + sw) / 2.5)))   // Depth: 地形はなめらかなので歩幅 2.5px (+ 二分探索)
-                       : Math.max(4, Math.min(sw > 0 ? 256 : 192, Math.ceil(Lpx + sw)));
-    gl.bindFramebuffer(gl.FRAMEBUFFER, o.fbo);
+    const cam = o.heightOnly ? null : Fx3d.camera(asp, az, el, 1.35 + 0.3 * k * tilt);
+    // 厚みの中を進む歩数は画素ごとにシェーダで決める (stepsFor)。ここは歩幅と上限だけ。Depth は地形がなめらかなので歩幅 2px (+ 二分探索)
+    const stepPx = mode ? 2 : 1, steps = mode ? 160 : 256;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, H ? H.fbo : o.fbo);
     gl.viewport(0, 0, o.w, o.h);
     gl.disable(gl.SCISSOR_TEST); gl.disable(gl.BLEND); gl.disable(gl.DEPTH_TEST); gl.disable(gl.CULL_FACE);
     gl.clearColor(0, 0, 0, 0);
@@ -209,10 +253,14 @@ Fx3d.EXTRA.extrude = {
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
     gl.uniform1i(uloc(gl, pr, 'uTex'), 0);
-    gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
-    gl.uniform3f(uloc(gl, pr, 'uXc'), v[0], v[4], v[8]);
-    gl.uniform3f(uloc(gl, pr, 'uYc'), v[1], v[5], v[9]);
-    gl.uniform3f(uloc(gl, pr, 'uZc'), v[2], v[6], v[10]);
+    gl.uniform1i(uloc(gl, pr, 'uSamples'), 8);
+    if(cam){
+      const v = cam.view;
+      gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
+      gl.uniform3f(uloc(gl, pr, 'uXc'), v[0], v[4], v[8]);
+      gl.uniform3f(uloc(gl, pr, 'uYc'), v[1], v[5], v[9]);
+      gl.uniform3f(uloc(gl, pr, 'uZc'), v[2], v[6], v[10]);
+    }
     gl.uniform2f(uloc(gl, pr, 'uRes'), o.w, o.h);
     gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
     gl.uniform1f(uloc(gl, pr, 'uT'), T);
@@ -224,10 +272,45 @@ Fx3d.EXTRA.extrude = {
     // 背景が透過で来るフレーム (紙抜き / 前の 3D 段が描いた) は alpha で形を取る
     gl.uniform1f(uloc(gl, pr, 'uUseAlpha'), (GL._matte || GL._fx3dBgNeed) ? 1 : 0);
     gl.uniform1f(uloc(gl, pr, 'uSteps'), steps);
+    gl.uniform1f(uloc(gl, pr, 'uStepPx'), stepPx);
     Fx3d.ovUniforms(gl, pr, o);
     Fx3d.reliefUniforms(gl, pr);   // 表示中のシェーダの深度 (Depth で使う)
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
+    if(H){
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      // メッシュのセル幅に応じて読む mip を作る。素材の unit 0 は元のままに戻す。
+      gl.activeTexture(gl.TEXTURE0 + 11);
+      gl.bindTexture(gl.TEXTURE_2D, H.tex);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.activeTexture(gl.TEXTURE0);
+      H.os = (o.ovM || [0, 0]).map(v=>2 * v);
+      H.frame = GL.frame;
+      H.valid = true;
+    }
+    return true;
+  },
+  // Rock (SDF のポリゴン): RockMesh で形を作り直し、縦軸まわりに回るカメラで描く (横・裏も本物の形)
+  _rockMesh(gl, o, post, k, t, slot, bands){
+    if(!bands && !RockMesh.update(gl, slot)) return false;
+    const asp = o.asp, tilt = o.dz(num(post.fx3dExtrudeTilt, 0.5)), spin = o.dz(num(post.fx3dExtrudeSpin, 0.3));
+    let ph;
+    if(o.beatMode){ const b = o.beat || 0, f = b - Math.floor(b), y = 1 - f; ph = (Math.floor(b) + 1 - y * y * y) * spin * Math.PI / 2; }
+    else ph = t * spin * 1.2;
+    const az = k * ph, el = k * tilt * 0.75 * (0.45 + 0.25 * Math.cos(ph * 0.7));
+    const cam = Fx3d.camera(asp, az, el, 1.35 + k * (1.2 + 0.8 * tilt));   // 回すぶん離れて、岩の中に入らない
+    const M = Fx3d.msaa(gl, o.w, o.h);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
+    gl.viewport(0, 0, o.w, o.h);
+    gl.disable(gl.SCISSOR_TEST); gl.disable(gl.BLEND); gl.disable(gl.CULL_FACE);
+    gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true);
+    gl.clearColor(0, 0, 0, 0); gl.clearDepth(1);
+    gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
+    if(bands){
+      const dep = o.dz(num(post.fx3dExtrudeDepth, 0.5)), shade = o.dz(num(post.fx3dExtrudeShade, 0.5));
+      BandMesh.draw(gl, slot, M.fbo, o.w, o.h, cam.view, cam.proj, k, asp, 0.05 + 0.5 * dep, shade * Math.min(1, k / 0.35));   // 板の厚み = Depth
+    } else RockMesh.draw(gl, slot, M.fbo, o.w, o.h, cam.view, cam.proj, k, asp);
+    Fx3d.resolve(gl, o.fbo, o.w, o.h);
     return true;
   },
 };

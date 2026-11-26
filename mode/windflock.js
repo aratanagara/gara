@@ -649,6 +649,17 @@ WindFlock.PDefaults = JSON.parse(JSON.stringify(WindFlock.P));
 
 if (typeof window !== 'undefined') window.WindFlock = WindFlock;
 
+// Params を欄ごとのブロックに分ける (UI.bindEngineHints → UI.engineBlocks。欄に無い行は元のブロックに残る)
+WindFlock.PARAM_GROUPS = [
+  ['Sheets', ['sheets', 'spread', 'place', 'radius', 'coil', 'spin', 'warp', 'width', 'density', 'lanes', 'overlap', 'sheetTaper', 'seed']],
+  ['Plate', ['plate', 'size', 'sizeVar', 'jitter', 'distort', 'round', 'curve', 'gaps', 'plateTaper', 'plateShear', 'flare', 'beads', 'beadN']],
+  ['Motion', ['speed', 'angle', 'yaw', 'wander', 'trail', 'gap', 'gust', 'flutter', 'hold', 'phase']],
+  ['Path', ['reachX', 'reachY', 'reachZ', 'pathFreq', 'peakPos']],
+  ['Stray', ['stray', 'strayReach', 'straySize', 'scatter', 'scatterDist', 'scatterEnd']],
+  ['Camera', ['camYaw', 'camPitch', 'depth', 'persp', 'posX', 'posY', 'lens']],
+  ['Line', ['fill', 'line', 'lineVar', 'lineSkip', 'detail', 'shade', 'shadeFill', 'hatchPitch']],
+  ['Color', ['bgMode', 'ink', 'paper', 'bgColor', 'tailCol', 'hueVar', 'toneVar', 'tailMix', 'paperAlpha']],
+];
 WindFlock.PARAM_HELP = {
   sheets:'風の面 (帯) の数',
   speed:'流速',

@@ -582,6 +582,17 @@ const CyberUI = {
 };
 
 // パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+// Params パネルの欄 (UI.bindEngineHints が欄ごとの .section に分ける。行は data-pkey で探す)
+CyberUI.PARAM_GROUPS = [
+    ['Motion', ['spin', 'speed', 'audioSync']],
+    ['Ring', ['clockScale', 'clockX', 'clockY', 'ringTilt', 'ringR', 'ringGap', 'tickCount', 'tickWeight', 'ringWeight']],
+    ['Bars', ['barLen', 'barCount', 'barFill', 'barMin', 'hillSharp', 'spikeAmt', 'barShuffle', 'barPulse', 'barFall', 'atkPunch', 'innerBars', 'bars']],
+    ['Hands & Emblem', ['handLen', 'handWeight', 'handLabel', 'emblemSize', 'emblemTilt', 'clock', 'emblem']],
+    ['Band & Console', ['bandLen', 'conLines', 'conSize', 'cdBars', 'console']],
+    ['Frame', ['frameInset', 'frameWeight', 'bracketSize', 'titleSize', 'iconScale']],
+    ['Color', ['black', 'inkColor']],
+];
+
 CyberUI.PARAM_HELP = {
   spin:'リングの回転の速さ',
   speed:'全体の時間の速さ',

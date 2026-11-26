@@ -595,6 +595,16 @@ Pen.PARAM_HELP = {
   monoInk:'Mono のときの墨に足す色',
   palTint:'パレットの色に掛ける色',
 };
+
+// Params パネルの欄分け (UI.bindEngineHints → UI.engineBlocks)。ここに無い行は元のブロックに残る
+Pen.PARAM_GROUPS = [
+  ['Lines', ['count','len','spread','arcBow','zigRate','zigAmp']],
+  ['Stroke', ['width','peak','milliRate','jumpRate','jumpPow','blotSize','waver','taper']],
+  ['Texture', ['bleed','kasure','grain','edgeF','edgeSoft']],
+  ['Camera', ['depth','persp','camPitch','camYaw','camRoll','camWander','depthFog']],
+  ['Timing', ['speed','hold','fade','spawnDiv']],
+  ['Color', ['color','palRun','edgeShade','opacity','bgColor','monoInk','palTint']],
+];
 Pen.PARAM_NEEDS = {zigAmp:'zigRate', jumpPow:'jumpRate', blotSize:'milliRate', waver:'milliRate'};
 Pen.paramOn = function(key){
   const c = Math.round(this.P.color);

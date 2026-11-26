@@ -544,6 +544,16 @@ TransFlock.PDefaults = JSON.parse(JSON.stringify(TransFlock.P));
 
 if (typeof window !== 'undefined') window.TransFlock = TransFlock;
 
+// Params パネルの欄 (UI.bindEngineHints が欄ごとの .section に分ける。行は data-pkey で探す)
+TransFlock.PARAM_GROUPS = [
+    ['Flock', ['birds', 'cluster', 'stray', 'islands', 'islandLen', 'birdVar', 'strayReach', 'clusterR']],
+    ['Motion', ['speed', 'wheel', 'warp', 'audio', 'pathSize', 'pathDepth', 'loopRate', 'flutter', 'wheelX', 'wheelY', 'wheelZ', 'warpRate', 'beatPulse']],
+    ['Brush', ['step', 'gap', 'spread', 'brush', 'jitter', 'grain', 'fill', 'line', 'lineSkip', 'detail', 'stampLen', 'stampWid', 'stampRound', 'twist', 'edgeSoft', 'speckle']],
+    ['Pressure & Tail', ['trail', 'pressure', 'pressRate', 'pressMin', 'tailTaper', 'tailMix', 'tailFade', 'tailColor']],
+    ['Camera', ['persp', 'depth', 'follow', 'centerX', 'centerY', 'roll', 'eyeDist', 'camSpin', 'depthSlope']],
+    ['Color', ['paperAlpha', 'ink', 'paper']],
+];
+
 TransFlock.PARAM_HELP = {
   birds:'鳥 (ストローク) の数',
   speed:'飛ぶ速さ',

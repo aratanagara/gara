@@ -1662,7 +1662,26 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
 // @param uCrackTint color = #ffffff @desc 割れ目の発光へ掛けるティント色
 // @param uSkyTint color = #ffffff @desc 背景の空へ掛けるティント色
 // @param uRimTint color = #ffffff @desc リムライトへ掛けるティント色
-uniform float speed; uniform float warp; uniform float glitch; uniform float dist;
+// @param uGyroidFreq 50..180 = 100 @desc 主構造の密度 (%)
+// @param uGyroidMix 0..200 = 100 @desc 2 層目の構造の混ぜ具合 (%)
+// @param uBranchMix 0..200 = 100 @desc 3 層目の細い枝の強さ (%)
+// @param uTubeVariation 0..100 = 0 @desc 柱の太さのむら (%)
+// @param uTwist -90..90 = 0 @desc 高さに沿うねじれ (度)
+// @param uStructureYaw -180..180 = 0 @desc 構造の横回転 (度)
+// @param uDetailScale 50..180 = 100 @desc 表面の凹凸の細かさ (%)
+// @param uDetailAmp 0..200 = 100 @desc 表面の凹凸の強さ (%)
+// @param uDetailLayers 1..4 = 4 @desc 凹凸の層数。四捨五入、4 で元の質感
+// @param uCrackWidth 25..250 = 100 @desc 割れ目全体の幅 (%)
+// @param uCrackSharp 25..300 = 100 @desc 割れ目の発光境界の鋭さ (%)
+// @param uSpecular 0..200 = 0 @desc 面の光沢の強さ (%)
+// @param uSpecSharp 25..400 = 100 @desc 光沢の鋭さ (%)。光沢があるときに効く
+// @param uMottle 0..100 = 0 @desc 表面の色むらの強さ (%)
+// @param uMottleScale 25..300 = 100 @desc 色むらの細かさ (%)。色むらがあるときに効く
+// @param uInnerGlow 0..300 = 100 @desc 割れ目の内部発光の強さ (%)
+uniform float speed;
+uniform float warp;
+uniform float glitch;
+uniform float dist;
 uniform float uWarpWave; // 2 段目のうねりの強さ (%)
 uniform float uGlitchSlide; // 横ずれの幅 (%)
 uniform float uTubeThick; // 柱 (主ジャイロイド) の太さ (%)
@@ -1689,6 +1708,22 @@ uniform vec3 uSurfTint; // 氷の面の色味
 uniform vec3 uCrackTint; // 割れ目の発光色の色味
 uniform vec3 uSkyTint; // 背景の空の色味
 uniform vec3 uRimTint; // リムライトの色
+uniform float uGyroidFreq;
+uniform float uGyroidMix;
+uniform float uBranchMix;
+uniform float uTubeVariation;
+uniform float uTwist;
+uniform float uStructureYaw;
+uniform float uDetailScale;
+uniform float uDetailAmp;
+uniform float uDetailLayers;
+uniform float uCrackWidth;
+uniform float uCrackSharp;
+uniform float uSpecular;
+uniform float uSpecSharp;
+uniform float uMottle;
+uniform float uMottleScale;
+uniform float uInnerGlow;
 #define MAX_STEPS 64
 #define MAX_DIST 100.
 #define SURF_DIST .001
@@ -1716,22 +1751,45 @@ vec3 glitchP(vec3 p){
   return p;
 }
 vec3 Transform(vec3 p){
+  // ねじれはカメラの見る中心 (流れる前の座標の原点) を軸に掛ける。流れたあとの座標で掛けると、時間とともに軸が遠ざかって形が崩れる
+  if(uTwist != 0.0){ p.xz *= Rot(p.y*uTwist*PI/180.0); }
   p.z -= iTime*speed*.1;
   p.y -= .3 + uCaveShiftY/100.0;
   p.x -= uCaveShiftX/100.0;
+  if(uStructureYaw != 0.0){ p.xz *= Rot(uStructureYaw*PI/180.0); }
   p = glitchP(p);
   return p;
 }
 float GetDist(vec3 p){
+  float twistR = length(p.xz);   // ねじれの軸 (流れる前の原点) からの距離。距離の補正に使う
   p = Transform(p);
-  float g1 = sdGyroid(p, 3.2, .016*(uTubeThick / 100.0), 1.4);      // scale=周波数(柱の数) / thickness=柱の太さ
+  // 既定では元の定数・座標を使い、加算順も変えない。
+  float mainFreq = 3.2;
+  if(uGyroidFreq != 100.0){ mainFreq *= uGyroidFreq/100.0; }
+  float tubeThick = .016*(uTubeThick / 100.0);
+  if(uTubeVariation != 0.0){ tubeThick *= 1.0 + .75*(uTubeVariation/100.0)*sin(p.y*1.7)*sin(p.x*1.3+p.z*.9); }
+  float g1 = sdGyroid(p, mainFreq, tubeThick, 1.4);
   float g2 = sdGyroid(p, 6.6, .016, .3);
   float g3 = sdGyroid(p, 12.5, .016, .3);
-  float g4 = sdGyroid(p, 21.5, .016, .3);
-  float g5 = sdGyroid(p, 36.5, .016, .3);
-  float g6 = sdGyroid(p, 61.0, .016, .3);
-  float g7 = sdGyroid(p, 111.0, .016, .3);
+  if(uGyroidMix != 100.0){ g2 *= uGyroidMix/100.0; }
+  if(uBranchMix != 100.0){ g3 *= uBranchMix/100.0; }
+  vec3 detailP = p;
+  if(uDetailScale != 100.0){ detailP *= uDetailScale/100.0; }
+  float layers = floor(uDetailLayers + .5);
+  float g4 = sdGyroid(detailP, 21.5, .016, .3);
+  float g5 = 0.;
+  float g6 = 0.;
+  float g7 = 0.;
+  if(layers >= 2.){ g5 = sdGyroid(detailP, 36.5, .016, .3); }
+  if(layers >= 3.){ g6 = sdGyroid(detailP, 61.0, .016, .3); }
+  if(layers >= 4.){ g7 = sdGyroid(detailP, 111.0, .016, .3); }
+  if(uDetailAmp != 100.0){
+    float amp = uDetailAmp/100.0;
+    g4 *= amp; g5 *= amp; g6 *= amp; g7 *= amp;
+  }
   g1 -= g2*.3; g1 -= g3*.2; g1 += g4*.1; g1 += g5*.1; g1 += g6*.8; g1 += g7*.5;
+  // ねじれは軸から離れた点ほど形を大きくずらし、距離の見積もりが過大になる (レイが行き過ぎて白く飛ぶ)。軸からの距離に応じて縮める
+  if(uTwist != 0.0){ return g1*.9 / (1.0 + abs(uTwist*PI/180.0)*twistR); }
   return g1*.9;
 }
 float RayMarch(vec3 ro, vec3 rd){
@@ -1785,13 +1843,27 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord){
     float dif = n.y*.5+.5;
     if(uLightDirX != 0.0 || uLightDirZ != 0.0){ dif = dot(n, normalize(vec3(uLightDirX/100.0, 1.0, uLightDirZ/100.0)))*.5+.5; }
     if(uLightFalloff == 100.0){ col += dif*dif*uSurfTint; } else { col += pow(max(dif, 0.0), 2.0*uLightFalloff/100.0)*uSurfTint; }
+    if(uMottle != 0.0){
+      vec3 mp = p*(uMottleScale/100.0);
+      float mottle = sin(mp.x*2.3+sin(mp.y*3.1))*sin(mp.z*2.7-mp.y);
+      col *= vec3(1.0) + mottle*(uMottle/100.0)*vec3(.35, .15, -.2);
+    }
+    if(uSpecular != 0.0){
+      vec3 lightDir = normalize(vec3(uLightDirX/100.0, 1.0, uLightDirZ/100.0));
+      float spec = pow(max(dot(reflect(-lightDir, n), -rd), 0.0), 32.0*(uSpecSharp/100.0));
+      col += spec*(uSpecular/100.0)*uSurfTint;
+    }
     float g2 = sdGyroid(p, 10.76*(uCellScale / 100.0), .03, .3);
     col *= smoothstep(-.1, .1, g2);
     float crackWidth = -0.02 + smoothstep(0., -.5, n.y)*.04*(uCrackFlare / 100.0);
-    float cracks = smoothstep(crackWidth, -.03, g2);
+    float crackG2 = g2;
+    if(uCrackWidth != 100.0){ crackG2 -= .02*(uCrackWidth/100.0 - 1.0); }
+    float cracks = smoothstep(crackWidth, -.03, crackG2);
+    if(uCrackSharp != 100.0){ cracks = pow(cracks, uCrackSharp/100.0); }
     float g3 = sdGyroid(p+t*.1, 5.76, .03, .0);
     float g4 = sdGyroid(p+t*.05, 4.76, .03, .0);
     cracks *= g3*g4*20.+.2*smoothstep(.2, .0, n.y);
+    if(uInnerGlow != 100.0){ cracks *= uInnerGlow/100.0; }
     col += cracks*vec3(0.1,0.2,1.)*uCrackTint*3.;
     if(uRimLight != 0.0){ col += pow(1.0 - max(dot(n, -rd), 0.0), 3.0)*uRimLight/100.0*uRimTint; }
   }
@@ -4895,7 +4967,9 @@ void mainImage(out vec4 fragColor, in vec2 fragCoord) {
             col = c.rgb * (diff * shadow + ambient);
             if(uAmbientColor != vec3(1.0)){ col = c.rgb * (diff * shadow + ambient*uAmbientColor); }
             alpha = 1.0;
-            vjDepth = clamp(1.0 - (t - (length(ro) - 3.0)) / 6.0, 0.0, 1.0); // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる
+            // 深度 (手前 1 → 奥 0)。3D FX がこれで持ち上げる。距離に、面の向き (正面ほど手前 = 塊の丸み) と細かい凹凸を足して、塊の量感を出す
+            float vjBump = sin(p.x * 13.0 + 1.7) * sin(p.y * 11.0 + 0.4) * sin(p.z * 17.0 + 2.9);
+            vjDepth = clamp(clamp(1.0 - (t - (length(ro) - 3.0)) / 6.0, 0.0, 1.0) * 0.72 + 0.24 * sqrt(clamp(dot(normal, -rd), 0.0, 1.0)) + 0.05 * vjBump, 0.0, 1.0);
             if(uRimWidth != 0.0){
                 float rm = pow(1.0 - clamp(dot(normal, -rd), 0.0, 1.0), 6.0 - uRimWidth*0.05);
                 col += rm*0.5*uRimColor;
@@ -5168,24 +5242,29 @@ uniform vec3 uBandLineColor; // 帯の下端の線の色
 
 float hash11(float n){ return fract(sin(n*127.1)*43758.5453); }
 
-void mainImage(out vec4 O, vec2 u){
-    vec2 uv = u / iResolution.xy;
-    if(uMirrorX != 0.0){ uv.x = mix(uv.x, 1.0 - abs(uv.x * 2.0 - 1.0), uMirrorX / 100.0); }
-    float t  = iTime * 0.02 * uSpeed;   // 信号スクロール
-    float mt = iTime * uMorph;          // 高さ/位置の変化用
-
-    // ---- 各バンドの高さを常に連続脈動させながら分割 ----
-    float cum = 0.0; float bandSeed = 0.0; float bandTop = 0.0; float bandH = 0.0;
+// 帯 i の高さ (画面の高さ 0..1)。常に連続して伸縮する。3D 化 (Extrude Rock) でも同じ配置を使う
+float sb_bandH(float fi){
+    float mt   = iTime * uMorph;                                  // 高さ/位置の変化用
+    float ph   = hash11(fi*3.1 + 0.5) * 6.2831;                   // バンド固有の位相
+    float rate = 0.35 + 0.85 * hash11(fi*1.7 + 2.0);              // バンド固有の脈動速度
+    float h = mix(0.03 * (uBandMinH / 100.0), 0.17 * (uBandMaxH / 100.0), 0.5 + 0.5*sin(mt*rate + ph)); // 高さが常に伸縮
+    if(uBandTaper != 0.0){ h *= 1.0 + (uBandTaper * 0.008) * (fi / 15.0 * 2.0 - 1.0); }
+    return h;
+}
+// 高さ y の所の帯 (番号・上端・高さ)。最後の帯は残りを埋める
+void sb_band(float y, out float bandSeed, out float bandTop, out float bandH){
+    float cum = 0.0; bandSeed = 0.0; bandTop = 0.0; bandH = 0.0;
     for(int i = 0; i < 16; i++){
         float fi = float(i);
-        float ph   = hash11(fi*3.1 + 0.5) * 6.2831;             // バンド固有の位相
-        float rate = 0.35 + 0.85 * hash11(fi*1.7 + 2.0);        // バンド固有の脈動速度
-        float h = mix(0.03 * (uBandMinH / 100.0), 0.17 * (uBandMaxH / 100.0), 0.5 + 0.5*sin(mt*rate + ph)); // 高さが常に伸縮
-        if(uBandTaper != 0.0){ h *= 1.0 + (uBandTaper * 0.008) * (fi / 15.0 * 2.0 - 1.0); }
-        if(uv.y < cum + h || i >= int(uBandCount + 0.5) - 1){ bandSeed = fi; bandTop = cum; bandH = h; break; }
+        float h = sb_bandH(fi);
+        if(y < cum + h || i >= int(uBandCount + 0.5) - 1){ bandSeed = fi; bandTop = cum; bandH = h; break; }
         cum += h;
     }
-
+}
+// 帯の中の波形 v (0..1。横位置 x だけで決まる。縞・合成波)
+float sb_wave(vec2 uv, float bandSeed, float bandTop){
+    float t  = iTime * 0.02 * uSpeed;   // 信号スクロール
+    float mt = iTime * uMorph;
     // ---- 各バンドの横位置も常に連続移動 ----
     float ph2   = hash11(bandSeed*2.3 + 1.1) * 6.2831;
     float rate2 = 0.3 + 0.7 * hash11(bandSeed*4.7 + 3.0);
@@ -5207,18 +5286,22 @@ void mainImage(out vec4 O, vec2 u){
         k = a.a + a.b - a.g + a.r;
         j = b.a + b.b - b.g * b.r;
     }
-
+    float v = abs(k * j);
+    if(uWaveShape != 0.0){ v = pow(v, exp2(-uWaveShape * 0.02)); }
+    return v;
+}
+// 色: 帯の中の点 uv (左右対称の後)・画素 u・帯 (番号・上端・高さ) から
+vec4 sb_color(vec2 uv, vec2 u, float bandSeed, float bandTop, float bandH){
     // 縞(高周波)だけ黒白2値化してソリッドに。なだらかなグラデ帯はそのまま残す。
     //   変化の速さは横方向の微分だけで見る。帯内では v は x にしか依存しないので値は同じだが、
     //   fwidth だと帯の境界で縦方向の微分が跳ね上がり、その 1 行だけ 2 値化されて黒い隙間になる。
-    float v = abs(k * j);
-    if(uWaveShape != 0.0){ v = pow(v, exp2(-uWaveShape * 0.02)); }
+    float v = sb_wave(uv, bandSeed, bandTop);
     float fw = abs(dFdx(v));
     float isStripe = smoothstep(0.03 * (uStripeEdge / 100.0), 0.12 * (uStripeEdge / 100.0), fw);
     float th = 0.3 * (uBinThresh / 100.0);
     float bin = step(th, v);
     if(uBinSoft != 0.0){ float e = uBinSoft * 0.006; bin = smoothstep(th - e, th + e, v); }
-    O = vec4(mix(v, bin, isStripe));
+    vec4 O = vec4(mix(v, bin, isStripe));
     O.rgb *= uSoftTint + (uStripeTint - uSoftTint) * isStripe;
     if(mod(bandSeed, 2.0) > 0.5){ O.rgb *= uOddBandTint; }
     if(uScanline != 0.0){ O.rgb *= 1.0 - (uScanline / 100.0) * 0.6 * (0.5 + 0.5 * sin(u.y * 3.14159)); }
@@ -5226,6 +5309,16 @@ void mainImage(out vec4 O, vec2 u){
     if(uVignette != 0.0){ O.rgb *= max(1.0 - (uVignette / 100.0) * 0.8 * dot(uv - 0.5, uv - 0.5) * 2.0, 0.0); }
     if(uBandLine != 0.0){ float ed = (uv.y - bandTop) * iResolution.y; O.rgb = mix(O.rgb, uBandLineColor, 1.0 - smoothstep(uBandLine - 1.0, uBandLine, ed)); }
     if(uBandGap != 0.0 && uv.y > bandTop + bandH * (1.0 - uBandGap / 100.0)) O = vec4(0.0);
+    return O;
+}
+
+void mainImage(out vec4 O, vec2 u){
+    vec2 uv = u / iResolution.xy;
+    if(uMirrorX != 0.0){ uv.x = mix(uv.x, 1.0 - abs(uv.x * 2.0 - 1.0), uMirrorX / 100.0); }
+    // ---- 各バンドの高さを常に連続脈動させながら分割 ----
+    float bandSeed, bandTop, bandH;
+    sb_band(uv.y, bandSeed, bandTop, bandH);
+    O = sb_color(uv, u, bandSeed, bandTop, bandH);
 }
 `
 }

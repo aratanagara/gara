@@ -5,7 +5,7 @@
    drone は 0.5 拍/秒の仮想の拍で同じ動き。k = 0 で全部の板が z = 0 で画面に重なり、回転 0・正面カメラ = 元画面と画素一致。
    板は 24 × 24 に分割してある (折り線が板の中で曲がり、立体シェーダの深度で持ち上げても縁が粗くならないように)。 */
 (function(){
-const SUB = 32;                                    // 板の分割 (SUB × SUB マス。立体シェーダの深度で持ち上げても縁が粗くならない細かさ)
+const SUB = 64;                                    // 板の分割 (SUB × SUB マス。立体シェーダの深度で持ち上げても縁が粗くならない細かさ)
 const PER = SUB * SUB * 6;                         // 板 1 枚あたりの頂点数
 // 板 pl の面内座標 ab (0..1) → 位置。ctr = 板の中心
 const SURF = `
@@ -67,7 +67,7 @@ void main(){
   P = ctr + (P - ctr) * fx3dPop(float(pl));   // ポップ: 板ごとに中心から
   vUv = ab;
   vW = P;
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), vUv, (ab - 0.5) * 2.0 * vec2(uAsp, 1.0) * fx3dPop(float(pl))));
 }`;
 // 面を覆う針 (Needle): 各板を GL.needleCellGLSL の針の面 (三角形・四角形の角錐) で覆い、板の法線方向へ突起 / 凹み。元の板の代わりに描く
 const NV_VS = `#version 300 es
@@ -97,7 +97,7 @@ void main(){
   vUv = ab;
   vW = P;
   vN = vec3(0.0);   // 針の面は三角形ごとの陰影のまま (FS が差分の法線を使う)
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), vUv, (ab - 0.5) * 2.0 * vec2(uAsp, 1.0) * fx3dPop(float(pl))));
 }`;
 const FS = `#version 300 es
 precision highp float;
@@ -113,7 +113,7 @@ void main(){
     vec2 e = min(vAb, 1.0 - vAb) / max(fwidth(vAb), vec2(1e-5));
     c = mix(c, vec3(0.0), (1.0 - smoothstep(0.0, 1.0 + 3.0 * uEdge, min(e.x, e.y))) * uShade);
   }
-  frag = vec4(fx3dFoldShade(c), 1.0);
+  frag = vec4(fx3dFoldShade(fx3dShapeShade(c, t0.rgb)), 1.0);
 }`;
 const U = {};
 function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get(p); if(l === undefined){ l = gl.getUniformLocation(p, n); m.set(p, l); } return l; }
@@ -173,7 +173,7 @@ Fx3d.EXTRA.layer = {
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       Fx3d.popUniforms(gl, pr, 'layer');
       Fx3d.reliefUniforms(gl, pr, [1 / SUB, 1 / SUB]);   // 立体シェーダの深度で面を持ち上げる
-      Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+      Fx3d.fold(gl, pr, cam.proj, 1.35, cam.view);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'layersNeedle', NV_VS, FS) : null;
     if(nvp){

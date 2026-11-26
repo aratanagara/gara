@@ -28,6 +28,7 @@ const document = {
   createElement: tag => new Element(tag), body: new Element('body'),
 };
 const ctx = vm.createContext({
+  I18n: {t: text => text}, // UI translation is independent of parameter rounding.
   document, window: {addEventListener() {}, matchMedia: () => ({matches:false})}, matchMedia: () => ({matches:false}),
   navigator: {}, performance: {now: () => 0}, requestAnimationFrame() {}, setTimeout() {}, clearTimeout() {}, Event,
   localStorage: {getItem: k => storage.get(k) ?? null, setItem: (k,v) => storage.set(k,String(v)), key: i => [...storage.keys()][i], get length() { return storage.size; }},
@@ -62,6 +63,9 @@ assert.equal(App.effDisplay(.8), '0.80');
 assert.equal(N.shaderSpec({name:'uScrollSpread',type:'float',min:0,max:1,defaultValue:0}).keep,false);
 assert.equal(N.shaderSpec({name:'uReroll',type:'float',min:0,max:1,defaultValue:0}).keep,false);
 assert.equal(N.shaderSpec({name:'uWarpPhase',type:'float',min:-180,max:180,defaultValue:0,desc:'位相のずれ (度)'}).keep,true);
+assert.equal(N.shaderSpec({name:'uWarpPhase',type:'float',min:-180,max:180,defaultValue:0,desc:'位相のずれ (度)'}).step,.01);
+assert.equal(N.shaderSpec({name:'uYaw',type:'float',min:-2,max:2,defaultValue:1}).step,.002);
+assert.equal(N.pct(12.345),'12.35%'); assert.equal(N.deg(-90),'-90.00°');
 assert.equal(N.shader({name:'uTiny',type:'float',min:0,max:.05,defaultValue:.0065,value:.0065}),.0065);
 // ブラウザを起動せず、range の step 丸めと実際の直接入力ハンドラを検証する。
 const p = Shader.preprocess('// @param uScale 0.3..2.5 = 1\nvoid main(){}').params[0];
@@ -84,7 +88,7 @@ let received; coarse.addEventListener('input',()=>{received=N.read(coarse);});
 N.enter(coarse,.8); assert.equal(received,.8); assert.equal(N.read(coarse),.8);
 const tenth = new Element(); Object.assign(tenth,{type:'range',min:0,max:2,step:.1});
 tenth.addEventListener('input',()=>{received=N.read(tenth);});
-N.enter(tenth,.83); assert.equal(received,.8); N.enter(tenth,.83); assert.equal(received,.8);
+N.enter(tenth,.83); assert.equal(received,.83); N.enter(tenth,.83); assert.equal(received,.83); assert.equal(tenth.step,"0.01");
 // 指数ゲインは入力を実ゲインとして受け、位置への往復で値を失わない。
 const gain = new Element(); Object.assign(gain,{type:'range',min:0,max:1,step:.005,_paramSpec:{step:.01},_paramToSlider:g=>App.againToSlider(g)});
 gain.addEventListener('input',()=>{received=N.number(App.againFromSlider(N.read(gain)));});

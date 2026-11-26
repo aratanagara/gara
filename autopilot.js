@@ -305,7 +305,7 @@ const Autopilot = (()=>{
     if(badge) return badge;
     badge = document.createElement('div');
     badge.id = 'apBadge'; badge.hidden = true;
-    badge.title = 'クリックで代理モードを停止 (L)';
+    I18n.bind(badge, "クリックで代理モードを停止 (L)", "title");
     badge.addEventListener('click', ()=> stop('badge'));
     document.body.appendChild(badge);
     return badge;
@@ -316,7 +316,7 @@ const Autopilot = (()=>{
     b.hidden = !S.on;
     if(!S.on) return;
     const sec = Math.max(0, Math.ceil((S.nextAt - nowMs()) / 1000));
-    b.textContent = '代理中 次まで ' + sec + ' 秒' + (S.current.index >= 0 ? ' · P' + (S.current.index + 1) : '');
+    b.textContent = I18n.t('代理中 次まで {sec} 秒', {sec}) + (S.current.index >= 0 ? ' · P' + (S.current.index + 1) : '');
   }
 
   function status(){

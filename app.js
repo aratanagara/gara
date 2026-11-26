@@ -47,13 +47,14 @@ const ParamValues = {
   _typed: new WeakMap(),
   // UI をまだ開いていないエンジンの保存でも、細かい値と拍の選択値を保つ。
   fine: {
-    post: { hue:0.001, grn:0.005, chr:0.0005, unsharpRadius:0 },
+    post: { hue:0.001, grn:0.005, chr:0.0005, unsharpRadius:0, toneType:1, toneCell:1, toneAngle:1, toneLevels:1 },
     layer: { fog:0.002 }, transflock: { step:0.005 },
     slicer: { shadowBias:0.0005, autoRebuildBeats:0 },
     inkelly: { spawnW:0.002, curlScale:0.005, displace:0.0005, feather:0.002, bgHue:0.005 },
     textdeform: { cvPos:0.005, letterSpacing:0.005, textEvery:0 },
     overlay: { size:0.001, freq:0, drawBeats:0 },
     image: { everyBeats:0, transBeats:0 },
+    imgconstruct: { noteWrite:0, noteHold:0, lookEvery:0 },
     fude: { beatBar:0, beatRate:0, beatHold:0, setTrans:0 },
   },
   digits(step){
@@ -63,7 +64,8 @@ const ParamValues = {
   number(v, spec = {}){
     if(typeof v !== 'number' || !Number.isFinite(v) || spec.keep) return v;
     const step = +spec.step;
-    const digits = step > 0 ? this.digits(step) : 2;
+    // 0.01 より粗い刻み (0.1 / 0.2 / 0.5 など) の range も、入力は小数 2 桁まで受ける。
+    const digits = step > 0 ? (step < 1 ? Math.max(2, this.digits(step)) : this.digits(step)) : 2;
     // 整数・微小値は元の step に合わせる。通常の小数は値そのものを 2 桁にする。
     if(step >= 1 || (step > 0 && step < 0.01)){
       const base = Number.isFinite(+spec.min) ? +spec.min : 0;
@@ -77,21 +79,27 @@ const ParamValues = {
     if(!el || !owner || !key) return;
     let specs = this._specs.get(owner);
     if(!specs) this._specs.set(owner, specs = {});
-    specs[key] = el.type === 'range' ? (el._paramPrecisionSpec ||= {step:el.step, min:el.min}) : {keep:true};
+    specs[key] = el.type === 'range' ? this.precision(el) : {keep:true};
   },
   spec(kind, key, owner){
     const step = (this.fine[kind] || {})[key];
     return (this._specs.get(owner) || {})[key] || (step === 0 ? {keep:true} : {step:step || 0.01});
   },
+  // range の step が 0.01 より粗く 1 未満 (0.02 / 0.1 / 0.5 など) なら 0.01 に揃える (ドラッグも 0.01 刻み)。
+  //   1 以上 (個数・本数・% など) と 0.01 未満 (細かい刻みの項目)、拍の 1/4 刻み (0.25) は元の step のまま。
+  precision(el){
+    if(el._paramPrecisionSpec) return el._paramPrecisionSpec;
+    if(el.type === 'range' && !el._paramSpec && +el.step > 0.01 && +el.step < 1 && +el.step !== 0.25) el.step = '0.01';
+    return el._paramPrecisionSpec = {step:el.step, min:el.min};
+  },
   read(el){
     if(this._typed.has(el)) return this._typed.get(el);
     const v = parseFloat(el.value);
-    return this.number(v, el.type === 'range' || el.type === 'number' ? (el._paramPrecisionSpec || {step:el.step, min:el.min}) : {keep:true});
+    return this.number(v, el.type === 'range' || el.type === 'number' ? this.precision(el) : {keep:true});
   },
   enter(el, v){
-    const spec = el._paramSpec || (el._paramPrecisionSpec ||= {step:el.step, min:el.min});
+    const spec = el._paramSpec || this.precision(el);
     const n = this.number(v, spec);
-    if(!el._paramSpec && +el.step >= 0.01 && +el.step < 1) el.step = '0.01';
     const position = el._paramToSlider ? el._paramToSlider(n) : n;
     el.value = position;
     // range の step 基準点と入力値がずれても、イベント先には確定した値を渡す。
@@ -118,8 +126,18 @@ const ParamValues = {
     // @param には step 指定がない。小さい値域・精密な既定値・角度は元の分解能を保つ。
     const fine = span < 1 || [p.min, p.max, dv].some(v => Number.isFinite(v) && this.digits(v) > 2)
       || angle;
-    return {step: fine ? Number((span / 1000).toPrecision(10)) : 0.01, min:p.min, keep:fine};
+    // 細かい項目も、広い範囲 (角度 -180..180 など) で 0.01 より粗くならないよう 0.01 を上限にし、
+    //   0.01 未満は 0.01 を割り切る刻み (0.005 / 0.002 / 0.001 / 0.0005 ...) にそろえて、0.01 刻みの値をドラッグでも踏める。
+    let step = 0.01;
+    if(fine && span / 1000 < 0.01){
+      const x = span / 1000, e = 10 ** Math.floor(Math.log10(x)), m = x / e;
+      step = Number((e * (m >= 5 ? 5 : m >= 2 ? 2 : 1)).toPrecision(10));
+    }
+    return {step, min:p.min, keep:fine};
   },
+  // % と度の表示 (小数 2 桁)。刻みが 0.01 の % / ° の欄が共用する。
+  pct: v=>(+v).toFixed(2) + '%',
+  deg: v=>(+v).toFixed(2) + '°',
   shader(p, v = p.value){ return this.number(v, this.shaderSpec(p)); },
   shaderText(p){ return String(this.shader(p)); },
   format(v, spec, fmt){
@@ -290,6 +308,72 @@ const MediaImport = {
     return '';
   },
 
+  folderName(name){
+    return Array.from(String(name || '').replace(/[\\/:*?"<>|\u0000-\u001f\u007f-\u009f]/g, '_').replace(/^[._]+/, '')).slice(0, 64).join('') || 'import';
+  },
+
+  async createFolder(name){
+    const r = await fetch('__media?create=1&folder=' + encodeURIComponent(this.folderName(name)), {method:'POST'});
+    const d = await r.json().catch(()=>null);
+    if(!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
+    return d.folder;
+  },
+
+  // A selected/dropped directory becomes one image folder; nested files are flattened.
+  async acceptFolder(files, name){
+    const list = Array.from(files || []).filter(f => !f.name.startsWith('.') && this.kindOf(f) === 'image');
+    if(!list.length){ toast(I18n.t("画像 / 動画ファイルがありません")); return 0; }
+    const folder = this.folderName(name);
+    if(await this.local()) return this._importLocal(list, folder);
+    return this._importBlob(list, folder);
+  },
+
+  async acceptDirectoryFiles(files){
+    const groups = new Map();
+    for(const file of Array.from(files || [])){
+      const parts = (file.webkitRelativePath || '').split('/');
+      if(parts.length < 2 || parts.some(p => p.startsWith('.'))) continue;
+      if(!groups.has(parts[0])) groups.set(parts[0], []);
+      groups.get(parts[0]).push(file);
+    }
+    let n = 0;
+    for(const [name, list] of groups) n += await this.acceptFolder(list, name);
+    return n;
+  },
+
+  async _readEntry(entry){
+    if(!entry || entry.name.startsWith('.')) return [];
+    if(entry.isFile){
+      const file = await new Promise((resolve, reject)=>entry.file(resolve, reject));
+      return this.kindOf(file) === 'image' ? [file] : [];
+    }
+    if(!entry.isDirectory) return [];
+    const reader = entry.createReader(), files = [];
+    // Chromium returns directory entries in batches (often 100), not all at once.
+    for(;;){
+      const entries = await new Promise((resolve, reject)=>reader.readEntries(resolve, reject));
+      if(!entries.length) break;
+      for(const child of entries) files.push(...await this._readEntry(child));
+    }
+    return files;
+  },
+
+  async acceptDrop(transfer){
+    // Capture entries and Files before the first await; the drag data store then closes.
+    const items = Array.from(transfer.items || []).filter(item => item.kind === 'file');
+    const sources = items.map(item => ({entry:item.webkitGetAsEntry ? item.webkitGetAsEntry() : null, file:item.getAsFile()}));
+    const loose = sources.length ? [] : Array.from(transfer.files || []);
+    let n = 0;
+    for(const {entry, file} of sources){
+      if(entry && entry.isDirectory){
+        try{ n += await this.acceptFolder(await this._readEntry(entry), entry.name); }
+        catch(e){ console.warn('folder import failed:', e); toast(I18n.t("取り込み失敗: ") + entry.name); }
+      }else if(file) loose.push(file);
+    }
+    if(loose.length) n += await this.accept(loose);
+    return n;
+  },
+
   async put(file, folder){
     const r = await fetch('__media?name=' + encodeURIComponent(file.name || '') + (folder ? '&folder=' + encodeURIComponent(folder) : ''), { method:'POST', body:file });
     const d = await r.json().catch(()=>null);
@@ -299,8 +383,8 @@ const MediaImport = {
 
   // ドロップ / ファイル選択の入口。取り込んだ最後の 1 件をアクティブスロットへ載せる
   async accept(files){
-    const list = Array.from(files || []).filter(f => this.kindOf(f));
-    if(!list.length){ toast('画像 / 動画ファイルがありません'); return 0; }
+    const list = Array.from(files || []).filter(f => !f.name.startsWith('.') && this.kindOf(f));
+    if(!list.length){ toast(I18n.t("画像 / 動画ファイルがありません")); return 0; }
     if(await this.local()) return this._importLocal(list);
     return this._importBlob(list);
   },
@@ -312,12 +396,17 @@ const MediaImport = {
     return 'drop-' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '-' + p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
   },
 
-  async _importLocal(list){
-    const done = [], folder = this._batchFolder(list);
+  async _importLocal(list, folderName){
+    const done = [];
+    let folder = folderName || this._batchFolder(list);
+    if(folder){
+      try{ folder = await this.createFolder(folder); }
+      catch(e){ console.warn('folder import failed:', e); toast(I18n.t("取り込み失敗: ") + folder); return 0; }
+    }
     for(const f of list){
-      toast('取り込み中… ' + f.name);
+      toast(I18n.t("取り込み中… ") + f.name);
       try{ done.push(await this.put(f, this.kindOf(f) === 'image' ? folder : '')); }
-      catch(e){ console.warn('media import failed:', f.name, e); toast('取り込み失敗: ' + f.name); }
+      catch(e){ console.warn('media import failed:', f.name, e); toast(I18n.t("取り込み失敗: ") + f.name); }
     }
     if(!done.length) return 0;
     const vids = done.filter(d => d.kind === 'video');
@@ -343,18 +432,18 @@ const MediaImport = {
       if(UI.refreshImageMode) UI.refreshImageMode();
       if(UI.refreshMix) UI.refreshMix();
     }
-    toast(done.length + ' 件を取り込みました (' + (vids.length ? 'movies/ ' : '') + (imgs.length ? imgs[0].dir + '/' : '') + ')');
+    toast(done.length + I18n.t(" 件を取り込みました (") + (vids.length ? 'movies/ ' : '') + (imgs.length ? imgs[0].dir + '/' : '') + ')');
     return done.length;
   },
 
   // 書き込めない配信 (本番 / github.io): セッション限りの blob として読み込む (リロードで消える)
-  _importBlob(list){
+  _importBlob(list, folderName){
     const vids = list.filter(f => this.kindOf(f) === 'video');
     const imgs = list.filter(f => this.kindOf(f) === 'image');
     let n = 0;
     if(imgs.length && typeof ImageMode !== 'undefined'){
       if(!ImageMode.initialized && GL.gl) ImageMode.init(GL.gl);
-      const dir = ImageMode.addDroppedFiles(imgs, imgs.length >= 2);   // 2 枚以上は新しい臨時フォルダ
+      const dir = ImageMode.addDroppedFiles(imgs, !!folderName || imgs.length >= 2, folderName);   // 2 枚以上は新しい臨時フォルダ
       const f = ImageMode._folderByDir(dir);
       n += imgs.length;
       if(!vids.length && f) this._toImageSlot(dir, f.images[f.images.length - 1] || '');
@@ -366,7 +455,7 @@ const MediaImport = {
       App.transitionVideo(last.url, last.name);
       n += vids.length;
     }
-    toast(n + ' 件を読み込みました (このセッション限り。リロードで消えます)');
+    toast(n + I18n.t(" 件を読み込みました (このセッション限り。リロードで消えます)"));
     if(typeof UI !== 'undefined'){
       if(vids.length && UI.populatePresets) UI.populatePresets();
       if(UI.refreshAll) UI.refreshAll();
@@ -374,12 +463,21 @@ const MediaImport = {
     return n;
   },
 
-  // images/ 直下の 1 枚もの (Visual の個別画像) を実ファイルごと削除する (ローカル起動のみ)
+  // Session items leave the list; persisted images/import folders move to images/_trash/.
   async remove(dir){
+    const folder = typeof ImageMode !== 'undefined' && ImageMode._folderByDir(dir);
+    if(folder && folder._urls){
+      ImageMode.forgetFolder(dir);
+      if(typeof UI !== 'undefined' && UI.refreshImageMode) UI.refreshImageMode();
+      return;
+    }
     const r = await fetch('__media?path=' + encodeURIComponent(dir), { method:'DELETE' });
     const d = await r.json().catch(()=>null);
     if(!r.ok || !d || !d.ok) throw new Error((d && d.error) || ('HTTP ' + r.status));
-    if(typeof ImageMode !== 'undefined') await ImageMode.loadFolderIndex(true);
+    if(typeof ImageMode !== 'undefined'){
+      ImageMode.forgetFolder(dir);
+      await ImageMode.loadFolderIndex(true);
+    }
     if(typeof UI !== 'undefined' && UI.refreshImageMode) UI.refreshImageMode();
   },
 
@@ -416,7 +514,8 @@ const MediaImport = {
       if(!hasFiles(e)) return;
       e.preventDefault();
       off();
-      this.accept(e.dataTransfer.files);
+      e.stopPropagation();   // The grid is inside the Visual pane; import each drop only once.
+      this.acceptDrop(e.dataTransfer).catch(err=>{ console.warn('media drop failed:', err); toast(I18n.t("取り込み失敗: ") + err.message); });
     });
   }
 };
@@ -424,7 +523,15 @@ const MediaImport = {
 /* ===================================================================
    GL  — WebGL2 renderer
 =================================================================== */
+// B Beat Shift ON の間は B 専用の状態で描く。OFF は従来の共有エンジンをそのまま使う。
+const BSHIFT_STATEFUL = new Set(['layer', 'photoplane', 'chrometype', 'glitchtype', 'imgconstruct', 'liquidpeel', 'manga', 'ugomeki', 'slicer', 'pen', 'aratanagara', 'spacetype', 'textdeform', 'inkelly', 'fude', 'shredder', 'boltzmann', 'grayscott', 'cyberui', 'novel', 'caverns', 'transflock', 'windflock', 'tower4149', 'rhizome', 'rzfan', 'rzpacks', 'rzstack', 'rztube', 'surrealfloat', 'shelf', 'ribbon']);
 const GL = {
+  // 印刷系 FX の共通部。既存 shader の演算順・係数をそのまま展開して見え方を保つ。
+  postPatternGLSL: {
+    luma: 'float L(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }',
+    hash: 'float h21(vec2 q){ return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }',
+    jitter: 'float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }',
+  },
   gl:null, canvas:null,
   vs:null, quadVAO:null, quadBuf:null,
   compositeProg:null,
@@ -1143,8 +1250,9 @@ vec2 applyZoomPump(vec2 uv){
   c /= max(0.2, z);
   return c + 0.5;
 }
-// === Pop Up (Audio FX): 強い音 (uHit) でランダムな位置に円 / 多角形がふくらんで飛び出す ===
-//   発火ごと (uHitSeed) に位置を選び直し、図形ごとにしきい値を変えて時間差で引っ込む。中は映像を拡大し、
+// === Pop Up (Audio FX): 音が鳴っている間 (uHit)、ランダムな位置に円 / 多角形がポコポコ弾んで出ては消える ===
+//   図形ごとに短い周期 (0.32〜0.62 秒) を持ち、周期ごとに位置を選び直して、弾んで出る → すぐ縮んで消える、を繰り返す。
+//   音の強さ (uHit) は出るかどうかと大きさ。発火ごと (uHitSeed) にも位置を混ぜ直す。中は映像を拡大し、
 //   ドームの陰影・縁取り・落ち影で浮かせる。pd.x = 面の陰影 (-1..1) / pd.y = 縁 / pd.z = 落ち影
 float popShape(vec2 q, float n){          // 外接円半径 1 の正 n 角形 (n < 3 = 円)。辺の上で 0、内側が負
   if(n < 2.5) return length(q) - 1.0;
@@ -1163,22 +1271,31 @@ vec2 applyPop(vec2 uv, out vec3 pd){
   vec2 outUv = uv;
   for(int i = 0; i < 32; i++){
     if(i >= n) break;
-    float fi = float(i), sd = uHitSeed * 37.1;
+    float fi = float(i);
+    float per = 0.32 + 0.30 * h11(fi*4.7 + 1.9);                    // この図形の周期 (秒)
+    float tt = uTime / per + h11(fi*9.1 + 6.2);                     // 図形ごとに位相をずらす
+    float cyc = floor(tt), ph = tt - cyc;                           // 何回目の出現か / その中の進み (0..1)
+    float sd = uHitSeed * 37.1 + cyc * 17.3;                        // 出るたびに位置を選び直す
     vec2 c = vec2(h11(fi*12.7 + sd + 0.3) * aspect, h11(fi*7.3 + sd + 3.1));
-    float th = h11(fi*3.9 + sd + 9.0) * 0.6;                       // 図形ごとのしきい値 = 引っ込む順
+    float th = h11(fi*3.9 + sd + 9.0) * 0.6;                       // 音が弱いときは一部だけ出る
     float a = clamp((uHit - th) / (1.0 - th), 0.0, 1.0);
     if(a <= 0.0) continue;
-    float grow = a * (1.0 + 0.35 * sin(a * 3.14159265));            // ふくらみ (少し行き過ぎて戻る)
+    // 弾んで出る (前半 30% で行き過ぎて戻る) → 少し保つ → 後半 40% で縮んで消える
+    float up = clamp(ph / 0.30, 0.0, 1.0);
+    float bounce = 1.0 - pow(1.0 - up, 3.0) + 0.45 * sin(up * 3.14159265) * (1.0 - up * 0.5);
+    float life = bounce * (1.0 - smoothstep(0.60, 1.0, ph));
+    if(life <= 0.0) continue;
+    float grow = life * (0.55 + 0.45 * a);
     float rPx = mix(1.0, maxPx, h11(fi*5.1 + sd + 2.3));           // 半径 = 1px〜上限でランダム
     float R = rPx / uRes.y * grow * (0.4 + 0.6 * uAPop);
     if(R <= 0.0) continue;
-    float rot = (h11(fi*8.3 + sd + 5.5) - 0.5) * 6.2831853 * uAPopSpin + (1.0 - a) * uAPopSpin * 2.5;
+    float rot = (h11(fi*8.3 + sd + 5.5) - 0.5) * 6.2831853 * uAPopSpin + (1.0 - life) * uAPopSpin * 2.5;
     float cs = cos(rot), sn = sin(rot);
     vec2 dp = p - c;
     vec2 q = mat2(cs, -sn, sn, cs) * dp / R;
     float d = popShape(q, sides);
     if(d < 0.0){
-      float zoom = 1.0 + uAPopZoom * 3.0 * a * uAPop;
+      float zoom = 1.0 + uAPopZoom * 3.0 * life * uAPop;
       outUv = (c + dp / zoom) / vec2(aspect, 1.0);
       float r = clamp(1.0 + d, 0.0, 1.0);                          // 0 = 中心 / 1 = 縁
       vec2 dir = q / max(length(q), 1e-4);
@@ -1944,7 +2061,7 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uAmount;
-float rnd(vec2 p){ return fract(sin(dot(p, vec2(12.9898,78.233)))*43758.5453); }
+${this.postPatternGLSL.jitter}
 vec3 kawase(vec2 uv, float r){
   vec2 jitter = vec2(rnd(uv), rnd(uv + 0.47));
   vec2 o = jitter * r * vec2(uRes.x/uRes.y, 1.0);
@@ -2473,37 +2590,46 @@ uniform float uAmount;
 uniform float uTime;
 uniform float uGain;
 uniform float uOnset;   // アタック (立ち上がり) 0..1
+uniform float uAmp;     // 帯の高さの倍率 (1 = 従来)
+uniform float uCount;   // 帯の本数 (32 = 従来)
+uniform float uCountVar; // 本数のゆらぎ 0..1
+uniform float uWidth;   // 帯の中身の幅の割合 (1 = 従来 = 隙間なし)
+uniform float uWidthVar; // 帯の幅のゆらぎ (0.55 = 従来)
 float hash11(float n){ return fract(sin(n*127.1+311.7)*43758.5453); }
 float bandWidth(float i){
   float r0=hash11(i*3.1), r1=hash11(i*7.7+2.0);
-  return 1.0+0.55*sin(uTime*(0.35+0.5*r0)+r1*6.2831853);
+  return max(0.05,1.0+uWidthVar*sin(uTime*(0.35+0.5*r0)+r1*6.2831853));
 }
 void main(){
   vec3 src=texture(uTex,vUv).rgb;
   if(uAmount<=0.001){ frag=vec4(src,1.0); return; }
-  int N=int(min(32.0,32.0+uRes.x*0.0));
+  float nf=clamp(floor(uCount*(1.0+uCountVar*0.5*sin(uTime*0.4))+0.5),1.0,64.0);
+  int N=int(nf);
   float total=0.0;
-  for(int i=0;i<N;i++) total+=bandWidth(float(i));
+  for(int i=0;i<64;i++){ if(i>=N) break; total+=bandWidth(float(i)); }
   float x=vUv.x*total;
-  float acc=0.0; float band=0.0;
-  for(int i=0;i<N;i++){
+  float acc=0.0; float band=0.0; float bw=1.0; float bx=0.0;
+  for(int i=0;i<64;i++){
+    if(i>=N) break;
     float w=bandWidth(float(i));
-    if(x>=acc && x<acc+w){ band=float(i); }
+    if(x>=acc && x<acc+w){ band=float(i); bw=w; bx=x-acc; }
     acc+=w;
   }
   // 帯ごとの音量: 低域ほど幅広の対数配分で FFT (512 bin) を読む
-  float t=(band+0.5)/32.0;
+  float t=(band+0.5)/nf;
   float bin=exp2(mix(1.0,8.3,t));
   float lv=0.0;
   for(int k=-1;k<=1;k++) lv=max(lv,texture(uFFT,vec2((bin+float(k)*max(1.0,bin*0.08)+0.5)/512.0,0.25)).r);
   lv=clamp(pow(lv*uGain,0.75),0.0,1.0);
   // FFT は平滑化されて鈍いので、時間波形 (row1) の瞬時振幅とアタック (onset) で鋭く立てる
   float amp=0.0;
-  for(int k=0;k<4;k++){ float w=texture(uFFT,vec2((band*16.0+float(k)*4.0+2.5)/512.0,0.75)).r; amp=max(amp,abs(w-0.5)*2.0); }
+  for(int k=0;k<4;k++){ float w=texture(uFFT,vec2((band*(512.0/nf)+float(k)*4.0+2.5)/512.0,0.75)).r; amp=max(amp,abs(w-0.5)*2.0); }
   amp=max(0.0,amp-0.05)/0.95;   // 無音 (128/255) のわずかなずれは床で切る
   lv=max(lv,clamp(amp*1.6,0.0,1.0));
   lv=max(lv,uOnset*(0.5+0.5*hash11(band*5.3+floor(uTime*12.0))));
+  lv=clamp(lv*uAmp,0.0,1.0);
   float sc=mix(1.0,lv,uAmount);
+  if(abs(bx/bw-0.5)>uWidth*0.5){ frag=vec4(0.0,0.0,0.0,1.0); return; }
   float d=abs(vUv.y-0.5);
   if(d>=sc*0.5 || sc<0.002){ frag=vec4(0.0,0.0,0.0,1.0); return; }
   float sy=0.5+(vUv.y-0.5)/sc;
@@ -2592,6 +2718,8 @@ in vec2 vUv; out vec4 frag;
 uniform sampler2D uTex;
 uniform vec2 uRes;
 uniform float uAmount;
+uniform float uGain;     // mix の倍率 (既定 2.0 = amount*2)。1 を超えた分が外挿 = 輪郭の反転
+uniform float uRadMul;   // ぼかし半径の倍率 (既定 1.0)
 vec3 gauss(vec2 uv,float radPx){
   int N=int(min(20.0,20.0+uRes.x*0.0));
   const float GA=2.39996323;
@@ -2613,12 +2741,12 @@ vec3 gauss(vec2 uv,float radPx){
   }
   return acc/wsum;
 }
-// mix を 2 倍まで外挿する式 (〜0.5: ふつうのぼかし / 0.5〜: detail が反転し輪郭が際立つ)
+// mix を uGain 倍まで外挿する式 (既定 2 倍。mix の係数が 1 を超えると orig に負の重みが掛かり、detail が反転して輪郭が際立つ)
 void main(){
   vec3 orig=texture(uTex,vUv).rgb;
   if(uAmount<=0.001){ frag=vec4(orig,1.0); return; }
-  vec3 blurred=gauss(vUv,uAmount*25.0);
-  frag=vec4(clamp(mix(orig,blurred,uAmount*2.0),0.0,1.0),1.0);
+  vec3 blurred=gauss(vUv,uAmount*25.0*uRadMul);
+  frag=vec4(clamp(mix(orig,blurred,uAmount*uGain),0.0,1.0),1.0);
 }`);
 
     // Film Blur 1/4: 縮小 + 逆トーンマップ。光を線形の HDR へ戻してからぼかす (LDR のままだと小さい光が平均で消える)
@@ -3376,7 +3504,7 @@ void main(){
     }
 
     // 統合パスの格子の細かさ (Kaiser は単体でも統合パスで描く)
-    this._foldGrid = [72, 42];
+    this._foldGrid = [192, 108];   // 折りの紙の格子。深度はこの 1 マスに均して拾うので、細かいほど立体シェーダの凹凸が出る
     this._foldStackGrid = this._foldGrid;
     {
       const gl = this.gl;
@@ -3419,7 +3547,9 @@ void main(){
     fx3dNeedleVert(vid, uNvGrid, uNvSub, vec2(0.0), uv, w, key);
     uv = 0.5 + (uv - 0.5) * uNvMargin;   // Needle だけのときは紙を画面の外まで広げる (絵はミラー) = 紙の縁が見えない
     lift = w * fx3dNeedleH(key, (uv - 0.5) * vec2(asp, 1.0) * 3.2) * (2.0 * uNvMargin / uNvGrid.y);
-    if(uNvMask.z + uNvMask.w > 0.0 && uNvMask.x + uNvMask.y > 0.0){   // 物体の外 (深度 0 = 背景) の面には針を生やさない
+    if(uFx3dHeightOn > 0.5){
+      if(uFx3dHeightMask > 0.5) lift *= fx3dHeightHC(0.5 + (nvFaceA - 0.5) * uNvMargin).g;
+    } else if(uNvMask.z + uNvMask.w > 0.0 && uNvMask.x + uNvMask.y > 0.0){   // 物体の外 (深度 0 = 背景) の面には針を生やさない
       vec2 fm = 0.5 + (nvFaceA - 0.5) * uNvMargin;
       float on = uNvMask.x * (uNvMask.z > 0.5 ? step(0.004, vjDepthAt(uDepthA, vjDepthUv(fm, uDepthOs.xy), uDepthLod.x)) : 1.0) + uNvMask.y * (uNvMask.w > 0.5 ? step(0.004, vjDepthAt(uDepthB, vjDepthUv(fm, uDepthOs.zw), uDepthLod.y)) : 1.0);
       lift *= on / (uNvMask.x + uNvMask.y);
@@ -3438,7 +3568,7 @@ void main(){
     q += uRollDir * (dot(q, uRollDir) * (uPaperM - 1.0));
     uv = q / (2.0 * vec2(asp, 1.0)) + 0.5;
   }
-  if(uRelief.x + uRelief.y > 0.0) lift += vjRelief(uv);
+  if(uFx3dHeightOn > 0.5 || uRelief.x + uRelief.y > 0.0) lift += vjRelief(uv);
   vUv = uv;
   vec3 P = f3Paper(q, lift);
   // Uzumaki 統合: 折り上がりの紙をカードとして複製し、対数螺旋 (らせん階段) に配置
@@ -3602,15 +3732,8 @@ void main(){
   frag=vec4(col,1.0);
 }`);
 
-    // FB Residue: 画素の変化とその流れで前の画を運び、溶けた輪郭を残す。
-    this._linkDeferred('fbResiduePolyProg', `#version 300 es
-precision highp float;
-in vec2 vUv;
-out vec4 frag;
-uniform vec2 uRes;
-uniform float uFaceSize;
-uniform float uTime;
-float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+    // FB Residue の分割面 (Polygon) の形。面の値を焼くパスと、残像を面ごとに拾う更新パスで共有する (uRes / uFaceSize / uTime を使う)
+    const FB_POLY_GLSL = `float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 vec4 nearestCell(vec2 p){
   vec2 base = floor(p);
   float best = 10.0;
@@ -3669,6 +3792,26 @@ vec3 fragmentValue(vec2 pixel){
   vec2 piece = id+coarse*17.3+vec2(13.2,39.7)+vec2(split*sector*71.7,split*sector*29.3);
   return vec3(hash(piece),hash(piece+vec2(4.2,83.1)),hash(piece+vec2(65.1,7.9)));
 }
+// 画素が属する面の種点 (画素座標) と面の大きさ (画素)。fragmentValue と同じ選び方 (扇形に分けた面は、分ける前の面の種点)
+vec3 faceSite(vec2 pixel){
+  float coarseSize = 640.0 * exp2(uFaceSize*2.0) * uRes.y / 1080.0;
+  vec4 parent = nearestCell(pixel/coarseSize);
+  float mode = hash(parent.xy+vec2(18.4,6.7));
+  if(mode < 0.84) return vec3(parent.zw*coarseSize, coarseSize);
+  float pieceSize = mode < 0.98 ? coarseSize*0.16 : coarseSize*0.04;
+  vec4 cell = nearestCell(pixel/pieceSize);
+  return vec3(cell.zw*pieceSize, pieceSize);
+}
+`;
+    // FB Residue: 画素の変化とその流れで前の画を運び、溶けた輪郭を残す。
+    this._linkDeferred('fbResiduePolyProg', `#version 300 es
+precision highp float;
+in vec2 vUv;
+out vec4 frag;
+uniform vec2 uRes;
+uniform float uFaceSize;
+uniform float uTime;
+${FB_POLY_GLSL}
 void main(){ frag = vec4(fragmentValue(vUv*uRes),1.0); }
 `);
     this._linkDeferred('fbResidueMaskProg', `#version 300 es
@@ -3715,7 +3858,8 @@ uniform float uPull;
 uniform float uDelta;
 uniform float uPolygon;
 uniform float uTime;
-float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
+uniform float uFaceSize;
+${FB_POLY_GLSL}
 float noise(vec2 p){
   vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
   return mix(mix(hash(i),hash(i+vec2(1,0)),f.x),mix(hash(i+vec2(0,1)),hash(i+1.0),f.x),f.y);
@@ -3750,10 +3894,23 @@ void main(){
   vec3 before = texture(uPrev, clamp(vUv-(flow*uPull*2.0+surface*0.7*uPolygon)/uRes,0.0,1.0)).rgb;
   float irregular = noise(vUv*uRes*0.019+vec2(17.3,9.1));
   float small = noise(vUv*uRes*0.11+vec2(8.1,27.6));
+  float maskR = mask.r;
+  if(uPolygon > 0.001){
+    // Polygon: 変化を面ごとに拾う (面の種点のまわり 9 点の最大)。残像が細胞のような塊でなく、面の形で丸ごと残る
+    vec3 fs = faceSite(vUv*uRes);
+    float faceR = texture(uMask, clamp(fs.xy/uRes,0.0,1.0)).r;
+    for(int k=0;k<8;k++){
+      float a = float(k)*0.7853982;
+      faceR = max(faceR, texture(uMask, clamp((fs.xy + vec2(cos(a),sin(a))*fs.z*0.32)/uRes,0.0,1.0)).r);
+    }
+    maskR = mix(mask.r, faceR, uPolygon);
+    irregular = mix(irregular, face.g, uPolygon);   // 消え方も面ごとにそろえる
+    small = mix(small, face.b, uPolygon);
+  }
   float cellHold = mix(1.0,mix(0.55,2.2,mask.a),uPolygon);
   float keep = exp(-uDelta / (mix(0.18,1.15,uHold) * mix(0.6,1.5,irregular) * cellHold));
   float oldAlpha = old.a * keep;
-  float capture = mask.r * (0.72 + 0.26*smoothstep(0.18,0.8,irregular*0.8+small*0.3+mask.r*0.35));
+  float capture = maskR * (0.72 + 0.26*smoothstep(0.18,0.8,irregular*0.8+small*0.3+maskR*0.35));
   float spray = noise(vUv*uRes*0.014+vec2(41.7,14.1));
   float sprayAA = max(0.004, fwidth(spray));
   float organicPunch = smoothstep(0.62-sprayAA,0.62+sprayAA,spray);
@@ -3795,6 +3952,7 @@ uniform sampler2D uTex;
 uniform sampler2D uHistory;
 uniform vec2 uRes;
 uniform float uAmount;
+uniform float uPolygon;   // Polygon の分だけ縁のぎざぎざを弱め、面の輪郭のまま出す
 float hash(vec2 p){ return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453); }
 float noise(vec2 p){
   vec2 i=floor(p), f=fract(p); f=f*f*(3.0-2.0*f);
@@ -3803,7 +3961,7 @@ float noise(vec2 p){
 void main(){
   vec3 current = texture(uTex, vUv).rgb;
   vec4 history = texture(uHistory,vUv);
-  float ragged = noise(vUv*uRes*0.043+vec2(11.7,2.3));
+  float ragged = mix(noise(vUv*uRes*0.043+vec2(11.7,2.3)), 0.5, uPolygon);
   float aa=max(0.025,fwidth(history.a)*1.5);
   float cover=smoothstep(0.17+ragged*0.16-aa,0.55+ragged*0.10+aa,history.a)*uAmount*0.92;
   frag=vec4(mix(current,history.rgb,cover),1.0);
@@ -4545,7 +4703,7 @@ void main(){
     return !!(eng && eng.overscan && !(eng.P && !eng.P.depth3D));
   },
   _osUpdate(p){
-    const pct = App.fx3dOverscanPct(p);
+    const pct = p && p.fx3dAmount === 0 ? 0 : App.fx3dOverscanPct(p);
     const on = (k)=>(+(p && p[k]) || 0) > 0.001;
     // 余白を素材に使う段があるときだけ (Uzumaki 単体は画面を読む専用パスなので余白を使わない。別の折りが一緒なら統合パスで使う)
     const fx = !!p && !App.safeMode && (['origami','kaiser','kaiserOld','fx3dRoll'].some(on)
@@ -4803,8 +4961,7 @@ vec3 f3Paper(vec2 q, float lift){
     P.z += (1.0 - cos(ak)) / uRollK;
   }
   P.xy -= uRollDir * uRollShift;
-  for(int i = 0; i < 28; i++){
-    if(i >= uFoldN) break;
+  for(int i = 0; i < min(28, uFoldN); i++){
     float s = dot(q - uCreaseP[i], uCreaseN[i]);   // 側判定は元の紙座標
     float k = clamp(-s / uEps[i], 0.0, 1.0);
     if(k > 0.0){
@@ -5111,7 +5268,7 @@ vec3 f3Paper(vec2 q, float lift){
 
     const u = slot.uniforms;
     const dt = this.clockDt;
-    // B Offset: A/B に同じシェーダを入れたとき、Slot B だけ位相(拍)をずらして重ねられる (Mix タブ)。
+    // B Beat Shift: A/B に同じシェーダを入れたとき、Slot B だけ位相(拍)をずらして重ねられる (Mix タブ)。
     const offB = (slotKey === 'B') ? (App.slotBOffsetBeats || 0) : 0;
     const offSec = offB * 60 / Math.max(20, BPM.bpm);
     const slotBeat = (typeof slot._beat === 'number') ? slot._beat : BPM.beatCount();
@@ -5257,6 +5414,7 @@ vec3 f3Paper(vec2 q, float lift){
   //   エンジンは render のたびに this.depthInfo = { near, far, cam, R } (linear: true なら深度値そのものを距離として使う。
   //   tex を渡すとそのテクスチャを深度として読む) を置く。
   KIND_DEPTH: {
+    imgconstruct: ()=> (typeof ImageConstruct !== 'undefined') ? ImageConstruct : null,
     photoplane: ()=> (typeof PhotoPlane !== 'undefined') ? PhotoPlane : null,
     shredder: ()=> (typeof Shredder !== 'undefined') ? Shredder : null,
     liquidpeel: ()=> (typeof LiquidPeel !== 'undefined') ? LiquidPeel : null,
@@ -5293,14 +5451,14 @@ vec3 f3Paper(vec2 q, float lift){
   },
   kindKeepsDepth(fbo){ return !!(this._kdCur && this._kdCur.target.fbo === fbo); },
   kindDepthTex(){ return this._kdCur ? this._kdCur.target.ztex : null; },   // マスク等の別 FBO にも同じ深度を付けるとき
-  _kdBegin(slotKey, slot){
+  _kdBegin(slotKey, slot, engine){
     this._kdCur = null;
     if(!slot || slot.kind === 'shader') return;   // シェーダは renderSlot が自分で深度を付ける
     const target = slot.fbos[slot.fbIdx];
     if(target) target.depthValid = false;          // Code はまず「深度なし」(前のシェーダの深度を残さない)
     const get = this.KIND_DEPTH[slot.kind];
     if(!get || !target || App.code3D === false) return;
-    const eng = get(); if(!eng || (eng.P && !eng.P.depth3D)) return;   // Params の 3D Mode が OFF = 平面として扱う
+    const eng = engine || get(); if(!eng || (eng.P && !eng.P.depth3D)) return;   // Params の 3D Mode が OFF = 平面として扱う
     const gl = this.gl;
     if(!target.ztex || target.zw !== target.w || target.zh !== target.h){
       if(!target.ztex) target.ztex = gl.createTexture();
@@ -5395,6 +5553,7 @@ void main(){
 
   composite(toDefault=true){
     const gl = this.gl;
+    if(this._fx3dHeight) this._fx3dHeight.valid = false;   // Material / Code に前フレームの H を渡さない
     // 本命の巨大合成シェーダが完成するまでは軽量フォールバックで描く (Windows/FXC はコンパイルに
     // 数十秒〜数分かかることがあり、待っている間ステージが黒くなるのを防ぐ)。完成したら自動で切替。
     const P = this.compositeProg || this.compositeFallbackProg;
@@ -5633,7 +5792,8 @@ void main(){
     //   1) Water → Boltzmann
     //   2) マチエール: Relief → Bleed → Impasto → Chrome → Gloss
     //   2.5) IMAGON (Overlay の筆跡)
-    //   3.5) 3D FX: Photo → Slicer → Layers → Diorama → Points → Box → Blinds → Tunnel → Gravity → Globe
+    //   3.5) 3D FX: Build = Extrude (H) → Slicer → Photos → Layers → Box → Blinds → Diorama → Points → 形 (Tunnel / Globe)
+    //        Chain = Extrude → Photos → Slicer → Layers → Diorama → Points → Box → Blinds → Tunnel → Gravity → Globe
     //   4) 3D 段 (折り紙系): Origami → Kaiser (+ Roll) → Passage → Uzumaki → Needle → Gravity (最後)
     //      Gravity は Needle / Origami / Kaiser / Roll / Uzumaki / Globe のどれかと一緒のときは、3D FX の段でなく統合パスの最後に掛かる
     //   4.5) Pattern (Slice / Mondrian / Rings / Voxel)
@@ -5643,6 +5803,7 @@ void main(){
     //   8) FXAA → Unsharp → Sharpen → Crisp → Shock → Outline → Hatching → Ink Bleed → Dither Blur → Ring Blur → Gaussian → Film Blur
     //   9) Pollock → FB Residue (動いた輪郭を残す)
     //   9.5) Audio: Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter / Pop Up → RGB → Shards → Waveform → Pixelsort
+    //   9.6) Tone: ディザ / 網点 / 線 (Color の直前。Grad Map で再彩色できる)
     //  10) Color: Gamma → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Invert
     //  11) プリセット切替トランジション (最後): 旧の最終画面と新の最終画面を混ぜる
 
@@ -5671,7 +5832,7 @@ void main(){
 
     this._applyImagonPost();    // IMAGON (Overlay) の筆跡を上描き (以降の Post FX・最後の Color 段が筆跡にも掛かる)
 
-    // 3.5) 3D FX (Photo → Slicer → Layers): 画面を切り抜いて 3D 空間に浮かせる。後段の Needle / Origami / Kaiser はその結果ごと折る
+    // 3.5) 3D FX: Stack の順で処理。Build は最後の分け方の頂点へ球 / 筒を掛ける。Needle / 折りも既存の直接フックを使う
     this._fx3dBgPrep(p, _safe);   // 3D 段の背景 (3D BG: Auto = 元の画面をぼかして沈めた絵 / Color = Params の背景色)
     this._apply3dFx(p, _safe);
 
@@ -5700,7 +5861,7 @@ void main(){
     this._applyGlitchTrail(p);
 
     // 6) Lens 段: Mirror → Pixelate → Chroma Ab (全 0 / Off ならパスごとスキップ)
-    this._applyLensPost(p && p.aRgb ? Object.assign({}, p, { aRgb: 0 }) : p, _safe);   // Audio の RGB は Color の直前の Audio 段で掛ける
+    this._applyLensPost(p && p.aRgb ? Object.assign({}, p, { aRgb: 0 }) : p, _safe);   // Audio の RGB は Tone の直前の Audio 段で掛ける
 
     // 7) Twist / Feedback (折った結果ごとうねらせ、トレイルを残す)
     this._applyTwistPost(p, _safe);
@@ -5738,9 +5899,7 @@ void main(){
       this._fbTrail = null;
     }
 
-    // 10) Color 段: Gamma → Bri → Con → Sat → Vibrance → Grad Map → Hue → Posterize → Vignette → Invert。
-    //     FB のトレイルは上で色を掛ける前の絵から採るので、残像にも Color が一度だけ掛かる
-    // 9.5) Audio 段 (Color の直前): 音・拍で画面を揺らす / 光らせる / 割る。FB のトレイルは上で採り終えているので、残像には入らない
+    // 9.5) Audio 段 (Tone の直前): 音・拍で画面を揺らす / 光らせる / 割る。FB のトレイルは上で採り終えているので、残像には入らない
     this._applyAudioPatternPost(p, _safe, 'audio');   // Scan Hit / Shockwave / Pixel Expl / Mosaic / Shake / Flash / Strobe / Spectrum Warp / Bass Zoom-Pump / Freeze-Shatter / Pop Up
     if(p && (+p.aRgb || 0) > 0) this._applyLensPost({ chr: 0, pix: 0, mir: 0, aRgb: p.aRgb }, _safe);   // RGB (音量で色収差)
     this._applyShardsPost(p, _safe);
@@ -5752,6 +5911,10 @@ void main(){
       gl.viewport(0, 0, this._finalFBO.w, this._finalFBO.h);
     }
 
+    // 9.6) Tone: Audio で変形した画面を印刷調にする。FB へは焼き込まず、Color で一度だけ色付けする
+    this._applyTonePost(p, _safe);
+
+    // 10) Color 段。@gradmask / A BG = None の Grad Map は従来どおり合成段で適用済み
     this._applyFinalColorGrade();
 
     // 11) プリセット切替トランジション (最後)。旧の画面 (snapFinal) は前のフレームの最終画面 = 3D FX も Color も掛け終わった絵なので、
@@ -5826,17 +5989,11 @@ void main(){
   _applyPollockFinal(p, safe){
     const gl = this.gl;
     if(!p || typeof PollockFX === 'undefined' || !this._finalFBO) return;
-    // Gloss / Matt / Flat の 3 スライダー(各0..1)から合成。最大の 1 つが有効 (uStyle は単一のため)。
-    const pkG = safe ? 0 : (+p.pollockGloss || 0);
-    const pkM = safe ? 0 : (+p.pollockMatt || 0);
-    const pkF = safe ? 0 : (+p.pollockFlat || 0);
-    const pkX = safe ? 0 : (+p.pollockMetal || 0);
     // Flat: matt ジオメトリ + uFlat / Metal: gloss ジオメトリ + uMetal
-    let pkVal, pkFlat = false, pkMetal = false;
-    if(pkF >= pkG && pkF >= pkM && pkF >= pkX){ pkVal = pkF; pkFlat = pkF > 0.001; }
-    else if(pkX >= pkG && pkX >= pkM){ pkVal = pkX; pkMetal = true; }
-    else if(pkG >= pkM){ pkVal = pkG; }
-    else { pkVal = -pkM; }
+    const amount = !safe && p.pollockOn && p.pollock > 0.001 ? p.pollock : 0;
+    const pkVal = amount && p.pollockType === 'matt' ? -amount : amount;
+    const pkFlat = amount > 0.001 && p.pollockType === 'flat';
+    const pkMetal = amount > 0.001 && p.pollockType === 'metal';
     { // 詳細 (0..1、0.5 = 従来)。全スタイル共通
       const rv = k=>{ const x = +(App.post || p)[k]; return Number.isFinite(x) ? Math.max(0, Math.min(1, x)) : 0.5; };   // 生の値 (実効値はデッドゾーンで 0.5 がずれる)
       const e2 = (k, r)=>Math.pow(2, (rv(k) - 0.5) * 2 * r);
@@ -5876,6 +6033,19 @@ void main(){
   },
 
   // スクリーンショット: 最終フレーム(_finalFBO)を PNG でダウンロード
+  // スクリーンショットのファイル名: gara_YYYYMMDD_HHMMSS.png (ローカル時刻)。同じ秒ならミリ秒を、同じミリ秒なら連番を足す
+  shotName(ext){
+    const d = new Date(), z = (n, k=2)=> String(n).padStart(k, '0');
+    const sec = d.getFullYear() + z(d.getMonth() + 1) + z(d.getDate()) + '_' + z(d.getHours()) + z(d.getMinutes()) + z(d.getSeconds());
+    const last = this._shotLast || {};
+    let name = 'gara_' + sec;
+    if(last.sec === sec){
+      name += '_' + z(d.getMilliseconds(), 3);
+      if(last.name && last.name.startsWith(name)){ this._shotSeq = (this._shotSeq || 1) + 1; name += '_' + this._shotSeq; } else this._shotSeq = 1;
+    }
+    this._shotLast = { sec, name };
+    return name + '.' + ext;
+  },
   // スクショの保存形式 (Prefs 'shotFormat')
   SHOT_FORMATS: {
     png:  { mime:'image/png',  ext:'png' },
@@ -5912,7 +6082,7 @@ void main(){
     // dataURL → Blob(同期)。navigator.share は user gesture 内で同期的に呼ぶ必要があるため toBlob(非同期)は使わない
     let dataUrl = c.toDataURL(fmt.mime, fmt.q);
     if(dataUrl.indexOf('data:' + fmt.mime) !== 0){ fmt = GL.SHOT_FORMATS.png; dataUrl = c.toDataURL('image/png'); }
-    const fname = 'gara_' + Date.now() + '.' + fmt.ext;
+    const fname = GL.shotName(fmt.ext);
     const bin = atob(dataUrl.split(',')[1]);
     const arr = new Uint8Array(bin.length);
     for(let i=0;i<bin.length;i++) arr[i] = bin.charCodeAt(i);
@@ -5930,7 +6100,7 @@ void main(){
       const file = new File([blob], fname, { type:fmt.mime });
       if(navigator.canShare({ files:[file] })){
         navigator.share({ files:[file], title:'GARA' })
-          .then(()=>{ if(typeof toast === 'function') toast('共有シートから「写真に保存」を選べます'); })
+          .then(()=>{ if(typeof toast === 'function') toast(I18n.t("共有シートから「写真に保存」を選べます")); })
           .catch((e)=>{ if(e && e.name === 'AbortError') return; doDownload(); });   // キャンセルは無視 / 失敗はDL
         return;
       }
@@ -6180,7 +6350,12 @@ void main(){
     const db = baseC - (this._slitPrevBase != null ? this._slitPrevBase : baseC);
     this._slitPrevBase = baseC;
     const stepv = bands / h;                            // 1pxぶんを「帯内ローカルUV」に換算
-    this._slitAcc = (this._slitAcc || 0) + Math.abs(db);
+    // 低い値ほど上下の動きを穏やかに: 1 フレームの移動 px を (|値|/0.6)^(1+2*Calm) 倍 (0.6 以上は等倍)。
+    //   値と Calm は生の値で見る (デッドゾーンを通すと UI の 0.60 が 0.6 未満になって減速し、既定の Calm 0.5 もずれる)。
+    //   止めた後の流れ切り (tail) は従来どおり等倍 (値 0 では倍率 0 になり、流れ切りが終わらなくなる)
+    const rawP = App.post || p, rawCalm = rawP.slitCalm, rawA = Math.abs(+rawP.slitScan || 0);
+    const calmGain = active ? Math.pow(Math.min(1, rawA / 0.6), 1 + 2 * (rawCalm != null ? +rawCalm : 0.5)) : 1;
+    this._slitAcc = (this._slitAcc || 0) + Math.abs(db) * calmGain;
     let px = Math.trunc(this._slitAcc / stepv);
     const maxpx = Math.max(1, Math.floor(0.5 * h / bands));
     if(px > maxpx) px = maxpx;
@@ -6612,6 +6787,12 @@ void main(){
     if(amount <= 0.001 || !this.gaussianProg) return;
     this._runFinalPost(this.gaussianProg, '_gaussianTmp', (P)=>{
       this.gl.uniform1f(this.gl.getUniformLocation(P, 'uAmount'), amount);
+      // Invert / Radius は 0.5 が従来 (倍率 2.0 / 1.0)。Invert 0 = 反転なし (mix 係数 amount)・1 = 3 倍まで外挿
+      const raw = App.post || p;   // サブパラメータは生の値 (実効値はデッドゾーンで既定の 0.5 がずれ、従来の倍率 2 / 半径 1 にならない)
+      const inv = Number.isFinite(+raw.slit2Invert) ? +raw.slit2Invert : 0.5;
+      const rad = Number.isFinite(+raw.slit2Radius) ? +raw.slit2Radius : 0.5;
+      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uGain'), 1.0 + 2.0 * inv);
+      this.gl.uniform1f(this.gl.getUniformLocation(P, 'uRadMul'), Math.pow(2.0, (rad - 0.5) * 2.0));
     });
   },
 
@@ -6730,9 +6911,9 @@ uniform float uTexAmt;
 uniform float uTool;
 uniform float uGrain;
 uniform float uBreak;
-float L(vec3 c){ return dot(c, vec3(0.299, 0.587, 0.114)); }
+${this.postPatternGLSL.luma}
 float lumAt(vec2 q){ return L(texture(uTex, clamp(q / uRes, vec2(0.0), vec2(1.0))).rgb); }
-float h21(vec2 q){ return fract(sin(dot(q, vec2(127.1, 311.7))) * 43758.5453); }
+${this.postPatternGLSL.hash}
 float vn(vec2 q){ vec2 i = floor(q), f = fract(q); f = f * f * (3.0 - 2.0 * f);
   return mix(mix(h21(i), h21(i + vec2(1.0, 0.0)), f.x), mix(h21(i + vec2(0.0, 1.0)), h21(i + vec2(1.0)), f.x), f.y); }
 void main(){
@@ -6819,6 +7000,128 @@ void main(){
       gl.uniform1f(U('uTool'), (p.hatchTool | 0) ? 1 : 0);
       gl.uniform1f(U('uGrain'), num('hatchGrain', 0.5));
       gl.uniform1f(U('uBreak'), num('hatchBreak', 0.3));
+    });
+  },
+  // p は effectivePost 済み。deadParam を重ねると 0.10 で効かなくなるので、ここでは再適用しない。
+  _applyTonePost(p, safe){
+    const amount = Math.max(0, Math.min(1, +(p && p.tone) || 0));
+    if(safe || amount <= 0.001 || !this._finalFBO) return;
+    if(!this._toneQueued){
+      this._toneQueued = true;
+      this._linkDeferred('toneProg', `#version 300 es
+precision highp float;
+in vec2 vUv; out vec4 frag;
+uniform sampler2D uTex;
+uniform vec2 uRes;
+uniform float uAmount, uCell, uAngle, uThreshold, uContrast, uLevels, uMix;
+uniform int uType;
+uniform vec3 uInk, uPaper;
+${this.postPatternGLSL.luma}
+${this.postPatternGLSL.hash}
+${this.postPatternGLSL.jitter}
+float toneLum(vec3 c){
+  return clamp((L(c) - 0.5) * exp2(4.0 * uContrast) + 0.5 - 0.5 * uThreshold, 0.0, 1.0);
+}
+float bayer2(vec2 c){
+  vec2 b = mod(floor(c), 2.0);
+  return 2.0 * b.x + 3.0 * b.y - 4.0 * b.x * b.y;
+}
+float bayer(vec2 c, bool eight){
+  float b = 4.0 * bayer2(c) + bayer2(floor(c / 2.0));
+  return eight ? (4.0 * b + bayer2(floor(c / 4.0)) + 0.5) / 64.0 : (b + 0.5) / 16.0;
+}
+// ハッシュの低周波成分 (隣接 4 セルの平均) を引く。ブルーノイズ風であり最適化済みマスクではない。
+float blue(vec2 c){
+  float neighbors = h21(c + vec2(1,0)) + h21(c - vec2(1,0))
+                  + h21(c + vec2(0,1)) + h21(c - vec2(0,1));
+  return clamp(0.5 + h21(c) - 0.25 * neighbors, 0.001, 0.999);
+}
+float cellLum(vec2 c, vec2 t, vec2 n){
+  vec2 q = (c + 0.5) * uCell;
+  vec2 uv = clamp(t * q.x + n * q.y, vec2(0.5), uRes - 0.5) / uRes;
+  return toneLum(texture(uTex, uv).rgb);
+}
+float cellError(vec2 c, vec2 t, vec2 n, float steps){
+  float v = cellLum(c, t, n) * steps;
+  return v - floor(v + 1.0 - blue(c));
+}
+// 正方形内の円の面積率。暗部でも円の外だけが白く残らないよう隅まで連続に覆う。
+float dotRank(vec2 f){
+  float r = length(f), r2 = r * r;
+  float area = 3.14159265 * r2;
+  if(r > 0.5) area -= 4.0 * (r2 * acos(0.5 / r) - 0.5 * sqrt(max(0.0, r2 - 0.25)));
+  return 1.0 - clamp(area, 0.0, 1.0);
+}
+float noiseDots(vec2 q){
+  vec2 c = floor(q), f = fract(q);
+  float d2 = 4.0;
+  for(int y = -1; y <= 1; y++) for(int x = -1; x <= 1; x++){
+    vec2 o = vec2(float(x), float(y));
+    vec2 seed = c + o;
+    vec2 center = 0.15 + 0.7 * vec2(h21(seed), rnd(seed + 19.7));
+    vec2 d = o + center - f;
+    d2 = min(d2, dot(d, d));
+  }
+  return clamp(exp(-3.14159265 * d2), 0.001, 0.999);
+}
+void main(){
+  vec4 src = texture(uTex, vUv);
+  vec2 px = vUv * uRes;
+  vec2 t = vec2(cos(uAngle), sin(uAngle)), n = vec2(-t.y, t.x);
+  vec2 q = vec2(dot(px, t), dot(px, n)) / uCell;
+  vec2 c = floor(q), f = fract(q) - 0.5;
+  float lum = (uType < 4) ? cellLum(c, t, n) : toneLum(src.rgb);
+  float steps = uLevels - 1.0, v = lum * steps, threshold;
+  if(uType < 2) threshold = bayer(c, uType == 1);
+  else if(uType < 4){
+    threshold = blue(c);
+    if(uType == 3){
+      // 1 回だけ周辺の仮量子化誤差を集める。逐次伝播も前フレーム参照もしない。
+      // 左 7 / 左上 1 / 上 5 / 右上 3 (画面上は +Y)。Floyd–Steinberg 風の近似。
+      float err = 7.0 * cellError(c + vec2(-1,0), t, n, steps)
+                + cellError(c + vec2(-1,1), t, n, steps)
+                + 5.0 * cellError(c + vec2(0,1), t, n, steps)
+                + 3.0 * cellError(c + vec2(1,1), t, n, steps);
+      v = clamp(v + err / 16.0, 0.0, steps);
+    }
+  } else if(uType == 4) threshold = dotRank(f);
+  else if(uType == 5) threshold = 1.0 - 2.0 * abs(f.y);
+  else if(uType == 6){
+    float crossRank = 1.0 - 2.0 * min(abs(f.x), abs(f.y));
+    threshold = crossRank * crossRank;
+  } else if(uType == 7){
+    float phase = length(px - 0.5 * uRes) / uCell;
+    threshold = 1.0 - 2.0 * abs(fract(phase) - 0.5);
+  } else threshold = noiseDots(q);
+  // 全種類で階調数を厳守する (縁の AA で中間色を足さない)。黒・白の端点は模様によらず保つ。
+  float paper = clamp((floor(v) + step(clamp(threshold, 0.001, 0.999), fract(v))) / steps, 0.0, 1.0);
+  if(lum <= 0.0) paper = 0.0;
+  if(lum >= 1.0) paper = 1.0;
+  // Mix 0 = Ink/Paper の印刷。Mix 1 = 元の絵を紙として、その上に Ink を載せる。
+  vec3 col = mix(uInk, mix(uPaper, src.rgb, uMix), paper);
+  float amount = (exp2(3.0 * uAmount) - 1.0) / 7.0;
+  frag = vec4(mix(src.rgb, col, amount), src.a);
+}`);
+    }
+    if(!this.toneProg) return;
+    const gl = this.gl;
+    const num = (k, d, lo, hi)=>Math.max(lo, Math.min(hi, Number.isFinite(p[k]) ? p[k] : d));
+    const hex = (h, d)=>{
+      const v = parseInt((/^#[0-9a-f]{6}$/i.test(h) ? h : d).slice(1), 16);
+      return [(v >> 16) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
+    };
+    this._runFinalPost(this.toneProg, '_toneTmp', P=>{
+      const U = n=>gl.getUniformLocation(P, n);
+      gl.uniform1f(U('uAmount'), amount);
+      gl.uniform1i(U('uType'), Math.round(num('toneType', 0, 0, 8)));
+      gl.uniform1f(U('uCell'), num('toneCell', 6, 1, 64));
+      gl.uniform1f(U('uAngle'), num('toneAngle', 0, -180, 180) * Math.PI / 180);
+      gl.uniform1f(U('uThreshold'), num('toneThreshold', 0, -1, 1));
+      gl.uniform1f(U('uContrast'), num('toneContrast', 0, -1, 1));
+      gl.uniform1f(U('uLevels'), Math.round(num('toneLevels', 2, 2, 16)));
+      gl.uniform1f(U('uMix'), num('toneMix', 0, 0, 1));
+      gl.uniform3fv(U('uInk'), hex(p.toneInk, '#000000'));
+      gl.uniform3fv(U('uPaper'), hex(p.tonePaper, '#ffffff'));
     });
   },
   _applyInkBleedPost(p, safe){
@@ -7031,6 +7334,14 @@ void main(){
       gl.uniform1f(gl.getUniformLocation(P, 'uTime'), this.postClock != null ? this.postClock : this.clock);
       gl.uniform1f(gl.getUniformLocation(P, 'uGain'), 1.5);   // FFT は Audio 側で audioGain 済み。帯が立ちやすいよう少し持ち上げる
       gl.uniform1f(gl.getUniformLocation(P, 'uOnset'), (typeof Audio !== 'undefined') ? (Audio.onset || 0) : 0);
+      // 詳細は生の値 (実効値はデッドゾーンで既定がずれる)。Amp は 0 = 従来、1 = 8 倍
+      const raw = App.post || p;
+      const num = (v, d)=> Number.isFinite(+v) ? +v : d;
+      gl.uniform1f(gl.getUniformLocation(P, 'uAmp'), 1 + 7 * Math.max(0, Math.min(1, num(raw.waveformAmp, 0))));
+      gl.uniform1f(gl.getUniformLocation(P, 'uCount'), Math.max(1, Math.min(64, Math.round(num(raw.waveformCount, 32)))));
+      gl.uniform1f(gl.getUniformLocation(P, 'uCountVar'), Math.max(0, Math.min(1, num(raw.waveformCountVar, 0))));
+      gl.uniform1f(gl.getUniformLocation(P, 'uWidth'), Math.max(0.02, Math.min(1, num(raw.waveformWidth, 1))));
+      gl.uniform1f(gl.getUniformLocation(P, 'uWidthVar'), Math.max(0, Math.min(0.95, num(raw.waveformWidthVar, 0.55))));
       gl.activeTexture(gl.TEXTURE1);
       gl.bindTexture(gl.TEXTURE_2D, this.audioTex || null);
       gl.uniform1i(gl.getUniformLocation(P, 'uFFT'), 1);
@@ -7493,17 +7804,28 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     return o;
   },
   _apply3dFx(p, safe){
+    if(this._fx3dHeight) this._fx3dHeight.valid = false;
+    if(typeof Fx3d !== 'undefined') Fx3d.shapeFrame = null;
     this._fx3dPostFold = null;
     this._fx3dNeedleTaken = false;
     this._gravFold = 0;
     if(safe || typeof Fx3d === 'undefined' || !this._finalFBO) return;
     const gl = this.gl;
     const fw = this._finalFBO.w, fh = this._finalFBO.h;
+    const build = App.post.fx3dStack !== 'chain', order = Fx3d.order(App.post);
+    const lastPart = build ? Fx3d.PARTS.filter(n=>Fx3d.effE[n] > 0.001 && Fx3d.has(n)).pop() : null;
+    const shapeName = lastPart && ['globe', 'tunnel'].find(n=>Fx3d.effE[n] > 0.001 && Fx3d.EXTRA[n]?.shapeState);
+    const shape = shapeName ? {name:shapeName, state:Fx3d.EXTRA[shapeName].shapeState({
+      asp:fw / fh, k:Fx3d.smooth(Fx3d.effE[shapeName]) * Fx3d.popEnv(shapeName), post:App.post, dz:v=>App.deadParam(v),
+      clock:this.postClock != null ? this.postClock : this.clock, beat:App.visualBeat ? App.visualBeat() : BPM.beatCount(),
+      beatMode:App.beatMode === 'beat', hit:typeof Audio !== 'undefined' ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0
+    })} : null;
     const s = [1, 0.75, 0.5].includes(+App.post.fx3dScale) ? +App.post.fx3dScale : 1;
     const tw = Math.max(2, Math.round(fw * s)), th = Math.max(2, Math.round(fh * s));
     // 各段は素材 (前の段の出力) を bgDim(e) だけ抜いて、自分の物体をその上に置く。抜いた所は透過 (alpha) のまま次へ渡し、
     //   次の段・折り系は透過の所を描かない = 前の段の物体だけが次の段に乗る (重ねがけ)。背景は最後に _fx3dBgUnder が一度だけ敷く
-    const foldNext = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'].some(k=>(+(p && p[k]) || 0) > 0.001);
+    const foldNext = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki','needle'].some(k=>(+(p && p[k]) || 0) > 0.001);
+    const heightNext = build && (foldNext || order.slice(1).some(name=>Fx3d.effE[name] > 0.001 && Fx3d.has(name)));
     // 折り (Needle / Origami / Kaiser / Roll) は、最後の段が折りに対応したエンジンなら、その物体の頂点へ同じ 3D 空間で掛ける
     //   (画面段の折りは飛ばす = 物体そのものが折れる)。それより前の段の物体は、最後の段の素材 (紙) として一緒に折れる
     this._fx3dPostFold = null;
@@ -7512,15 +7834,15 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     // Gravity は 3D の最後に掛ける: 折り (Needle / Origami / Kaiser / Roll)・Uzumaki・Globe (3D FX で Gravity より後) と一緒のときは 3D FX の段で描かず、統合パスの最後に場として掛ける
     const gE = Fx3d.effE.gravity || 0;
     this._gravFold = (gE > 0.001 && (aN > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001 || (+(p && p.uzumaki) || 0) > 0.001 || (Fx3d.effE.globe || 0) > 0.001) && !this._fx3dFrame && !!this.foldStackProg) ? gE : 0;
-    const skip = (name)=>name === 'gravity' && this._gravFold > 0;
+    const skip = (name)=>(name === 'gravity' && this._gravFold > 0) || (shape && (name === 'globe' || name === 'tunnel'));
     let lastName = null;
-    for(const name of Fx3d.ORDER){ if(Fx3d.effE[name] > 0.001 && Fx3d.has(name) && !skip(name)) lastName = name; }
+    for(const name of order){ if(Fx3d.effE[name] > 0.001 && Fx3d.has(name) && !skip(name)) lastName = name; }
     // Needle は、最後の段が面ごとの針に対応したエンジン (Slicer / Box) なら、物体の面の上に角錐として生やす
     //   (画面段の Needle と頂点フックの Needle は止める。ほかの折りはそのまま物体へ掛かる)
     const spike = !!lastName && Fx3d.canSpike(lastName) && aN > 0.001 && !this._fx3dFrame;
     this._fx3dNeedleTaken = spike;
     const aNf = spike ? 0 : aN;
-    if(lastName && Fx3d.canFold(lastName) && (aNf > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001) && !this._fx3dFrame && this.foldStackProg){
+    if(lastName && Fx3d.canFold(lastName, !!shape) && (aNf > 0.001 || aO > 0.001 || aK > 0.001 || aR > 0.001) && !this._fx3dFrame && this.foldStackProg){
       this._fx3dPostFold = { g: 1, zs: 0.3, F: this._foldBuild(p, aNf, aO, aK, aR, false, fw, fh) };
     }
     const onN = (x=>x * x * (3 - 2 * x))(Math.min(1, aN / 0.16));   // デッドゾーンを抜けた所から 0 で立ち上げる
@@ -7528,9 +7850,21 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
       hit: (typeof Audio !== 'undefined') ? Math.max(0, Math.min(1, Audio.hit || 0)) : 0,
       t: (this.postClock != null ? this.postClock : this.clock) * 0.5,
       scat: Math.max(0, Math.min(1, App.deadParam(p && p.needleScatter != null ? +p.needleScatter : 0.6))), ...GL.needleMods(p) } : null;
-    for(const name of Fx3d.ORDER){
+    for(const name of order){
       const e = Fx3d.effE[name] || 0;   // OFF にしたあとも要素が縮み終わるまでは直前の量で描く (Fx3d.popFrame)
       if(e <= 0.001 || !Fx3d.has(name) || skip(name)) continue;
+      if(name === 'extrude' && heightNext){
+        // 高さだけを書く。色は _finalFBO / _ovSrc の元テクスチャをそのまま後段へ渡す
+        // (3D Res、背景の暗転、Pop の合成も通さない)。H は常に画面と同じ解像度。
+        const ovS = this._ovSync();
+        Fx3d.render(name, { heightOnly: true, srcTex: ovS ? ovS.tex : this._finalFBO.tex, ovM: ovS ? ovS.m : [0, 0],
+          w: fw, h: fh, e, clock: this.postClock != null ? this.postClock : this.clock, beat: App.visualBeat ? App.visualBeat() : BPM.beatCount() });
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+        gl.bindVertexArray(null);
+        gl.activeTexture(gl.TEXTURE0);
+        gl.viewport(0, 0, fw, fh);
+        continue;
+      }
       let T = this._fx3dFBO;
       if(!T || T.w !== tw || T.h !== th){
         if(T){ gl.deleteTexture(T.tex); gl.deleteRenderbuffer(T.depth); gl.deleteFramebuffer(T.fbo); }
@@ -7556,10 +7890,11 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
       const folded = !!this._fx3dPostFold && name === lastName;
       Fx3d.foldFrame = folded ? this._fx3dPostFold : null;
       Fx3d.spikeFrame = name === lastName ? spikeF : null;
+      Fx3d.shapeFrame = name === lastPart ? shape : null;
       // 3D Overscan: 余白に対応したエンジン (Fx3d.EXTRA[name].ov) には余白付きの素材 _ovSrc を渡す (ovM = 余白の割合)
       const ovS = (Fx3d.EXTRA[name] && Fx3d.EXTRA[name].ov) ? this._ovSync() : null;
       const ok = Fx3d.render(name, { srcTex: ovS ? ovS.tex : this._finalFBO.tex, ovM: ovS ? ovS.m : [0, 0], fbo:T.fbo, w:tw, h:th, e, clock:this.postClock != null ? this.postClock : this.clock, beat });
-      Fx3d.foldFrame = null; Fx3d.spikeFrame = null;
+      Fx3d.foldFrame = null; Fx3d.spikeFrame = null; Fx3d.shapeFrame = null;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
       gl.bindVertexArray(null);
@@ -7605,7 +7940,7 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
   //   そのフレームは紙を透過 (alpha 0) のまま 3D 段まで運び、物体だけを 3D FX に乗せる。紙の色は 3D 段の最後 (_fx3dBgUnder) に敷く。
   //   3D 段より前で画面の明るさ・alpha を読む段 (Water / Boltzmann / マチエール) やプリセット切替の最中は従来どおり
   _matteFrame(p){
-    if(App.safeMode || !p || !this.compositeProg) return null;
+    if(App.safeMode || !p || p.fx3dAmount === 0 || !this.compositeProg) return null;
     const on = (k)=>(+p[k] || 0) > 0.001;
     const fx = ['origami','kaiser','kaiserOld','fx3dRoll','uzumaki'].some(on)
       || (typeof Fx3d !== 'undefined' && Fx3d.ORDER.some(n=>on(Fx3d.KEY[n]) || Fx3d.effE[n] > 0.001));
@@ -7670,7 +8005,7 @@ vec2 ovUvC(vec2 uv){ return (uOvM.x > 0.0 || uOvM.y > 0.0) ? ovUv(uv) : clamp(uv
     return [w[0] * App.slotVisibleAmount('A'), w[1] * App.slotVisibleAmount('B'), front];
   },
   // 紙抜きに対応した 3D エンジン (render が opaque:false で背景を透過にできるもの)。tower4149 は自前の 3D FX 経路を持つので入れない
-  MATTE_KINDS: ['layer','photoplane','slicer','spacetype','shredder','transflock','windflock','liquidpeel','chrometype'],
+  MATTE_KINDS: ['imgconstruct','layer','photoplane','slicer','spacetype','shredder','transflock','windflock','liquidpeel','chrometype'],
   // エンジンへ渡す opaque: 紙抜きフレームのスロットだけ false (それ以外は undefined = エンジンの従来の判定)
   _matteOpaque(slotKey){ return (this._matte && !this._matte.depth && !this._matte.only && this._matte.slot === slotKey) ? false : undefined; },
   // 3D Slot = A / B のフレームの「もう一方のスロットだけの絵」(選んだスロットの後ろに敷く)。_finalFBO と同じ大きさ
@@ -8315,6 +8650,44 @@ void main(){
     });
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform2f(U('uRelief'), rel[0], rel[1]);
+    this._fx3dHeightBind(P, cell);
+  },
+  // H = 共通の世界単位の高さ、C = 元素材の被覆。色とは別の RGBA16F (RG を使用)。
+  _fx3dHeightTarget(w, h){
+    const gl = this.gl;
+    let H = this._fx3dHeight;
+    if(H && H.w === w && H.h === h) return H;
+    if(H){ gl.deleteTexture(H.tex); gl.deleteFramebuffer(H.fbo); }
+    const tex = gl.createTexture(), fbo = gl.createFramebuffer();
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, tex);
+    gl.texStorage2D(gl.TEXTURE_2D, 1 + Math.floor(Math.log2(Math.max(w, h))), gl.RGBA16F, w, h);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
+    const ready = gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
+    if(!ready) console.warn('FX3D height: RGBA16F framebuffer unavailable');
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    return (this._fx3dHeight = { tex, fbo, w, h, ready, valid: false, os: [0, 0] });
+  },
+  // H だけ欲しい Slicer / Points も使う。無効時はテクスチャを読まず、既存の形を保つ。
+  _fx3dHeightBind(P, cell, enabled = true){
+    const gl = this.gl, H = this._fx3dHeight;
+    const on = !!(enabled && App.post.fx3dStack !== 'chain' && H && H.valid && H.frame === this.frame);
+    const U = n=>gl.getUniformLocation(P, n);
+    gl.uniform1f(U('uFx3dHeightOn'), on ? 1 : 0);
+    gl.uniform1f(U('uFx3dHeightDeferred'), on && typeof Fx3d !== 'undefined' && Fx3d.shapeFrame ? 1 : 0);
+    gl.uniform1f(U('uFx3dHeightMask'), App.post && App.post.fx3dTarget === 'all' ? 0 : 1);
+    gl.uniform2f(U('uFx3dHeightOs'), on ? H.os[0] : 0, on ? H.os[1] : 0);
+    const L = on && cell ? Math.max(0, Math.log2(Math.max(cell[0] * H.w / (1 + H.os[0]), cell[1] * H.h / (1 + H.os[1]))) - 1) : 0;
+    gl.uniform1f(U('uFx3dHeightLod'), L);
+    gl.activeTexture(gl.TEXTURE0 + 11);
+    gl.bindTexture(gl.TEXTURE_2D, on ? H.tex : null);
+    gl.uniform1i(U('uFx3dHeight'), 11);
+    gl.activeTexture(gl.TEXTURE0);
   },
   _foldUpload(prog, pre, F){
     const gl = this.gl;
@@ -8390,7 +8763,7 @@ void main(){
     const candA = mesh('A'), candB = !shown('A') && mesh('B');
     const cf = App.crossfade;
     const force = this._fx3dForceG;                       // 検証用: 数値を入れると g をその値に固定 (3D 方式を強制)
-    if(!Prefs.on('fx3dNative', '0') && force == null){    // 試験機能 (3D Native) が OFF: 平面方式だけ (g = 0・統合パスの先取りもなし)
+    if((p && p.fx3dAmount === 0) || (!Prefs.on('fx3dNative', '0') && force == null)){    // 試験機能 (3D Native) が OFF: 平面方式だけ (g = 0・統合パスの先取りもなし)
       this._fx3dGate = 0; this._fx3dBw = shown('B') ? 1 : 0; this._fx3dBMul = 1; this._fx3dG = 0; this._fx3dFlatStack = false; this._fx3dFrame = null;
       return;
     }
@@ -8534,6 +8907,91 @@ void main(){
     return (this._fx3dPaper = { fbo, tex, w, h });
   },
   // ── 3D のまま掛ける頂点フック (第 1 段: 41/49 Tower) ──
+  // Build: 最後の分け方を投影前の座標・紙の尺度へ戻し、球 / 筒の共有式へ写す。
+  // H は親メッシュで加えず、素材 UV から読み、曲面の法線へ一度だけ加える。
+  fx3dShapeGLSL(){
+    const extra = typeof Fx3d !== 'undefined' ? Fx3d.EXTRA : {};
+    return `uniform float uFx3dShapeOn, uFx3dShapeScale, uFx3dShapeAsp, uFx3dShapeMix, uFx3dShapeDepth;
+uniform mat4 uFx3dShapeInvProj, uFx3dShapeInvView, uFx3dShapeView, uFx3dShapeProj;
+out vec3 vFx3dShapeP;
+${extra.globe?.shapeGLSL() || 'vec3 f3g_gSurf(vec2 uv, out vec3 N){ N=vec3(0,0,1); return vec3(uv,0); }'}
+${extra.tunnel?.shapeGLSL() || 'vec3 f3t_tSurf(vec2 uv, out float s){ s=0.0; return vec3(uv,0); }'}
+vec3 fx3dShapePaper(vec4 clip){
+  vec4 world = uFx3dShapeInvView * uFx3dShapeInvProj * clip;
+  return world.xyz / world.w / uFx3dShapeScale;
+}
+vec4 fx3dShape(vec4 clip, vec2 sourceUv, vec2 paperXY){
+  vFx3dShapeP = vec3(0.0);
+  if(uFx3dShapeOn < 0.5) return clip;
+  vec3 q = fx3dShapePaper(clip);
+  q.xy = mix(q.xy, paperXY, uFx3dShapeMix);
+  vec2 uv = q.xy / (2.0 * vec2(uFx3dShapeAsp, 1.0)) + 0.5;
+  // 平面の余白は曲面になるにつれて極 / 筒端へ収める。曲面の外へ巨大な面を延ばさない。
+  vec2 at = vec2(uv.x, clamp(uv.y, 0.0, 1.0));
+  vec3 P, N, T;
+  const float E = 0.0001;
+  if(uFx3dShapeOn < 1.5){
+    vec3 Nd;
+    P = f3g_gSurf(at, N);
+    T = (f3g_gSurf(at + vec2(0.0, E), Nd) - P) / E;
+  } else {
+    float s, sd;
+    P = f3t_tSurf(at, s);
+    vec3 U = f3t_tSurf(at + vec2(E, 0.0), sd) - P;
+    T = (f3t_tSurf(at + vec2(0.0, E), sd) - P) / E;
+    vec3 nn = cross(U, T);
+    N = dot(nn, nn) > 1e-16 ? normalize(nn) : vec3(0.0, 0.0, 1.0); // 筒では内壁向き
+  }
+  // 分け方の奥行き・傾きは小さな法線変位へ圧縮。H は単体の形と同じ紙単位で一度だけ足す。
+  float depth = mix(q.z, uFx3dShapeDepth * q.z / (1.0 + abs(q.z)), uFx3dShapeMix);
+  P += T * (uv.y - at.y) * (1.0 - uFx3dShapeMix) + N * (depth + fx3dHeightHC(sourceUv).r);
+  vFx3dShapeP = P;
+  return uFx3dShapeProj * uFx3dShapeView * vec4(P, 1.0);
+}
+vec4 fx3dShape(vec4 clip, vec2 sourceUv){
+  if(uFx3dShapeOn < 0.5){ vFx3dShapeP = vec3(0.0); return clip; }
+  return fx3dShape(clip, sourceUv, fx3dShapePaper(clip).xy);
+}
+`;
+  },
+  fx3dShapeShadeGLSL(){
+    return `uniform float uFx3dShapeOn, uFx3dShapeShade;
+uniform vec3 uFx3dShapeEye;
+in vec3 vFx3dShapeP;
+vec3 fx3dShapeShade(vec3 original, vec3 albedo){
+  if(uFx3dShapeOn < 0.5) return original;
+  vec3 n = cross(dFdx(vFx3dShapeP), dFdy(vFx3dShapeP));
+  if(dot(n, n) < 1e-16) return albedo;
+  vec3 N = normalize(n), V = normalize(uFx3dShapeEye - vFx3dShapeP);
+  if(dot(N, V) < 0.0) N = -N;
+  vec3 L = normalize(vec3(2.4, 2.0, 3.0));
+  vec3 light = vec3(0.50, 0.48, 0.46) * max(0.0, dot(N, L)) + mix(vec3(0.60, 0.61, 0.64), vec3(0.72), N.y * 0.5 + 0.5);
+  return mix(albedo, albedo * light, uFx3dShapeShade);
+}
+`;
+  },
+  fx3dShapeUniforms(prog, proj, paperD, frame, view){
+    const gl = this.gl, U = n=>gl.getUniformLocation(prog, n);
+    gl.uniform1f(U('uFx3dShapeOn'), frame ? (frame.name === 'globe' ? 1 : 2) : 0);
+    if(!frame || !proj) return;
+    const s = frame.state;
+    // 投影の回転・Overscan に左右されない紙の半高。Slicer / Photos は呼出側で明示する。
+    const f = Math.hypot(proj[4], proj[5]);
+    gl.uniform1f(U('uFx3dShapeScale'), frame.paperScale ?? paperD / f);
+    const asp = s.asp ?? s.uniforms.uAsp;
+    gl.uniform1f(U('uFx3dShapeAsp'), asp);
+    const blend = frame.name === 'globe' ? Fx3d.smooth(Math.min(1, s.k / 0.55)) : s.uniforms.uM;
+    const radius = frame.name === 'globe' ? asp / Math.PI * (1 + 0.6 * s.m2) * (1 + 0.08 * s.hit * s.k) : s.uniforms.uRad;
+    gl.uniform1f(U('uFx3dShapeMix'), blend);
+    gl.uniform1f(U('uFx3dShapeDepth'), 0.15 * radius);
+    gl.uniform1f(U('uFx3dShapeShade'), Fx3d.shade(s.k));
+    gl.uniformMatrix4fv(U('uFx3dShapeInvProj'), false, this._mat4Inv(proj));
+    gl.uniformMatrix4fv(U('uFx3dShapeInvView'), false, this._mat4Inv(view));
+    gl.uniformMatrix4fv(U('uFx3dShapeView'), false, s.cam.view);
+    gl.uniformMatrix4fv(U('uFx3dShapeProj'), false, s.cam.proj);
+    gl.uniform3fv(U('uFx3dShapeEye'), s.cam.eye);
+    Fx3d.EXTRA[frame.name].shapeUniforms(gl, prog, s, frame.name === 'globe' ? 'f3g_' : 'f3t_');
+  },
   // エンジンの頂点シェーダ末尾で `gl_Position = fx3dApply(gl_Position);` を呼ぶ。ビュー空間を「紙」の空間とみなし、
   // 各頂点を紙の座標へ移して折り (f3Paper) を掛け、3D FX 用カメラ (uFx3dView / uFx3dProj) で再投影する。
   // g (uFx3dG) = 0 では各頂点が元の透視で映る位置の紙に乗る (平面方式と同じ絵)、1 で完全な立体。
@@ -8567,12 +9025,18 @@ vec4 fx3dApply(vec4 clip){
   reliefGLSL(){
     return `uniform sampler2D uDepthA;
 uniform sampler2D uDepthB;
+uniform highp sampler2D uFx3dHeight;
+uniform float uFx3dHeightOn, uFx3dHeightLod, uFx3dHeightMask, uFx3dHeightDeferred;
+uniform vec2 uFx3dHeightOs;
 uniform vec2 uRelief;
 uniform float uReliefMax;   // 1 = 両スロットの深度は手前優先 (max) / 0 = ミックス比で足す
 uniform vec2 uDepthLod;  // 深度を均す細かさ (xy = Slot A / B。0 = 等倍。_reliefBind の cell = メッシュの 1 マスに合わせる)
 uniform vec4 uDepthOs;   // 3D Overscan: 深度テクスチャの余白 (xy = Slot A / zw = Slot B。全体 / 画面分 - 1)
 // 画面座標 → 深度テクスチャ座標 (余白があれば画面の外も実際の深度。その外はミラー)
 vec2 vjDepthUv(vec2 uv, vec2 o){ return 1.0 - abs(1.0 - mod((o.x == 0.0 && o.y == 0.0) ? uv : (uv - 0.5) / (1.0 + o) + 0.5, 2.0)); }
+// H/C は同じ素材 UV。高さはすでに世界単位なので uRelief を再び掛けない。
+vec2 fx3dHeightHC(vec2 uv){ return uFx3dHeightOn > 0.5 ? textureLod(uFx3dHeight, vjDepthUv(uv, uFx3dHeightOs), uFx3dHeightLod).rg : vec2(0.0); }
+float fx3dHeight(vec2 uv){ return uFx3dHeightDeferred > 0.5 ? 0.0 : fx3dHeightHC(uv).r; }
 float vjDepthAt(sampler2D t, vec2 m, float L){
   if(L > 0.0){   // メッシュの 1 マスぶんに均した深度 (ミップ L 段 + マスの半分ずらした 4 点) = 頂点ごとの拾い漏れで面が尖らない
     vec2 q = exp2(L) / vec2(textureSize(t, 0));
@@ -8585,12 +9049,13 @@ float vjDepthAt(sampler2D t, vec2 m, float L){
         + texture(t, m + vec2(0.0, o.y)).r + texture(t, m - vec2(0.0, o.y)).r) / 6.0;
 }
 float vjRelief(vec2 uv){
+  if(uFx3dHeightOn > 0.5) return fx3dHeight(uv);
   // 紙を広げたときの画面の外は、スロットに余白 (3D Overscan) があればその深度、なければミラー
   float a = uRelief.x > 0.0 ? uRelief.x * vjDepthAt(uDepthA, vjDepthUv(uv, uDepthOs.xy), uDepthLod.x) : 0.0;
   float b = uRelief.y > 0.0 ? uRelief.y * vjDepthAt(uDepthB, vjDepthUv(uv, uDepthOs.zw), uDepthLod.y) : 0.0;
   return uReliefMax > 0.5 ? max(a, b) : a + b;
 }
-float fx3dRelief(vec2 uv){ return (uRelief.x + uRelief.y > 0.0) ? vjRelief(uv) : 0.0; }
+float fx3dRelief(vec2 uv){ return (uFx3dHeightOn > 0.5 || uRelief.x + uRelief.y > 0.0) ? vjRelief(uv) : 0.0; }
 `;
   },
   // Needle の太さ・長さ・最大辺数 (App.post の needleThick / needleLen / needleSides) → 倍率。太さ・長さは 2^値 (0 = 従来、-1 = 半分、+1 = 2 倍)。
@@ -8741,12 +9206,13 @@ vec3 fx3dFoldShade(vec3 c){
     const active = (aN > 0.001 ? 1 : 0) + (aO > 0.001 ? 1 : 0) + (aK > 0.001 ? 1 : 0);
     // fold 2 系以上、Needle、または fold 1 系以上 + Uzumaki で統合パス起動 (折った紙そのものを螺旋に複製)
     const uzOn = aU > 0.001;
+    const heightUz = uzOn && App.post.fx3dStack !== 'chain' && this._fx3dHeight && this._fx3dHeight.valid && this._fx3dHeight.frame === this.frame;
     this._foldStackTookUzumaki = false;
-    if((!(aR > 0.001) && !(aK > 0.001) && !oSoft && active < 2 && !(uzOn && active >= 1) && !((this._foldStackForce || this._fx3dFlatStack || aN > 0.001) && active >= 1) && !this._gravFold) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
+    if((!(aR > 0.001) && !(aK > 0.001) && !oSoft && active < 2 && !(uzOn && active >= 1) && !heightUz && !((this._foldStackForce || this._fx3dFlatStack || aN > 0.001) && active >= 1) && !this._gravFold) || !this.foldStackProg || !this._finalFBO){ this._foldStackActive = false; return false; }
     this._foldStackActive = true;
     if(uzOn) this._foldStackTookUzumaki = true;
     // Uzumaki 統合時はグリッドを粗く (頂点数 = カード枚数 × セル数 を抑える)
-    const GRID = uzOn ? (this._gravFold > 0 ? [56, 32] : [36, 21]) : (this._gravFold > 0 ? [160, 90] : (aK > 0.001 ? [600, 336] : ((this._rollPaperM(aN, aO, aK, aR, uzOn) > 1 || oSoft) ? [200, 112] : this._foldStackGrid)));   // Gravity の場は漏斗が深いので細かく / Roll だけ = 広げた紙のぶん細かく / Drape = 強いひねりで格子のマスが引き伸ばされ、切り抜きの縁がマスごとに折れてのこぎり状になるので細かく (600×336 でも負荷はほぼ同じ)
+    const GRID = uzOn ? (heightUz ? [72, 42] : (this._gravFold > 0 ? [56, 32] : [36, 21])) : (this._gravFold > 0 ? [160, 90] : (aK > 0.001 ? [600, 336] : ((this._rollPaperM(aN, aO, aK, aR, uzOn) > 1 || oSoft) ? [200, 112] : this._foldStackGrid)));   // H のカードは面内の凹凸用に細分。H 無効時は既存の格子を維持
     const UZ = uzOn ? this._uzuParams(aU, this._finalFBO.w, this._finalFBO.h) : null;
     const w = this._finalFBO.w, h = this._finalFBO.h;
     if(!this._foldStackTmp || this._foldStackTmp.w !== w || this._foldStackTmp.h !== h){
@@ -9278,6 +9744,7 @@ vec3 fx3dFoldShade(vec3 c){
       gl.bindTexture(gl.TEXTURE_2D, state.echoMerge.tex);
       gl.uniform1i(gl.getUniformLocation(prog, 'uHistory'), 1);
       gl.uniform1f(gl.getUniformLocation(prog, 'uAmount'), amount);
+      gl.uniform1f(gl.getUniformLocation(prog, 'uPolygon'), polygon);
       gl.activeTexture(gl.TEXTURE0);
       });
     };
@@ -9317,6 +9784,7 @@ vec3 fx3dFoldShade(vec3 c){
     gl.uniform1f(gl.getUniformLocation(P, 'uDelta'), dt);
     gl.uniform1f(gl.getUniformLocation(P, 'uPolygon'), polygon);
     gl.uniform1f(gl.getUniformLocation(P, 'uTime'), time);
+    gl.uniform1f(gl.getUniformLocation(P, 'uFaceSize'), faceSize);
     gl.drawArrays(gl.TRIANGLES, 0, 3);
     gl.bindVertexArray(null);
     gl.activeTexture(gl.TEXTURE4); gl.bindTexture(gl.TEXTURE_2D, null);
@@ -9950,7 +10418,7 @@ vec3 fx3dFoldShade(vec3 c){
     }
     const bz = !!(Math.abs(post.boltz||0) > 0.001) && typeof Boltzmann !== 'undefined';
     if(bz && !this._bzPrev) this._bzCapture = true;
-    const pkVal = Math.max(+post.pollockGloss || 0, +post.pollockMatt || 0, +post.pollockFlat || 0, +post.pollockMetal || 0);
+    const pkVal = post.pollockOn ? (+post.pollock || 0) : 0;
     const pk = !!(pkVal > 0.001 && typeof PollockFX !== 'undefined');
     if(pk && !this._pkPrev) this._pkCapture = true;
     // beat モード時は 1 小節(4拍)ごとにワープ場をリセット。
@@ -9970,7 +10438,7 @@ vec3 fx3dFoldShade(vec3 c){
       this._pkCaptureWait--;
       if(this._pkCaptureWait === 0) this._pkCapture = true;
     }
-    if(!frozen) this._fx3dUpdate(post, realDt, this.slots[this._fx3dTarget || 'A'].fbos[0].w, this.slots[this._fx3dTarget || 'A'].fbos[0].h);
+    if(!frozen || post.fx3dAmount === 0) this._fx3dUpdate(post, realDt, this.slots[this._fx3dTarget || 'A'].fbos[0].w, this.slots[this._fx3dTarget || 'A'].fbos[0].h);
     else { this._fx3dBMul = 1; this._fx3dBw = (this.slots.B.kind !== 'none' && App.slotVisibleAmount('B') > 0) ? 1 : 0; }   // フリーズ中は B の表示を追従させない (解除後に B が消えて出直さないよう bw も合わせる)
     if(frozen){
       this._freezeSources(realDt);                 // シェーダ/mode/video の更新を停止(前フレーム保持)
@@ -10086,12 +10554,17 @@ vec3 fx3dFoldShade(vec3 c){
 
   _renderAnySlot(slotKey){
     const slot = this.slots[slotKey];
-    const slotBeat = (slot && typeof slot._beat === 'number') ? slot._beat : BPM.beatCount();
-    const slotScaledBeat = (slot && typeof slot._scaledBeat === 'number') ? slot._scaledBeat
-      : (App.visualBeat ? App.visualBeat(slotBeat) : slotBeat * (App.beatScale || 1));
+    // Code は B 専用インスタンスへ拍・時計を渡す。shader は renderSlot でずらす。
+    const engine = BShift.engine(slot.kind, slotKey);
+    const offB = slotKey === 'B' && slot.kind !== 'shader' ? (App.slotBOffsetBeats || 0) : 0;
+    const offSec = offB * 60 / Math.max(20, BPM.bpm);
+    const slotBeat = ((slot && typeof slot._beat === 'number') ? slot._beat : BPM.beatCount()) + offB;
+    const slotScaledBeat = ((slot && typeof slot._scaledBeat === 'number') ? slot._scaledBeat
+      : (App.visualBeat ? App.visualBeat(slotBeat - offB) : (slotBeat - offB) * (App.beatScale || 1))) + offB;
     const prevClock = this.clock;
-    if(slot && typeof slot._clock === 'number') this.clock = slot._clock;
-    this._kdBegin(slotKey, slot);
+    this.clock = ((slot && typeof slot._clock === 'number') ? slot._clock : prevClock) + offSec;
+    const slotClock = this.clock;
+    this._kdBegin(slotKey, slot, engine);
     this._osCur = slot && slot.kind !== 'shader' && slot.fbos ? slot.fbos[slot.fbIdx] : null;   // Code の描画中のスロット (GL.osProj が余白を読む)
     try {
     if(slot.kind === 'none'){
@@ -10110,10 +10583,10 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'layer'){
-      if(!Layer.initialized) Layer.init(this.gl);
+      if(!engine.initialized) engine.init(this.gl);
       App.ensureLazyImages('layer');
       const target = slot.fbos[slot.fbIdx];
-      Layer.render({
+      engine.render({
         fbo: target.fbo, w: target.w, h: target.h,
         beatMode: App.beatMode,
         beat: slotScaledBeat,
@@ -10128,13 +10601,13 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'manga'){
-      if(typeof Manga === 'undefined') return;
-      if(!Manga.initialized) Manga.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       App.ensureLazyImages('manga');
       const target = slot.fbos[slot.fbIdx];
-      Manga.update(slotScaledBeat, 1/60, target.w, target.h);
+      engine.update(slotScaledBeat, 1/60, target.w, target.h);
       // Slot B は背景を実 alpha で透過 (貼られた画像だけ残して下の Slot A を見せる)
-      Manga.render({ fbo: target.fbo, w: target.w, h: target.h, opaque: slotKey !== 'B' });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, opaque: slotKey !== 'B' });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10142,11 +10615,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'textdeform'){
-      if(typeof TextDeform === 'undefined') return;
-      if(!TextDeform.initialized) TextDeform.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      TextDeform.update(slotScaledBeat, 1/60, target.w, target.h, slotBeat);   // 実際の拍も渡す (Timing の BPM / ×A)
-      TextDeform.render({ fbo: target.fbo, w: target.w, h: target.h, opaque: slotKey !== 'B' });   // Slot B は背景 (紙) を塗らず実 alpha で透過 (下の Slot A を見せる)
+      engine.update(slotScaledBeat, 1/60, target.w, target.h, slotBeat);   // 実際の拍も渡す (Timing の BPM / ×A)
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, opaque: slotKey !== 'B' });   // Slot B は背景 (紙) を塗らず実 alpha で透過 (下の Slot A を見せる)
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10154,11 +10627,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'ugomeki'){
-      if(typeof Ugomeki === 'undefined') return;
-      if(!Ugomeki.initialized) Ugomeki.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      Ugomeki.update(slotScaledBeat, 1/60, target.w, target.h);
-      Ugomeki.render({ fbo: target.fbo, w: target.w, h: target.h });
+      engine.update(slotScaledBeat, 1/60, target.w, target.h);
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10166,10 +10639,10 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'spacetype'){
-      if(typeof SpaceType === 'undefined') return;
-      if(!SpaceType.initialized) SpaceType.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      SpaceType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: this._matteOpaque(slotKey) });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: this._matteOpaque(slotKey) });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10177,12 +10650,12 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'video'){
-      if(typeof Movie === 'undefined') return;
-      if(!Movie.initialized) Movie.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       // beat モード時は拍に同期してランダム再生位置にジャンプ
-      Movie.update(slotScaledBeat, App.beatMode, slotKey);
+      engine.update(slotScaledBeat, App.beatMode, slotKey, offB);
       const target = slot.fbos[slot.fbIdx];
-      Movie.render({ fbo: target.fbo, w: target.w, h: target.h, slotKey });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slotKey, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10190,10 +10663,10 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'aratanagara'){
-      if(typeof Aratanagara === 'undefined') return;
-      if(!Aratanagara.initialized) Aratanagara.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      Aratanagara.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10201,12 +10674,12 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'slicer'){
-      if(typeof Slicer === 'undefined') return;
-      if(!Slicer.initialized) Slicer.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       App.ensureLazyImages('slicer');
-      Slicer.update(slotScaledBeat, 1/60);
+      engine.update(slotScaledBeat, 1/60);
       const target = slot.fbos[slot.fbIdx];
-      Slicer.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, opaque: this._matteOpaque(slotKey) });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, opaque: this._matteOpaque(slotKey) });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10214,11 +10687,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'cyberui'){
-      if(typeof CyberUI === 'undefined') return;
-      if(!CyberUI.initialized) CyberUI.init(this.gl);
-      CyberUI.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      CyberUI.render({ fbo: target.fbo, w: target.w, h: target.h, beat: slotScaledBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, beat: slotScaledBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10226,11 +10699,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'novel'){
-      if(typeof NovelTerminal === 'undefined') return;
-      if(!NovelTerminal.initialized) NovelTerminal.init(this.gl);
-      NovelTerminal.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      NovelTerminal.render({ fbo: target.fbo, w: target.w, h: target.h, beat: slotScaledBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, beat: slotScaledBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10238,11 +10711,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'grayscott'){
-      if(typeof GrayScott === 'undefined') return;
-      if(!GrayScott.initialized) GrayScott.init(this.gl);
-      GrayScott.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      GrayScott.render({ fbo: target.fbo, w: target.w, h: target.h });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10250,11 +10723,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'inkelly'){
-      if(typeof Inkelly === 'undefined') return;
-      if(!Inkelly.initialized) Inkelly.init(this.gl);
-      Inkelly.update(slotScaledBeat, (1/60) * (App.beatScale || 1));
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update(slotScaledBeat, (1/60) * (App.beatScale || 1));
       const target = slot.fbos[slot.fbIdx];
-      Inkelly.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10262,11 +10735,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'pen'){
-      if(typeof Pen === 'undefined') return;
-      if(!Pen.initialized) Pen.init(this.gl);
-      Pen.update(slotScaledBeat);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update(slotScaledBeat);
       const target = slot.fbos[slot.fbIdx];
-      Pen.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10274,10 +10747,10 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'boltzmann'){
-      if(typeof Boltzmann === 'undefined') return;
-      if(!Boltzmann.initialized) Boltzmann.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      Boltzmann.render({ fbo: target.fbo, w: target.w, h: target.h });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10285,11 +10758,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'caverns'){
-      if(typeof Caverns === 'undefined') return;
-      if(!Caverns.initialized) Caverns.init(this.gl);
-      Caverns.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      Caverns.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10297,11 +10770,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'image'){
-      if(typeof ImageMode === 'undefined') return;
-      if(!ImageMode.initialized) ImageMode.init(this.gl);
-      ImageMode.update(slotScaledBeat, App.beatMode, slotKey);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update(slotScaledBeat, App.beatMode, slotKey, offB);
       const target = slot.fbos[slot.fbIdx];
-      ImageMode.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10309,11 +10782,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'photoplane'){
-      if(typeof PhotoPlane === 'undefined') return;
-      if(!PhotoPlane.initialized) PhotoPlane.init(this.gl);
-      PhotoPlane.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      PhotoPlane.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: this._matteOpaque(slotKey) });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: this._matteOpaque(slotKey) });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10321,11 +10794,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'shredder'){
-      if(typeof Shredder === 'undefined') return;
-      if(!Shredder.initialized) Shredder.init(this.gl);
-      Shredder.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      Shredder.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10333,11 +10806,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'transflock'){
-      if(typeof TransFlock === 'undefined') return;
-      if(!TransFlock.initialized) TransFlock.init(this.gl);
-      TransFlock.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      TransFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10345,11 +10818,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'windflock'){
-      if(typeof WindFlock === 'undefined') return;
-      if(!WindFlock.initialized) WindFlock.init(this.gl);
-      WindFlock.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      WindFlock.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10357,18 +10830,18 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'tower4149'){
-      if(typeof Tower4149 === 'undefined') return;
-      if(!Tower4149.initialized) Tower4149.init(this.gl);
-      Tower4149.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      const t4Opts = { fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' };
-      Tower4149.render(t4Opts);
+      const t4Opts = { fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' };
+      engine.render(t4Opts);
       const fr3 = this._fx3dFrame;
       if(fr3 && fr3.blend && fr3.target === slotKey){   // 3D Native の切り替わり: 同じフレームを平面 (通常の描画) でも描く (composite が F として使う)
         let FT = this._fx3dFlatFBO;
         if(!FT) FT = this._fx3dFlatFBO = this._mkFBO(target.w, target.h); else this._resizeFBO(FT, target.w, target.h);
         this._fx3dFrame = null;
-        Tower4149.render(Object.assign({}, t4Opts, { fbo: FT.fbo }));
+        engine.render(Object.assign({}, t4Opts, { fbo: FT.fbo }));
         this._fx3dFrame = fr3;
         this._fx3dFlat = { tex: FT.tex, frame: this.frame, slot: slotKey };
       }
@@ -10379,11 +10852,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]){   // RHIZOME 系 (rhizome / rzfan / rzpacks / rzstack / rztube)
-      const RZ = RhizomeKinds[slot.kind];
+      const RZ = engine;
       if(!RZ.initialized) RZ.init(this.gl);
       RZ.update();
       const target = slot.fbos[slot.fbIdx];
-      RZ.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      RZ.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10391,11 +10864,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'chrometype'){
-      if(typeof ChromeType === 'undefined') return;
-      if(!ChromeType.initialized) ChromeType.init(this.gl);
-      ChromeType.update({ beat: slotScaledBeat, clock: slot._clock });
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update({ beat: slotScaledBeat, clock: slotClock });
       const target = slot.fbos[slot.fbIdx];
-      ChromeType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10403,10 +10876,21 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'glitchtype'){
-      if(typeof GlitchType === 'undefined') return;
-      if(!GlitchType.initialized) GlitchType.init(this.gl);
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
       const target = slot.fbos[slot.fbIdx];
-      GlitchType.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      const gl = this.gl;
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
+      slot.fbIdx ^= 1;
+      return;
+    }
+    if(slot.kind === 'imgconstruct'){
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      const target = slot.fbos[slot.fbIdx];
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10414,11 +10898,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'surrealfloat'){
-      if(typeof SurrealFloat === 'undefined') return;
-      if(!SurrealFloat.initialized) SurrealFloat.init(this.gl);
-      SurrealFloat.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      SurrealFloat.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10426,11 +10910,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'fude'){
-      if(typeof Fude === 'undefined') return;
-      if(!Fude.initialized) Fude.init(this.gl);
-      Fude.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      Fude.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10438,11 +10922,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'liquidpeel'){
-      if(typeof LiquidPeel === 'undefined') return;
-      if(!LiquidPeel.initialized) LiquidPeel.init(this.gl);
-      LiquidPeel.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      LiquidPeel.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock, opaque: slotKey !== 'B' && this._matteOpaque(slotKey) !== false });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10450,11 +10934,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'shelf'){
-      if(typeof Shelf === 'undefined') return;
-      if(!Shelf.initialized) Shelf.init(this.gl);
-      Shelf.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      Shelf.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotScaledBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10462,11 +10946,11 @@ vec3 fx3dFoldShade(vec3 c){
       return;
     }
     if(slot.kind === 'ribbon'){
-      if(typeof Ribbon === 'undefined') return;
-      if(!Ribbon.initialized) Ribbon.init(this.gl);
-      Ribbon.update();
+      if(typeof engine === 'undefined') return;
+      if(!engine.initialized) engine.init(this.gl);
+      engine.update();
       const target = slot.fbos[slot.fbIdx];
-      Ribbon.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotBeat, clock: slot._clock });
+      engine.render({ fbo: target.fbo, w: target.w, h: target.h, slot: slotKey, beat: slotBeat, clock: slotClock });
       const gl = this.gl;
       gl.bindFramebuffer(gl.FRAMEBUFFER, null);
       gl.disable(gl.DEPTH_TEST); gl.disable(gl.BLEND);
@@ -10758,7 +11242,7 @@ const Audio = {
   },
 
   async start(mode='mic'){
-    if(this._starting){ toast('Audio: 起動中…'); return false; }
+    if(this._starting){ toast(I18n.t("Audio: 起動中…")); return false; }
     this._starting = true;
     // 既存があれば先に停止 (例外は無視)
     await this.stop().catch(()=>{});
@@ -10771,20 +11255,20 @@ const Audio = {
           // アプリ版はまず CoreAudio プロセスタップ (Discord 除外) を試す。
           // 失敗時 (旧 macOS / 権限なし / ヘルパなし) は従来の SCK loopback へフォールバック。
           stream = await this._startTapCapture().catch(e => { console.warn('sysaudio tap failed, fallback to loopback:', e); return null; });
-          if(stream) toast('システム音声を取得します (Discord は除外)', 3000);
+          if(stream) toast(I18n.t("システム音声を取得します (Discord は除外)"), 3000);
         }
         if(!stream){
         if(!navigator.mediaDevices || !navigator.mediaDevices.getDisplayMedia){
-          throw new Error('このブラウザは画面音声キャプチャに非対応');
+          throw new Error(I18n.t("このブラウザは画面音声キャプチャに非対応"));
         }
         // アプリ版 (Electron) はピッカーを出さず「画面全体 + システム音声」を自動取得する
         // (desktop/main.js の setDisplayMediaRequestHandler)。案内とエラー文言を分ける。
         if(isApp){
-          toast('画面全体のシステム音声を取得します', 3000);
+          toast(I18n.t("画面全体のシステム音声を取得します"), 3000);
         } else {
           // ブラウザ版 (Chrome 系): ピッカーで「Chrome タブ」を選択 (Window/Screen は音声非対応) +
           // 下部の「タブの音声を共有」にチェック。この案内をピッカー前にトーストで出しておく
-          toast('ピッカーで「Chromeタブ」を選び「タブの音声を共有」にチェック', 4500);
+          toast(I18n.t("ピッカーで「Chromeタブ」を選び「タブの音声を共有」にチェック"), 4500);
         }
         // 少し待ってからピッカーを開く (トーストが見える時間を確保)
         await new Promise(r=>setTimeout(r, 50));
@@ -10798,23 +11282,23 @@ const Audio = {
           // getDisplayMedia の典型的な失敗パターンを分解して報告
           const name = e && e.name;
           if(isApp && (name === 'NotAllowedError' || name === 'PermissionDeniedError' || name === 'NotReadableError')){
-            throw new Error('システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動');
+            throw new Error(I18n.t("システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動"));
           } else if(name === 'NotAllowedError' || name === 'PermissionDeniedError'){
-            throw new Error('権限拒否: ピッカーで「タブ」を選び「タブの音声を共有」にチェック (Window/Screen は音声非対応)');
+            throw new Error(I18n.t("権限拒否: ピッカーで「タブ」を選び「タブの音声を共有」にチェック (Window/Screen は音声非対応)"));
           } else if(name === 'NotFoundError'){
-            throw new Error('共有可能なソースが見つかりません');
+            throw new Error(I18n.t("共有可能なソースが見つかりません"));
           } else if(name === 'NotSupportedError'){
-            throw new Error('このブラウザは画面音声キャプチャに非対応');
+            throw new Error(I18n.t("このブラウザは画面音声キャプチャに非対応"));
           } else if(name === 'AbortError'){
-            throw new Error('共有がキャンセルされました');
+            throw new Error(I18n.t("共有がキャンセルされました"));
           }
           throw e;
         }
         if(stream.getAudioTracks().length === 0){
           stream.getTracks().forEach(t=>t.stop());
           throw new Error(isApp
-            ? 'システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動'
-            : '音声トラックなし: 「タブの音声を共有」にチェックを入れて再試行');
+            ? I18n.t("システム音声を取得できません: システム設定 → プライバシーとセキュリティ → 画面収録とシステムオーディオ録音 で GARA を許可 → アプリ再起動")
+            : I18n.t("音声トラックなし: 「タブの音声を共有」にチェックを入れて再試行"));
         }
         // video トラックは使わない。ブラウザ (タブ共有) では止めて負荷を下げるが、
         // アプリ版のシステム音声 (SCK loopback) は映像トラックを止めるとキャプチャ
@@ -10832,7 +11316,7 @@ const Audio = {
           }});
         }catch(e){
           if(e && e.name === 'NotAllowedError'){
-            throw new Error('マイク権限が拒否されました (ブラウザの URL 横の鍵アイコンから許可してください)');
+            throw new Error(I18n.t("マイク権限が拒否されました (ブラウザの URL 横の鍵アイコンから許可してください)"));
           }
           throw e;
         }
@@ -11426,7 +11910,7 @@ const BPM = {
 =================================================================== */
 const MIDI = {
   access:null, learn:null /* {slot,name} */, map:{}, // key="A:speed" -> {ch,cc}
-  postRange:{ gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], sliceLine:[0,1], sliceCount:[0,1], sliceMove:[0,1], sliceAngle:[0,1], ringsLine:[0,1], ringsCount:[0,1], ringsTwist:[0,1], ringsWobble:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], sharpen:[0,1], crisp:[0,1], shock:[0,1], inkBleed:[0,1], hatch:[0,1], hatchDensity:[0,1], hatchFlow:[0,1], hatchLength:[0,1], hatchLayers:[1,4], hatchWobble:[0,1], hatchMix:[0,1], hatchAngle:[0,1], hatchTex:[0,1], hatchGrain:[0,1], hatchBreak:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], specWarp:[0,1], zoomPump:[0,1], shatter:[0,1], aPop:[0,1], aPopCount:[1,32], aPopSize:[2,400], aPopSides:[2,12], aPopZoom:[0,1], aPopLine:[0,1], aPopShade:[0,1], aPopSpin:[0,1], pollockGloss:[0,1], pollockMatt:[0,1], pollockFlat:[0,1], pollockMetal:[0,1], pollockSize:[0,1], pollockLength:[0,1], pollockDensity:[0,1], pollockDrops:[0,1], pollockCurve:[0,1], pollockLife:[0,1], pollockRelief:[0,1],  boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], aShardsMove:[0,1], waveform:[0,1], slitScan:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], colorTemp:[-1,1], colorTint:[-1,1], mixHueRed:[-1,1], mixHueOrange:[-1,1], mixHueYellow:[-1,1], mixHueGreen:[-1,1], mixHueAqua:[-1,1], mixHueBlue:[-1,1], mixHuePurple:[-1,1], mixHueMagenta:[-1,1], mixSatRed:[-1,1], mixSatOrange:[-1,1], mixSatYellow:[-1,1], mixSatGreen:[-1,1], mixSatAqua:[-1,1], mixSatBlue:[-1,1], mixSatPurple:[-1,1], mixSatMagenta:[-1,1], mixLumRed:[-1,1], mixLumOrange:[-1,1], mixLumYellow:[-1,1], mixLumGreen:[-1,1], mixLumAqua:[-1,1], mixLumBlue:[-1,1], mixLumPurple:[-1,1], mixLumMagenta:[-1,1],  dither:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], kaiserFolds:[0,1], kaiserSpeed:[0,1], kaiserAngle:[0,1], kaiserSpread:[0,1], kaiserSoft:[0,1], kaiserOldFolds:[0,1], kaiserOldSpeed:[0,1], kaiserOldAngle:[0,1], kaiserOldSpread:[0,1], kaiserOldCurve:[0,1], kaiserOldTwist:[0,1], kaiserOldCam:[0,1], uzumaki:[0,1], uzumakiCards:[0,1], uzumakiTwist:[0,1], uzumakiSpread:[0,1], uzumakiDepth:[0,1], uzumakiShrink:[0,1], uzumakiCard:[0,1], uzumakiSpin:[0,1], uzumakiCam:[0,1],  fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dPhotoCurl:[0,1], fx3dPhotoCurlAxis:[0,1], fx3dPhotoFlutter:[0,1], fx3dPhotoCorner:[0,1], fx3dPhotoSpin:[0,1], fx3dBlindsAngle:[0,1], fx3dBlindsSpeed:[0,1], fx3dBlindsWave:[0,1], fx3dBlindsOpen:[0,1], fx3dBlindsGap:[0,1], fx3dBlindsRandom:[0,1],  fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dDioramaSwing:[0,1], fx3dDioramaSpeed:[0,1], fx3dDioramaPan:[-1,1], fx3dDioramaTilt:[-1,1], fx3dDioramaZoom:[-1,1], fx3dPoints:[0,1], fx3dPointsDensity:[60,1200], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], needleThick:[-1,1], needleLen:[-1,1], needleSides:[3,5], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dTunnel:[0,1], fx3dTunnelSpeed:[0,1], fx3dTunnelRadius:[0,1], fx3dTunnelTwist:[0,1], fx3dTunnelCurve:[0,1], fx3dTunnelBump:[0,1], fx3dTunnelPulse:[0,1], fx3dTunnelTile:[0,1], fx3dTunnelRound:[0,1], fx3dTunnelSpin:[0,1], fx3dTunnelFlip:[0,1], fx3dTunnelBendX:[-1,1], fx3dTunnelBendY:[-1,1], fx3dTunnelFog:[0,1], fx3dTunnelShine:[0,1], fx3dTunnelEdge:[0,1], fx3dTunnelTilt:[-1,1], fx3dTunnelPan:[-1,1], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dExtrude:[0,1], fx3dExtrudeDepth:[0,1], fx3dExtrudeTilt:[0,1], fx3dExtrudeSpin:[0,1], fx3dExtrudeShade:[0,1], fx3dExtrudeTwist:[-1,1], fx3dExtrudeRound:[0,1], fx3dRoll:[0,1], fx3dRollRadius:[0,1], fx3dRollDepth:[0,1], fx3dRollAngle:[0,1], fx3dRollSpin:[0,1], fx3dRollCurl:[0,1], fx3dRollCam:[0,1],  fx3dDepth:[0,1], fx3dStretchX:[-1,1], fx3dStretchY:[-1,1], fx3dStretchZ:[-1,1], fx3dZoom:[-1,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelTrack:[0,1], novelLead:[0,1], novelSwitch:[0,1], novelCluster:[0,1], novelGrid:[0,1], novelVary:[0,1], novelSep:[0,1], novelTone:[0,1], novelShape:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], riverTwist:[0,1], riverSpeed:[0,1], riverWidth:[0,1], riverFlow:[0,1], riverLight:[0,1], riverFog:[0,1], riverSway:[0,1],  bleed:[0,1], impasto:[0,1], chrome:[0,1], chromeBump:[0,1], chromeEdge:[0,1], chromeCon:[0,1], chromeTint:[0,1], chromeSpec:[0,1], chromeSharp:[0,1], chromeRim:[0,1], chromeLight:[0,1], chromeObj:[0,1], sdfChromeObj:[0,1], bleedObj:[0,1], impastoObj:[0,1], glossObj:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
+  postRange:{ tone:[0,1], toneType:[0,8], toneCell:[1,64], toneAngle:[-180,180], toneThreshold:[-1,1], toneContrast:[-1,1], toneLevels:[2,16], toneMix:[0,1], gradMix:[-1,1], cosGrad:[-1,1], sat:[-1,1], hue:[-1,1], gain:[-1,1], unsharp:[-1,1], inv:[0,1], twist:[0,1], slice:[0,1], sliceLine:[0,1], sliceCount:[0,1], sliceMove:[0,1], sliceAngle:[0,1], ringsLine:[0,1], ringsCount:[0,1], ringsTwist:[0,1], ringsWobble:[0,1], ringBlur:[0,1], split:[0,1], mosaic:[0,1], mblur:[0,1], bri:[-1,1], con:[-1,1], scn:[-1,1], texNoise:[-1,1], slit2:[0,1], slit2Invert:[0,1], slit2Radius:[0,1], filmBlur:[0,1], glass:[0,1], outline:[0,1], sharpen:[0,1], crisp:[0,1], shock:[0,1], inkBleed:[0,1], hatch:[0,1], hatchDensity:[0,1], hatchFlow:[0,1], hatchLength:[0,1], hatchLayers:[1,4], hatchWobble:[0,1], hatchMix:[0,1], hatchAngle:[0,1], hatchTex:[0,1], hatchGrain:[0,1], hatchBreak:[0,1], inkBleedSpread:[0,1], inkBleedFiber:[0,1], inkBleedEdge:[0,1], inkBleedNode:[0,1], voxel:[0,1], rain:[0,1], sketch:[0,1], pixsort:[0,1], rings:[0,1], specWarp:[0,1], zoomPump:[0,1], shatter:[0,1], aPop:[0,1], aPopCount:[1,32], waveformAmp:[0,1], waveformCount:[1,64], waveformCountVar:[0,1], waveformWidth:[0.02,1], waveformWidthVar:[0,0.95], aPopSize:[2,400], aPopSides:[2,12], aPopZoom:[0,1], aPopLine:[0,1], aPopShade:[0,1], aPopSpin:[0,1], pollock:[0,1], pollockOn:[0,1], pollockSize:[0,1], pollockLength:[0,1], pollockDensity:[0,1], pollockDrops:[0,1], pollockCurve:[0,1], pollockLife:[0,1], pollockRelief:[0,1],  boltz:[0,1], aScan:[0,1], aRgb:[0,1], aStrobe:[0,1], aShock:[0,1], aExplode:[0,1], aShards:[0,1], aShardsCount:[1,64], aShardsSides:[3,12], aShardsSize:[0,1], aShardsHole:[0,1], aShardsLine:[0,1], aShardsMove:[0,1], waveform:[0,1], slitScan:[0,1], slitCalm:[0,1], paletteAmt:[-1,1], fbAdd:[0,1], fbMultiply:[0,1], fbZoom:[-1,1], fbRot:[-1,1], fbResidue:[0,1], fbResidueHold:[0,1], fbResiduePull:[0,1], fbResiduePoly:[0,1], fbResidueFaceSize:[0,1], fbAmount:[0,1], fbSteps:[0,1], fbFade:[0,1], clarity:[0,1], denoise:[0,1], deband:[0,1], vibrance:[-1,1], colorTemp:[-1,1], colorTint:[-1,1], mixHueRed:[-1,1], mixHueOrange:[-1,1], mixHueYellow:[-1,1], mixHueGreen:[-1,1], mixHueAqua:[-1,1], mixHueBlue:[-1,1], mixHuePurple:[-1,1], mixHueMagenta:[-1,1], mixSatRed:[-1,1], mixSatOrange:[-1,1], mixSatYellow:[-1,1], mixSatGreen:[-1,1], mixSatAqua:[-1,1], mixSatBlue:[-1,1], mixSatPurple:[-1,1], mixSatMagenta:[-1,1], mixLumRed:[-1,1], mixLumOrange:[-1,1], mixLumYellow:[-1,1], mixLumGreen:[-1,1], mixLumAqua:[-1,1], mixLumBlue:[-1,1], mixLumPurple:[-1,1], mixLumMagenta:[-1,1],  dither:[0,1], origami:[0,1], kaiser:[0,1], kaiserOld:[0,1], kaiserFolds:[0,1], kaiserSpeed:[0,1], kaiserAngle:[0,1], kaiserSpread:[0,1], kaiserSoft:[0,1], kaiserOldFolds:[0,1], kaiserOldSpeed:[0,1], kaiserOldAngle:[0,1], kaiserOldSpread:[0,1], kaiserOldCurve:[0,1], kaiserOldTwist:[0,1], kaiserOldCam:[0,1], uzumaki:[0,1], uzumakiCards:[0,1], uzumakiTwist:[0,1], uzumakiSpread:[0,1], uzumakiDepth:[0,1], uzumakiShrink:[0,1], uzumakiCard:[0,1], uzumakiSpin:[0,1], uzumakiCam:[0,1],  fx3dPhoto:[0,1], fx3dPhotoCount:[4,80], fx3dPhotoCrop:[30,100], fx3dPhotoCurl:[0,1], fx3dPhotoCurlAxis:[0,1], fx3dPhotoFlutter:[0,1], fx3dPhotoCorner:[0,1], fx3dPhotoSpin:[0,1], fx3dBlindsAngle:[0,1], fx3dBlindsSpeed:[0,1], fx3dBlindsWave:[0,1], fx3dBlindsOpen:[0,1], fx3dBlindsGap:[0,1], fx3dBlindsRandom:[0,1],  fx3dSlicer:[0,1], fx3dSlicerPieces:[20,400], fx3dLayer:[0,1], fx3dLayerCount:[1,40], fx3dLayerSize:[20,300], fx3dLayerEdge:[0,1], fx3dDiorama:[0,1], fx3dDioramaLayers:[2,24], fx3dDioramaSwing:[0,1], fx3dDioramaSpeed:[0,1], fx3dDioramaPan:[-1,1], fx3dDioramaTilt:[-1,1], fx3dDioramaZoom:[-1,1], fx3dPoints:[0,1], fx3dPointsDensity:[60,1200], fx3dCubes:[0,1], fx3dBlinds:[0,1], fx3dBlindsCount:[2,48], fx3dBlindsTwist:[0,1], needleScatter:[0,1], needleThick:[-1,1], needleLen:[-1,1], needleSides:[3,5], fx3dGravity:[0,1], fx3dGravitySpin:[0,1], fx3dGravityDepth:[0,1], fx3dGravityFlip:[0,1], fx3dGravityWave:[0,1], fx3dGravityPoints:[1,4], fx3dTunnel:[0,1], fx3dTunnelSpeed:[0,1], fx3dTunnelRadius:[0,1], fx3dTunnelTwist:[0,1], fx3dTunnelCurve:[0,1], fx3dTunnelBump:[0,1], fx3dTunnelPulse:[0,1], fx3dTunnelTile:[0,1], fx3dTunnelRound:[0,1], fx3dTunnelSpin:[0,1], fx3dTunnelFlip:[0,1], fx3dTunnelBendX:[-1,1], fx3dTunnelBendY:[-1,1], fx3dTunnelFog:[0,1], fx3dTunnelShine:[0,1], fx3dTunnelEdge:[0,1], fx3dTunnelTilt:[-1,1], fx3dTunnelPan:[-1,1], fx3dGlobe:[0,1], fx3dGlobeDetail:[6,96], fx3dExtrude:[0,1], fx3dExtrudeDepth:[0,1], fx3dExtrudeTilt:[0,1], fx3dExtrudeSpin:[0,1], fx3dExtrudeShade:[0,1], fx3dExtrudeTwist:[-1,1], fx3dExtrudeRound:[0,1], fx3dRoll:[0,1], fx3dRollRadius:[0,1], fx3dRollDepth:[0,1], fx3dRollAngle:[0,1], fx3dRollSpin:[0,1], fx3dRollCurl:[0,1], fx3dRollCam:[0,1],  fx3dAmount:[0,1], fx3dDepth:[0,1], fx3dStretchX:[-1,1], fx3dStretchY:[-1,1], fx3dStretchZ:[-1,1], fx3dZoom:[-1,1], glitchTrail:[0,1], gloss:[0,1], novel:[0,1], novelSize:[0,1], novelThresh:[0,1], novelColor:[0,1], novelFlow:[0,1], novelBg:[0,1], novelTate:[0,1], novelTrack:[0,1], novelLead:[0,1], novelSwitch:[0,1], novelCluster:[0,1], novelGrid:[0,1], novelVary:[0,1], novelSep:[0,1], novelTone:[0,1], novelShape:[0,1], novelDepth:[0,1], glossBump:[0,1], glossSharp:[0,1], glossShine:[0,1], glossWet:[0,1], glossLight:[0,1], sdfChrome:[0,1], river:[0,1], riverTwist:[0,1], riverSpeed:[0,1], riverWidth:[0,1], riverFlow:[0,1], riverLight:[0,1], riverFog:[0,1], riverSway:[0,1],  bleed:[0,1], impasto:[0,1], chrome:[0,1], chromeBump:[0,1], chromeEdge:[0,1], chromeCon:[0,1], chromeTint:[0,1], chromeSpec:[0,1], chromeSharp:[0,1], chromeRim:[0,1], chromeLight:[0,1], chromeObj:[0,1], sdfChromeObj:[0,1], bleedObj:[0,1], impastoObj:[0,1], glossObj:[0,1], barcode:[0,1], audioFx:[0,1], audioFxAttack:[0,1], audioFxRelease:[0.05,1.5] },
   _last:{}, // CC値の直前値 (モメンタリ押下の立ち上がり検出用)
   _buttonEventAt:{},
   values:{}, _valSaveT:null, // 直近の CC 値 (リロード時の復元用)
@@ -11596,7 +12080,7 @@ const MIDI = {
     if(st.side == null) st.side = side;                    // 最初の位置を記録
     if(near || side !== st.side){                          // 基準点に到達 or またいだ
       delete this._pickupArmed[mapKey];
-      if(!Object.keys(this._pickupArmed).length) toast('MIDI: つまみを取り込みました');
+      if(!Object.keys(this._pickupArmed).length) toast(I18n.t("MIDI: つまみを取り込みました"));
       return false;
     }
     return true;                                           // まだ基準点を通っていない → 無視
@@ -11631,10 +12115,24 @@ const MIDI = {
   },
   // CC/Note マッピングキー → 右上 HUD 用の表示名
   _paramLabel(pname){
+    pname = pname.replace(/^(__post__pollock)~.*$/, '$1');
     if(pname && pname.indexOf('dom~') === 0) return pname.split('~').pop().replace(/_/g, ' ');   // dom~layerParams~Count → "Count"
     const k = pname.replace(/__$/, '').replace(/^.*__/, '');
-    const L = { pixsort:'Pixelsort', slit2:'Gaussian Blur', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', hatch:'Hatching', hatchDensity:'Density', hatchFlow:'Flow', hatchLength:'Length', hatchLayers:'Layers', hatchWobble:'Wobble', hatchMix:'Color Mix', hatchAngle:'Angle', hatchTex:'Paper Texture', hatchTool:'Tool', hatchGrain:'Grain', hatchBreak:'Break', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', aPop:'Pop Up', aPopCount:'Pop Count', aPopSize:'Pop Size', aPopSides:'Pop Sides', aPopZoom:'Pop Zoom', aPopLine:'Pop Line', aPopShade:'Pop Shade', aPopSpin:'Pop Spin', pollock:'Pollock', pollockGloss:'Pollock Gloss', pollockMatt:'Pollock Matt', pollockFlat:'Pollock Flat', pollockMetal:'Pollock Metal', pollockSize:'Pollock Size', pollockLength:'Pollock Length', pollockDensity:'Pollock Density', pollockDrops:'Pollock Drops', pollockCurve:'Pollock Curve', pollockLife:'Pollock Life', pollockRelief:'Pollock Relief',  voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', aShardsMove:'Shards Move', waveform:'Waveform', slitScan:'Slit-scan', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', colorTemp:'Temperature', colorTint:'Tint', mixHueRed:'Mixer Hue Red', mixHueOrange:'Mixer Hue Orange', mixHueYellow:'Mixer Hue Yellow', mixHueGreen:'Mixer Hue Green', mixHueAqua:'Mixer Hue Aqua', mixHueBlue:'Mixer Hue Blue', mixHuePurple:'Mixer Hue Purple', mixHueMagenta:'Mixer Hue Magenta', mixSatRed:'Mixer Sat Red', mixSatOrange:'Mixer Sat Orange', mixSatYellow:'Mixer Sat Yellow', mixSatGreen:'Mixer Sat Green', mixSatAqua:'Mixer Sat Aqua', mixSatBlue:'Mixer Sat Blue', mixSatPurple:'Mixer Sat Purple', mixSatMagenta:'Mixer Sat Magenta', mixLumRed:'Mixer Lum Red', mixLumOrange:'Mixer Lum Orange', mixLumYellow:'Mixer Lum Yellow', mixLumGreen:'Mixer Lum Green', mixLumAqua:'Mixer Lum Aqua', mixLumBlue:'Mixer Lum Blue', mixLumPurple:'Mixer Lum Purple', mixLumMagenta:'Mixer Lum Magenta',  chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', sliceLine:'Slice Line', sliceCount:'Slice Count', sliceMove:'Slice Move', sliceAngle:'Slice Angle', ringsLine:'Rings Line', ringsCount:'Rings Count', ringsTwist:'Rings Twist', ringsWobble:'Rings Wobble', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', origami:'Needle', needleScatter:'Needle Scatter', needleThick:'Needle Thick', needleLen:'Needle Length', needleSides:'Needle Sides', kaiser:'Origami', kaiserOld:'Drape', kaiserFolds:'Origami Folds', kaiserSpeed:'Origami Speed', kaiserAngle:'Origami Angle', kaiserSpread:'Origami Spread', kaiserSoft:'Origami Soft', kaiserOldFolds:'Drape Folds', kaiserOldSpeed:'Drape Speed', kaiserOldAngle:'Drape Angle', kaiserOldSpread:'Drape Spread', kaiserOldCurve:'Drape Curve', kaiserOldTwist:'Drape Twist', kaiserOldCam:'Drape Cam', uzumaki:'Uzumaki', uzumakiCards:'Uzumaki Cards', uzumakiTwist:'Uzumaki Twist', uzumakiSpread:'Uzumaki Spread', uzumakiDepth:'Uzumaki Depth', uzumakiShrink:'Uzumaki Shrink', uzumakiCard:'Uzumaki Card', uzumakiSpin:'Uzumaki Spin', uzumakiCam:'Uzumaki Cam',  fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dPhotoCurl:'Photos Curl', fx3dPhotoCurlAxis:'Photos Curl Axis', fx3dPhotoFlutter:'Photos Flutter', fx3dPhotoCorner:'Photos Corner', fx3dPhotoSpin:'Photos Spin',  fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dDioramaSwing:'Diorama Swing', fx3dDioramaSpeed:'Diorama Speed', fx3dDioramaPan:'Diorama Pan', fx3dDioramaTilt:'Diorama Tilt', fx3dDioramaZoom:'Diorama Zoom', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dBlindsAngle:'Blinds Angle', fx3dBlindsSpeed:'Blinds Speed', fx3dBlindsWave:'Blinds Wave', fx3dBlindsOpen:'Blinds Open', fx3dBlindsGap:'Blinds Gap', fx3dBlindsRandom:'Blinds Random',  fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dTunnel:'Tunnel', fx3dTunnelSpeed:'Tunnel Speed', fx3dTunnelRadius:'Tunnel Radius', fx3dTunnelTwist:'Tunnel Twist', fx3dTunnelCurve:'Tunnel Curve', fx3dTunnelBump:'Tunnel Bump', fx3dTunnelPulse:'Tunnel Pulse', fx3dTunnelTile:'Tunnel Tile', fx3dTunnelRound:'Tunnel Round', fx3dTunnelSpin:'Tunnel Spin', fx3dTunnelFlip:'Tunnel Flip', fx3dTunnelBendX:'Tunnel Bend X', fx3dTunnelBendY:'Tunnel Bend Y', fx3dTunnelFog:'Tunnel Fog', fx3dTunnelShine:'Tunnel Shine', fx3dTunnelEdge:'Tunnel Edge', fx3dTunnelTilt:'Tunnel Tilt', fx3dTunnelPan:'Tunnel Pan', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dExtrude:'Extrude', fx3dExtrudeDepth:'Extrude Depth', fx3dExtrudeTilt:'Extrude Tilt', fx3dExtrudeSpin:'Extrude Spin', fx3dExtrudeShade:'Extrude Shade', fx3dExtrudeTwist:'Extrude Twist', fx3dExtrudeRound:'Extrude Round', fx3dExtrudeMode:'Extrude Mode', fx3dRoll:'Roll', fx3dRollRadius:'Roll Radius', fx3dRollDepth:'Roll Depth', fx3dRollAngle:'Roll Angle', fx3dRollSpin:'Roll Spin', fx3dRollCurl:'Roll Curl', fx3dRollCam:'Roll Cam',  fx3dDepth:'3D Depth', fx3dStretchX:'3D Stretch X', fx3dStretchY:'3D Stretch Y', fx3dStretchZ:'3D Stretch Z', fx3dZoom:'3D Zoom', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dMix:'3D Mix', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Passage', riverTwist:'Passage Twist', riverSpeed:'Passage Speed', riverWidth:'Passage Width', riverFlow:'Passage Flow', riverLight:'Passage Light', riverFog:'Passage Fog', riverSway:'Passage Sway',  bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', chromeBump:'Chrome Bump', chromeEdge:'Chrome Edge', chromeCon:'Chrome Contrast', chromeTint:'Chrome Tint', chromeSpec:'Chrome Spec', chromeSharp:'Chrome Sharp', chromeRim:'Chrome Rim', chromeLight:'Chrome Light', chromeObj:'Chrome Obj', sdfChromeObj:'Relief Obj', bleedObj:'Watercolor Obj', impastoObj:'Impasto Obj', glossObj:'Gloss Obj', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
+    const L = { tone:'Tone', toneType:'Tone Type', toneCell:'Tone Cell', toneAngle:'Tone Angle', toneThreshold:'Tone Threshold', toneContrast:'Tone Contrast', toneLevels:'Tone Levels', toneMix:'Tone Mix', pixsort:'Pixelsort', slit2:'Gaussian Blur', slit2Invert:'Gaussian Blur Invert', slit2Radius:'Gaussian Blur Radius', filmBlur:'Film Blur', glass:'Hipass', outline:'Outline', inkBleed:'Ink Bleed', hatch:'Hatching', hatchDensity:'Density', hatchFlow:'Flow', hatchLength:'Length', hatchLayers:'Layers', hatchWobble:'Wobble', hatchMix:'Color Mix', hatchAngle:'Angle', hatchTex:'Paper Texture', hatchTool:'Tool', hatchGrain:'Grain', hatchBreak:'Break', inkBleedSpread:'Spread', inkBleedFiber:'Fiber', inkBleedEdge:'Edge', inkBleedNode:'Node', inkBleedSeed:'Seed', inkBleedPaper:'Paper', sketch:'Water', texNoise:'Tex Noise', rings:'Rings', specWarp:'Spectrum Warp', zoomPump:'Bass Zoom-Pump', shatter:'Freeze-Shatter', aPop:'Pop Up', aPopCount:'Pop Count', waveformAmp:'Waveform Amp', waveformCount:'Waveform Count', waveformCountVar:'Waveform Count Var', waveformWidth:'Waveform Width', waveformWidthVar:'Waveform Width Var', aPopSize:'Pop Size', aPopSides:'Pop Sides', aPopZoom:'Pop Zoom', aPopLine:'Pop Line', aPopShade:'Pop Shade', aPopSpin:'Pop Spin', pollock:'Pollock', pollock:'Pollock', pollockOn:'Pollock On', pollockType:'Pollock Type', pollockSize:'Pollock Size', pollockLength:'Pollock Length', pollockDensity:'Pollock Density', pollockDrops:'Pollock Drops', pollockCurve:'Pollock Curve', pollockLife:'Pollock Life', pollockRelief:'Pollock Relief',  voxel:'Voxel', rain:'Rain', boltz:'Boltzmann', aStrobe:'Audio Strobe', aShock:'Shockwave', aExplode:'Pixel Explode', aShards:'Shards', aShardsCount:'Shards Count', aShardsSides:'Shards Sides', aShardsSize:'Shards Size', aShardsHole:'Shards Hole', aShardsLine:'Shards Line', aShardsMove:'Shards Move', waveform:'Waveform', slitScan:'Slit-scan', slitCalm:'Slit-scan Calm', gain:'Flash', gradMix:'Grad Map', cosGrad:'Cos Grad', sat:'Saturation', hue:'Hue Shift', bri:'Brightness', con:'Contrast', gamma:'Gamma', inv:'Invert', vig:'Vignette', colorTemp:'Temperature', colorTint:'Tint', mixHueRed:'Mixer Hue Red', mixHueOrange:'Mixer Hue Orange', mixHueYellow:'Mixer Hue Yellow', mixHueGreen:'Mixer Hue Green', mixHueAqua:'Mixer Hue Aqua', mixHueBlue:'Mixer Hue Blue', mixHuePurple:'Mixer Hue Purple', mixHueMagenta:'Mixer Hue Magenta', mixSatRed:'Mixer Sat Red', mixSatOrange:'Mixer Sat Orange', mixSatYellow:'Mixer Sat Yellow', mixSatGreen:'Mixer Sat Green', mixSatAqua:'Mixer Sat Aqua', mixSatBlue:'Mixer Sat Blue', mixSatPurple:'Mixer Sat Purple', mixSatMagenta:'Mixer Sat Magenta', mixLumRed:'Mixer Lum Red', mixLumOrange:'Mixer Lum Orange', mixLumYellow:'Mixer Lum Yellow', mixLumGreen:'Mixer Lum Green', mixLumAqua:'Mixer Lum Aqua', mixLumBlue:'Mixer Lum Blue', mixLumPurple:'Mixer Lum Purple', mixLumMagenta:'Mixer Lum Magenta',  chr:'Chroma Ab', pix:'Pixelate', scn:'Scanlines', grn:'Grain', unsharp:'Unsharp', sharpen:'Sharpen', crisp:'Crisp', shock:'Shock', pos:'Posterize', blm:'Bloom', shake:'Shake', fxaa:'FXAA', aScan:'Scan Hit', aRgb:'Audio RGB', mosaic:'Mosaic', mblur:'Motion Blur', slice:'Slice', sliceLine:'Slice Line', sliceCount:'Slice Count', sliceMove:'Slice Move', sliceAngle:'Slice Angle', ringsLine:'Rings Line', ringsCount:'Rings Count', ringsTwist:'Rings Twist', ringsWobble:'Rings Wobble', ringBlur:'Ring Blur', twist:'Twist', split:'Mondrian', fbAdd:'FB Add', fbMultiply:'FB Multiply', fbZoom:'Fb Zoom', fbRot:'Fb Rot', fbZoomRot:'Fb Zoom/Rot', fbResidue:'FB Residue', fbResidueHold:'Echo Hold', fbResiduePull:'Echo Pull', fbResiduePoly:'Polygon', fbResidueFaceSize:'Face Size', fbAmount:'FB Amount', fbSteps:'FB Steps', fbFade:'FB Fade', clarity:'Clarity', denoise:'Denoise', deband:'Deband', vibrance:'Vibrance', dither:'Dither Blur', origami:'Needle', needleScatter:'Needle Scatter', needleThick:'Needle Thick', needleLen:'Needle Length', needleSides:'Needle Sides', kaiser:'Origami', kaiserOld:'Drape', kaiserFolds:'Origami Folds', kaiserSpeed:'Origami Speed', kaiserAngle:'Origami Angle', kaiserSpread:'Origami Spread', kaiserSoft:'Origami Soft', kaiserOldFolds:'Drape Folds', kaiserOldSpeed:'Drape Speed', kaiserOldAngle:'Drape Angle', kaiserOldSpread:'Drape Spread', kaiserOldCurve:'Drape Curve', kaiserOldTwist:'Drape Twist', kaiserOldCam:'Drape Cam', uzumaki:'Uzumaki', uzumakiCards:'Uzumaki Cards', uzumakiTwist:'Uzumaki Twist', uzumakiSpread:'Uzumaki Spread', uzumakiDepth:'Uzumaki Depth', uzumakiShrink:'Uzumaki Shrink', uzumakiCard:'Uzumaki Card', uzumakiSpin:'Uzumaki Spin', uzumakiCam:'Uzumaki Cam',  fx3dPhoto:'Photos', fx3dPhotoCount:'Photos Count', fx3dPhotoCrop:'Photos Crop', fx3dPhotoCurl:'Photos Curl', fx3dPhotoCurlAxis:'Photos Curl Axis', fx3dPhotoFlutter:'Photos Flutter', fx3dPhotoCorner:'Photos Corner', fx3dPhotoSpin:'Photos Spin',  fx3dSlicer:'Slicer', fx3dSlicerPieces:'Slicer Pieces', fx3dLayer:'Layers', fx3dLayerCount:'Layers Count', fx3dLayerSize:'Layers Size', fx3dLayerEdge:'Layers Edge', fx3dDiorama:'Diorama', fx3dDioramaLayers:'Diorama Layers', fx3dDioramaSwing:'Diorama Swing', fx3dDioramaSpeed:'Diorama Speed', fx3dDioramaPan:'Diorama Pan', fx3dDioramaTilt:'Diorama Tilt', fx3dDioramaZoom:'Diorama Zoom', fx3dPoints:'Points', fx3dPointsDensity:'Points Density', fx3dCubes:'Box', fx3dBlinds:'Blinds', fx3dBlindsCount:'Blinds Count', fx3dBlindsTwist:'Blinds Twist', fx3dBlindsAngle:'Blinds Angle', fx3dBlindsSpeed:'Blinds Speed', fx3dBlindsWave:'Blinds Wave', fx3dBlindsOpen:'Blinds Open', fx3dBlindsGap:'Blinds Gap', fx3dBlindsRandom:'Blinds Random',  fx3dGravity:'Gravity', fx3dGravitySpin:'Gravity Spin', fx3dGravityDepth:'Gravity Depth', fx3dGravityFlip:'Gravity Flip', fx3dGravityWave:'Gravity Wave', fx3dGravityPoints:'Gravity Points', fx3dTunnel:'Tunnel', fx3dTunnelSpeed:'Tunnel Speed', fx3dTunnelRadius:'Tunnel Radius', fx3dTunnelTwist:'Tunnel Twist', fx3dTunnelCurve:'Tunnel Curve', fx3dTunnelBump:'Tunnel Bump', fx3dTunnelPulse:'Tunnel Pulse', fx3dTunnelTile:'Tunnel Tile', fx3dTunnelRound:'Tunnel Round', fx3dTunnelSpin:'Tunnel Spin', fx3dTunnelFlip:'Tunnel Flip', fx3dTunnelBendX:'Tunnel Bend X', fx3dTunnelBendY:'Tunnel Bend Y', fx3dTunnelFog:'Tunnel Fog', fx3dTunnelShine:'Tunnel Shine', fx3dTunnelEdge:'Tunnel Edge', fx3dTunnelTilt:'Tunnel Tilt', fx3dTunnelPan:'Tunnel Pan', fx3dGlobe:'Globe', fx3dGlobeDetail:'Globe Detail', fx3dExtrude:'Extrude', fx3dExtrudeDepth:'Extrude Depth', fx3dExtrudeTilt:'Extrude Tilt', fx3dExtrudeSpin:'Extrude Spin', fx3dExtrudeShade:'Extrude Shade', fx3dExtrudeTwist:'Extrude Twist', fx3dExtrudeRound:'Extrude Round', fx3dExtrudeMode:'Extrude Mode', fx3dRoll:'Roll', fx3dRollRadius:'Roll Radius', fx3dRollDepth:'Roll Depth', fx3dRollAngle:'Roll Angle', fx3dRollSpin:'Roll Spin', fx3dRollCurl:'Roll Curl', fx3dRollCam:'Roll Cam',  fx3dAmount:'3D Amount', fx3dDepth:'3D Depth', fx3dStretchX:'3D Stretch X', fx3dStretchY:'3D Stretch Y', fx3dStretchZ:'3D Stretch Z', fx3dZoom:'3D Zoom', fx3dScale:'3D Res', fx3dBg:'3D BG', fx3dStack:'Stack', fx3dPop:'3D Pop', fx3dTarget:'3D Target', fx3dSlot:'3D Slot', fx3dMix:'3D Mix', fx3dOverscan:'3D Overscan', glitchTrail:'Datamosh', gloss:'Gloss', novel:'Novel', novelSize:'Novel Size', novelThresh:'Novel Thresh', novelColor:'Novel Color', novelFlow:'Novel Flow', novelBg:'Novel Bg', novelTate:'Novel Tate', novelTrack:'Novel Track', novelLead:'Novel Lead', novelSwitch:'Novel Switch', novelCluster:'Novel Cluster', novelGrid:'Novel Grid', novelVary:'Novel Vary', novelSep:'Novel Sep', novelTone:'Novel Tone', novelShape:'Novel Shape', novelDepth:'Novel Depth', glossBump:'Gloss Bump', glossSharp:'Gloss Sharp', glossShine:'Gloss Shine', glossWet:'Gloss Wet', glossLight:'Gloss Light', sdfChrome:'Relief', river:'Passage', riverTwist:'Passage Twist', riverSpeed:'Passage Speed', riverWidth:'Passage Width', riverFlow:'Passage Flow', riverLight:'Passage Light', riverFog:'Passage Fog', riverSway:'Passage Sway',  bleed:'Watercolor', impasto:'Impasto', chrome:'Chrome', chromeBump:'Chrome Bump', chromeEdge:'Chrome Edge', chromeCon:'Chrome Contrast', chromeTint:'Chrome Tint', chromeSpec:'Chrome Spec', chromeSharp:'Chrome Sharp', chromeRim:'Chrome Rim', chromeLight:'Chrome Light', chromeObj:'Chrome Obj', sdfChromeObj:'Relief Obj', bleedObj:'Watercolor Obj', impastoObj:'Impasto Obj', glossObj:'Gloss Obj', barcode:'Barcode', audioFx:'Drive', audioFxAttack:'Drive Atk', audioFxRelease:'Drive Rel', crossfade:'Crossfade', transBeats:'Trans Beats', slotSwap:'Slot Swap', beatMode:'Beat Mode', mix:'Blend: Mix', add:'Blend: Add', multiply:'Blend: Multiply', screen:'Blend: Screen', darken:'Blend: Darken', lighten:'Blend: Lighten', difference:'Blend: Difference', overlay:'Blend: Overlay', warp:'Brush: Glass', smear:'Brush: Warp', flat:'Brush: Flat', gpen:'Brush: G-Pen', erase:'Brush: Erase', curve:'Brush: Curve', smudgeWet:'Brush: Smudge Wet', pollockBrush:'Brush: Pollock', random:'Brush: Random' };
     return L[k] || k;
+  },
+  // 複数の旧ノブも失わないよう、量への別名を残す。接尾辞は種類を変更しない。
+  migratePollockMap(map){
+    if(!map || typeof map !== 'object' || Array.isArray(map)) return map;
+    const out = Object.assign({}, map);
+    for(const key of Object.keys(out)){
+      const m = /^(.*:)?(?:__post__pollock|(?:dom~(?:id~)?)?pxPollock|dom~Pollock_)(Gloss|Matt|Flat|Metal)$/.exec(key);
+      if(!m) continue;
+      const target = (m[1] || '*:') + '__post__pollock~' + m[2].toLowerCase();
+      if(!Object.prototype.hasOwnProperty.call(out, target)) out[target] = out[key];
+      delete out[key];
+    }
+    return out;
   },
   async init(){
     if(!navigator.requestMIDIAccess) return;
@@ -11642,16 +12140,16 @@ const MIDI = {
     let fileMap = {};
     try{
       const r = await fetch('midimap.json?t=' + Date.now(), {cache:'no-store'});
-      if(r.ok) fileMap = await r.json();
+      if(r.ok) fileMap = this.migratePollockMap(await r.json());
     }catch(e){}
     let lsMap = {};
-    try{ lsMap = JSON.parse(localStorage.getItem('vj.midi')||'{}'); }catch(e){}
+    try{ lsMap = this.migratePollockMap(JSON.parse(localStorage.getItem('vj.midi')||'{}')); }catch(e){}
     // learn 差分をサーバーからも取得してマージ (localStorage はオリジン/アプリごとに別なので、
     // ブラウザとデスクトップアプリでマップがずれる。サーバー値を正としてローカルへ流し込む)。
     try{
       const rs = await fetch(this._mapUrl(), {cache:'no-store'});
       if(rs.ok){
-        const sm = await rs.json();
+        const sm = this.migratePollockMap(await rs.json());
         // 未設定は [] (store.php の既定) で返る → この端末の差分を種まき
         const hasServer = sm && typeof sm === 'object' && !Array.isArray(sm) && Object.keys(sm).length;
         if(hasServer){
@@ -11718,7 +12216,7 @@ const MIDI = {
       const md = $('#statMidi'); if(!md || !this.access) return;
       const n = [...this.access.inputs.values()].length;
       const names = [...this.access.inputs.values()].map(i=>i.name || 'MIDI');
-      md.textContent = n ? (n > 1 ? `${names[0]} +${n-1}` : names[0]) : '0台';
+      md.textContent = n ? (n > 1 ? `${names[0]} +${n-1}` : names[0]) : I18n.t("0台");
     };
     // requestMIDIAccess をタイムアウト付きでリトライする。
     //   Electron(特に Finder 起動の署名アプリ)では初回の requestMIDIAccess が解決しないまま
@@ -11747,7 +12245,7 @@ const MIDI = {
         if(this.ledEnabled){ this.resetLeds(); this.refreshLeds(); }
       };
       _midiStat();
-      if(![...this.access.inputs.values()].length && Prefs.on('midiNoDeviceToast', '1')) toast('MIDI 入力デバイスが見つかりません (接続すると自動認識します)', 3500);
+      if(![...this.access.inputs.values()].length && Prefs.on('midiNoDeviceToast', '1')) toast(I18n.t("MIDI 入力デバイスが見つかりません (接続すると自動認識します)"), 3500);
     }catch(e){
       const md = $('#statMidi'); if(md) md.textContent = '×';
       if(!Prefs.touch) toast('MIDI unavailable (' + ((e && e.message) || e) + ')', 4000);
@@ -11952,30 +12450,30 @@ const MIDI = {
   // この端末の learn 差分をサーバーへ送る (他端末はリロード or Pull で反映)
   async pushMap(){
     let diff = {};
-    try{ diff = JSON.parse(localStorage.getItem('vj.midi') || '{}'); }catch(e){}
+    try{ diff = this.migratePollockMap(JSON.parse(localStorage.getItem('vj.midi') || '{}')); }catch(e){}
     const n = Object.keys(diff).length;
     if(typeof App !== 'undefined' && App._storeWritable && !App._storeWritable()){ toast('この公開版ではサーバー共有はできません'); return; }
     try{
       const r = await fetch(this._mapUrl() + '&force=1', {method:'POST', headers:App._storeHeaders(),
                                                           body: JSON.stringify(diff)});
       if(!r.ok) throw new Error('HTTP ' + r.status);
-      toast('MIDI マップを共有しました (' + n + ' 件)');
-    }catch(e){ toast('共有に失敗: ' + e.message); }
+      toast(I18n.t("MIDI マップを共有しました (") + n + I18n.t(" 件)"));
+    }catch(e){ toast(I18n.t("共有に失敗: ") + e.message); }
   },
   // サーバーの learn 差分をこの端末へ取り込む
   async pullMap(){
     try{
       const r = await fetch(this._mapUrl(), {cache:'no-store'});
       if(!r.ok) throw new Error('HTTP ' + r.status);
-      const sm = await r.json();
-      if(!sm || typeof sm !== 'object' || Array.isArray(sm)){ toast('サーバーにマップがありません'); return; }
+      const sm = this.migratePollockMap(await r.json());
+      if(!sm || typeof sm !== 'object' || Array.isArray(sm)){ toast(I18n.t("サーバーにマップがありません")); return; }
       const n = Object.keys(sm).length;
       localStorage.setItem('vj.midi', JSON.stringify(sm));
       this.map = Object.assign({}, this._fileMap || {}, sm);
       for(const k in this.map){ if(this.map[k] == null) delete this.map[k]; }
       if(this.syncLeds) this.syncLeds(); else if(this.refreshLeds) this.refreshLeds();
-      toast('MIDI マップを取り込みました (' + n + ' 件)');
-    }catch(e){ toast('取り込みに失敗: ' + e.message); }
+      toast(I18n.t("MIDI マップを取り込みました (") + n + I18n.t(" 件)"));
+    }catch(e){ toast(I18n.t("取り込みに失敗: ") + e.message); }
   },
   // 現在のマップを midimap.json としてダウンロード (リポジトリに置けば全オリジン共通の既定になる)
   exportMapFile(){
@@ -12107,7 +12605,7 @@ const MIDI = {
     // 既定 (midimap.json) 由来の割当でも CC/Note 番号を併記 → 「CC25 Pixelsort 0.35」
     if(hitParam && md){
       this._hudMappedUntil = hudNow + 300;
-      const key = hitParam.replace(/__$/, '').replace(/^.*__/, '');
+      const key = hitParam.replace(/__$/, '').replace(/^.*__/, '').replace(/^pollock~.*$/, 'pollock');
       const r = this.postRange[key];
       const rv = r ? (r[0] + (r[1]-r[0])*hitV/127) : hitV/127;
       // 右上 HUD: 「CC番号 (Param名) 数値」右揃え。等幅なので幅220pxに収まる文字数を実測し、
@@ -12129,6 +12627,15 @@ const MIDI = {
   },
   // 1 マッピングを適用。fromLoad=true のときはモメンタリ(toggle)系をスキップ
   _applyMapping(slotKey, pname, c, v, fromLoad){
+    if(/^__post__pollock~/.test(pname)) pname = '__post__pollock';
+    if(pname === '__post__pollockOn'){
+      if(fromLoad) return;
+      if(typeof c === 'string' && c.startsWith('note:')){
+        if(this._rise(c, v)) App.post.pollockOn = App.post.pollockOn ? 0 : 1;
+      }else App.post.pollockOn = v >= 64 ? 1 : 0;
+      if(UI.refreshPost) UI.refreshPost();
+      return App.post.pollockOn * 127;
+    }
     // 汎用 DOM 駆動 (mode エンジン param / トグル): data-midi-key の要素を直接動かして input/change を発火。
     //   各エンジンの既存リスナがそのまま走るので、パラメータごとの個別配線が不要。
     if(pname && pname.indexOf('dom~') === 0){
@@ -12230,20 +12737,21 @@ const MIDI = {
       if(!r) return;
       const legacyFbMode = {fbAdd:'add',fbMultiply:'multiply',fbResidue:'residue'}[pk];
       const targetKey = legacyFbMode ? 'fbAmount' : pk;
+      const toneDiscrete = pk === 'toneType' || pk === 'toneLevels';   // 種類・階調数は Param Fade 中も整数で即時切替
       const cur = App.post[targetKey];
       const centered = pk === 'sat' || pk === 'con';
       const displayCur = centered ? (cur - 1.0) : cur;
       const init = (r[1] !== r[0] && typeof displayCur === 'number' && isFinite(displayCur)) ? (displayCur - r[0]) / (r[1]-r[0]) * 127 : 0;
       const vv = this._continuousValue(pname, v, init, c);           // フェーダー以外は相対モードの仮想絶対値
       if(!fromLoad && this._pickupBlocks(pname, vv, r, c)) return;   // 取り込み待ち: 基準点を通るまで反映しない
-      if(!this.relative && !fromLoad && this._reversalFade(pname, targetKey, vv, r)) return;   // 逆回転フェード(絶対モード時のみ)
+      if(!toneDiscrete && !this.relative && !fromLoad && this._reversalFade(pname, targetKey, vv, r)) return;   // 逆回転フェード(絶対モード時のみ)
       if(this._suppress[pname]) return;                             // フェード中は無視
       const displayValue = r[0] + (r[1]-r[0])*(vv/127);
       const targetVal = App.snapPost(targetKey, centered ? displayValue + 1.0 : displayValue); // 生値保存 (描画時に deadParam)
       if(legacyFbMode) App.post.fbMode = legacyFbMode;
       // Param Fade 有効時は MIDI ノブの目標値へ拍数かけてランプ追従 (即時=従来どおりスナップ)。
       // ノブを回すたびに現在値→最新目標へ再フェード → 手の動きに ~拍数ぶん遅れて滑らかに追う。
-      if(App._fadeBeatsLive() > 0) App.fadePostNum(targetKey, targetVal);
+      if(!toneDiscrete && App._fadeBeatsLive() > 0) App.fadePostNum(targetKey, targetVal);
       else App.post[targetKey] = targetVal;
       if(UI.refreshPost) UI.refreshPost();
       return vv;
@@ -12269,7 +12777,7 @@ const MIDI = {
       const v = this.values[vk];
       if(typeof v !== 'number') continue;
       const [slotKey, pname] = k.split(':');
-      if(pname === '__post__boltz' || pname === '__post__pollockGloss' || pname === '__post__pollockMatt' || pname === '__post__pollockFlat' || pname === '__post__pollockMetal') continue;  // 副作用(フレーム捕獲+フリーズ)があるため起動時に復元しない
+      if(pname === '__post__boltz' || pname === '__post__pollockOn' || pname === 'dom~Pollock_On' || /^__post__pollock(?:~|$)/.test(pname)) continue;  // 副作用(フレーム捕獲+フリーズ)があるため起動時に復元しない
       this._applyMapping(slotKey, pname, vk, v, true);
     }
   },
@@ -12350,7 +12858,7 @@ const Record = {
         hasAudio = true;
         audioSource.errorPromise.catch(err => {
           try{ Diag.log('record', 'audio source error: ' + (err && err.message || err)); }catch(_){}
-          try{ toast('録画の音声にエラー (ここまでを保存します)', 5000); }catch(_){}
+          try{ toast(I18n.t("録画の音声にエラー (ここまでを保存します)"), 5000); }catch(_){}
           if(this._mb) this.stop();
         });
       }
@@ -12375,7 +12883,7 @@ const Record = {
         videoSource.add(t).catch(err => {
           if(mb.stopping || this._mb !== mb) return;
           try{ Diag.log('record', 'video encode error: ' + (err && err.message || err)); }catch(_){}
-          try{ toast('録画エラー (ここまでを保存します)', 5000); }catch(_){}
+          try{ toast(I18n.t("録画エラー (ここまでを保存します)"), 5000); }catch(_){}
           this.stop();
         });
       }
@@ -12388,13 +12896,13 @@ const Record = {
       console.warn('WebCodecs record start failed:', err);
       if(this._mb === mb){
         this._mb = null;
-        try{ toast('録画開始に失敗: ' + (err && err.message || err)); }catch(_){}
+        try{ toast(I18n.t("録画開始に失敗: ") + (err && err.message || err)); }catch(_){}
       }
     });
     pump();
     this._watchStartMB(mb);
     try{ Diag.log('record', 'start ' + fmt.ext + ' webcodecs ' + fmt.v + ' vbps=' + Math.round(vbps/1e6) + 'M' + (hasAudio ? ' +' + fmt.a : '')); }catch(_){}
-    toast(`録画開始 (${fmt.ext}${hasAudio ? '+audio' : ''})`);
+    toast(I18n.t("録画開始 ({0}{1})", {0: fmt.ext, 1: hasAudio ? '+audio' : ''}));
     return true;
   },
 
@@ -12409,7 +12917,7 @@ const Record = {
         if(this._watchStall === 4){
           const si = (k)=>{ try{ const s = GL.slots[k]; return k + '=' + (s.kind || '?'); }catch(e){ return k + '=?'; } };
           try{ Diag.log('record', 'frame supply stalled (' + si('A') + ' ' + si('B') + ')'); }catch(_){}
-          try{ toast('録画へのフレーム供給が止まっています (Diag に記録)', 5000); }catch(_){}
+          try{ toast(I18n.t("録画へのフレーム供給が止まっています (Diag に記録)"), 5000); }catch(_){}
           const rb = document.getElementById('btnRec'); if(rb) rb.classList.add('rec-stall');
         }
       } else if(got > 0){
@@ -12429,7 +12937,7 @@ const Record = {
     this._mb = null;
     if(mb.raf) cancelAnimationFrame(mb.raf);
     this._watchStop();
-    toast('録画停止 (書き出し中…)');
+    toast(I18n.t("録画停止 (書き出し中…)"));
     try{
       await mb.output.finalize();
       const buf = mb.output.target.buffer;
@@ -12440,7 +12948,7 @@ const Record = {
     }catch(err){
       console.warn('record finalize failed:', err);
       try{ Diag.log('record', 'finalize error: ' + (err && err.message || err)); }catch(_){}
-      toast('録画の書き出しに失敗: ' + (err && err.message || err));
+      toast(I18n.t("録画の書き出しに失敗: ") + (err && err.message || err));
       return false;
     }
     return true;
@@ -12458,7 +12966,7 @@ const Record = {
     if(/iPad|iPhone|iPod/.test(ua) || (navigator.maxTouchPoints > 1 && /Mac/.test(ua) && !/Electron/i.test(ua))){
       // iOS Safari は a.download で自動保存できないので、新規タブで開いて「共有→保存」させる
       setTimeout(()=>{ window.open(url, '_blank'); }, 200);
-      toast('iOS: 開いたページで [共有] → [ビデオを保存] で保存');
+      toast(I18n.t("iOS: 開いたページで [共有] → [ビデオを保存] で保存"));
     }
     setTimeout(()=>URL.revokeObjectURL(url), 60000);
   },
@@ -12531,7 +13039,7 @@ const Record = {
     }catch(err){
       console.warn('MediaRecorder start failed:', err);
       this._cleanupStream();
-      toast('録画開始に失敗: '+(err.message||err));
+      toast(I18n.t("録画開始に失敗: ")+(err.message||err));
       return false;
     }
     this.chunks=[];
@@ -12542,13 +13050,13 @@ const Record = {
     this.mr.addEventListener('error', (e)=>{
       const m = (e.error && e.error.message) || 'unknown';
       try{ Diag.log('record', 'MediaRecorder error: ' + m); }catch(_){}
-      try{ toast('録画エラー: ' + m + ' (ここまでを保存します)', 5000); }catch(_){}
+      try{ toast(I18n.t("録画エラー: ") + m + I18n.t(" (ここまでを保存します)"), 5000); }catch(_){}
       if(this.mr) this.stop();
     });
     { const vt = this.stream.getVideoTracks()[0];
       if(vt) vt.onended = ()=>{
         try{ Diag.log('record', 'canvas video track ended'); }catch(_){}
-        try{ toast('録画の映像トラックが終了しました (ここまでを保存します)', 5000); }catch(_){}
+        try{ toast(I18n.t("録画の映像トラックが終了しました (ここまでを保存します)"), 5000); }catch(_){}
         if(this.mr) this.stop();
       };
     }
@@ -12566,7 +13074,7 @@ const Record = {
         // iOS Safari は a.download で自動保存できないので、新規タブで開いて「共有→保存」させる
         if(isIOS){
           setTimeout(()=>{ window.open(url, '_blank'); }, 200);
-          toast('iOS: 開いたページで [共有] → [ビデオを保存] で保存');
+          toast(I18n.t("iOS: 開いたページで [共有] → [ビデオを保存] で保存"));
         }
         setTimeout(()=>URL.revokeObjectURL(url), 60000);
       }finally{
@@ -12579,12 +13087,12 @@ const Record = {
       console.warn('MediaRecorder start failed:', err);
       this.mr = null;
       this._cleanupStream();
-      toast('録画開始に失敗: '+(err.message||err));
+      toast(I18n.t("録画開始に失敗: ")+(err.message||err));
       return false;
     }
     this._watchStart();
     try{ Diag.log('record', 'start ' + this.ext + ' ' + (chosen.mime || 'default') + ' vbps=' + Math.round(vbps/1e6) + 'M' + (hasAudio ? ' +audio' : '')); }catch(_){}
-    toast(`録画開始 (${this.ext}${hasAudio ? '+audio' : ''})`);
+    toast(I18n.t("録画開始 ({0}{1})", {0: this.ext, 1: hasAudio ? '+audio' : ''}));
     return true;
   },
   // ── 録画ウォッチドッグ ──
@@ -12614,7 +13122,7 @@ const Record = {
           const msg = 'frame supply stalled (renderAdv=' + glAdv + '/2s, ' + si('A') + ' ' + si('B')
                     + ', cf=' + (typeof App !== 'undefined' && App.crossfade != null ? App.crossfade.toFixed(2) : '?') + ')';
           try{ Diag.log('record', msg); }catch(e){}
-          try{ toast('録画へのフレーム供給が止まっています (Diag に記録)', 5000); }catch(e){}
+          try{ toast(I18n.t("録画へのフレーム供給が止まっています (Diag に記録)"), 5000); }catch(e){}
           const rb = document.getElementById('btnRec'); if(rb) rb.classList.add('rec-stall');
         }
       } else {
@@ -12656,7 +13164,7 @@ const Record = {
     const mr = this.mr;
     this.mr = null;
     mr.stop();
-    toast('録画停止');
+    toast(I18n.t("録画停止"));
     return true;
   }
 };
@@ -13494,7 +14002,7 @@ const Diag = {
     // 前回が clean shutdown でなければ異常終了の可能性を通知
     const last = this.events[this.events.length-1];
     if(last && last.type !== 'shutdown'){
-      try{ if(typeof toast === 'function') toast('前回異常終了の可能性。Settings→Diagnostics でログ確認', 4000); }catch(e){}
+      try{ if(typeof toast === 'function') toast(I18n.t("前回異常終了の可能性。Settings→Diagnostics でログ確認"), 4000); }catch(e){}
     }
     this.log('boot', (navigator.userAgent||'').slice(0,160));
     window.addEventListener('error', (e)=>{
@@ -13563,7 +14071,7 @@ const App = {
   beatMode:'beat', // 'drone' | 'beat' — Layer 系エンジンの動き方
   crossfade:1,
   slotVisible:{A:true, B:true}, // 一時表示トグル。保存状態には含めない
-  slotBOffsetBeats:0,   // B Offset: Slot B のシェーダ位相ずらし (拍)。同一シェーダの重ね掛け用
+  slotBOffsetBeats:0,   // B Beat Shift: Slot B の位相ずらし (拍)。同一シェーダの重ね掛け用
   // Slot A の背景色 = 出力の下地。Slot A が透過している所 (「なし」/ 透過シェーダ / Image の余白など) を
   // この色で埋める。既定 #000000 = 従来どおりの黒。合成の 1 箇所 (sampleAB) で効かせるので、
   // どの kind でも・Post FX より前に乗る。
@@ -13591,7 +14099,7 @@ const App = {
     const EP = (slot && slot.kind && this._engineP) ? this._engineP(slot.kind) : null;
     if(EP){
       // エンジンの背景色: paper (配列 or hex 文字列) / bgColor / bg の順で探す。slicer は bgMode も Color に切り替える
-      for(const key of (EP.bgMode !== undefined && Array.isArray(EP.bgColor)) ? ['bgColor', 'paper', 'bg'] : ['paper', 'bgColor', 'bg']){   // 背景を紙と別に持つエンジン (bgMode あり) は bgColor が背景
+      for(const key of slot.kind === 'imgconstruct' ? ['bg', 'paper'] : (EP.bgMode !== undefined && Array.isArray(EP.bgColor)) ? ['bgColor', 'paper', 'bg'] : ['paper', 'bgColor', 'bg']){   // 背景を紙と別に持つエンジン (bgMode あり) は bgColor が背景
         const v = EP[key];
         const label = key + ' (' + slot.kind + ')';
         const refresh = ()=>{ if(UI.refreshAll) UI.refreshAll(); };
@@ -13610,8 +14118,8 @@ const App = {
     if(typeof UI !== 'undefined' && UI.refreshSlotABg) UI.refreshSlotABg();
   },
   blendMode:'mix', // 'mix' | 'add' | 'multiply' | 'screen' | 'darken' | 'lighten' | 'difference' | 'overlay'
-  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'],
-  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'],
+  modeKinds:['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype','imgconstruct'],
+  modeStateKinds:['layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype','imgconstruct'],
   _presetDefaults:null,
   _factoryDefaults:null,
   // Blend 切替はプリセット扱い: 視覚トランジションを掛けてから切り替える
@@ -13640,7 +14148,7 @@ const App = {
     GL._snapSlot(k);
     loadInto(k);
     GL.slots[k]._tr = { on:true, t0:BPM.beatCount(), beats:N, seed: Math.random(), rt0: now(), rdur: Math.max(0.05, N*60/Math.max(20, BPM.bpm)) };
-    toast(`${label} へ ${N} 拍でトランジション`);
+    toast(I18n.t("{0} へ {1} 拍でトランジション", {0: label, 1: N}));
   },
   // Visual タイルをスロットプレビューへドロップ: 指定スロットへ (トランジション付きで) ロードし操作対象に
   loadPresetInto(idx, slotKey){
@@ -13994,7 +14502,7 @@ const App = {
   // ライブロック ON の間は破壊的な操作を止めて知らせる。止めたら true
   liveLocked(what){
     if(!Prefs.on('liveLock', '0')) return false;
-    toast('Live Lock: ' + what + ' は無効 (Settings で解除)', 1800, true);
+    toast('Live Lock: ' + what + I18n.t(" は無効 (Settings で解除)"), 1800, true);
     return true;
   },
   clearActiveSlot(){
@@ -14003,7 +14511,7 @@ const App = {
     const ni = PRESETS.findIndex(p => p && p.kind === 'none');
     if(ni < 0) return;
     this.loadPreset(ni, this.activeSlot);
-    toast('Slot ' + this.activeSlot + ' → なし(透明)');
+    toast('Slot ' + this.activeSlot + I18n.t(" → なし(透明)"));
   },
   handleVisualKey(key){
     const slot = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[this.activeSlot] : null;
@@ -14039,7 +14547,7 @@ const App = {
       }
       if(kind === 'textdeform' && typeof TextDeform !== 'undefined' && TextDeform.P){
         TextDeform.setParams({ vertical: !TextDeform.P.vertical });   // 横組 ⇔ 縦組
-        toast('TYPE 組方向: ' + (TextDeform.P.vertical ? '縦組' : '横組'));
+        toast(I18n.t("TYPE 組方向: ") + (TextDeform.P.vertical ? I18n.t("縦組") : I18n.t("横組")));
         return true;
       }
     }
@@ -14060,7 +14568,7 @@ const App = {
     }
     if(UI.refreshAll) UI.refreshAll();
     if(typeof MIDI !== 'undefined') MIDI.refreshLeds();
-    toast('Slot A ⇄ B 交換');
+    toast(I18n.t("Slot A ⇄ B 交換"));
   },
   toggleBeatMode(){
     this.beatMode = this.beatMode === 'beat' ? 'drone' : 'beat';
@@ -14158,12 +14666,15 @@ const App = {
   //   (後者は元から音駆動なので二重に掛けない)。設定値・離散値も対象外。
   AUDIO_MOD_EXCLUDE: {
     inkBleedSpread:1, inkBleedFiber:1, inkBleedEdge:1, inkBleedNode:1, inkBleedSeed:1,
+    // Tone の形・色は固定し、Drive は量だけを持ち上げる。
+    toneType:1, toneCell:1, toneAngle:1, toneThreshold:1, toneContrast:1, toneLevels:1, toneMix:1,
     hatchDensity:1, hatchFlow:1, hatchLength:1, hatchLayers:1, hatchWobble:1, hatchMix:1, hatchAngle:1, hatchTool:1, hatchGrain:1, hatchBreak:1,
     inv:1, gamma:1, bri:1, con:1, sat:1, hue:1, colorTemp:1, colorTint:1, mixHueRed:1, mixHueOrange:1, mixHueYellow:1, mixHueGreen:1, mixHueAqua:1, mixHueBlue:1, mixHuePurple:1, mixHueMagenta:1, mixSatRed:1, mixSatOrange:1, mixSatYellow:1, mixSatGreen:1, mixSatAqua:1, mixSatBlue:1, mixSatPurple:1, mixSatMagenta:1, mixLumRed:1, mixLumOrange:1, mixLumYellow:1, mixLumGreen:1, mixLumAqua:1, mixLumBlue:1, mixLumPurple:1, mixLumMagenta:1,
     palette:1, cosPalette:1, paletteAmt:1, gradMix:1, cosGrad:1, gradA:1, gradB:1, gradStops:1,
     gain:1, aScan:1, aRgb:1, aStrobe:1, aShock:1, aExplode:1, waveform:1,
     aShards:1, aShardsCount:1, aShardsSides:1, aShardsSize:1, aShardsHole:1, aShardsLine:1, aShardsMove:1,
-    aPopCount:1, aPopSize:1, aPopSides:1, aPopZoom:1, aPopLine:1, aPopShade:1, aPopSpin:1,
+    slit2Invert:1, slit2Radius:1,
+    slitCalm:1, aPopCount:1, waveformAmp:1, waveformCount:1, waveformCountVar:1, waveformWidth:1, waveformWidthVar:1, aPopSize:1, aPopSides:1, aPopZoom:1, aPopLine:1, aPopShade:1, aPopSpin:1,
     // Slice / Ring Blur: 値で常時掛ける切り裂き・ぼかしなので音で持ち上げない (2026-10-16)
     slice:1, sliceLine:1, sliceCount:1, sliceMove:1, sliceAngle:1, ringsLine:1, ringsCount:1, ringsTwist:1, ringsWobble:1, ringBlur:1, fbSteps:1, fbFade:1, fbResidueHold:1, fbResiduePull:1, fbResiduePoly:1, fbResidueFaceSize:1,
     audioTarget:1, audioGain:1, audioBand:1, audioAttack:1, mir:1, fxaa:1,
@@ -14175,7 +14686,7 @@ const App = {
     // 3D FX の詳細: 枚数・切り抜きは音で変えない (再レイアウトでちらつく)
     fx3dPhotoCount:1, fx3dPhotoCrop:1, fx3dPhotoCurl:1, fx3dPhotoCurlAxis:1, fx3dPhotoFlutter:1, fx3dPhotoCorner:1, fx3dPhotoSpin:1, fx3dBlindsAngle:1, fx3dBlindsSpeed:1, fx3dBlindsWave:1, fx3dBlindsOpen:1, fx3dBlindsGap:1, fx3dBlindsRandom:1, fx3dSlicerPieces:1, fx3dLayerCount:1, fx3dLayerSize:1, fx3dLayerEdge:1, fx3dScale:1,
     fx3dDioramaLayers:1, fx3dDioramaSwing:1, fx3dDioramaSpeed:1, fx3dDioramaPan:1, fx3dDioramaTilt:1, fx3dDioramaZoom:1, fx3dPointsDensity:1, fx3dBlindsCount:1, fx3dBlindsTwist:1, fx3dStretchX:1, fx3dStretchY:1, fx3dStretchZ:1, fx3dZoom:1, fx3dTunnelSpeed:1, fx3dTunnelRadius:1, fx3dTunnelTwist:1, fx3dTunnelCurve:1, fx3dTunnelBump:1, fx3dTunnelPulse:1, fx3dTunnelTile:1, fx3dTunnelRound:1, fx3dTunnelSpin:1, fx3dTunnelFlip:1, fx3dTunnelBendX:1, fx3dTunnelBendY:1, fx3dTunnelFog:1, fx3dTunnelShine:1, fx3dTunnelEdge:1, fx3dTunnelTilt:1, fx3dTunnelPan:1, kaiserFolds:1, kaiserSpeed:1, kaiserAngle:1, kaiserSpread:1, kaiserSoft:1, kaiserOldFolds:1, kaiserOldSpeed:1, kaiserOldAngle:1, kaiserOldSpread:1, kaiserOldCurve:1, kaiserOldTwist:1, kaiserOldCam:1, uzumakiCards:1, uzumakiTwist:1, uzumakiSpread:1, uzumakiDepth:1, uzumakiShrink:1, uzumakiCard:1, uzumakiSpin:1, uzumakiCam:1, fx3dRollRadius:1, fx3dRollDepth:1, fx3dRollAngle:1, fx3dRollSpin:1, fx3dRollCurl:1, fx3dRollCam:1, riverTwist:1, riverSpeed:1, riverWidth:1, riverFlow:1, riverLight:1, riverFog:1, riverSway:1,  fx3dGravitySpin:1, fx3dGravityDepth:1, fx3dGravityFlip:1, fx3dGravityWave:1, fx3dGravityPoints:1, fx3dGlobeDetail:1, fx3dExtrudeDepth:1, fx3dExtrudeTilt:1, fx3dExtrudeSpin:1, fx3dExtrudeShade:1, fx3dExtrudeTwist:1, fx3dExtrudeRound:1, needleScatter:1, needleThick:1, needleLen:1, needleSides:1, fx3dDepth:1,
-    pollockGloss:1, pollockMatt:1, pollockFlat:1, pollockMetal:1, pollockSize:1, pollockLength:1, pollockDensity:1, pollockDrops:1, pollockCurve:1, pollockLife:1, pollockRelief:1,
+    pollock:1, pollockOn:1, pollockType:1, pollockSize:1, pollockLength:1, pollockDensity:1, pollockDrops:1, pollockCurve:1, pollockLife:1, pollockRelief:1,
     // Texture: 同様に地の質感なので対象外
     scn:1, grn:1, texNoise:1, pos:1, blm:1, voxel:1,
     // Quality (画質補完) も量ではないので対象外
@@ -14213,28 +14724,33 @@ const App = {
     this._afeVal = v;
     return Math.max(0, Math.min(1, Math.pow(v, 0.65)));
   },
+  // 3D 欄のメインの量だけ。設定値は保持し、描画用コピーを作るときに一度だけ掛ける。
+  FX3D_AMOUNT_KEYS: new Set(['fx3dExtrude','fx3dPhoto','fx3dSlicer','fx3dLayer','fx3dDiorama','fx3dPoints',
+    'fx3dCubes','fx3dBlinds','fx3dTunnel','fx3dGravity','fx3dGlobe','origami','kaiser','kaiserOld','fx3dRoll','uzumaki','river']),
+  fx3dAmount(p, key){
+    const m = p && p.fx3dAmount != null ? +p.fx3dAmount : 1;
+    return (+p[key] || 0) * Math.max(0, Math.min(1, Number.isFinite(m) ? m : 1));
+  },
   effectivePost(src){
-    const out = Object.assign({}, src || {});
+    const out = Object.assign({fx3dAmount:1}, src || {});
+    const amt = Math.max(0, Math.min(1, this.deadParam(out.audioFx || 0)));
+    const env = amt > 0.001 ? this._audioEnv() : 0;
+    const R = (typeof MIDI !== 'undefined' && MIDI.postRange) ? MIDI.postRange : null;
+    const mod = (k, base, ceiling)=>{
+      if(!(amt > 0.001 && env > 0.0005) || this.AUDIO_MOD_EXCLUDE[k] || Math.abs(base) < 1e-6) return base;
+      const r = R && R[k], hi = ceiling != null ? ceiling : (r ? r[1] : 1), lo = r ? r[0] : 0;
+      const head = Math.max(0, (base >= 0 ? hi - base : base - lo));
+      return base + Math.sign(base || 1) * head * env * amt;
+    };
+    // 倍率自体を再マップすると 0.5 が半分にならない。積に既存のデッドゾーンを一度掛ける。
+    // Drive は倍率にも効く。0 付近を音で復活させず、各 FX の Drive の上限もこの倍率に揃える。
+    const m = Number.isFinite(+out.fx3dAmount) ? Math.max(0, Math.min(1, +out.fx3dAmount)) : 1;
+    out.fx3dAmount = mod('fx3dAmount', m < 0.1 ? 0 : m);
     for(const k in out){
-      if(typeof out[k] === 'number') out[k] = this.deadParam(out[k]);
-    }
-    const amt = Math.max(0, Math.min(1, (out.audioFx != null) ? out.audioFx : 0));
-    if(amt > 0.001){
-      const env = this._audioEnv();
-      if(env > 0.0005){
-        const R = (typeof MIDI !== 'undefined' && MIDI.postRange) ? MIDI.postRange : null;
-        const EX = this.AUDIO_MOD_EXCLUDE;
-        for(const k in out){
-          if(EX[k] || typeof out[k] !== 'number') continue;
-          const base = out[k];
-          if(Math.abs(base) < 1e-6) continue;          // 切っている FX は音でも鳴らさない
-          const r = R && R[k];
-          const hi = r ? r[1] : 1, lo = r ? r[0] : 0;
-          // 現在値を基準に、上へ余っている分だけ音で持ち上げる (下げない = 消えない)
-          const head = Math.max(0, (base >= 0 ? hi - base : base - lo));
-          out[k] = base + Math.sign(base || 1) * head * env * amt;
-        }
-      }
+      if(typeof out[k] !== 'number' || k === 'fx3dAmount') continue;
+      const is3d = this.FX3D_AMOUNT_KEYS.has(k);
+      const value = is3d ? this.fx3dAmount(out, k) : out[k];
+      out[k] = mod(k, this.deadParam(value), is3d ? this.deadParam(out.fx3dAmount) : undefined);
     }
     return out;
   },
@@ -14290,7 +14806,8 @@ const App = {
   //   Audio FX 見出し配下(音/拍に対して瞬時に反応する必要があり、フェードすると
   //   トリガーが鈍る)を対象外にする。
   POST_FADE_IMMEDIATE: {
-    inkBleedSeed:1, hatchLayers:1, hatchTool:1,
+    pollockOn:1,
+    inkBleedSeed:1, hatchLayers:1, hatchTool:1, toneType:1, toneLevels:1,
     palette:1, cosPalette:1, mir:1,
     // Post FX (inv / hue はフェード対象に変更: プリセット切替でも Param Fade でなめらかに反転・回頭する)
     gamma:1, bri:1, con:1, sat:1, paletteAmt:1, gradMix:1,
@@ -14557,15 +15074,16 @@ const App = {
     colorTemp:0.0, colorTint:0.0,
     mixHueRed:0.0, mixHueOrange:0.0, mixHueYellow:0.0, mixHueGreen:0.0, mixHueAqua:0.0, mixHueBlue:0.0, mixHuePurple:0.0, mixHueMagenta:0.0, mixSatRed:0.0, mixSatOrange:0.0, mixSatYellow:0.0, mixSatGreen:0.0, mixSatAqua:0.0, mixSatBlue:0.0, mixSatPurple:0.0, mixSatMagenta:0.0, mixLumRed:0.0, mixLumOrange:0.0, mixLumYellow:0.0, mixLumGreen:0.0, mixLumAqua:0.0, mixLumBlue:0.0, mixLumPurple:0.0, mixLumMagenta:0.0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
-    twist:0.0, slice:0.0, sliceLine:0.5, sliceCount:0.5, sliceMove:0.5, sliceAngle:0, ringsLine:0.5, ringsCount:0.5, ringsTwist:0.5, ringsWobble:0.5, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, aPop:0.0, aPopCount:12, aPopSize:60, aPopSides:2, aPopZoom:0.5, aPopLine:0.5, aPopShade:0.5, aPopSpin:0.5, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, pollockMetal:0.0, pollockSize:0.5, pollockLength:0.5, pollockDensity:0.5, pollockDrops:0.5, pollockCurve:0.5, pollockLife:0.5, pollockRelief:0.5, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, aShardsMove:0.5, slitScan:0.0, palette:8, paletteAmt:0,
+    twist:0.0, slice:0.0, sliceLine:0.5, sliceCount:0.5, sliceMove:0.5, sliceAngle:0, ringsLine:0.5, ringsCount:0.5, ringsTwist:0.5, ringsWobble:0.5, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, slit2Invert:0.5, slit2Radius:0.5, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, aPop:0.0, aPopCount:12, aPopSize:60, aPopSides:2, aPopZoom:0.5, aPopLine:0.5, aPopShade:0.5, aPopSpin:0.5, pollockOn:0, pollockType:'gloss', pollock:0.0, pollockSize:0.5, pollockLength:0.5, pollockDensity:0.5, pollockDrops:0.5, pollockCurve:0.5, pollockLife:0.5, pollockRelief:0.5, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, aShardsMove:0.5, slitScan:0.0, slitCalm:0.5, palette:8, paletteAmt:0,
     dither:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, kaiserFolds:1, kaiserSpeed:0.5, kaiserAngle:0.5, kaiserSpread:0.5, kaiserSoft:0, kaiserOldFolds:1, kaiserOldSpeed:0.5, kaiserOldAngle:0.5, kaiserOldSpread:0.5, kaiserOldCurve:0.5, kaiserOldTwist:0.5, kaiserOldCam:0.5, uzumaki:0.0, uzumakiCards:0.5, uzumakiTwist:0.5, uzumakiSpread:0.5, uzumakiDepth:0.5, uzumakiShrink:0.5, uzumakiCard:0.5, uzumakiSpin:0.5, uzumakiCam:0.5,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dPhotoCurl:0.65, fx3dPhotoCurlAxis:1, fx3dPhotoFlutter:0.4, fx3dPhotoCorner:0.45, fx3dPhotoSpin:0.35, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dDioramaSwing:0.5, fx3dDioramaSpeed:0.5, fx3dDioramaPan:0, fx3dDioramaTilt:0, fx3dDioramaZoom:0, fx3dPoints:0.0, fx3dPointsDensity:400, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5, fx3dBlindsAngle:0.5, fx3dBlindsSpeed:0.5, fx3dBlindsWave:0.5, fx3dBlindsOpen:0.5, fx3dBlindsGap:0, fx3dBlindsRandom:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dTunnel:0.0, fx3dTunnelSpeed:0.5, fx3dTunnelRadius:0.5, fx3dTunnelTwist:0.6, fx3dTunnelCurve:0.5, fx3dTunnelBump:0.4, fx3dTunnelPulse:0.4, fx3dTunnelTile:0.4, fx3dTunnelRound:0, fx3dTunnelSpin:0.5, fx3dTunnelFlip:0.5, fx3dTunnelBendX:0, fx3dTunnelBendY:0, fx3dTunnelFog:0.4, fx3dTunnelShine:0.5, fx3dTunnelEdge:0, fx3dTunnelTilt:0, fx3dTunnelPan:0, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dExtrude:0.0, fx3dExtrudeDepth:0.5, fx3dExtrudeTilt:0.5, fx3dExtrudeSpin:0.3, fx3dExtrudeShade:0.5, fx3dExtrudeTwist:0.0, fx3dExtrudeRound:0.0, fx3dExtrudeMode:'flat', fx3dRoll:0.0, fx3dRollRadius:0.5, fx3dRollDepth:0.5, fx3dRollAngle:0, fx3dRollSpin:0.5, fx3dRollCurl:0.5, fx3dRollCam:0.5, fx3dDepth:0.5, fx3dStretchX:0, fx3dStretchY:0, fx3dStretchZ:0, fx3dZoom:0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dTunnel:0.0, fx3dTunnelSpeed:0.5, fx3dTunnelRadius:0.5, fx3dTunnelTwist:0.6, fx3dTunnelCurve:0.5, fx3dTunnelBump:0.4, fx3dTunnelPulse:0.4, fx3dTunnelTile:0.4, fx3dTunnelRound:0, fx3dTunnelSpin:0.5, fx3dTunnelFlip:0.5, fx3dTunnelBendX:0, fx3dTunnelBendY:0, fx3dTunnelFog:0.4, fx3dTunnelShine:0.5, fx3dTunnelEdge:0, fx3dTunnelTilt:0, fx3dTunnelPan:0, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dExtrude:0.0, fx3dExtrudeDepth:0.5, fx3dExtrudeTilt:0.5, fx3dExtrudeSpin:0.3, fx3dExtrudeShade:0.5, fx3dExtrudeTwist:0.0, fx3dExtrudeRound:0.0, fx3dExtrudeMode:'flat', fx3dRoll:0.0, fx3dRollRadius:0.5, fx3dRollDepth:0.5, fx3dRollAngle:0, fx3dRollSpin:0.5, fx3dRollCurl:0.5, fx3dRollCam:0.5, fx3dAmount:1, fx3dDepth:0.5, fx3dStretchX:0, fx3dStretchY:0, fx3dStretchZ:0, fx3dZoom:0, fx3dScale:1, fx3dStack:'build', fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
+    tone:0, toneType:0, toneCell:6, toneAngle:0, toneThreshold:0, toneContrast:0, toneLevels:2, toneInk:'#000000', tonePaper:'#ffffff', toneMix:0,
     hatch:0, hatchDensity:0.5, hatchFlow:0.8, hatchLength:0.5, hatchLayers:3, hatchWobble:0.3, hatchMix:0, hatchAngle:0.25, hatchInk:'#1e1e1e', hatchPaper:'#f2eee4', hatchTex:0, hatchTool:0, hatchGrain:0.5, hatchBreak:0.3,
     sdfChrome:0.0, river:0.0, riverTwist:0.5, riverSpeed:0.5, riverWidth:0.5, riverFlow:0.5, riverLight:0.5, riverFog:0.5, riverSway:0.5,  bleed:0.0, impasto:0.0, chrome:0.0, chromeBump:0.5, chromeEdge:0.5, chromeCon:0.5, chromeTint:0.35, chromeSpec:0.5, chromeSharp:0.5, chromeRim:0.5, chromeLight:0.5, chromeObj:1, sdfChromeObj:1, bleedObj:1, impastoObj:1, glossObj:1, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
-    waveform:0.0,
+    waveform:0.0, waveformAmp:0.0, waveformCount:32, waveformCountVar:0.0, waveformWidth:1.0, waveformWidthVar:0.55,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
     fbAdd:0.0, fbMultiply:0.0, fbZoom:0.0, fbRot:0.0, glitchTrail:0.0, glitchTrailType:'mondrian',
@@ -14584,6 +15102,7 @@ const App = {
   //   (例: unsharp:1.5 が入っていて、レンジ [-1,1] の上限 1.0 = 最大シャープが常時適用されていた)
   sanitizePost(p){
     if(!p || typeof p !== 'object') return p;
+    p = this.migratePollockPost(p);
     const R = (typeof MIDI !== 'undefined' && MIDI.postRange) ? MIDI.postRange : null;
     if(!R) return p;
     // レンジ外 (|v|>1) の Unsharp は UI では作れない値 = 旧デフォルト(半径 1.5 等)の焼き付き。
@@ -14606,6 +15125,27 @@ const App = {
     // 「プリセットを呼ぶと Unsharp バッジが付く」のを防ぐ。
     if(typeof p.unsharp === 'number' && Math.abs(p.unsharp) < 0.1) p.unsharp = 0;
     if(typeof p.unsharp === 'number') p.unsharpRadius = this.unsharpRadiusFromValue(p.unsharp);
+    return p;
+  },
+  // 読み込み口で共通使用。欠落項目には既定値を足さず、呼び出し元の復元規約を保つ。
+  migratePollockPost(p){
+    if(!p || typeof p !== 'object') return p;
+    const legacy = ['pollockFlat', 'pollockMetal', 'pollockGloss', 'pollockMatt'];
+    const has = k => Object.prototype.hasOwnProperty.call(p, k);
+    if(legacy.some(has) && !['pollockOn', 'pollockType', 'pollock'].some(has)){
+      // 同点は旧描画と同じ Flat > Metal > Gloss > Matt。全部 0 も Flat を選ぶ。
+      let winner = legacy[0], amount = +p[winner] || 0;
+      for(const key of legacy.slice(1)){
+        const value = +p[key] || 0;
+        if(value > amount){ winner = key; amount = value; }
+      }
+      p.pollockType = winner.slice(7).toLowerCase();
+      p.pollock = Math.max(0, Math.min(1, amount));
+      p.pollockOn = p.pollock > 0.001 ? 1 : 0;
+    }
+    for(const key of legacy) delete p[key];
+    if(has('pollockOn')) p.pollockOn = +p.pollockOn >= 0.5 ? 1 : 0;
+    if(has('pollockType') && !['gloss','matt','flat','metal'].includes(p.pollockType)) p.pollockType = 'gloss';
     return p;
   },
   migrateFeedbackPost(p){
@@ -14663,7 +15203,7 @@ const App = {
       localStorage.setItem('vj.fbDefault.'+m,JSON.stringify(v));
       localStorage.setItem('vj.fbDefault',JSON.stringify({fbMode:m,...v}));   // 起動時の Mode
     }catch(e){}
-    toast('デフォルト保存: FB (' + m + ')');
+    toast(I18n.t("デフォルト保存: FB (") + m + ')');
   },
   // いまの Mode の保存値へ戻す (保存が無ければ初期値)
   resetFbDefault(){
@@ -14674,21 +15214,22 @@ const App = {
       const el = document.getElementById(id);
       if(el) el.dataset.defval = el.value;
     });
-    toast('デフォルトをリセット: FB (' + m + ')');
+    toast(I18n.t("デフォルトをリセット: FB (") + m + ')');
   },
   // Post FX のグループ既定値: 各見出し (Quality / Material / …) の Save で現在値を
   // localStorage 'vj.def.post.<group>' に保存し、起動時・Reset で工場出荷値の上に重ねる
   POST_GROUPS: {
+    tone:       ['tone','toneType','toneCell','toneAngle','toneThreshold','toneContrast','toneLevels','toneInk','tonePaper','toneMix'],
     color:      ['inv','gamma','bri','con','sat','vibrance','gradMix','hue','vig','pos','colorTemp','colorTint','mixHueRed','mixHueOrange','mixHueYellow','mixHueGreen','mixHueAqua','mixHueBlue','mixHuePurple','mixHueMagenta','mixSatRed','mixSatOrange','mixSatYellow','mixSatGreen','mixSatAqua','mixSatBlue','mixSatPurple','mixSatMagenta','mixLumRed','mixLumOrange','mixLumYellow','mixLumGreen','mixLumAqua','mixLumBlue','mixLumPurple','mixLumMagenta'],
     quality:    ['clarity','denoise','deband','fxaa'],
-    material:   ['sdfChrome','bleed','sdfChromeObj','impasto','impastoObj','chrome','chromeBump','chromeEdge','chromeCon','chromeTint','chromeSpec','chromeSharp','chromeRim','chromeLight','chromeObj','gloss','glossObj','bleedObj','glossBump','glossSharp','glossShine','glossWet','glossLight','novel','novelSize','novelThresh','novelColor','novelFlow','novelBg','novelTate','novelDepth','novelTrack','novelLead','novelSwitch','novelCluster','novelGrid','novelVary','novelSep','novelTone','novelShape','rain','sketch','boltz','pollockGloss','pollockMatt','pollockFlat','pollockMetal','pollockSize','pollockLength','pollockDensity','pollockDrops','pollockCurve','pollockLife','pollockRelief'],
+    material:   ['sdfChrome','bleed','sdfChromeObj','impasto','impastoObj','chrome','chromeBump','chromeEdge','chromeCon','chromeTint','chromeSpec','chromeSharp','chromeRim','chromeLight','chromeObj','gloss','glossObj','bleedObj','glossBump','glossSharp','glossShine','glossWet','glossLight','novel','novelSize','novelThresh','novelColor','novelFlow','novelBg','novelTate','novelDepth','novelTrack','novelLead','novelSwitch','novelCluster','novelGrid','novelVary','novelSep','novelTone','novelShape','rain','sketch','boltz','pollockOn','pollockType','pollock','pollockSize','pollockLength','pollockDensity','pollockDrops','pollockCurve','pollockLife','pollockRelief'],
     texture:    ['scn','grn','texNoise','texNoiseScale'],
-    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','aShardsMove','waveform','mosaic','shake','specWarp','zoomPump','shatter','aPop','aPopCount','aPopSize','aPopSides','aPopZoom','aPopLine','aPopShade','aPopSpin','pixsort','gain'],
+    audioFx:    ['audioFx','audioFxAttack','audioFxRelease','aScan','aRgb','aStrobe','aShock','aExplode','aShards','aShardsCount','aShardsSides','aShardsSize','aShardsHole','aShardsLine','aShardsMove','waveform','waveformAmp','waveformCount','waveformCountVar','waveformWidth','waveformWidthVar','mosaic','shake','specWarp','zoomPump','shatter','aPop','aPopCount','aPopSize','aPopSides','aPopZoom','aPopLine','aPopShade','aPopSpin','pixsort','gain'],
     distortion: ['chr','pix','mir','twist'],
     pattern:    ['slice','sliceLine','sliceCount','sliceMove','sliceAngle','split','rings','ringsLine','ringsCount','ringsTwist','ringsWobble','voxel'],
-    fx3d:       ['fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dPhotoCurl','fx3dPhotoCurlAxis','fx3dPhotoFlutter','fx3dPhotoCorner','fx3dPhotoSpin','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dDioramaSwing','fx3dDioramaSpeed','fx3dDioramaPan','fx3dDioramaTilt','fx3dDioramaZoom','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dBlindsAngle','fx3dBlindsSpeed','fx3dBlindsWave','fx3dBlindsOpen','fx3dBlindsGap','fx3dBlindsRandom','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dTunnel','fx3dTunnelSpeed','fx3dTunnelRadius','fx3dTunnelTwist','fx3dTunnelCurve','fx3dTunnelBump','fx3dTunnelPulse','fx3dTunnelTile','fx3dTunnelRound','fx3dTunnelSpin','fx3dTunnelFlip','fx3dTunnelBendX','fx3dTunnelBendY','fx3dTunnelFog','fx3dTunnelShine','fx3dTunnelEdge','fx3dTunnelTilt','fx3dTunnelPan','fx3dGlobe','fx3dGlobeDetail','fx3dExtrude','fx3dExtrudeDepth','fx3dExtrudeTilt','fx3dExtrudeSpin','fx3dExtrudeShade','fx3dExtrudeTwist','fx3dExtrudeRound','fx3dExtrudeMode','origami','needleScatter','needleThick','needleLen','needleSides','kaiser','kaiserFolds','kaiserSpeed','kaiserAngle','kaiserSpread','kaiserSoft','kaiserOld','kaiserOldFolds','kaiserOldSpeed','kaiserOldAngle','kaiserOldSpread','kaiserOldCurve','kaiserOldTwist','kaiserOldCam','fx3dRoll','fx3dRollRadius','fx3dRollDepth','fx3dRollAngle','fx3dRollSpin','fx3dRollCurl','fx3dRollCam','fx3dDepth','fx3dStretchX','fx3dStretchY','fx3dStretchZ','fx3dZoom','uzumaki','uzumakiCards','uzumakiTwist','uzumakiSpread','uzumakiDepth','uzumakiShrink','uzumakiCard','uzumakiSpin','uzumakiCam','river','riverTwist','riverSpeed','riverWidth','riverFlow','riverLight','riverFog','riverSway','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dMix','fx3dOverscan'],
-    blur:       ['slit2','filmBlur','glass','dither','mblur','ringBlur','blm','outline','unsharp','unsharpRadius','sharpen','crisp','shock'],
-    glitch:     ['slitScan','barcode','glitchTrail','glitchTrailType'],
+    fx3d:       ['fx3dAmount','fx3dPhoto','fx3dPhotoCount','fx3dPhotoCrop','fx3dPhotoCurl','fx3dPhotoCurlAxis','fx3dPhotoFlutter','fx3dPhotoCorner','fx3dPhotoSpin','fx3dSlicer','fx3dSlicerPieces','fx3dLayer','fx3dLayerCount','fx3dLayerSize','fx3dLayerEdge','fx3dDiorama','fx3dDioramaLayers','fx3dDioramaSwing','fx3dDioramaSpeed','fx3dDioramaPan','fx3dDioramaTilt','fx3dDioramaZoom','fx3dPoints','fx3dPointsDensity','fx3dCubes','fx3dBlinds','fx3dBlindsCount','fx3dBlindsTwist','fx3dBlindsAngle','fx3dBlindsSpeed','fx3dBlindsWave','fx3dBlindsOpen','fx3dBlindsGap','fx3dBlindsRandom','fx3dGravity','fx3dGravitySpin','fx3dGravityDepth','fx3dGravityFlip','fx3dGravityWave','fx3dGravityPoints','fx3dTunnel','fx3dTunnelSpeed','fx3dTunnelRadius','fx3dTunnelTwist','fx3dTunnelCurve','fx3dTunnelBump','fx3dTunnelPulse','fx3dTunnelTile','fx3dTunnelRound','fx3dTunnelSpin','fx3dTunnelFlip','fx3dTunnelBendX','fx3dTunnelBendY','fx3dTunnelFog','fx3dTunnelShine','fx3dTunnelEdge','fx3dTunnelTilt','fx3dTunnelPan','fx3dGlobe','fx3dGlobeDetail','fx3dExtrude','fx3dExtrudeDepth','fx3dExtrudeTilt','fx3dExtrudeSpin','fx3dExtrudeShade','fx3dExtrudeTwist','fx3dExtrudeRound','fx3dExtrudeMode','origami','needleScatter','needleThick','needleLen','needleSides','kaiser','kaiserFolds','kaiserSpeed','kaiserAngle','kaiserSpread','kaiserSoft','kaiserOld','kaiserOldFolds','kaiserOldSpeed','kaiserOldAngle','kaiserOldSpread','kaiserOldCurve','kaiserOldTwist','kaiserOldCam','fx3dRoll','fx3dRollRadius','fx3dRollDepth','fx3dRollAngle','fx3dRollSpin','fx3dRollCurl','fx3dRollCam','fx3dDepth','fx3dStretchX','fx3dStretchY','fx3dStretchZ','fx3dZoom','uzumaki','uzumakiCards','uzumakiTwist','uzumakiSpread','uzumakiDepth','uzumakiShrink','uzumakiCard','uzumakiSpin','uzumakiCam','river','riverTwist','riverSpeed','riverWidth','riverFlow','riverLight','riverFog','riverSway','fx3dScale','fx3dBg','fx3dPop','fx3dTarget','fx3dSlot','fx3dMix','fx3dOverscan','fx3dStack'],
+    blur:       ['slit2','slit2Invert','slit2Radius','filmBlur','glass','dither','mblur','ringBlur','blm','outline','unsharp','unsharpRadius','sharpen','crisp','shock'],
+    glitch:     ['slitScan','slitCalm','barcode','glitchTrail','glitchTrailType'],
   },
   // 欄を移したキーの旧保存先。移動先の欄にまだ保存が無いとき、旧欄の保存値を引き継ぐ (旧欄の保存は消さない)
   POST_KEY_FROM: { vig:'distortion', outline:'glitch', inkBleed:'glitch', origami:'distortion', kaiser:'distortion', kaiserOld:'distortion', uzumaki:'distortion', river:'distortion',
@@ -14704,7 +15245,7 @@ const App = {
     return undefined;
   },
   postGroupSaved(group){
-    try{ const d = JSON.parse(localStorage.getItem('vj.def.post.' + group) || 'null'); return (d && typeof d === 'object') ? d : null; }
+    try{ const d = JSON.parse(localStorage.getItem('vj.def.post.' + group) || 'null'); return (d && typeof d === 'object') ? this.migratePollockPost(d) : null; }
     catch(e){ return null; }
   },
   postDefaults(){
@@ -14736,13 +15277,13 @@ const App = {
   },
   // 効果の量 (メインのスライダー)。欄の Save では保存し (起動時・欄の Reset はその値)、R / Esc ではこれだけ 0 (FX オフ) にする。
   //   サブパラメータ・Color / Quality / Texture の調整・3D の設定 (Depth / Stretch / Zoom)・Drive・Sharpen / Crisp は R / Esc でも保存値へ
-  POST_AMOUNT_KEYS: new Set(['rain','sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','novel','pollockGloss','pollockMatt','pollockFlat','pollockMetal',
+  POST_AMOUNT_KEYS: new Set(['rain','sketch','boltz','sdfChrome','bleed','impasto','chrome','gloss','novel','pollockOn','pollock',
     'fx3dExtrude','fx3dPhoto','fx3dSlicer','fx3dLayer','fx3dDiorama','fx3dPoints','fx3dCubes','fx3dBlinds','fx3dTunnel','fx3dGlobe','fx3dGravity',
     'kaiser','kaiserOld','fx3dRoll','river','uzumaki','origami',
     'slice','split','rings','voxel','slitScan','barcode','glitchTrail','pix','chr','twist',
     'mblur','glass','blm','shock','outline','dither','ringBlur','slit2','filmBlur',
     'shake','specWarp','zoomPump','shatter','aPop','aScan','aRgb','aShock','aExplode','mosaic','gain','aStrobe','aShards','waveform','pixsort',
-    'fbAmount','fbAdd','fbMultiply','fbResidue','hatch','inkBleed']),
+    'fbAmount','fbAdd','fbMultiply','fbResidue','hatch','inkBleed','tone']),
   savePostGroupDefault(group){
     const keys = this.POST_GROUPS[group]; if(!keys) return;
     const values = Object.assign({}, this.postGroupSaved(group));   // 他欄へ移したキーの旧保存値 (POST_KEY_FROM の引き継ぎ元) を消さない
@@ -14751,8 +15292,8 @@ const App = {
     if(this._presetDefaults && this._presetDefaults.post){   // R / Esc / プリセット読込が戻す先 (起動時に取った値) も保存値へ
       for(const k of keys) if(this.post[k] !== undefined) this._presetDefaults.post[k] = JSON.parse(JSON.stringify(this.post[k]));
     }
-    try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs('post.' + group); toast('デフォルト保存: ' + group); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.post.' + group, JSON.stringify(values)); this.uploadDefs('post.' + group); toast(I18n.t("デフォルト保存: ") + group); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   // ライブ調整を捨てて保存値 (無ければ工場出荷値) へ戻す。保存自体は消さない
   resetPostGroupDefault(group){
@@ -14764,7 +15305,7 @@ const App = {
       if(this._presetDefaults && this._presetDefaults.post) this._presetDefaults.post[k] = d[k];
     }
     if(typeof UI !== 'undefined' && UI.refreshPost) UI.refreshPost();
-    toast('保存値へ戻しました: ' + group);
+    toast(I18n.t("保存値へ戻しました: ") + group);
   },
   postFactoryDefaults(){ const fbDefault = this.fbSavedDefault(); return {
     hueLive:1,   // Hue ライブ適用世代のマーカー (旧保存 = 焼き込み済みストップ との判別用)
@@ -14773,15 +15314,16 @@ const App = {
     colorTemp:0.0, colorTint:0.0,
     mixHueRed:0.0, mixHueOrange:0.0, mixHueYellow:0.0, mixHueGreen:0.0, mixHueAqua:0.0, mixHueBlue:0.0, mixHuePurple:0.0, mixHueMagenta:0.0, mixSatRed:0.0, mixSatOrange:0.0, mixSatYellow:0.0, mixSatGreen:0.0, mixSatAqua:0.0, mixSatBlue:0.0, mixSatPurple:0.0, mixSatMagenta:0.0, mixLumRed:0.0, mixLumOrange:0.0, mixLumYellow:0.0, mixLumGreen:0.0, mixLumAqua:0.0, mixLumBlue:0.0, mixLumPurple:0.0, mixLumMagenta:0.0,
     scn:0.0, grn:0.0, pos:0.0, blm:0.0, inv:0,
-    twist:0.0, slice:0.0, sliceLine:0.5, sliceCount:0.5, sliceMove:0.5, sliceAngle:0, ringsLine:0.5, ringsCount:0.5, ringsTwist:0.5, ringsWobble:0.5, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, aPop:0.0, aPopCount:12, aPopSize:60, aPopSides:2, aPopZoom:0.5, aPopLine:0.5, aPopShade:0.5, aPopSpin:0.5, pollockGloss:0.0, pollockMatt:0.0, pollockFlat:0.0, pollockMetal:0.0, pollockSize:0.5, pollockLength:0.5, pollockDensity:0.5, pollockDrops:0.5, pollockCurve:0.5, pollockLife:0.5, pollockRelief:0.5, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, aShardsMove:0.5, slitScan:0.0, palette:8, paletteAmt:0,
+    twist:0.0, slice:0.0, sliceLine:0.5, sliceCount:0.5, sliceMove:0.5, sliceAngle:0, ringsLine:0.5, ringsCount:0.5, ringsTwist:0.5, ringsWobble:0.5, ringBlur:0.0, split:0.0, mosaic:0.0, shake:0.0, mblur:0.0, gain:0.0, slit2:0.0, slit2Invert:0.5, slit2Radius:0.5, filmBlur:0.0, glass:0.0, outline:0.0, voxel:0.0, rain:0.0, sketch:0.0, pixsort:0.0, rings:0.0, specWarp:0.0, zoomPump:0.0, shatter:0.0, aPop:0.0, aPopCount:12, aPopSize:60, aPopSides:2, aPopZoom:0.5, aPopLine:0.5, aPopShade:0.5, aPopSpin:0.5, pollockOn:0, pollockType:'gloss', pollock:0.0, pollockSize:0.5, pollockLength:0.5, pollockDensity:0.5, pollockDrops:0.5, pollockCurve:0.5, pollockLife:0.5, pollockRelief:0.5, fxaa:true, boltz:0.0, aScan:0.0, aRgb:0.0, aStrobe:0.0, aShock:0.0, aExplode:0.0, aShards:0.0, aShardsCount:12, aShardsSides:5, aShardsSize:0.5, aShardsHole:0.0, aShardsLine:0.3, aShardsMove:0.5, slitScan:0.0, slitCalm:0.5, palette:8, paletteAmt:0,
     dither:0.0, origami:0.0, needleScatter:0.6, needleThick:0.0, needleLen:0.0, needleSides:5, kaiser:0.0, kaiserOld:0.0, kaiserFolds:1, kaiserSpeed:0.5, kaiserAngle:0.5, kaiserSpread:0.5, kaiserSoft:0, kaiserOldFolds:1, kaiserOldSpeed:0.5, kaiserOldAngle:0.5, kaiserOldSpread:0.5, kaiserOldCurve:0.5, kaiserOldTwist:0.5, kaiserOldCam:0.5, uzumaki:0.0, uzumakiCards:0.5, uzumakiTwist:0.5, uzumakiSpread:0.5, uzumakiDepth:0.5, uzumakiShrink:0.5, uzumakiCard:0.5, uzumakiSpin:0.5, uzumakiCam:0.5,
     fx3dPhoto:0.0, fx3dPhotoCount:24, fx3dPhotoCrop:70, fx3dPhotoCurl:0.65, fx3dPhotoCurlAxis:1, fx3dPhotoFlutter:0.4, fx3dPhotoCorner:0.45, fx3dPhotoSpin:0.35, fx3dSlicer:0.0, fx3dSlicerPieces:150, fx3dLayer:0.0, fx3dLayerCount:12, fx3dLayerSize:100, fx3dLayerEdge:0,
     fx3dDiorama:0.0, fx3dDioramaLayers:8, fx3dDioramaSwing:0.5, fx3dDioramaSpeed:0.5, fx3dDioramaPan:0, fx3dDioramaTilt:0, fx3dDioramaZoom:0, fx3dPoints:0.0, fx3dPointsDensity:400, fx3dCubes:0.0, fx3dBlinds:0.0, fx3dBlindsCount:14, fx3dBlindsTwist:0.5, fx3dBlindsAngle:0.5, fx3dBlindsSpeed:0.5, fx3dBlindsWave:0.5, fx3dBlindsOpen:0.5, fx3dBlindsGap:0, fx3dBlindsRandom:0.5,
-    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dTunnel:0.0, fx3dTunnelSpeed:0.5, fx3dTunnelRadius:0.5, fx3dTunnelTwist:0.6, fx3dTunnelCurve:0.5, fx3dTunnelBump:0.4, fx3dTunnelPulse:0.4, fx3dTunnelTile:0.4, fx3dTunnelRound:0, fx3dTunnelSpin:0.5, fx3dTunnelFlip:0.5, fx3dTunnelBendX:0, fx3dTunnelBendY:0, fx3dTunnelFog:0.4, fx3dTunnelShine:0.5, fx3dTunnelEdge:0, fx3dTunnelTilt:0, fx3dTunnelPan:0, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dExtrude:0.0, fx3dExtrudeDepth:0.5, fx3dExtrudeTilt:0.5, fx3dExtrudeSpin:0.3, fx3dExtrudeShade:0.5, fx3dExtrudeTwist:0.0, fx3dExtrudeRound:0.0, fx3dExtrudeMode:'flat', fx3dRoll:0.0, fx3dRollRadius:0.5, fx3dRollDepth:0.5, fx3dRollAngle:0, fx3dRollSpin:0.5, fx3dRollCurl:0.5, fx3dRollCam:0.5, fx3dDepth:0.5, fx3dStretchX:0, fx3dStretchY:0, fx3dStretchZ:0, fx3dZoom:0, fx3dScale:1, fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
+    fx3dGravity:0.0, fx3dGravitySpin:0.5, fx3dGravityDepth:0.5, fx3dGravityFlip:0.5, fx3dGravityWave:0.5, fx3dGravityPoints:2, fx3dTunnel:0.0, fx3dTunnelSpeed:0.5, fx3dTunnelRadius:0.5, fx3dTunnelTwist:0.6, fx3dTunnelCurve:0.5, fx3dTunnelBump:0.4, fx3dTunnelPulse:0.4, fx3dTunnelTile:0.4, fx3dTunnelRound:0, fx3dTunnelSpin:0.5, fx3dTunnelFlip:0.5, fx3dTunnelBendX:0, fx3dTunnelBendY:0, fx3dTunnelFog:0.4, fx3dTunnelShine:0.5, fx3dTunnelEdge:0, fx3dTunnelTilt:0, fx3dTunnelPan:0, fx3dGlobe:0.0, fx3dGlobeDetail:64, fx3dExtrude:0.0, fx3dExtrudeDepth:0.5, fx3dExtrudeTilt:0.5, fx3dExtrudeSpin:0.3, fx3dExtrudeShade:0.5, fx3dExtrudeTwist:0.0, fx3dExtrudeRound:0.0, fx3dExtrudeMode:'flat', fx3dRoll:0.0, fx3dRollRadius:0.5, fx3dRollDepth:0.5, fx3dRollAngle:0, fx3dRollSpin:0.5, fx3dRollCurl:0.5, fx3dRollCam:0.5, fx3dAmount:1, fx3dDepth:0.5, fx3dStretchX:0, fx3dStretchY:0, fx3dStretchZ:0, fx3dZoom:0, fx3dScale:1, fx3dStack:'build', fx3dBg:'auto', fx3dPop:'back', fx3dTarget:'object', fx3dSlot:'both', fx3dMix:'front', fx3dOverscan:0,
     inkBleed:0, inkBleedSpread:0.5, inkBleedFiber:0.5, inkBleedEdge:0.4, inkBleedNode:0.5, inkBleedSeed:1, inkBleedPaper:'#ffffff',
+    tone:0, toneType:0, toneCell:6, toneAngle:0, toneThreshold:0, toneContrast:0, toneLevels:2, toneInk:'#000000', tonePaper:'#ffffff', toneMix:0,
     hatch:0, hatchDensity:0.5, hatchFlow:0.8, hatchLength:0.5, hatchLayers:3, hatchWobble:0.3, hatchMix:0, hatchAngle:0.25, hatchInk:'#1e1e1e', hatchPaper:'#f2eee4', hatchTex:0, hatchTool:0, hatchGrain:0.5, hatchBreak:0.3,
     sdfChrome:0.0, river:0.0, riverTwist:0.5, riverSpeed:0.5, riverWidth:0.5, riverFlow:0.5, riverLight:0.5, riverFog:0.5, riverSway:0.5,  bleed:0.0, impasto:0.0, chrome:0.0, chromeBump:0.5, chromeEdge:0.5, chromeCon:0.5, chromeTint:0.35, chromeSpec:0.5, chromeSharp:0.5, chromeRim:0.5, chromeLight:0.5, chromeObj:1, sdfChromeObj:1, bleedObj:1, impastoObj:1, glossObj:1, gloss:0.0, glossBump:0.5, glossSharp:0.6, glossShine:0.6, glossWet:0.4, glossLight:0.3, novel:0.0, novelSize:0.35, novelThresh:0.25, novelColor:0.6, novelFlow:0.3, novelBg:0.0, novelTate:1, novelDepth:0.5, novelTrack:0.2, novelLead:0.2, novelSwitch:0, novelCluster:0.5, novelGrid:1, novelVary:0.5, novelSep:0, novelTone:0.7, novelShape:0.6, barcode:0.0,
-    waveform:0.0,
+    waveform:0.0, waveformAmp:0.0, waveformCount:32, waveformCountVar:0.0, waveformWidth:1.0, waveformWidthVar:0.55,
     audioFx:0.0, audioFxAttack:0.6,   // Audio → Post FX 全般の変調量 / 打点(1)〜持続(0)
     audioFxRelease:0.28,              // 打点で跳ねたあと戻るまでの秒数
     fbAdd:0.0, fbMultiply:0.0, fbZoom:0.0, fbRot:0.0, glitchTrail:0.0, glitchTrailType:'mondrian',
@@ -14823,8 +15365,8 @@ const App = {
     Layer.init(GL.gl);
     if(typeof Manga !== 'undefined') Manga.init(GL.gl);
     if(typeof Slicer !== 'undefined') Slicer.init(GL.gl);
-    { const lm = $('#mangaStatus'); if(lm) lm.textContent = '選択時に読込'; }
-    { const ll = $('#layerStatus'); if(ll) ll.textContent = '選択時に読込'; }
+    { const lm = $('#mangaStatus'); if(lm) I18n.bind(lm, "選択時に読込", "textContent"); }
+    { const ll = $('#layerStatus'); if(ll) I18n.bind(ll, "選択時に読込", "textContent"); }
     Preview.init();
     // Built-in な特殊プリセットを先頭に追加
     PRESETS.unshift({ name:'★ TRANSMUTE FLOCK (錬成痕)', kind:'transflock', ch:[], src:'' });
@@ -14846,6 +15388,7 @@ const App = {
     PRESETS.push({ name:'★ RHIZOME 筒と網', kind:'rztube', ch:[], src:'' });
     PRESETS.push({ name:'★ CHROME TYPE (有機 3D 文字)', kind:'chrometype', ch:[], src:'' });
     PRESETS.push({ name:'★ GLITCH TYPE (Swiss)', kind:'glitchtype', ch:[], src:'' });
+    PRESETS.push({ name:'★ Image Construct', kind:'imgconstruct', ch:[], src:'' });
     LOAD('Loading settings…', 28);
     // サーバー共通の既定値 (defaults.json) を localStorage より先に適用
     await this.applyServerDefaults();
@@ -14882,7 +15425,7 @@ const App = {
       // 重い FX を確実に無効化 (復元/MIDI 値より優先)
       if(this.post){ this.post.voxel = 0; this.post.slit2 = 0; this.post.outline = 0; this.post.mblur = 0; }
       if(UI.refreshPost) UI.refreshPost();
-      setTimeout(()=>{ try{ toast('セーフモードで起動中 (軽量プリセット + 重い FX 無効)。安定後に通常起動へ戻ります'); }catch(_){} }, 800);
+      setTimeout(()=>{ try{ toast(I18n.t("セーフモードで起動中 (軽量プリセット + 重い FX 無効)。安定後に通常起動へ戻ります")); }catch(_){} }, 800);
     }
     // 15秒間ロスト無しで生き延びたらセーフモード解除 (重い FX は既に0で保存済みなので次回も安全)
     setTimeout(()=>{ try{ localStorage.removeItem('vj.ctxLoss'); localStorage.removeItem('vj.safeMode'); localStorage.removeItem('vj.lowRes'); App.safeMode = false; }catch(_){} }, 15000);
@@ -14944,7 +15487,7 @@ const App = {
         let flag = null;
         try{ flag = localStorage.getItem('vj.projector.open'); }catch(e){}
         if(flag !== '1') return;                       // ユーザーが閉じた → 再接続しない
-        if(Projector.tryReattach()){ toast('Projector 再接続'); return; }
+        if(Projector.tryReattach()){ toast(I18n.t("Projector 再接続")); return; }
         if(++tries < 8) setTimeout(retry, 700);
       };
       setTimeout(retry, 300);
@@ -14961,7 +15504,7 @@ const App = {
     }catch(e){
       console.warn('shaders/manifest.json not found or unreadable:', e);
       if(location.protocol === 'file:'){
-        toast('外部シェーダ未ロード: file:// では fetch 不可。ローカル http サーバで開いてください', 4000);
+        toast(I18n.t("外部シェーダ未ロード: file:// では fetch 不可。ローカル http サーバで開いてください"), 4000);
       }
       return;
     }
@@ -14983,7 +15526,7 @@ const App = {
           await new Promise(r => setTimeout(r, 4000));
           if(g.type === 'perBg') await this._loadPerBgGroup(g);
           else await this._loadCombinedGroup(g);
-          toast(`${g.name}: 再試行で読込`);
+          toast(I18n.t("{0}: 再試行で読込", {0: g.name}));
         }catch(e2){ console.warn(`retry failed (${g.name}):`, e2); }
       }
     }
@@ -15188,7 +15731,7 @@ ${outBlock}
   toggleDrawFreeze(){
     this._drawFrozen = !this._drawFrozen;
     const b = $('#qFreeze'); if(b) b.classList.toggle('on', this._drawFrozen);
-    toast('Draw: ' + (this._drawFrozen ? 'FREEZE (フレーム更新OFF)' : 'ON'));
+    toast('Draw: ' + (this._drawFrozen ? I18n.t("FREEZE (フレーム更新OFF)") : 'ON'));
   },
 
   // ドラッグで吹き出しを連射する (S128 Uni Flash など uPlaced を宣言したシェーダ。C002 MANGA のマシンガンと同じ):
@@ -15258,6 +15801,8 @@ ${outBlock}
     if(typeof Aratanagara!=='undefined'){ Aratanagara._flowTime = 0; Aratanagara._ftPrev = undefined; }
     if(typeof Pen!=='undefined' && Pen.initialized){ Pen.clock = 0; if(Pen.strokes){ Pen.strokes.length = 0; for(let i=0;i<(Pen.P.count||0);i++) Pen.strokes.push(Pen.makeRandomStroke(-Pen._rand(0,1.5))); } }
     if(typeof Boltzmann!=='undefined' && Boltzmann.initialized) Boltzmann.seeded = false;   // 次フレームで再シード
+    if(typeof ImageConstruct!=='undefined') ImageConstruct.clear();
+    if(typeof BShift!=='undefined' && BShift.instances.imgconstruct) BShift.instances.imgconstruct.clear();
     if(typeof Fude!=='undefined' && Fude.initialized) Fude.restart();   // 書き順を一画目へ
     if(typeof GlitchType!=='undefined' && GlitchType.initialized && GlitchType.restart) GlitchType.restart();
     if(typeof GrayScott!=='undefined' && GrayScott.initialized && GrayScott.reseed) GrayScott.reseed();
@@ -15450,7 +15995,7 @@ ${outBlock}
         if(typeof MIDI !== 'undefined' && MIDI.learn){
           MIDI.learn = null;
           if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
-          toast('MIDI Learn 解除');
+          toast(I18n.t("MIDI Learn 解除"));
           return;
         }
         this.escResetAll();
@@ -15471,7 +16016,7 @@ ${outBlock}
       }
       else if(k==='m'){   // M: iMouse を拾う/拾わないをトグル(拾う間はアクティブスロットのみ反映)
         this.mouseCapture = !this.mouseCapture;
-        toast('iMouse: ' + (this.mouseCapture ? 'ON (マウスで操作)' : 'OFF (凍結)'));
+        toast('iMouse: ' + (this.mouseCapture ? I18n.t("ON (マウスで操作)") : I18n.t("OFF (凍結)")));
       }
       else if(k==='c'){ this.resetDraw(); }
       else if(k==='-'){
@@ -15483,7 +16028,7 @@ ${outBlock}
         if(wasOff) this._activeGradPreset = -1;
         this.fadePostNum('gradMix', next);
         if(UI.refreshPost) UI.refreshPost();
-        toast('Grad Map ' + (next < 0 ? '反転 (−)' : '通常 (+)'));
+        toast('Grad Map ' + (next < 0 ? I18n.t("反転 (−)") : I18n.t("通常 (+)")));
       }
       else if(k==='i'){
         // I: Invert トグル。瞬間切替にせず、Param Fade 拍数(0 なら即時)でなめらかに ON/OFF する。
@@ -15500,7 +16045,7 @@ ${outBlock}
         h = ((h + 1.0) % 2.0 + 2.0) % 2.0 - 1.0;   // [-1,1) に折り返し
         this.fadePostNum('hue', h, this._fadeSecLive());
         if(UI.refreshPost) UI.refreshPost();
-        toast('色相反転 (+180°)' + (this._fadeSecLive() > 0.01 ? ' (fade)' : ''));
+        toast(I18n.t("色相反転 (+180°)") + (this._fadeSecLive() > 0.01 ? ' (fade)' : ''));
       }
       else if(/^Digit[0-9]$/.test(e.code)){
         // 1〜9 / 0 = Grad Preset 切替 (1→0番目 .. 9→8番目 / 0→9番目)
@@ -15741,7 +16286,7 @@ ${outBlock}
       E.mouseHold = false;
       const got = sampleColorAt(E.last.x, E.last.y) || (E.lastRgb ? { rgb:E.lastRgb, from:'' } : null);
       if(got){ const T = bgTarget(); T.set(got.rgb); T.refresh(); E.committed = got.rgb.slice(); toast(T.label + ' ← ' + toHexRgb(got.rgb) + got.from); }
-      else toast('スポイト: 色を拾えませんでした');
+      else toast(I18n.t("スポイト: 色を拾えませんでした"));
     };
     // Option を離した: 確定した色があればそれ、なければ開始時の色に戻す (プレビューは残さない)
     const eyeEnd = ()=>{
@@ -15788,7 +16333,7 @@ ${outBlock}
         const lb = vt.querySelector('.label');
         const px = UI._tilePixels(vt);
         if(px) App.gradFromVisual(px, lb ? lb.textContent : vt.title);
-        else toast('このタイルはまだ絵がありません');
+        else toast(I18n.t("このタイルはまだ絵がありません"));
         return;
       }
       if(W.visible){
@@ -16079,7 +16624,7 @@ ${outBlock}
     if(cur && cur.kind === 'video' && cur._vidUrl === url){
       cur.kind = 'none'; cur.ready = true; cur.src = ''; cur.params = []; cur.format = ''; cur._vidUrl = '';
       if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
-      toast(`Slot ${k} ← なし`);
+      toast(I18n.t("Slot {0} ← なし", {0: k}));
       return;
     }
     this._transition((slot)=>{
@@ -16113,7 +16658,7 @@ ${outBlock}
       Layer._autoLoading = true;
       UI._refreshLazyTiles();
       Layer.autoLoadFromFolder('images/manga').then(n=>{
-        const ls = $('#layerStatus'); if(ls) ls.textContent = n > 0 ? `${n} images auto-loaded from images/manga/` : 'images/manga/ 未検出 — D&D or ボタンで読込';
+        const ls = $('#layerStatus'); if(ls) ls.textContent = n > 0 ? `${n} images auto-loaded from images/manga/` : I18n.t("images/manga/ 未検出 — D&D or ボタンで読込");
         if(GL.slots[App.activeSlot].kind === 'layer') UI.refreshLayerParams();
       }).catch(()=>{}).finally(()=>{ Layer._autoLoading = false; UI._refreshLazyTiles(); });
     } else if(kind === 'manga'){
@@ -16121,7 +16666,7 @@ ${outBlock}
       Manga._autoLoading = true;
       UI._refreshLazyTiles();
       Manga.autoLoadFromFolder('images/manga').then(n=>{
-        const ls = $('#mangaStatus'); if(ls) ls.textContent = n > 0 ? `${n} images auto-loaded from images/manga/` : 'images/manga/ 未検出';
+        const ls = $('#mangaStatus'); if(ls) ls.textContent = n > 0 ? `${n} images auto-loaded from images/manga/` : I18n.t("images/manga/ 未検出");
         if(GL.slots[App.activeSlot].kind === 'manga') UI.refreshManga();
       }).catch(()=>{}).finally(()=>{ Manga._autoLoading = false; UI._refreshLazyTiles(); });
     } else if(kind === 'slicer'){
@@ -16142,6 +16687,8 @@ ${outBlock}
     opts = opts || {};
     if(PRESETS[idx] && PRESETS[idx].replacedBy) idx = this._presetIndexByName(PRESETS[idx].replacedBy);   // 旧版 → 新版
     const p = PRESETS[idx]; if(!p) return;
+    // 起動時の復元を待っているスロットに読み込んだら、その復元は捨てる (外部シェーダの読み込み後に、選んだものを保存時のシェーダで上書きしていた)
+    delete this._pendingSlotRestores[slotKey];
     // Draw フリーズ (Space) / Pause 中でも切替結果を 1 フレーム描画する。
     // フリーズ中は Post FX が動き続けて「止まっている」ように見えないため、
     // 切替が映らないと「シェーダが変えられない」バグに見える。
@@ -16156,7 +16703,7 @@ ${outBlock}
     s.bKey = false; s.bKeyWhite = false; s.blendOver = false;   // キー透過フラグを一旦リセット(@bkey シェーダ / ribbon で再設定)
     // 溶解FX(Boltzmann)中の切替: スイッチは維持し、新シェーダを数フレーム描画してから再捕獲して溶かし直す
     if(Math.abs(this.deadParam ? this.deadParam(this.post.boltz||0) : (this.post.boltz||0)) > 0.001){ GL._bzCaptureWait = 5; }
-    { const pk = Math.max(this.post.pollockGloss||0, this.post.pollockMatt||0, this.post.pollockFlat||0, this.post.pollockMetal||0);
+    { const pk = this.post.pollockOn ? (this.post.pollock || 0) : 0;
       if((this.deadParam ? this.deadParam(pk) : pk) > 0.001){ GL._pkCaptureWait = 5; } }
     // シェーダ/モード切替時は overlay の古いストロークをリセット
     if(typeof Overlay !== 'undefined' && Overlay.clear) Overlay.clear();
@@ -16422,6 +16969,17 @@ ${outBlock}
       toast(`Slot ${slotKey} ← ${p.name}`);
       return;
     }
+    if(p.kind === 'imgconstruct'){
+      s.kind = 'imgconstruct';
+      s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'imgconstruct';
+      if(typeof ImageConstruct !== 'undefined' && !ImageConstruct.initialized) ImageConstruct.init(GL.gl);
+      if(!opts.skipEngineDefault) this.applyEngineDefault('imgconstruct');
+      ImageConstruct.restart();
+      UI.activePresetIdx[slotKey] = idx;
+      UI.refreshAll();
+      toast(`Slot ${slotKey} ← ${p.name}`);
+      return;
+    }
     if(p.kind === 'surrealfloat'){
       s.kind = 'surrealfloat';
       s.ready = true; s.errors = ''; s.src = ''; s.params = []; s.format = 'surrealfloat';
@@ -16543,6 +17101,7 @@ ${outBlock}
         return (typeof RhizomeKinds !== 'undefined' && RhizomeKinds[kind]) ? RhizomeKinds[kind].P : null;
       case 'surrealfloat': return (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null;
       case 'chrometype': return (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null;
+      case 'imgconstruct': return (typeof ImageConstruct !== 'undefined') ? ImageConstruct.P : null;
       case 'glitchtype': return (typeof GlitchType !== 'undefined' && GlitchType.P) ? GlitchType.P : null;
       case 'tower4149': return (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null;
       case 'fude': return (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null;
@@ -16639,6 +17198,8 @@ ${outBlock}
         if(kind !== 'spacetype') Object.assign(P, JSON.parse(JSON.stringify(this._presetDefaults.modes[kind])));
         else if(hasData) Object.assign(P, stStrip(JSON.parse(JSON.stringify(this._presetDefaults.modes[kind]))));
       }
+      // 新しい格子キーのない Movie プリセットは、保存済みの格子設定を引き継がない。
+      if(kind === 'video' && typeof Movie !== 'undefined' && (hasData || opts.resetMissingDefaults)) Object.assign(P, Movie.LAYOUT_DEFAULTS);
       if(hasData){
         if(kind === 'spacetype') d = stStrip(d);
         Object.assign(P, this.paramValues(kind, d));
@@ -16660,6 +17221,7 @@ ${outBlock}
     if(state.image && typeof ImageMode !== 'undefined' && ImageMode.applyState) ImageMode.applyState(state.image);
   },
   paramValues(kind, values){
+    if(kind === 'post') values = this.migratePollockPost(Object.assign({}, values));
     const owner = kind === 'post' ? this.post : this._engineP(kind);
     const out = ParamValues.object(values, kind, owner || values);
     if(!out || kind !== 'textdeform') return out;
@@ -16697,20 +17259,47 @@ ${outBlock}
   },
   saveEngineDefault(kind){
     let P = (kind === 'textdeform' && typeof TextDeform !== 'undefined') ? TextDeform.stateP() : this._engineP(kind);
-    if(!P){ toast('保存対象がありません'); return; }
+    if(!P){ toast(I18n.t("保存対象がありません")); return; }
     P = this.paramValues(kind, P);
     Object.assign(this._engineP(kind), P);
     const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
     if(pd) Object.assign(pd, JSON.parse(JSON.stringify(P)));   // プリセット読込で欠けた項目を埋める値 (起動時に取った値) も保存値へ
     const sc = (kind === 'novel' && typeof NovelTerminal !== 'undefined' && NovelTerminal.snapScene) ? NovelTerminal.snapScene() : null;   // Novel は今の Scene の値も控える
-    try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(kind); toast('デフォルト保存: '+kind + (sc ? ' (Scene: ' + sc + ')' : '')); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.'+kind, JSON.stringify(P)); this.uploadDefs(kind); toast(I18n.t("デフォルト保存: ")+kind + (sc ? ' (Scene: ' + sc + ')' : '')); }
+    catch(e){ toast(I18n.t("保存失敗")); }
+  },
+  // ブロック (欄) 単位の保存: 保存済みデフォルト (無ければ工場出荷値) に、keys の今の値だけを重ねて保存する
+  saveEngineBlockDefault(kind, keys, label){
+    const P = this._engineP(kind);
+    if(!P || !keys.length){ toast(I18n.t("保存対象がありません")); return; }
+    let base = null;
+    try{ base = JSON.parse(localStorage.getItem('vj.def.' + kind) || 'null'); }catch(e){}
+    if(!base) base = JSON.parse(JSON.stringify((this._factoryDefaults && this._factoryDefaults.modes[kind]) || {}));
+    const cur = (kind === 'textdeform' && typeof TextDeform !== 'undefined') ? TextDeform.stateP() : this.paramValues(kind, P);
+    for(const k of keys) if(k in cur) base[k] = JSON.parse(JSON.stringify(cur[k]));
+    const pd = this._presetDefaults && this._presetDefaults.modes && this._presetDefaults.modes[kind];
+    if(pd) for(const k of keys) if(k in cur) pd[k] = JSON.parse(JSON.stringify(cur[k]));   // プリセット読込で欠けた項目を埋める値も保存値へ
+    try{ localStorage.setItem('vj.def.' + kind, JSON.stringify(base)); this.uploadDefs(kind); toast(I18n.t("デフォルト保存: ") + kind + (label ? ' / ' + label : '')); }
+    catch(e){ toast(I18n.t("保存失敗")); }
+  },
+  // ブロック (欄) 単位の Reset: keys だけを保存済みデフォルト (無ければ工場出荷値) へ戻す
+  resetEngineBlockDefault(kind, keys, label){
+    const P = this._engineP(kind);
+    if(!P || !keys.length){ toast(I18n.t("リセット対象がありません")); return; }
+    let base = null;
+    try{ base = JSON.parse(localStorage.getItem('vj.def.' + kind) || 'null'); }catch(e){}
+    const fac = (this._factoryDefaults && this._factoryDefaults.modes[kind]) || {};
+    for(const k of keys){
+      const v = base && k in base ? base[k] : fac[k];
+      if(v !== undefined) P[k] = JSON.parse(JSON.stringify(v));
+    }
+    toast(I18n.t("保存値へ戻しました: ") + kind + (label ? ' / ' + label : ''));
   },
   // ライブ調整を捨てて「デフォルト保存」した値へ戻す (保存が無ければ工場出荷値)。保存自体は消さない。
   resetEngineDefault(kind){
     const P = this._engineP(kind);
     const base = this._factoryDefaults && this._factoryDefaults.modes[kind];
-    if(!P || !base){ toast('リセット対象がありません'); return; }
+    if(!P || !base){ toast(I18n.t("リセット対象がありません")); return; }
     Object.assign(P, JSON.parse(JSON.stringify(base)));
     this.applyEngineDefault(kind);   // 保存済みデフォルトを再適用
     if(kind === 'pen' && typeof Pen !== 'undefined' && Pen.strokes){
@@ -16718,20 +17307,20 @@ ${outBlock}
       if(Pen.strokes.length > (Pen.P.count||0)) Pen.strokes.length = Pen.P.count||0;
     }
     if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
-    toast('保存値へ戻しました: ' + kind);
+    toast(I18n.t("保存値へ戻しました: ") + kind);
   },
   // ─── shader @param のデフォルト保存/適用 (シェーダ名ごと localStorage 'vj.def.sparam.<name>') ───
   //   Shader Params パネルの「デフォルト保存」から現在値を保存 → 次回そのシェーダ読込時に反映。
   saveShaderParamDefaults(slotKey){
     const slot = GL.slots[slotKey || this.activeSlot];
-    if(!slot || (slot.kind && slot.kind !== 'shader')){ toast('シェーダスロットではありません'); return; }
-    if(!slot.params || !slot.params.length){ toast('保存対象のパラメータがありません'); return; }
+    if(!slot || (slot.kind && slot.kind !== 'shader')){ toast(I18n.t("シェーダスロットではありません")); return; }
+    if(!slot.params || !slot.params.length){ toast(I18n.t("保存対象のパラメータがありません")); return; }
     const name = slot._presetName;
-    if(!name){ toast('シェーダ名が不明です'); return; }
+    if(!name){ toast(I18n.t("シェーダ名が不明です")); return; }
     const d = {};
     for(const p of slot.params){ p.value = ParamValues.shader(p); d[p.name] = Array.isArray(p.value) ? p.value.slice() : p.value; }
-    try{ localStorage.setItem('vj.def.sparam.' + name, JSON.stringify(d)); this.uploadDefs('sparam.' + name); toast('デフォルト保存: ' + name); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.sparam.' + name, JSON.stringify(d)); this.uploadDefs('sparam.' + name); toast(I18n.t("デフォルト保存: ") + name); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   applyShaderParamDefaults(slot){
     if(!slot || !slot.params || !slot.params.length || !slot._presetName) return;
@@ -16755,7 +17344,7 @@ ${outBlock}
   clearShaderParamDefaults(slotKey){
     const slot = GL.slots[slotKey || this.activeSlot];
     const name = slot && slot._presetName;
-    if(!name){ toast('シェーダ名が不明です'); return; }
+    if(!name){ toast(I18n.t("シェーダ名が不明です")); return; }
     for(const p of (slot.params || [])){
       const v = p._factoryDefaultValue !== undefined ? p._factoryDefaultValue : p.defaultValue;
       p.value = Array.isArray(v) ? v.slice() : v;
@@ -16763,7 +17352,7 @@ ${outBlock}
     }
     this.applyShaderParamDefaults(slot);   // 保存済みデフォルトを再適用
     if(typeof UI !== 'undefined' && UI.refreshParams) UI.refreshParams();
-    toast('保存値へ戻しました: ' + name);
+    toast(I18n.t("保存値へ戻しました: ") + name);
   },
   // ダブルクリックで戻す値の出どころ: 「デフォルト保存」した値 → 無ければ工場出荷値
   savedEngineDefault(kind){
@@ -16806,14 +17395,14 @@ ${outBlock}
       localStorage.setItem('vj.def.inkBleed', JSON.stringify(values));
       Object.assign(this._presetDefaults.post, values);
       this.uploadDefs('inkBleed');
-      toast('デフォルト保存: Ink Bleed');
-    }catch(_){ toast('保存失敗'); }
+      toast(I18n.t("デフォルト保存: Ink Bleed"));
+    }catch(_){ toast(I18n.t("保存失敗")); }
   },
   // ─── Mix パネル(crossfade/blend/transition)のデフォルト値保存 ───────
   saveMixDefault(){
     const d = { crossfade:this.crossfade, blendMode:this.blendMode, slotABg:this.slotABg, mixControls:this._captureMixControls() };
-    try{ localStorage.setItem('vj.def.mix', JSON.stringify(d)); this.uploadDefs('mix'); toast('デフォルト保存: mix'); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.mix', JSON.stringify(d)); this.uploadDefs('mix'); toast(I18n.t("デフォルト保存: mix")); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   // ─── Esc: 両スロットを「なし(透明)」+ 各パラメータをリセット ───────
   //   「リセット」の意味は各パネルの Reset ボタンと同じ = 起動時の値 + 保存済みデフォルト。
@@ -16836,7 +17425,7 @@ ${outBlock}
     if(typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(this.transBeats||0, this.transStyle||0);
     this._resetParamsCore({faded:true});
     this._undoLast = this._undoSnap();
-    toast('パラメータをリセット (' + this._undoHint() + ' で戻せます)');
+    toast(I18n.t("パラメータをリセット (") + this._undoHint() + I18n.t(" で戻せます)"));
   },
   _resetParamsCore(opts){
     opts = opts || {};
@@ -16900,7 +17489,7 @@ ${outBlock}
     if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
   },
   escResetAll(fromButton){
-    if(this.liveLocked('Esc 全リセット')) return;
+    if(this.liveLocked(I18n.t("Esc 全リセット"))) return;
     let escMode = Prefs.get('escReset', 'one');
     if(fromButton){
       if(escMode === 'off') escMode = 'one';
@@ -16911,7 +17500,7 @@ ${outBlock}
       const t = now();
       if(!this._escArmedAt || t - this._escArmedAt > 1){
         this._escArmedAt = t;
-        toast(`もう一度 ${fromButton ? 'All Off' : 'Esc'} で全リセット (1 秒以内)`, 1000, true);
+        toast(I18n.t("もう一度 {0} で全リセット (1 秒以内)", {0: fromButton ? 'All Off' : 'Esc'}), 1000, true);
         return;
       }
       this._escArmedAt = 0;
@@ -16935,7 +17524,7 @@ ${outBlock}
 
     this._resetParamsCore();
     this._undoLast = this._undoSnap();
-    toast('両スロットなし / パラメータをリセット (' + this._undoHint() + ' で戻せます)');
+    toast(I18n.t("両スロットなし / パラメータをリセット (") + this._undoHint() + I18n.t(" で戻せます)"));
   },
 
   resetMixDefault(){
@@ -16947,7 +17536,7 @@ ${outBlock}
     this._applyMixControls(d.mixControls);
     this.applyMixDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix();
-    toast('保存値へ戻しました: mix');
+    toast(I18n.t("保存値へ戻しました: mix"));
   },
   applyMixDefault(){
     let d = null;
@@ -16963,8 +17552,8 @@ ${outBlock}
   // ─── Transition (拍数 / Style / Param Trans) のデフォルト値保存 ───────
   saveTransDefault(){
     const d = { transBeats:this.transBeats, transStyle:this.transStyle, paramFadeBeats:this.paramFadeBeats, paramFadeScope:this.paramFadeScope };
-    try{ localStorage.setItem('vj.def.transition', JSON.stringify(d)); this.uploadDefs('transition'); toast('デフォルト保存: transition'); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.transition', JSON.stringify(d)); this.uploadDefs('transition'); toast(I18n.t("デフォルト保存: transition")); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   resetTransDefault(){
     const d = this._factoryDefaults && this._factoryDefaults.transition;
@@ -16974,7 +17563,7 @@ ${outBlock}
     this.paramFadeBeats = d.paramFadeBeats;
     this.applyTransDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
     if(typeof UI !== 'undefined' && UI.refreshMix) UI.refreshMix();
-    toast('保存値へ戻しました: transition');
+    toast(I18n.t("保存値へ戻しました: transition"));
   },
   applyTransDefault(){
     let d = null;
@@ -16993,8 +17582,8 @@ ${outBlock}
     const d = {};
     const rounded = this.paramValues('post', this.post);
     for(const k of this.AUDIO_DETECT_KEYS) d[k] = this.post[k] = rounded[k];
-    try{ localStorage.setItem('vj.def.audioDetect', JSON.stringify(d)); this.uploadDefs('audioDetect'); toast('デフォルト保存: audioDetect'); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.audioDetect', JSON.stringify(d)); this.uploadDefs('audioDetect'); toast(I18n.t("デフォルト保存: audioDetect")); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   applyAudioDetectDefault(){
     let d = null;
@@ -17011,19 +17600,19 @@ ${outBlock}
     if(f) for(const k of this.AUDIO_DETECT_KEYS) if(f[k] !== undefined) this.post[k] = f[k];
     this.applyAudioDetectDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
     if(typeof UI !== 'undefined' && UI.refreshPost) UI.refreshPost();
-    toast('保存値へ戻しました: audioDetect');
+    toast(I18n.t("保存値へ戻しました: audioDetect"));
   },
   // ─── Motion Mode の Speed のデフォルト保存 (Drone / Beat はプリセット読込で戻る実行時の切替なので対象外) ───
   saveMotionDefault(){
     const d = { speed:this.speed };
-    try{ localStorage.setItem('vj.def.motion', JSON.stringify(d)); this.uploadDefs('motion'); toast('デフォルト保存: motion'); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.motion', JSON.stringify(d)); this.uploadDefs('motion'); toast(I18n.t("デフォルト保存: motion")); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   resetMotionDefault(){
     const f = this._factoryDefaults && this._factoryDefaults.motion;
     if(f) this.setSpeed(f.speed);
     this.applyMotionDefault();   // 保存済みデフォルトを再適用 (保存は消さない)
-    toast('保存値へ戻しました: motion');
+    toast(I18n.t("保存値へ戻しました: motion"));
   },
   applyMotionDefault(){
     let d = null;
@@ -17032,8 +17621,8 @@ ${outBlock}
     if(typeof d.speed === 'number') this.setSpeed(d.speed);
   },
   saveAudioTransportDefault(){
-    try{ localStorage.setItem('vj.def.audioTransport', JSON.stringify(this.audioTime)); this.uploadDefs('audioTransport'); toast('デフォルト保存: audioTransport'); }
-    catch(e){ toast('保存失敗'); }
+    try{ localStorage.setItem('vj.def.audioTransport', JSON.stringify(this.audioTime)); this.uploadDefs('audioTransport'); toast(I18n.t("デフォルト保存: audioTransport")); }
+    catch(e){ toast(I18n.t("保存失敗")); }
   },
   resetAudioTransportDefault(){
     Object.assign(this.audioTime, this.audioTimeDefaults());
@@ -17041,7 +17630,7 @@ ${outBlock}
     if(this.audioTime.dirMode === 'off'){ this.timeDir = 1; this._atHitOn = false; }
     if(this.audioTime.speedMode === 'off') this._audioSpeedMul = 1;
     if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
-    toast('保存値へ戻しました: audioTransport');
+    toast(I18n.t("保存値へ戻しました: audioTransport"));
   },
   applyAudioTransportDefault(){
     let d = null;
@@ -17168,6 +17757,7 @@ ${outBlock}
 	      rztube: (typeof RhizomeTube !== 'undefined' && RhizomeTube.P) ? RhizomeTube.P : null,
 	      surrealfloat: (typeof SurrealFloat !== 'undefined' && SurrealFloat.P) ? SurrealFloat.P : null,
 	      chrometype: (typeof ChromeType !== 'undefined' && ChromeType.P) ? ChromeType.P : null,
+	      imgconstruct: (typeof ImageConstruct !== 'undefined') ? ImageConstruct.P : null,
 	      glitchtype: (typeof GlitchType !== 'undefined' && GlitchType.P) ? GlitchType.P : null,
 	      tower4149: (typeof Tower4149 !== 'undefined' && Tower4149.P) ? Tower4149.P : null,
 	      fude: (typeof Fude !== 'undefined' && Fude.P) ? Fude.P : null,
@@ -17224,32 +17814,32 @@ ${outBlock}
     if(this._undoLast !== null && cur !== null && cur !== this._undoLast){   // 未コミットの状態変化 → それを優先で巻き戻す
       this._redoStack.push(cur);
       this._undoApply(this._undoLast);
-      toast('元に戻す'); return;
+      toast(I18n.t("元に戻す")); return;
     }
     if(this._delPresetStack.length){                       // 直近の削除プリセットを復元(undo履歴の有無に依らず)
       const { item, index } = this._delPresetStack.pop();
       const lib = this._loadPresetLib();
       const at = Math.min(Math.max(index, 0), lib.length);
+      PresetIds.revive(item, PresetIds.deadSet(this._loadTombs()));   // 削除 id は減らさない → 戻すときは別の id
       lib.splice(at, 0, item);
       this._savePresetLib();
-      this._tombRemoveMany([this._presetContentKey(item)]);   // 復元したので墓標を消す
       if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
-      toast('プリセットを復元: ' + (item && item.name || ''));
+      toast(I18n.t("プリセットを復元: ") + (item && item.name || ''));
       return;
     }
-    if(this._undoLast === null){ this._undoLast = cur; toast('これ以上戻せません'); return; }
-    if(!this._undoStack.length){ toast('これ以上戻せません'); return; }
+    if(this._undoLast === null){ this._undoLast = cur; toast(I18n.t("これ以上戻せません")); return; }
+    if(!this._undoStack.length){ toast(I18n.t("これ以上戻せません")); return; }
     this._redoStack.push(cur !== null ? cur : this._undoLast);
     this._undoApply(this._undoStack.pop());
-    toast('元に戻す');
+    toast(I18n.t("元に戻す"));
   },
   redo(){
     clearTimeout(this._undoTimer); this._undoTimer = null;
-    if(!this._redoStack.length){ toast('やり直す操作がありません'); return; }
+    if(!this._redoStack.length){ toast(I18n.t("やり直す操作がありません")); return; }
     const cur = this._undoSnap();
     if(cur !== null) this._undoStack.push(cur);
     this._undoApply(this._redoStack.pop());
-    toast('やり直す');
+    toast(I18n.t("やり直す"));
   },
   // ─── プリセットライブラリ (動的: 追加/削除可。先頭10件が 1〜0 キー) ───────
   // プリセット一覧の手元キャッシュは IndexedDB (gara.presets / kv の 'lib')。正はサーバー (presets/store.php)。
@@ -17290,7 +17880,7 @@ ${outBlock}
     if(this._presetLib) return this._presetLib;
     const lib = this._presetLib = [];
     this._presetReady = this._readPresetCache()
-      .then(arr => { lib.unshift(...arr); }, e => { console.warn('[presets] 手元キャッシュを読めません', e); });
+      .then(arr => { lib.unshift(...arr); this._presetPurge(); }, e => { console.warn('[presets] 手元キャッシュを読めません', e); });
     this._presetReady
       .then(() => this._syncPresetsFromServer())
       .then(() => { if(typeof UI !== 'undefined' && UI.refreshPresetLib) UI.refreshPresetLib(); });
@@ -17316,11 +17906,19 @@ ${outBlock}
     (this._presetReady || Promise.resolve()).then(() => this._presetDBPut('lib', this._presetLib || [])).catch(e => {
       if(this._presetLocalWarned) return;
       this._presetLocalWarned = true;
-      toast('ローカル保存に失敗 — サーバー側の履歴から復元できます');
+      toast(I18n.t("ローカル保存に失敗 — サーバー側の履歴から復元できます"));
       console.warn('[presets] 手元キャッシュへ保存できません', e);
     });
   },
+  // 一覧に id を付け (無いものだけ)、削除 id に載っているものを (in place で) 除く
+  _presetPurge(){
+    const lib = this._presetLib; if(!lib) return;
+    PresetIds.ensureIds(lib);
+    const dead = PresetIds.deadSet(this._loadTombs());
+    for(let i = lib.length - 1; i >= 0; i--) if(PresetIds.isDead(lib[i], dead)) lib.splice(i, 1);
+  },
   _savePresetLib(){
+    this._presetPurge();
     this._savePresetLocal();
     this._savePresetLibServer(JSON.stringify(this._presetLib||[]));
   },
@@ -17330,6 +17928,7 @@ ${outBlock}
   _mergeServerThumbs(remote){
     try{
       if(!Array.isArray(remote)) return;
+      PresetIds.ensureIds(remote);
       const seenR = {}, map = {};
       remote.forEach(p => { const k = this._presetKey(p, seenR); if(p && p.thumb) map[k] = p.thumb; });
       const seenL = {};
@@ -17358,34 +17957,80 @@ ${outBlock}
   _savePresetLibServerNow(json){
     if(this._storeWritable && !this._storeWritable()) return;
     json = json || JSON.stringify(this._presetLib||[]);
-    // 送信直前にローカル墓標で削除済みを除外する。リロードしていない古いセッションが
-    // メモリ上の古い一覧を丸ごと POST すると削除済みが復活するため、保存の choke point で毎回濾す。
-    // 墓標由来の縮小は「意図した削除」なので force=1 で store.php の縮小ガードを通す
-    // (ガードに弾かれると掃除の POST が永遠に成功せず、復活が固定化する)。
-    let url = this._presetApiUrl();
-    try{
-      const dead = new Set(this._loadTombs().map(tb => tb.k));
-      if(dead.size){
-        const arr = JSON.parse(json);
-        if(Array.isArray(arr)){
-          const alive = arr.filter(p => !dead.has(this._presetContentKey(p)));
-          if(alive.length !== arr.length){
-            json = JSON.stringify(alive);
-            url += (url.indexOf('?') >= 0 ? '&' : '?') + 'force=1';
+    // 送信直前に削除 id で除外する。リロードしていない古いセッションがメモリ上の古い一覧を丸ごと POST すると
+    // 削除済みが復活するため、保存の choke point で毎回濾す。ほかの端末の削除も効くよう、送る直前にサーバーの削除 id を取って統合する。
+    // 削除 id 由来の縮小は「意図した削除」なので force=1 で store.php の縮小ガードを通す。
+    const go = (tombs) => {
+      let url = this._presetApiUrl();
+      try{
+        const dead = PresetIds.deadSet(tombs);
+        if(dead.size){
+          const arr = JSON.parse(json);
+          if(Array.isArray(arr)){
+            PresetIds.ensureIds(arr);
+            const alive = PresetIds.filterAlive(arr, dead);
+            if(alive.length !== arr.length){
+              json = JSON.stringify(alive);
+              url += (url.indexOf('?') >= 0 ? '&' : '?') + 'force=1';
+            }
           }
         }
-      }
-    }catch(e){}
+      }catch(e){}
+      this._presetPostJson(url, json);
+    };
+    if(Net.offline()) return go(this._loadTombs());
+    fetch(this._presetApiUrl() + '?name=presetTombstones', {cache:'no-store'})
+      .then(r => r.ok ? r.json() : [])
+      .catch(() => [])
+      .then(a => {
+        const t = this._mergeTombs(this._loadTombs(), Array.isArray(a) ? a : []);
+        this._saveTombsLocal(t);
+        this._presetPurge();   // メモリ上の一覧からも、ほかの端末で消された分を除く
+        if(typeof UI !== 'undefined' && UI.refreshPresetLib) UI.refreshPresetLib({ifChanged:true});
+        go(t);
+      });
+  },
+  _presetPostJson(url, json){
     this._presetPendingJson = json;
     let f;
     try{
       f = fetch(url, {method:'POST', headers:App._storeHeaders(), body:json, keepalive: json.length < 60000});
     }catch(e){ this._presetSaveFailed('例外: ' + e); return; }
     f.then(res => {
+      if(res.status === 409 && !(this._presetResyncAt > Date.now() - 60000)){ this._presetResyncAt = Date.now(); this._presetShrinkRefused(json); return; }
       if(!res.ok){ this._presetSaveFailed('HTTP ' + res.status); return; }
       if(this._presetPendingJson === json) this._presetPendingJson = null;
       this._presetSaveWarned = false;
+      this._presetMarkSynced(json);
     }).catch(e => this._presetSaveFailed(String(e)));
+  },
+  // 409 = store.php の縮小ガード (3 件以上減る保存を拒否)。サーバーにあってこの一覧に無いものを見て決める:
+  //   - すべて墓標 (この端末かほかの端末で消したもの) → 意図した削除なので force=1 で送り直す
+  //     (墓標で濾し終えた一覧を再送すると force が付かず、409 を繰り返していた)
+  //   - 墓標に無いものがある → このタブを開いたあとにほかの端末が足した分。同じ一覧は送らず、サーバーと同期し直す
+  async _presetShrinkRefused(json){
+    try{
+      const remote = await fetch(this._presetApiUrl(), {cache:'no-store'}).then(r => r.ok ? r.json() : null);
+      const ta = await fetch(this._presetApiUrl() + '?name=presetTombstones', {cache:'no-store'}).then(r => r.ok ? r.json() : []).catch(() => []);
+      const sent = JSON.parse(json);
+      if(!Array.isArray(remote) || !Array.isArray(sent)) throw new Error('一覧を読めません');
+      const tombs = this._mergeTombs(this._loadTombs(), Array.isArray(ta) ? ta : []);
+      this._saveTombsLocal(tombs);
+      const dead = PresetIds.deadSet(tombs);
+      PresetIds.ensureIds(sent); PresetIds.ensureIds(remote);
+      const sk = new Set(sent.map(p => p.id));
+      const unknown = remote.filter(p => !sk.has(p.id) && !PresetIds.isDead(p, dead));
+      if(this._presetPendingJson === json) this._presetPendingJson = null;
+      if(!unknown.length){
+        const res = await fetch(this._presetApiUrl() + '?force=1', {method:'POST', headers:App._storeHeaders(), body:json});
+        if(!res.ok) throw new Error('HTTP ' + res.status);
+        this._presetSaveWarned = false;
+        this._presetMarkSynced(json);
+        return;
+      }
+      this._presetSynced = false;
+      await this._syncPresetsFromServer();
+    }catch(e){ this._presetPendingJson = this._presetPendingJson || json; this._presetSaveFailed('HTTP 409 / ' + e.message); }
   },
   // ─── プリセット世代履歴 (presets/store.php の history) ───────────────
   //   保存のたびにサーバーへ thumb 抜きスナップショットが残る。ここから復元できる。
@@ -17402,25 +18047,26 @@ ${outBlock}
     let snap = null;
     try{
       const res = await fetch(this._presetApiUrl() + '?name=presets&restore=' + encodeURIComponent(file), {cache:'no-store'});
-      if(!res.ok){ toast('履歴の取得に失敗 (HTTP ' + res.status + ')'); return; }
+      if(!res.ok){ toast(I18n.t("履歴の取得に失敗 (HTTP ") + res.status + ')'); return; }
       snap = await res.json();
-    }catch(e){ toast('履歴の取得に失敗: ' + e); return; }
-    if(!Array.isArray(snap)){ toast('履歴の形式が不正です'); return; }
+    }catch(e){ toast(I18n.t("履歴の取得に失敗: ") + e); return; }
+    if(!Array.isArray(snap)){ toast(I18n.t("履歴の形式が不正です")); return; }
     const cur = this._loadPresetLib();
-    const seenC = {}, ck = new Set(cur.map(p => this._presetKey(p, seenC)));
-    const seenS = {};
-    const add = snap.filter(p => !ck.has(this._presetKey(p, seenS)));
-    if(!add.length){ toast('この世代に、今無いプリセットはありません'); return; }
+    PresetIds.ensureIds(cur); PresetIds.ensureIds(snap);
+    const ck = new Set(cur.map(p => p.id));
+    const dead = PresetIds.deadSet(this._loadTombs());
+    const add = snap.filter(p => !ck.has(p.id));
+    if(!add.length){ toast(I18n.t("この世代に、今無いプリセットはありません")); return; }
+    add.forEach(p => PresetIds.revive(p, dead));   // 削除 id のものは別の id で戻す (削除 id は減らさない)
     this._presetLib = cur.concat(add);
     this._savePresetLib();
-    this._tombRemoveMany(add.map(p => this._presetContentKey(p)));   // 復元したので墓標を消す
     if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
-    toast('履歴から ' + add.length + ' 件を復元しました (サムネは再生成されます)');
+    toast(I18n.t("履歴から ") + add.length + I18n.t(" 件を復元しました (サムネは再生成されます)"));
   },
   _presetSaveFailed(why){
     if(!this._presetSaveWarned){
       this._presetSaveWarned = true;
-      toast('プリセットのサーバー保存に失敗 (' + why + ') — ローカルには保存済み。再試行します');
+      toast(I18n.t("プリセットのサーバー保存に失敗 (") + why + I18n.t(") — ローカルには保存済み。再試行します"));
     }
     if(this._presetRetryT) return;
     this._presetRetryT = setTimeout(()=>{
@@ -17440,36 +18086,19 @@ ${outBlock}
   // ─── 削除の墓標 (tombstone): 消したプリセットの復活防止 ─────────────
   //   古いローカルキャッシュを持つブラウザが起動時同期で「ローカルにしか無い」と
   //   誤認して再アップロードすると、削除済みプリセットが復活してしまう。
-  //   削除時に内容キーを墓標として記録し (ローカル + サーバー store)、
-  //   同期時に墓標に載っているものを両側の一覧から除外する。
-  //   復元 (Cmd+Z / 履歴復元) したときは墓標を消す。180 日で失効。
+  //   削除時にそのプリセットの id (不変。presetid.js) を削除 id として記録し (ローカル + サーバー store)、
+  //   起動時の読み込み・同期・保存・送り直しのどの経路でも、載っている id のものを一覧から除外する。
+  //   削除 id は追記のみ (失効も解除もしない)。復元 (Cmd+Z / 履歴復元) は別の id で戻す。
   _tombLSKey: 'vj.presetTombstones',
-  _presetContentKey(p){
-    if(p && p.id) return 'id:' + p.id;
-    let h = 5381;
-    try{
-      const str = JSON.stringify((p && p.state) || null);
-      for(let i = 0; i < str.length; i++) h = ((h * 33) ^ str.charCodeAt(i)) >>> 0;
-    }catch(e){}
-    return 'nk:' + ((p && p.name) || '') + ':' + h.toString(36);
-  },
   _loadTombs(){
     try{ const a = JSON.parse(localStorage.getItem(this._tombLSKey) || '[]');
-         return Array.isArray(a) ? a : []; }catch(e){ return []; }
+         return PresetIds.mergeTombs(Array.isArray(a) ? a : [], []); }catch(e){ return []; }
   },
   _saveTombsLocal(tombs){
     try{ localStorage.setItem(this._tombLSKey, JSON.stringify(tombs)); }catch(e){}
   },
-  _mergeTombs(a, b){
-    const m = {};
-    [].concat(a || [], b || []).forEach(tb => {
-      if(!tb || !tb.k) return;
-      if(!m[tb.k] || (tb.t || 0) > m[tb.k].t) m[tb.k] = { k: tb.k, t: tb.t || 0 };
-    });
-    const cut = Date.now() - 180 * 864e5;
-    return Object.values(m).filter(tb => (tb.t || 0) > cut);
-  },
-  // サーバーの墓標と統合してから mutate を適用し、ローカル保存 + サーバーへ書き戻す
+  _mergeTombs(a, b){ return PresetIds.mergeTombs(a, b); },
+  // サーバーの削除 id と統合 (和集合) してから mutate を適用し、ローカル保存 + サーバーへ書き戻す
   _syncTombsServer(mutate){
     if(Net.offline()){
       let merged = this._loadTombs();
@@ -17490,13 +18119,8 @@ ${outBlock}
       .catch(()=> apply([]));
   },
   _tombAdd(p){
-    const k = this._presetContentKey(p);
-    this._syncTombsServer(t => this._mergeTombs(t, [{ k, t: Date.now() }]));
-  },
-  _tombRemoveMany(keys){
-    const set = new Set(keys || []);
-    if(!set.size) return;
-    this._syncTombsServer(t => t.filter(x => !set.has(x.k)));
+    PresetIds.ensureIds([p]);
+    this._syncTombsServer(t => this._mergeTombs(t, [{ k: PresetIds.key(p), t: Date.now() }]));
   },
 
   // サーバーとローカルを初回だけ同期。サーバーを基準にしつつ、ローカルにしか無いものは足して
@@ -17515,7 +18139,7 @@ ${outBlock}
       remote = await this._loadPresetSnapshot();
       if(!Array.isArray(remote)) return;   // スナップショットも無ければローカルのまま
       offline = true;
-      toast('オフライン: 同梱プリセット ' + remote.length + ' 件を読み込みました');
+      toast(I18n.t("オフライン: 同梱プリセット ") + remote.length + I18n.t(" 件を読み込みました"));
     }
     if(!Array.isArray(remote)) return;
     const local = this._presetLib || [];
@@ -17530,15 +18154,14 @@ ${outBlock}
       if(tr.ok){ const ta = await tr.json(); if(Array.isArray(ta)) tombs = this._mergeTombs(tombs, ta); }
     }catch(e){}
     this._saveTombsLocal(tombs);
-    const dead = new Set(tombs.map(tb => tb.k));
-    const remoteAlive = remote.filter(p => !dead.has(this._presetContentKey(p)));
-    const remoteHadDead = remoteAlive.length !== remote.length;
-    remote = remoteAlive;
-    const seenR = {}, rk = new Set(remote.map(p => this._presetKey(p, seenR)));
-    const seenL = {};
-    const localOnly = local.filter(p => !rk.has(this._presetKey(p, seenL))
-                                     && !dead.has(this._presetContentKey(p)));
-    this._presetLib = localOnly.length ? remote.concat(localOnly) : remote;
+    const dead = PresetIds.deadSet(tombs);
+    // サーバーに無いもののうち、前にサーバーと一致したとき (控え) にもあったものは、ほかの端末で消されたもの。送り直さない。
+    //   送り直すのは、この端末で足してまだ送れていない分 (控えに無いもの) だけ。控えが無い端末 (初回) は何も送り直さない
+    //   (古い一覧を持つ端末が、消したプリセットや整理した複製を「サーバーに無い分」としてまとめて戻していた)
+    const m = PresetIds.mergeLibs(remote, local, dead, this._presetSyncedKeys());
+    const localOnly = m.localOnly, remoteHadDead = m.remoteHadDead || m.assigned > 0;   // id を付けた分もサーバーへ反映する
+    remote = localOnly.length ? m.lib.filter(p => !localOnly.includes(p)) : m.lib;   // サーバーと一致している分 (控えへ記録)
+    this._presetLib = m.lib;
     // ローカル (このセッションで撮った thumb) がサーバー側に無ければ残す
     {
       const seenL2 = {}, lmap = {};
@@ -17548,11 +18171,23 @@ ${outBlock}
     }
     this._presetThumbMerged = true;
     this._savePresetLocal();
+    if(!offline) this._presetMarkSynced(remote);
     if((localOnly.length || remoteHadDead) && !offline){
       this._savePresetLibServer();   // ローカルにしか無い分の復元 / 墓標ぶんの削除を反映
-      if(localOnly.length) toast('サーバーに無いプリセット ' + localOnly.length + ' 件を復元してアップロードしました');
+      if(localOnly.length) toast(I18n.t("サーバーに無いプリセット ") + localOnly.length + I18n.t(" 件を復元してアップロードしました"));
     }
     if(typeof UI !== 'undefined' && UI.refreshPresetLib) UI.refreshPresetLib();
+  },
+  // 最後にサーバーと一致した一覧の id の控え (localStorage)。同期で「ほかの端末で消されたもの」と「この端末で足したもの」を見分ける
+  _presetSyncedLSKey: 'vj.presetSyncedIds',
+  _presetSyncedKeys(){
+    try{ const a = JSON.parse(localStorage.getItem(this._presetSyncedLSKey) || 'null'); return Array.isArray(a) ? new Set(a) : null; }catch(e){ return null; }
+  },
+  _presetMarkSynced(list){
+    try{
+      const arr = typeof list === 'string' ? JSON.parse(list) : list;
+      if(Array.isArray(arr)) { PresetIds.ensureIds(arr); localStorage.setItem(this._presetSyncedLSKey, JSON.stringify(arr.map(p => p.id))); }
+    }catch(e){}
   },
   // store.php 不通時の読み取り専用フォールバック。deploy.sh が毎回サーバー全件を
   // presets/presets.json にバックアップしているので、ローカル配信でもそれを読める。
@@ -17808,48 +18443,48 @@ ${outBlock}
   // モードをロードして実出力を GIF 化し、終わったら元の状態へ自動復元する。
   captureVisualGif(i){
     const p = PRESETS[i]; if(!p) return;
-    if(this._capturingGif){ toast('別のGIF生成中です'); return; }
-    this._confirm(p.name + ' のGIFサムネを現在の表示で更新しますか？', ()=>{
+    if(this._capturingGif){ toast(I18n.t("別のGIF生成中です")); return; }
+    this._confirm(p.name + I18n.t(" のGIFサムネを現在の表示で更新しますか？"), ()=>{
       this._capturingGif = true;
-      toast(p.name + ' のGIFサムネを生成中…(現在の表示から)');
+      toast(p.name + I18n.t(" のGIFサムネを生成中…(現在の表示から)"));
       // Visual は切り替えず、現在の出力をそのまま GIF 化 (そのモードを表示中に押す運用)
       this._captureGifThumb({ maxW:128, frames:16, delay:70 }).then(gif=>{
         this._capturingGif = false;
-        if(!gif){ toast('GIF生成に失敗'); return; }
+        if(!gif){ toast(I18n.t("GIF生成に失敗")); return; }
         this._saveModeGif(UI._gifKey(p.name), gif);   // サーバー(全端末共通)に保存・固定
         if(UI && UI.populatePresets) UI.populatePresets();
-        toast(p.name + ' GIFサムネ更新完了');
+        toast(p.name + I18n.t(" GIFサムネ更新完了"));
       });
     });
   },
   // Movie タイル用 GIF サムネ: 動画をロードして実出力を GIF 化しサーバー保存 (全端末共通)
   captureMovieGif(url, name){
-    if(this._capturingGif){ toast('別のGIF生成中です'); return; }
-    this._confirm((name||'動画') + ' のGIFサムネを現在の表示で更新しますか？', ()=>{
+    if(this._capturingGif){ toast(I18n.t("別のGIF生成中です")); return; }
+    this._confirm((name||I18n.t("動画")) + I18n.t(" のGIFサムネを現在の表示で更新しますか？"), ()=>{
       this._capturingGif = true;
-      toast((name||'動画') + ' のGIFサムネを生成中…(現在の表示から)');
+      toast((name||I18n.t("動画")) + I18n.t(" のGIFサムネを生成中…(現在の表示から)"));
       // Visual は切り替えず、現在の出力をそのまま GIF 化 (その動画を表示中に押す運用)
       this._captureGifThumb({ maxW:128, frames:16, delay:70 }).then(gif=>{
         this._capturingGif = false;
-        if(!gif){ toast('GIF生成に失敗'); return; }
+        if(!gif){ toast(I18n.t("GIF生成に失敗")); return; }
         this._saveModeGif('movie_' + UI._gifKey(name), gif);
         if(UI && UI.populatePresets) UI.populatePresets();
-        toast((name||'動画') + ' GIFサムネ更新完了');
+        toast((name||I18n.t("動画")) + I18n.t(" GIFサムネ更新完了"));
       });
     });
   },
   presetAdd(name){
     const lib = this._loadPresetLib();
-    lib.push({ id: 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+    lib.push({ id: PresetIds.randomId(),
                name: name || ('Preset '+(lib.length+1)), state: this._capturePresetState(), thumb: this._grabPresetThumb() });
     this._savePresetLib();
     if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
-    toast('プリセットを追加');
+    toast(I18n.t("プリセットを追加"));
   },
   presetApply(i){
     const lib = this._loadPresetLib();
     const p = lib[i];
-    if(!p || !p.state){ toast('プリセット '+(i+1)+' は空です'); return; }
+    if(!p || !p.state){ toast(I18n.t("プリセット ")+(i+1)+I18n.t(" は空です")); return; }
     if(typeof GL !== 'undefined' && GL.startPresetTrans) GL.startPresetTrans(this.transBeats||0, this.transStyle||0);  // 現出力を退避→Beat拍で転換
     // beat×A (beatScale) は演奏中に手で決める設定なので、プリセット呼出では復元しない
     this._applyState(p.state, {restoreOverlayEnabled:true, restoreBeatScale:false, restoreBeatMode:false, restoreMixControls:true, resetMissingDefaults:true, freshShaders:true});   // 保存時のコードでなく、いまのシェーダで読む (値は同名の param へ戻す。エディタで編集したものは保存時のコード)
@@ -17857,7 +18492,7 @@ ${outBlock}
     // 実値が入れ替わり MIDI つまみの物理位置とズレるので、基準点を通すまで取り込み待ちにする
     if(typeof MIDI !== 'undefined' && MIDI.armPickup) MIDI.armPickup();
     if(UI && UI.refreshAll) UI.refreshAll();
-    toast('プリセット: '+p.name);
+    toast(I18n.t("プリセット: ")+p.name);
     this._undoSchedule();
     if(!p.thumb){   // 未取得プリセットは描画後にスナップショットを保存 (移行バンク等を順次補完)。転換完了を待つ。
       const cap = ()=>{
@@ -17884,7 +18519,7 @@ ${outBlock}
     this.mixPrevVisible = !this.mixPrevVisible;
     try{ localStorage.setItem('vj.mixPrev', this.mixPrevVisible ? '1' : '0'); }catch(e){}
     this.applyMixPrevVisible();
-    toast(this.mixPrevVisible ? 'Grad / Blend プレビュー: 表示' : 'Grad / Blend プレビュー: 非表示');
+    toast(this.mixPrevVisible ? I18n.t("Grad / Blend プレビュー: 表示") : I18n.t("Grad / Blend プレビュー: 非表示"));
   },
   // 映像に掛ける色相回転量。Hue Shift は常にライブで最終出力へ掛かる (Grad Map の後段)。
   //   Grad Map ON のときは Grad 出力の色相が回る = パレットを回すのと同じ色になる
@@ -17907,7 +18542,7 @@ ${outBlock}
   //   px を渡すとその画素 (rgb を詰めた Float32Array) から作る (Visual タブのタイルの Option+クリック)。
   gradFromVisual(px, label){
     if(!px) px = GL.compositeSample();
-    if(!px || px.length < 300){ toast('Visual の絵がまだ来ていません'); return; }
+    if(!px || px.length < 300){ toast(I18n.t("Visual の絵がまだ来ていません")); return; }
     const stops = this._gradStopsFromPixels(px);
     const curMix = this._gradFade ? this._gradFade.targetMix : (this.post.gradMix || 0);
     // 反転 (負値) だと元の絵の色を保てないので正の向きで掛ける
@@ -17915,7 +18550,7 @@ ${outBlock}
     this._activeGradPreset = -1;
     if(UI.refreshPost) UI.refreshPost();
     if(UI._refreshGradList) UI._refreshGradList();
-    toast((label ? label + ' から' : 'Visual から') + ' Grad を生成 ('+stops.length+' stops)');
+    toast((label ? label + I18n.t(" から") : I18n.t("Visual から")) + I18n.t(" Grad を生成 (")+stops.length+' stops)');
   },
   // 色は「数」より「印象」で拾う: 知覚的な色空間 (Oklab / OKLCH) で色相ごとにまとめ、
   //   代表色はその色相で彩度の高い上位 15% の画素 (平均はくすむので使わない = 記憶に残る色)。
@@ -18088,12 +18723,12 @@ ${outBlock}
       this._activeGradPreset = 9;
       if(UI.refreshPost) UI.refreshPost();
       if(UI._refreshGradList) UI._refreshGradList();
-      toast('通常色 (Grad Map OFF)');
+      toast(I18n.t("通常色 (Grad Map OFF)"));
       return;
     }
     const list = (typeof UI !== 'undefined' && UI._gradStore) ? UI._gradStore.list : [];
     const item = list[n];
-    if(!item || !item.stops){ toast('Grad '+(n+1)+' は空'); return; }
+    if(!item || !item.stops){ toast('Grad '+(n+1)+I18n.t(" は空")); return; }
     // 同じ数字を 2 回押しても解除しない。Grad Map を切るのは 0 (通常色)。
     // Param Fade: gradMix を一度 0 へ落として色を差し替え、目標値まで戻す(即時なら従来どおり)
     const curMix = this._gradFade ? this._gradFade.targetMix : (this.post.gradMix || 0);   // フェード中は途中の値でなく行き先を引き継ぐ
@@ -18109,19 +18744,19 @@ ${outBlock}
   presetOverwrite(i, name){
     const lib0 = this._loadPresetLib();
     const nm = name || (lib0[i] && lib0[i].name) || ('Preset '+(i+1));
-    this._confirm('プリセット「'+nm+'」を現在の状態で上書きしますか？', ()=>{
+    this._confirm(I18n.t("プリセット「")+nm+I18n.t("」を現在の状態で上書きしますか？"), ()=>{
       const lib = this._loadPresetLib();
       while(lib.length <= i) lib.push({ name:'Preset '+(lib.length+1), state:null });
-      const id = (lib[i] && lib[i].id) || ('p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6));   // id を保つ (サムネの照合キー)
+      const id = (lib[i] && lib[i].id) || PresetIds.randomId();   // id を保つ (サムネの照合キー)
       lib[i] = { id, name: name || (lib[i] && lib[i].name) || ('Preset '+(i+1)), state: this._capturePresetState(), thumb: this._grabPresetThumb() };
       this._savePresetLib();
       if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
-      toast('プリセット '+(i+1)+' を上書き — GIF生成中…');
+      toast(I18n.t("プリセット ")+(i+1)+I18n.t(" を上書き — GIF生成中…"));
       // 更新のたびに GIF アニメサムネを生成して差し替え。生成中に一覧が同期・並べ替えされても、番号でなく id で同じプリセットへ入れる
       this._captureGifThumb({ maxW:128, frames:16, delay:70 }).then(gif=>{
-        if(!gif){ toast('GIF生成に失敗 (静止画のまま)'); return; }
+        if(!gif){ toast(I18n.t("GIF生成に失敗 (静止画のまま)")); return; }
         const tgt = this._loadPresetLib().find(q => q && q.id === id);
-        if(tgt){ tgt.thumb = gif; this._savePresetLib(); if(UI && UI.refreshPresetLib) UI.refreshPresetLib(); toast('プリセット「'+tgt.name+'」GIF更新完了'); }
+        if(tgt){ tgt.thumb = gif; this._savePresetLib(); if(UI && UI.refreshPresetLib) UI.refreshPresetLib(); toast(I18n.t("プリセット「")+tgt.name+I18n.t("」GIF更新完了")); }
       });
     });
   },
@@ -18133,7 +18768,7 @@ ${outBlock}
     const lib = this._loadPresetLib();
     if(i<0 || i>=lib.length) return;
     const nm = lib[i].name;
-    this._confirm('プリセット「'+nm+'」を削除しますか？', ()=>{
+    this._confirm(I18n.t("プリセット「")+nm+I18n.t("」を削除しますか？"), ()=>{
       const del = lib[i];
       lib.splice(i,1);
       this._savePresetLib();
@@ -18141,7 +18776,7 @@ ${outBlock}
       this._delPresetStack.push({ item: del, index: i });   // 戻る(Cmd+Z)で復元できるよう退避
       if(this._delPresetStack.length > 30) this._delPresetStack.shift();
       if(UI && UI.refreshPresetLib) UI.refreshPresetLib();
-      toast('削除: '+nm+'(戻るで復元可)');
+      toast(I18n.t("削除: ")+nm+I18n.t("(戻るで復元可)"));
     });
   },
   // before=true: to の手前へ / false: to の後ろへ挿入 (Visual タブの catalogReorder と同仕様)
@@ -18157,7 +18792,7 @@ ${outBlock}
   // ─── シェーダ(PRESETS カタログ)のドラッグ並べ替え ────────────────────
   _isShaderPreset(p){
     if(!p || p.kind === 'none' || p.kind === 'video') return false;
-    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'];
+    const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype','imgconstruct'];
     const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
     return !(MODE_KINDS.includes(p.kind) && !SHADER_ENGINES.includes(p.kind));
   },
@@ -18214,22 +18849,22 @@ ${outBlock}
   saveBank(n){
     let exists = false;
     try{ exists = !!localStorage.getItem('vj.bank.'+n); }catch(e){}
-    const msg = exists ? `Bank ${n} を上書き保存しますか？（既存の保存は消えます）`
-                       : `Bank ${n} に現在の状態を保存しますか？`;
+    const msg = exists ? I18n.t('Bank {n} を上書き保存しますか？（既存の保存は消えます）', {n})
+                       : I18n.t('Bank {n} に現在の状態を保存しますか？', {n});
     this._confirm(msg, ()=>{
       const data = this._collectState();
       // バンクには BPM / Transition は含めない (テンポ・演出は維持したまま構成だけ切替)
       delete data.bpm; delete data.transBeats; delete data.transStyle;
       try{ localStorage.setItem('vj.bank.'+n, JSON.stringify(data)); }catch(e){}
       if(UI && UI.refreshBanks) UI.refreshBanks();
-      toast('Bank '+n+' に保存');
+      toast('Bank '+n+I18n.t(" に保存"));
     });
   },
   _coarse(){ return window.matchMedia('(pointer:coarse)').matches; },
   _undoHint(){ return this._coarse() ? '↶' : 'Cmd+Z'; },
   // Enter=OK / Esc=キャンセル に対応した確認モーダル (フルスクリーン/VJ でも確実に動作)
   _confirm(message, onOk, onCancel){
-    if(this.liveLocked('上書き・削除')) return;
+    if(this.liveLocked(I18n.t('上書き・削除'))) return;
     if(this._confirmClose) this._confirmClose();   // 既存があれば閉じる
     const ov = document.createElement('div');
     ov.style.cssText = 'position:fixed;inset:0;z-index:1000000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.55)';
@@ -18294,10 +18929,10 @@ ${outBlock}
   loadBank(n){
     let s = null;
     try{ s = JSON.parse(localStorage.getItem('vj.bank.'+n)||'null'); }catch(e){}
-    if(!s){ toast('Bank '+n+' は空です'); return; }
+    if(!s){ toast('Bank '+n+I18n.t(" は空です")); return; }
     this._applyState(s);
     if(UI && UI.refreshAll) UI.refreshAll();
-    toast('Bank '+n+' を呼出');
+    toast('Bank '+n+I18n.t(" を呼出"));
     this._undoSchedule();
   },
   // 自動保存 (定期 + 終了時)。最後に表示していた状態を復帰用に残す。
@@ -18380,7 +19015,7 @@ ${outBlock}
   // 同意を得て送るときの送信と結果の表示 (公開版のように送れない端末でも、失敗を黙らない)
   async _pushDefsReport(){
     const res = await this._defsRun(()=>this._pushDefs());
-    toast(res === null ? '他の端末と同じ値でした' : res ? '他の端末へ同期しました' : '同期できませんでした (この端末だけに残っています)');
+    toast(res === null ? I18n.t("他の端末と同じ値でした") : res ? I18n.t("他の端末へ同期しました") : I18n.t("同期できませんでした (この端末だけに残っています)"));
   },
   // 共有 OFF の間に Save した値が残っていて、いま共有 ON なら、送ってよいか尋ねる
   _askHeldDefs(){
@@ -18389,7 +19024,7 @@ ${outBlock}
     if(!keys.length) return;
     // Cancel・背景クリック・Esc は「送らない」でもう尋ねない (共有 ON のまま改めて Save すれば普段どおり送る)。
     //   答えずに閉じた (別の確認が開いた・Live Lock で開けなかった) ときは 'ask' のまま、次の起動でもう一度尋ねる
-    this._confirm('共有 OFF の間に Save した値が ' + keys.length + ' 件あります。他の端末へ同期していいですか？ (Cancel ならこの端末だけに残します)', ()=>{
+    this._confirm(I18n.t("共有 OFF の間に Save した値が ") + keys.length + I18n.t(" 件あります。他の端末へ同期していいですか？ (Cancel ならこの端末だけに残します)"), ()=>{
       this._releaseDefs(keys);
       this._pushDefsReport();
     }, ()=>this._holdDefs(keys, 'local'));
@@ -18474,24 +19109,24 @@ ${outBlock}
   },
   _validateDefaultsFile(data){
     const object = v => v && typeof v === 'object' && !Array.isArray(v);
-    if(!object(data) || data.format !== 'gara-defaults' || data.version !== 1 || !object(data.defs)) throw new Error('Defaults JSON の形式またはバージョンが不正です');
+    if(!object(data) || data.format !== 'gara-defaults' || data.version !== 1 || !object(data.defs)) throw new Error(I18n.t("Defaults JSON の形式またはバージョンが不正です"));
     const entries = Object.entries(data.defs);
     for(const [k, v] of entries){
-      if(!this._isDefaultsFileKey(k)) throw new Error('対象外のキーです: ' + k);
-      if(!object(v)) throw new Error('保存値はオブジェクトで指定してください: ' + k);
+      if(!this._isDefaultsFileKey(k)) throw new Error(I18n.t("対象外のキーです: ") + k);
+      if(!object(v)) throw new Error(I18n.t("保存値はオブジェクトで指定してください: ") + k);
     }
     // エンジンの P に代入する前に、入れ子も含めて不正なキー・数値を弾く。
     const pending = entries.map(([, v]) => v);
     while(pending.length){
       const v = pending.pop();
-      if(typeof v === 'number' && !Number.isFinite(v)) throw new Error('保存値に不正な数値があります');
+      if(typeof v === 'number' && !Number.isFinite(v)) throw new Error(I18n.t("保存値に不正な数値があります"));
       if(!v || typeof v !== 'object') continue;
       for(const [k, value] of Object.entries(v)){
-        if(['__proto__', 'prototype', 'constructor'].includes(k)) throw new Error('保存値に不正なキーがあります');
+        if(['__proto__', 'prototype', 'constructor'].includes(k)) throw new Error(I18n.t("保存値に不正なキーがあります"));
         pending.push(value);
       }
     }
-    return entries;
+    return entries.map(([k, v]) => [k, k.startsWith('post.') ? this.migratePollockPost(Object.assign({}, v)) : v]);
   },
   exportDefaults(currentOnly){
     try{
@@ -18500,7 +19135,7 @@ ${outBlock}
       for(const k of keys) if(k && this._isDefaultsFileKey(k) && Object.prototype.hasOwnProperty.call(local, k)) defs[k] = this.defaultValues(k, JSON.parse(local[k]));
       const date = new Date(), data = {format:'gara-defaults', version:1, exportedAt:date.toISOString(), defs};
       const count = this._validateDefaultsFile(data).length;
-      if(!count){ toast(currentOnly ? 'このビジュアルの Save 値がありません' : '書き出せる Save 値がありません'); return; }
+      if(!count){ toast(currentOnly ? I18n.t("このビジュアルの Save 値がありません") : I18n.t("書き出せる Save 値がありません")); return; }
       const pad = n => String(n).padStart(2, '0');
       const stamp = date.getFullYear() + pad(date.getMonth() + 1) + pad(date.getDate()) + '-' + pad(date.getHours()) + pad(date.getMinutes());
       const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], {type:'application/json'}));
@@ -18508,16 +19143,16 @@ ${outBlock}
       a.href = url; a.download = 'gara-defaults-' + stamp + '.json';
       document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 1000);
-      toast('Save 値を書き出しました (' + count + ' 件)');
-    }catch(e){ toast('書き出し失敗: ' + e.message); }
+      toast(I18n.t("Save 値を書き出しました (") + count + I18n.t(" 件)"));
+    }catch(e){ toast(I18n.t("書き出し失敗: ") + e.message); }
   },
   async importDefaults(file){
     if(!file) return;
     let entries;
     try{ entries = this._validateDefaultsFile(JSON.parse(await file.text())); }
-    catch(e){ toast('読み込み失敗: ' + e.message); return; }
-    if(!entries.length){ toast('読み込める Save 値がありません'); return; }
-    this._confirm('Save 値 ' + entries.length + ' 件をこの端末へ上書きしますか？ ファイルにないキーは残ります。', ()=>{
+    catch(e){ toast(I18n.t("読み込み失敗: ") + e.message); return; }
+    if(!entries.length){ toast(I18n.t("読み込める Save 値がありません")); return; }
+    this._confirm(I18n.t("Save 値 ") + entries.length + I18n.t(" 件をこの端末へ上書きしますか？ ファイルにないキーは残ります。"), ()=>{
       const previous = new Map(), written = [];
       try{
         for(const [k] of entries) previous.set(k, localStorage.getItem('vj.def.' + k));
@@ -18528,7 +19163,7 @@ ${outBlock}
           try{ const v = previous.get(k); if(v === null) localStorage.removeItem('vj.def.' + k); else localStorage.setItem('vj.def.' + k, v); }
           catch(_){ restored = false; }
         }
-        toast(restored ? '読み込み失敗: 保存できませんでした (変更は戻しました)' : '読み込み失敗: 一部の Save 値だけ更新されています');
+        toast(restored ? I18n.t("読み込み失敗: 保存できませんでした (変更は戻しました)") : I18n.t("読み込み失敗: 一部の Save 値だけ更新されています"));
         return;
       }
       try{
@@ -18550,13 +19185,13 @@ ${outBlock}
           else this.applyEngineDefault(current);
         }
         if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
-        toast('この端末へ Save 値を読み込みました (' + entries.length + ' 件)');
-      }catch(e){ toast('Save 値は保存しましたが、画面への反映に失敗しました。再読み込みしてください'); }
+        toast(I18n.t("この端末へ Save 値を読み込みました (") + entries.length + I18n.t(" 件)"));
+      }catch(e){ toast(I18n.t("Save 値は保存しましたが、画面への反映に失敗しました。再読み込みしてください")); }
       // 他の端末へ送るのは、その都度尋ねてから。共有 OFF / オフラインなら控えて、共有 ON になったときに尋ねる
       const keys = entries.map(([k]) => k);
       this._holdDefs(keys, 'ask');   // 答えずに閉じたら、次の起動 (共有 ON) で尋ねる
       if(!this._defsOn()) return;
-      this._confirm('読み込んだ ' + keys.length + ' 件を他の端末へ同期していいですか？ (Cancel ならこの端末だけに残します)', ()=>{
+      this._confirm(I18n.t("読み込んだ ") + keys.length + I18n.t(" 件を他の端末へ同期していいですか？ (Cancel ならこの端末だけに残します)"), ()=>{
         this._releaseDefs(keys);
         this._pushDefsReport();
       }, ()=>this._holdDefs(keys, 'local'));
@@ -18569,10 +19204,10 @@ ${outBlock}
         || this.modeStateKinds.includes(k);
   },
   resetVisualDefaults(){
-    this._confirm('Visual ごとのデフォルト (Params のパラメータ・Shader Params) を基準値に戻して再読み込みしますか？ (全端末共通)', async ()=>{
+    this._confirm(I18n.t("Visual ごとのデフォルト (Params のパラメータ・Shader Params) を基準値に戻して再読み込みしますか？ (全端末共通)"), async ()=>{
       let base;
-      try{ const r = await fetch('defaults_visual.json', {cache:'no-cache'}); base = await r.json(); }catch(e){ toast('基準値を読めませんでした'); return; }
-      if(!base || typeof base !== 'object' || Array.isArray(base)){ toast('基準値が不正です'); return; }
+      try{ const r = await fetch('defaults_visual.json', {cache:'no-cache'}); base = await r.json(); }catch(e){ toast(I18n.t("基準値を読めませんでした")); return; }
+      if(!base || typeof base !== 'object' || Array.isArray(base)){ toast(I18n.t("基準値が不正です")); return; }
       // 端末の Visual の Save 値を基準値に置き換える (サーバーへ送れたとき、または共有しないときだけ)
       const applyLocal = ()=>{
         const keys = [];
@@ -18594,7 +19229,7 @@ ${outBlock}
           const w = await fetch(this._defsUrl() + '&force=1', {method:'POST', headers:App._storeHeaders(), body: JSON.stringify(server)});
           ok = w.ok;
         });
-        if(!ok){ toast('サーバーに反映できませんでした (何も変更していません)'); return; }
+        if(!ok){ toast(I18n.t("サーバーに反映できませんでした (何も変更していません)")); return; }
       }
       applyLocal();
       location.reload();
@@ -18618,7 +19253,7 @@ ${outBlock}
     if(d.manga && typeof Manga !== 'undefined') Object.assign(Manga.P, d.manga);
     if(d.layer && typeof Layer !== 'undefined') Object.assign(Layer.P, d.layer);
     if(d.overlay && typeof Overlay !== 'undefined') Object.assign(Overlay.P, d.overlay);
-    if(d.video && typeof Movie !== 'undefined' && Movie.P) Object.assign(Movie.P, d.video);
+    if(d.video && typeof Movie !== 'undefined' && Movie.P) Object.assign(Movie.P, Movie.LAYOUT_DEFAULTS, d.video);
     if(d.slicer && typeof Slicer !== 'undefined' && Slicer.P) Object.assign(Slicer.P, d.slicer);
     if(d.slicerImg && typeof Slicer !== 'undefined' && Slicer.restoreImage) Slicer.restoreImage(d.slicerImg, d.slicer);
   },
@@ -18756,7 +19391,7 @@ ${outBlock}
       this._applyState(s, {restoreOverlayEnabled:true, restoreMixControls:true, restoreBeatScale:true});
       this.crossfade = 1.0;   // 起動時 Mix は常に 100%
       if(typeof UI !== 'undefined' && UI.refreshAll) UI.refreshAll();
-      toast('起動プリセット (startup.json) を適用');
+      toast(I18n.t("起動プリセット (startup.json) を適用"));
       return true;
     }catch(e){ console.warn('startup.json apply failed:', e); return false; }
   },
@@ -18771,8 +19406,8 @@ ${outBlock}
       a.href = url; a.download = 'startup.json';
       document.body.appendChild(a); a.click();
       setTimeout(()=>{ URL.revokeObjectURL(url); a.remove(); }, 500);
-      toast('startup.json を書き出しました');
-    }catch(e){ console.warn(e); toast('書き出し失敗'); }
+      toast(I18n.t("startup.json を書き出しました"));
+    }catch(e){ console.warn(e); toast(I18n.t("書き出し失敗")); }
   },
   // 状態オブジェクトを現在のアプリへ適用 (localStorage 復元 / バンク呼出 / プリセット呼出で共用)
   _applyState(s, opts){
@@ -18799,7 +19434,7 @@ ${outBlock}
         else { this.beatScale = bs; this.setSpeed(bs); }
       }
       if(typeof s.crossfade==='number') this.crossfade = s.crossfade;
-      if(typeof s.slotBOffsetBeats==='number'){ this.slotBOffsetBeats = s.slotBOffsetBeats; const bo=$('#mixBOffset'); if(bo){ bo.value = s.slotBOffsetBeats; const bv=$('#mixBOffsetVal'); if(bv) bv.textContent = s.slotBOffsetBeats.toFixed(2); } }
+      if(typeof s.slotBOffsetBeats==='number'){ this.slotBOffsetBeats = s.slotBOffsetBeats; const bc=$('#mixBShiftOn'); if(bc) bc.checked = s.slotBOffsetBeats > 0; const bo=$('#mixBOffset'); if(bo){ bo.value = s.slotBOffsetBeats; const bv=$('#mixBOffsetVal'); if(bv) bv.textContent = s.slotBOffsetBeats.toFixed(2); } }
       if(s.blendMode){ this.blendMode = s.blendMode; const cb=document.querySelector('#cfBlend'); if(cb) cb.value = s.blendMode; }
       if(typeof s.slotABg === 'string') this.setSlotABg(s.slotABg);
       if(opts.restoreMixControls){
@@ -18813,7 +19448,9 @@ ${outBlock}
       const _fadeB = opts.instantPost ? 0 : this._fadeBeats();
       if(opts.instantPost){ this._paramFades.length = 0; this._gradFade = null; }
       if(s.post && typeof s.post === 'object'){
-        const sp = this.sanitizePost(this.migrateFeedbackPost(Object.assign({},s.post)));   // Auto Map 量(paletteAmt)も保存値どおり復元する
+        const sp = this.sanitizePost(this.migrateFeedbackPost(Object.assign({},s.post)));
+        sp.fx3dAmount = s.post.fx3dAmount == null ? 1 : sp.fx3dAmount;   // 旧プリセットは欄の保存倍率に左右されない
+        sp.fx3dStack = s.post.fx3dStack === 'build' ? 'build' : 'chain';   // キーの無い旧プリセット / state は旧描画を維持
         if(presetDefaults){
           const target = Object.assign({}, presetDefaults.post || {});
           for(const k of this.POST_AMOUNT_KEYS) if(typeof target[k] === 'number') target[k] = 0;   // プリセットに無い FX は掛けない (効果の量の保存値は使わない)
@@ -18828,6 +19465,8 @@ ${outBlock}
       }
       else if(presetDefaults){
         const target = Object.assign({}, presetDefaults.post || {});
+        target.fx3dAmount = 1;
+        target.fx3dStack = 'chain';   // post ごと無い旧プリセットも同じ扱い
         for(const k of this.POST_AMOUNT_KEYS) if(typeof target[k] === 'number') target[k] = 0;
         const AUDIO_FX = ['audioTarget','audioGain','audioBand','audioAttack','aScan','aRgb','aStrobe','aShock','aExplode'];
         for(const k of AUDIO_FX) if(this.post[k] !== undefined) target[k] = this.post[k];
@@ -18886,9 +19525,10 @@ ${outBlock}
         Object.assign(this.audioTime, s.audioTime);
         if(typeof UI !== 'undefined' && UI.refreshAudioTransport) UI.refreshAudioTransport();
       }
-      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'];
+      const ENGINE_KINDS = this.modeKinds || ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype','imgconstruct'];
       for(const k of ['A','B']){
         const sk = s.slots && s.slots[k];
+        if(sk) delete this._pendingSlotRestores[k];   // 保存プリセット・Undo でこのスロットを書き換えるなら、起動時の復元待ちは捨てる (loadLocal はこの下で入れ直す)
         // iMouse (凍結値) を復元。M キーが OFF のままでもこの値が使われる
         // (拾うのは mouseCapture かつアクティブスロットのときだけなので上書きされない)。
         if(sk && sk.mouse && GL.slots[k]){
@@ -19154,9 +19794,15 @@ void mainImage(out vec4 o, in vec2 f){
       App.crossfade = ParamValues.read(e.target);
       this.refreshMix(false);
     });
-    { const bo = $('#mixBOffset'), bv = $('#mixBOffsetVal');
+    { const bo = $('#mixBOffset'), bv = $('#mixBOffsetVal'), bc = $('#mixBShiftOn');
+      if(bc) bc.addEventListener('change', ()=>{
+        bo.value = bc.checked ? (App._lastBShiftBeats || 0.5) : 0;
+        bo.dispatchEvent(new Event('input', {bubbles:true}));
+      });
       if(bo) bo.addEventListener('input', ()=>{
         App.slotBOffsetBeats = parseFloat(bo.value) || 0;
+        if(App.slotBOffsetBeats > 0) App._lastBShiftBeats = App.slotBOffsetBeats;
+        if(bc) bc.checked = App.slotBOffsetBeats > 0;
         if(bv) bv.textContent = App.slotBOffsetBeats.toFixed(2);
       }); }
     $('#cfAuto').addEventListener('change', e=>{
@@ -19206,8 +19852,11 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // ---- Type Deformer (mode/textdeform*.js) ----
     //   data-tdp = TextDeform.P のキー。値は P に直接書く (Save = この Visual のデフォルト保存。Look 単位の保存は Save New)
-    const tdSec = document.querySelector('.section.textdeform-mode');
-    if(tdSec){
+    const tdTop = document.querySelector('.section.textdeform-mode');
+    if(tdTop){
+      this._tdSplitBlocks(tdTop);
+      const tdSecs = [...document.querySelectorAll('.section.textdeform-mode')];
+      const tdSec = { querySelectorAll: sel=>tdSecs.flatMap(s=>[...s.querySelectorAll(sel)]), addEventListener: (t, f)=>tdSecs.forEach(s=>s.addEventListener(t, f)) };   // 全ブロックをまとめて扱う
       const tdVal = (el)=>{
         const k = el.dataset.tdkind;
         if(el.type === 'range' || k === 'num') return ParamValues.read(el);
@@ -19246,15 +19895,7 @@ void mainImage(out vec4 o, in vec2 f){
           if(lab) lab.classList.add('sub-label'); else r.classList.add('td-sub');
         }
       });
-      this.bindEngineHints(tdSec, TextDeform);
-      // 初めて開くときは Live / Canvas / Look / Text を開き、ほか (文字組・Vector 3D・各詳細) は畳む。開閉は端末ごとに覚える
-      try{ for(const f of ['live', 'canvas', 'look', 'text']) if(localStorage.getItem('vj.fold.td.' + f) == null) localStorage.setItem('vj.fold.td.' + f, '1'); }catch(e){}
-      tdSec.querySelectorAll('.td-fold').forEach(h=>{
-        const rows = [];
-        for(let n = h.nextElementSibling; n && !n.classList.contains('td-fold') && !n.classList.contains('td-fold-end'); n = n.nextElementSibling) rows.push(n);
-        const tog = this.foldToggle(h, rows, 'td.' + h.dataset.tdFold);
-        h.addEventListener('click', ()=>{ if(tog) tog.click(); });
-      });
+      this.bindEngineHintsSections('.section.textdeform-mode', TextDeform);
     }
     // Look (mode/textdeform-looks.js)
     if(typeof TDLooks !== 'undefined') TDLooks.onChange(()=>this.refreshTextDeformLooks());
@@ -19280,25 +19921,25 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdLookAdd) tdLookAdd.addEventListener('click', async ()=>{
       if(typeof TDLooks === 'undefined') return;
       await TDLooks.loadSaved();
-      App._prompt('Look の名前', 'Look ' + (TDLooks.saved.length + 1), (nn)=>{
-        TDLooks.add(String(nn || '').trim() || undefined).then(()=>toast('Look を保存: ' + TDLooks.label(TextDeform.P.look) + ' (' + TDLooks.saved.length + ' 件)'))
-          .catch(e=>toast('Look の保存に失敗: ' + e.message));
+      App._prompt(I18n.t("Look の名前"), 'Look ' + (TDLooks.saved.length + 1), (nn)=>{
+        TDLooks.add(String(nn || '').trim() || undefined).then(()=>toast(I18n.t("Look を保存: ") + TDLooks.label(TextDeform.P.look) + ' (' + TDLooks.saved.length + I18n.t(" 件)")))
+          .catch(e=>toast(I18n.t("Look の保存に失敗: ") + e.message));
       });
     });
     const tdLookOver = $('#tdLookOver');
     if(tdLookOver) tdLookOver.addEventListener('click', ()=>{
       const i = tdSavedIndex(), c = (typeof TDLooks !== 'undefined' && TDLooks.saved) ? TDLooks.saved[i] : null;
-      if(!c){ toast('上書きする保存 Look を選んでください'); return; }
-      App._confirm('いまの見た目で上書きしますか: ' + c.name, ()=>{
-        TDLooks.overwrite(i).then(()=>toast('Look を上書き: ' + c.name)).catch(e=>toast('Look の上書きに失敗: ' + e.message));
+      if(!c){ toast(I18n.t("上書きする保存 Look を選んでください")); return; }
+      App._confirm(I18n.t("いまの見た目で上書きしますか: ") + c.name, ()=>{
+        TDLooks.overwrite(i).then(()=>toast(I18n.t("Look を上書き: ") + c.name)).catch(e=>toast(I18n.t("Look の上書きに失敗: ") + e.message));
       });
     });
     const tdLookDel = $('#tdLookDel');
     if(tdLookDel) tdLookDel.addEventListener('click', ()=>{
       const i = tdSavedIndex(), c = (typeof TDLooks !== 'undefined' && TDLooks.saved) ? TDLooks.saved[i] : null;
-      if(!c){ toast('削除する保存 Look を選んでください'); return; }
-      App._confirm('保存 Look を削除しますか: ' + c.name, ()=>{
-        TDLooks.remove(i).then(()=>toast('Look を削除: ' + c.name)).catch(e=>toast('Look の削除に失敗: ' + e.message));
+      if(!c){ toast(I18n.t("削除する保存 Look を選んでください")); return; }
+      App._confirm(I18n.t("保存 Look を削除しますか: ") + c.name, ()=>{
+        TDLooks.remove(i).then(()=>toast(I18n.t("Look を削除: ") + c.name)).catch(e=>toast(I18n.t("Look の削除に失敗: ") + e.message));
       });
     });
     // Canvas (mode/textdeform-canvas.js): 消去・構成の保存 / 呼び出し / 削除
@@ -19315,24 +19956,24 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdCanvasSaved) tdCanvasSaved.addEventListener('change', ()=>{
       if(tdCanvasSaved.value === '' || typeof TDCanvas === 'undefined') return;
       const i = +tdCanvasSaved.value;
-      TDCanvas.load(i).then(ok=>{ if(ok){ this.refreshTextDeform(); toast('Canvas を呼び出し: ' + TDCanvas.saved[i].name); } });
+      TDCanvas.load(i).then(ok=>{ if(ok){ this.refreshTextDeform(); toast(I18n.t("Canvas を呼び出し: ") + TDCanvas.saved[i].name); } });
     });
     const tdCanvasSave = $('#tdCanvasSave');
     if(tdCanvasSave) tdCanvasSave.addEventListener('click', async ()=>{
       if(typeof TDCanvas === 'undefined') return;
       await TDCanvas.loadSaved();
-      App._prompt('構成の名前', 'Canvas ' + (TDCanvas.saved.length + 1), (nn)=>{
-        TDCanvas.saveAs(String(nn || '').trim() || undefined).then(i=>{ fillCanvasSaved(); tdCanvasSaved.value = String(i); toast('Canvas を保存: ' + TDCanvas.saved[i].name); })
-          .catch(e=>toast('Canvas の保存に失敗: ' + e.message));
+      App._prompt(I18n.t("構成の名前"), 'Canvas ' + (TDCanvas.saved.length + 1), (nn)=>{
+        TDCanvas.saveAs(String(nn || '').trim() || undefined).then(i=>{ fillCanvasSaved(); tdCanvasSaved.value = String(i); toast(I18n.t("Canvas を保存: ") + TDCanvas.saved[i].name); })
+          .catch(e=>toast(I18n.t("Canvas の保存に失敗: ") + e.message));
       });
     });
     const tdCanvasDel = $('#tdCanvasDel');
     if(tdCanvasDel) tdCanvasDel.addEventListener('click', ()=>{
       const i = tdCanvasSaved ? tdCanvasSaved.value : '';
       const cv = (i !== '' && typeof TDCanvas !== 'undefined' && TDCanvas.saved) ? TDCanvas.saved[+i] : null;
-      if(!cv){ toast('削除する構成を選んでください'); return; }
-      App._confirm('保存した構成を削除しますか: ' + cv.name, ()=>{
-        TDCanvas.removeSaved(+i).then(()=>{ fillCanvasSaved(); toast('Canvas を削除: ' + cv.name); }).catch(e=>toast('Canvas の削除に失敗: ' + e.message));
+      if(!cv){ toast(I18n.t("削除する構成を選んでください")); return; }
+      App._confirm(I18n.t("保存した構成を削除しますか: ") + cv.name, ()=>{
+        TDCanvas.removeSaved(+i).then(()=>{ fillCanvasSaved(); toast(I18n.t("Canvas を削除: ") + cv.name); }).catch(e=>toast(I18n.t("Canvas の削除に失敗: ") + e.message));
       });
     });
     const tdCanvasClear = $('#tdCanvasClear');
@@ -19457,24 +20098,24 @@ void mainImage(out vec4 o, in vec2 f){
     if(tdCompSaved) tdCompSaved.addEventListener('change', ()=>{
       if(tdCompSaved.value === '' || typeof TDComp === 'undefined') return;
       const i = +tdCompSaved.value;
-      TDComp.load(i).then(ok=>{ if(ok){ this.refreshTextDeform(); App._undoSchedule(); toast('Comp を呼び出し: ' + TDComp.saved[i].name); } });
+      TDComp.load(i).then(ok=>{ if(ok){ this.refreshTextDeform(); App._undoSchedule(); toast(I18n.t("Comp を呼び出し: ") + TDComp.saved[i].name); } });
     });
     const tdCompSave = $('#tdCompSave');
     if(tdCompSave) tdCompSave.addEventListener('click', async ()=>{
       if(typeof TDComp === 'undefined') return;
       await TDComp.loadSaved();
-      App._prompt('Composition の名前', 'Comp ' + (TDComp.saved.length + 1), (nn)=>{
-        TDComp.saveAs(String(nn || '').trim() || undefined).then(i=>{ fillCompSaved(); tdCompSaved.value = String(i); toast('Comp を保存: ' + TDComp.saved[i].name); })
-          .catch(e=>toast('Comp の保存に失敗: ' + e.message));
+      App._prompt(I18n.t("Composition の名前"), 'Comp ' + (TDComp.saved.length + 1), (nn)=>{
+        TDComp.saveAs(String(nn || '').trim() || undefined).then(i=>{ fillCompSaved(); tdCompSaved.value = String(i); toast(I18n.t("Comp を保存: ") + TDComp.saved[i].name); })
+          .catch(e=>toast(I18n.t("Comp の保存に失敗: ") + e.message));
       });
     });
     const tdCompDel = $('#tdCompDel');
     if(tdCompDel) tdCompDel.addEventListener('click', ()=>{
       const i = tdCompSaved ? tdCompSaved.value : '';
       const c = (i !== '' && typeof TDComp !== 'undefined' && TDComp.saved) ? TDComp.saved[+i] : null;
-      if(!c){ toast('削除する Composition を選んでください'); return; }
-      App._confirm('保存した Composition を削除しますか: ' + c.name, ()=>{
-        TDComp.removeSaved(+i).then(()=>{ fillCompSaved(); toast('Comp を削除: ' + c.name); }).catch(e=>toast('Comp の削除に失敗: ' + e.message));
+      if(!c){ toast(I18n.t("削除する Composition を選んでください")); return; }
+      App._confirm(I18n.t("保存した Composition を削除しますか: ") + c.name, ()=>{
+        TDComp.removeSaved(+i).then(()=>{ fillCompSaved(); toast(I18n.t("Comp を削除: ") + c.name); }).catch(e=>toast(I18n.t("Comp の削除に失敗: ") + e.message));
       });
     });
     const tdCompReseed = $('#tdCompReseed');
@@ -19578,9 +20219,9 @@ void mainImage(out vec4 o, in vec2 f){
         if(Audio.resetBpmAdaptation) Audio.resetBpmAdaptation();
         BPM.resetAutoDetection();
         if(!Audio.mode || Audio.mode === 'off'){
-          toast('Audio が Off です — Mic か System をオンにしてください', 3500);
+          toast(I18n.t("Audio が Off です — Mic か System をオンにしてください"), 3500);
         } else {
-          toast('BPM Auto: 音響から検出中…');
+          toast(I18n.t("BPM Auto: 音響から検出中…"));
         }
       } else {
         toast('BPM Auto: OFF');
@@ -19588,16 +20229,16 @@ void mainImage(out vec4 o, in vec2 f){
     });
     $('#bpmHalf').addEventListener('click',()=>BPM.setBpm(BPM.bpm/2));
     $('#bpmDouble').addEventListener('click',()=>BPM.setBpm(BPM.bpm*2));
-    $('#bpmMidiLearn').addEventListener('click',()=>{ MIDI.learn = '*:__bpm__'; toast('MIDI Learn → BPM: CCを動かして'); });
-    $('#cfMidiLearn').addEventListener('click',()=>{ MIDI.learn = '*:__crossfade__'; toast('MIDI Learn → Crossfade: CCを動かして'); });
+    $('#bpmMidiLearn').addEventListener('click',()=>{ MIDI.learn = '*:__bpm__'; toast(I18n.t("MIDI Learn → BPM: CCを動かして")); });
+    $('#cfMidiLearn').addEventListener('click',()=>{ MIDI.learn = '*:__crossfade__'; toast(I18n.t("MIDI Learn → Crossfade: CCを動かして")); });
     { const rel = $('#midiRelative'), stp = $('#midiRelStep'), stpV = $('#midiRelStepVal'), mode = $('#midiRelMode');
       if(rel){
         rel.checked = !!MIDI.relative;
-        rel.addEventListener('change', ()=>{ MIDI.relative = rel.checked; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); MIDI.saveRelativeDefault(); toast('MIDI 相対モード: ' + (rel.checked?'ON (エンドレスエンコーダ)':'OFF (絶対)')); });
+        rel.addEventListener('change', ()=>{ MIDI.relative = rel.checked; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); MIDI.saveRelativeDefault(); toast(I18n.t("MIDI 相対モード: ") + (rel.checked?I18n.t("ON (エンドレスエンコーダ)"):I18n.t("OFF (絶対)"))); });
       }
       if(mode){
         mode.value = MIDI.relMode;
-        mode.addEventListener('change', ()=>{ MIDI.relMode = mode.value; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); MIDI.saveRelativeDefault(); toast('MIDI 相対エンコーダ方式: ' + mode.options[mode.selectedIndex].text); });
+        mode.addEventListener('change', ()=>{ MIDI.relMode = mode.value; MIDI._relVal = {}; MIDI._relRaw = {}; MIDI._configureLCXL3Relative(MIDI.relative && MIDI.relMode === 'lcxl3'); MIDI.saveRelativeDefault(); toast(I18n.t("MIDI 相対エンコーダ方式: ") + mode.options[mode.selectedIndex].text); });
       }
       if(stp){
         const showStep = ()=>{
@@ -19612,13 +20253,13 @@ void mainImage(out vec4 o, in vec2 f){
           MIDI.saveRelativeDefault();
         });
       } }
-    { const b = $('#tapMidiLearn'); if(b) b.addEventListener('click',()=>{ MIDI.learn = '*:__tap__'; toast('MIDI Learn → Tap: midiコンのボタンを押して'); }); }
-    { const b = $('#resetMidiLearn'); if(b) b.addEventListener('click',()=>{ MIDI.learn = '*:__resetPhase__'; toast('MIDI Learn → Reset Φ: midiコンのボタンを押して'); }); }
+    { const b = $('#tapMidiLearn'); if(b) b.addEventListener('click',()=>{ MIDI.learn = '*:__tap__'; toast(I18n.t("MIDI Learn → Tap: midiコンのボタンを押して")); }); }
+    { const b = $('#resetMidiLearn'); if(b) b.addEventListener('click',()=>{ MIDI.learn = '*:__resetPhase__'; toast(I18n.t("MIDI Learn → Reset Φ: midiコンのボタンを押して")); }); }
     { const b = $('#btnMidiPush'); if(b) b.addEventListener('click',()=>{ MIDI.pushMap(); }); }
     { const b = $('#btnMidiPull'); if(b) b.addEventListener('click',()=>{ MIDI.pullMap(); }); }
-    { const b = $('#btnDiagDownload'); if(b) b.addEventListener('click',()=>{ Diag.download(); toast('診断ログを保存しました'); }); }
-    { const b = $('#btnDiagShow');     if(b) b.addEventListener('click',()=>{ Diag.dump(); toast('コンソールに表示 (F12)'); }); }
-    { const b = $('#btnDiagClear');    if(b) b.addEventListener('click',()=>{ Diag.clear(); toast('診断ログをクリア'); }); }
+    { const b = $('#btnDiagDownload'); if(b) b.addEventListener('click',()=>{ Diag.download(); toast(I18n.t("診断ログを保存しました")); }); }
+    { const b = $('#btnDiagShow');     if(b) b.addEventListener('click',()=>{ Diag.dump(); toast(I18n.t("コンソールに表示 (F12)")); }); }
+    { const b = $('#btnDiagClear');    if(b) b.addEventListener('click',()=>{ Diag.clear(); toast(I18n.t("診断ログをクリア")); }); }
     { const b = $('#btnDefaultsExport');  if(b) b.addEventListener('click',()=>App.exportDefaults(false)); }
     { const b = $('#btnDefaultsCurrent'); if(b) b.addEventListener('click',()=>App.exportDefaults(true)); }
     { const input = $('#defaultsFile'), b = $('#btnDefaultsImport');
@@ -19629,8 +20270,8 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // ツール一式ダウンロード (export.php)。Content-Disposition: attachment なのでページ遷移せず保存される
     const _dl = url=>{ const a=document.createElement('a'); a.href=url; a.rel='noopener'; document.body.appendChild(a); a.click(); a.remove(); };
-    { const b = $('#btnExportTool');    if(b) b.addEventListener('click',()=>{ _dl('export.php');       toast('ツール一式をダウンロード中…'); }); }
-    { const b = $('#btnExportToolAll'); if(b) b.addEventListener('click',()=>{ _dl('export.php?all=1'); toast('全ファイル (メディア込) をダウンロード中…'); }); }
+    { const b = $('#btnExportTool');    if(b) b.addEventListener('click',()=>{ _dl('export.php');       toast(I18n.t("ツール一式をダウンロード中…")); }); }
+    { const b = $('#btnExportToolAll'); if(b) b.addEventListener('click',()=>{ _dl('export.php?all=1'); toast(I18n.t("全ファイル (メディア込) をダウンロード中…")); }); }
 
     // audio (ON のボタンに色を付ける / 点灯中の再クリックで OFF にトグル)
     $('#btnAudioNone').addEventListener('click', async ()=>{ await Audio.stop(); UI.refreshAudioButtons(); });
@@ -19645,7 +20286,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(!Prefs.touch) b.addEventListener('click',()=>Projector.open());
       else if(!document.documentElement.requestFullscreen) b.style.display = 'none';   // スマホは別ウィンドウ出力の代わりにフルスクリーン
       else{
-        b.title = 'フルスクリーン (Shift+F)';
+        I18n.bind(b, "フルスクリーン (Shift+F)", "title");
         b.querySelector('.lb').textContent = 'Full';
         b.addEventListener('click',()=>App.toggleFullscreen());
       }
@@ -19743,11 +20384,11 @@ void mainImage(out vec4 o, in vec2 f){
             }
             idleLabel();
             lb.classList.toggle('on', App.fullCacheEnabled);
-            toast('全素材・動画バッファのフルキャッシュが完了しました');
+            toast(I18n.t("全素材・動画バッファのフルキャッシュが完了しました"));
           }catch(e){
             idleLabel();
             lb.classList.toggle('on', App.fullCacheEnabled);
-            toast('フルキャッシュ中にエラーが発生しました');
+            toast(I18n.t("フルキャッシュ中にエラーが発生しました"));
           } finally {
             lb.dataset.busy = '0';
           }
@@ -19760,7 +20401,7 @@ void mainImage(out vec4 o, in vec2 f){
           if(typeof Movie !== 'undefined' && Movie.setFullCacheEnabled) Movie.setFullCacheEnabled(on);
           lb.classList.toggle('on', on); idleLabel();
           if(on) await runFullCache();
-          else toast('フルキャッシュ OFF（保存済みデータは保持）');
+          else toast(I18n.t("フルキャッシュ OFF（保存済みデータは保持）"));
         });
         if(on) setTimeout(()=>runFullCache(), 800);
       } }
@@ -19814,7 +20455,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(!el){
       el = document.createElement('div');
       el.id = 'stageHint';
-      el.textContent = 'Visual タブでタイルをタップ (クリック) して読み込み';
+      I18n.bind(el, "Visual タブでタイルをタップ (クリック) して読み込み", "textContent");
       $('#stageInner').appendChild(el);
     }
     el.hidden = !empty;
@@ -19831,13 +20472,13 @@ void mainImage(out vec4 o, in vec2 f){
       if(!el || (el.type !== 'range' && el.type !== 'checkbox')) return;
       e.preventDefault();
       const key = el.dataset.midiKey;
-      if(MIDI.learn === key){ MIDI.learn = null; toast('MIDI Learn 解除'); return; }
+      if(MIDI.learn === key){ MIDI.learn = null; toast(I18n.t("MIDI Learn 解除")); return; }
       MIDI.learn = key;
       // ラベル: 近傍 <label> → 無ければキーから推定
       const row = el.closest('.row');
       const lb = row ? row.querySelector('label') : null;
       const label = (lb ? lb.textContent.trim() : '') || MIDI._paramLabel(key.split(':')[1] || key);
-      toast('MIDI Learn → ' + label + (el.type === 'checkbox' ? ': スイッチ/ボタンを操作' : ': つまみを動かして'));
+      toast('MIDI Learn → ' + label + (el.type === 'checkbox' ? I18n.t(": スイッチ/ボタンを操作") : I18n.t(": つまみを動かして")));
     });
   },
 
@@ -20010,6 +20651,7 @@ void mainImage(out vec4 o, in vec2 f){
         const kind = b.dataset.kind;
         const defaultScope = b.closest('.section');
         if(b.classList.contains('randDefBtn') && kind === 'overlay' && UI._overlayRandomize){ UI._overlayRandomize(); return; }
+        if(b.classList.contains('randDefBtn') && kind === 'imgconstruct'){ ImageConstruct.randomLook(); App._undoSchedule(); return; }
         if(b.classList.contains('randDefBtn') && kind === 'textdeform'){ UI.tdLookRandom(); return; }   // Type Deformer は Look を引き直す
         if(b.classList.contains('randDefBtn')){ UI.randomizeSection(defaultScope, kind); return; }
         if(b.classList.contains('resetDefBtn')){
@@ -20018,7 +20660,7 @@ void mainImage(out vec4 o, in vec2 f){
             UI.refreshOverlay();
             Overlay.clear();
             if(typeof MIDI !== 'undefined') (MIDI.syncLeds ? MIDI.syncLeds() : MIDI.refreshLeds());
-            toast('デフォルトをリセット: overlay (' + m + ')');
+            toast(I18n.t("デフォルトをリセット: overlay (") + m + ')');
           }
           else if(kind === 'ugomekiMd') UI.resetUgomekiMdDefault();
           else if(kind === 'spacetypeMd') UI.resetSpaceTypeMdDefault();
@@ -20034,6 +20676,9 @@ void mainImage(out vec4 o, in vec2 f){
           else if(kind === 'sparam') App.clearShaderParamDefaults(App.activeSlot);
           else if(kind === 'image') UI.resetImageDefault();
           else if(kind && kind.indexOf('glitchtype:') === 0) UI.resetGlitchTypeBlock(kind.slice(11));   // Glitch Type はブロックの値だけ戻す
+          else if(kind && kind.indexOf('tdlook:') === 0) UI.tdResetLookBlock(defaultScope);   // TD の Look の中身の欄は Look の値へ
+          else if(kind && kind.indexOf('tdblock:') === 0){ App.resetEngineBlockDefault('textdeform', UI._tdBlockKeys(defaultScope), kind.slice(8)); TextDeform.applyP(); UI.refreshTextDeform(); UI.refreshTextDeformSurface && UI.refreshTextDeformSurface(); }
+          else if(kind && kind.indexOf('block:') === 0){ const [, ek, ...t] = kind.split(':'); App.resetEngineBlockDefault(ek, UI._blockKeys(defaultScope), t.join(':')); UI.refreshAll && UI.refreshAll(); }   // 欄のブロックはその値だけ戻す
           else App.resetEngineDefault(kind);
           return;
         }
@@ -20041,7 +20686,7 @@ void mainImage(out vec4 o, in vec2 f){
         // Save で「既定値」が変わるので、ダブルクリック復帰用の控えも更新する
         { const sec = defaultScope;
           if(sec) sec.querySelectorAll('input[type=range]').forEach(el=>{ el.dataset.defval = el.value; }); }
-        if(kind === 'overlay'){ Object.assign(Overlay.P, App.paramValues('overlay', Overlay.P)); const m = Overlay.saveModeDefault(); toast('デフォルト保存: IMAGON ('+m+')'); }
+        if(kind === 'overlay'){ Object.assign(Overlay.P, App.paramValues('overlay', Overlay.P)); const m = Overlay.saveModeDefault(); toast(I18n.t("デフォルト保存: IMAGON (")+m+')'); }
         else if(kind === 'ugomekiMd') UI.saveUgomekiMdDefault();
         else if(kind === 'spacetypeMd') UI.saveSpaceTypeMdDefault();
         else if(kind === 'slicerImg') UI.saveSlicerImgDefault();
@@ -20054,6 +20699,8 @@ void mainImage(out vec4 o, in vec2 f){
         else if(kind === 'fb') App.saveFbDefault();
         else if(kind && kind.indexOf('post:') === 0) App.savePostGroupDefault(kind.slice(5));
         else if(kind && kind.indexOf('glitchtype:') === 0) App.saveEngineDefault('glitchtype');   // ブロックの Save も Glitch Type 全体を保存
+        else if(kind && kind.indexOf('tdblock:') === 0) App.saveEngineBlockDefault('textdeform', UI._tdBlockKeys(defaultScope), kind.slice(8));   // TD の欄はその値だけ保存
+        else if(kind && kind.indexOf('block:') === 0){ const [, ek, ...t] = kind.split(':'); App.saveEngineBlockDefault(ek, UI._blockKeys(defaultScope), t.join(':')); }   // 欄のブロックはその値だけ保存
         else if(kind === 'sparam') App.saveShaderParamDefaults(App.activeSlot);
         else if(kind === 'image') UI.saveImageDefault();
         else App.saveEngineDefault(kind);
@@ -20186,7 +20833,7 @@ void mainImage(out vec4 o, in vec2 f){
         if(brushKeySet.has(key) && Overlay.saveBrushParam) Overlay.saveBrushParam(key, v);
       });
     };
-    const f2 = v=>v.toFixed(2), f3 = v=>v.toFixed(3), f1 = v=>v.toFixed(1), fi = v=>String(v|0);
+    const f2 = v=>v.toFixed(2), f3 = v=>v.toFixed(3), f1 = v=>v.toFixed(2), fi = v=>String(v|0);
     slid('ovMaxStr',       'maxStrokes',   fi);
     slid('ovSpawnCnt',     'spawnCount',   fi);
     // Stroke Path
@@ -20264,7 +20911,7 @@ void mainImage(out vec4 o, in vec2 f){
       const el = $('#'+id);
       if(el) el.value = String(v);
     };
-    const f2 = v=>v.toFixed(2), f3 = v=>v.toFixed(3), f1 = v=>v.toFixed(1), fi = v=>String(v|0);
+    const f2 = v=>v.toFixed(2), f3 = v=>v.toFixed(3), f1 = v=>v.toFixed(2), fi = v=>String(v|0);
 
     setCb('ovPersist', O.persist);
     setR('ovMaxStr',       O.maxStrokes,   fi, 'maxStrokes');
@@ -20335,7 +20982,7 @@ void mainImage(out vec4 o, in vec2 f){
   bindManga(){
     if(typeof Manga === 'undefined') return;
     const M = Manga.P;
-    const f2 = v=>v.toFixed(2), f1 = v=>v.toFixed(1), fi = v=>String(v|0);
+    const f2 = v=>v.toFixed(2), f1 = v=>v.toFixed(2), fi = v=>String(v|0);
     const slid = (id, key, format)=>{
       const el = $('#'+id); const val = $('#'+id+'Val');
       if(!el) return;
@@ -20430,7 +21077,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('mgInit',      'initialCount', fi);
     slid('mgPageScale', 'pageScale',    f1);
     slid('mgManualZoom','manualZoom',   f2);
-    const pc = v=>v + '%', pd = v=>v + '°', ppx = v=>v + 'px', pms = v=>v + 'ms';
+    const pc = ParamValues.pct, pd = ParamValues.deg, ppx = v=>v + 'px', pms = v=>v + 'ms';
     slid('mgTaper',       'clusterTaper',    pc);
     slid('mgSpread',      'clusterSpread',   pc);
     slid('mgFocusPull',   'focusPull',       pc);
@@ -20504,9 +21151,14 @@ void mainImage(out vec4 o, in vec2 f){
     if(mir) mir.addEventListener('change', ()=>{ Movie.P.mirror = parseInt(mir.value, 10) || 0; });
   },
   _vidFx(){
-    const pct = v=>Math.round(v) + '%';
-    return [['vidRotate','rotate',v=>Math.round(v)+'°'], ['vidTile','tile',pct], ['vidAspect','aspect',pct], ['vidWave','wave',pct],
-            ['vidWaveFreq','waveFreq',v=>String(Math.round(v))], ['vidVignette','vignette',pct], ['vidBars','bars',pct]];
+    const pct = ParamValues.pct;
+    return [['vidRotate','rotate',ParamValues.deg], ['vidTile','tile',pct], ['vidAspect','aspect',pct], ['vidWave','wave',pct],
+            ['vidWaveFreq','waveFreq',v=>String(Math.round(v))], ['vidVignette','vignette',pct], ['vidBars','bars',pct],
+            ['vidColumns','columns',v=>String(Math.round(v))], ['vidRows','rows',v=>String(Math.round(v))],
+            ['vidGapX','gapX',pct], ['vidGapY','gapY',pct], ['vidOffsetX','offsetX',pct], ['vidOffsetY','offsetY',pct],
+            ['vidCellSize','cellSize',pct], ['vidRowShift','rowShift',pct], ['vidColShift','colShift',pct],
+            ['vidCellRotate','cellRotate',ParamValues.deg], ['vidFlipAlt','flipAlt',v=>String(Math.round(v))],
+            ['vidScrollX','scrollX',v=>v.toFixed(2)], ['vidScrollY','scrollY',v=>v.toFixed(2)], ['vidTimeOffset','timeOffset',v=>v.toFixed(2)]];
   },
 
   refreshBeatMode(){
@@ -20609,13 +21261,13 @@ void mainImage(out vec4 o, in vec2 f){
       ['BG',            'bg',         0,   1,   0.02,  v=>v.toFixed(2)],
       ['Size',          'size',       0.1, 4.0, 0.05,  v=>v.toFixed(2)],
       ['Size Var',      'sizeVar',    0,   1.5, 0.05,  v=>v.toFixed(2)],
-      ['Spread',        'spread',     1,   40,  0.5,   v=>v.toFixed(1),  ()=>Layer.generateLayout()],
+      ['Spread',        'spread',     1,   40,  0.5,   v=>v.toFixed(2),  ()=>Layer.generateLayout()],
       ['Seed',          'seed',       0,   999, 1,     v=>String(v|0),   ()=>Layer.generateLayout()],
       ['Curvature',     'curvature',  0,   1,   0.05,  v=>v.toFixed(2)],
       ['Spin',          'spin',       0,   3,   0.05,  v=>v.toFixed(2)],
       ['Float',         'float',      0,   2,   0.05,  v=>v.toFixed(2)],
       ['Cam Orbit',     'autorot',    0,   1,   0.01,  v=>v.toFixed(2)],
-      ['Distance',      'dist',       2,   80,  0.5,   v=>v.toFixed(1)],
+      ['Distance',      'dist',       2,   80,  0.5,   v=>v.toFixed(2)],
       ['FOV',           'fov',        10,  150, 1,     v=>String(v|0)],
       ['Cam Elev',      'camEl',     -1.4, 1.4, 0.05,  v=>v.toFixed(2)],
       ['Ambient',       'ambient',    0,   1,   0.05,  v=>v.toFixed(2)],
@@ -20623,33 +21275,33 @@ void mainImage(out vec4 o, in vec2 f){
       ['Fog',           'fog',        0,   0.2, 0.002, v=>v.toFixed(3)],
       ['Light Az',      'lightAz',    0,   360, 1,     v=>String(v|0)],
       ['Shadow Str',    'shadowStr',  0,   1,   0.05,  v=>v.toFixed(2)],
-      ['Shadow Soft',   'shadowSoft', 0,   10,  0.5,   v=>v.toFixed(1)],
-      ['Ground Mult',   'groundMult', -3,  0.5, 0.1,   v=>v.toFixed(1)],
+      ['Shadow Soft',   'shadowSoft', 0,   10,  0.5,   v=>v.toFixed(2)],
+      ['Ground Mult',   'groundMult', -3,  0.5, 0.1,   v=>v.toFixed(2)],
       ['Ground Brt',    'groundBrt',  0,   1,   0.05,  v=>v.toFixed(2)],
-      ['Aspect',        'aspect',     20,  300, 1,     v=>Math.round(v)+'%'],
-      ['Corner',        'corner',     0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Frame',         'frame',      0,   30,  0.5,   v=>v.toFixed(1)+'%'],
-      ['Tex Zoom',      'texZoom',    100, 400, 1,     v=>Math.round(v)+'%'],
-      ['Opacity',       'opacity',    10,  100, 1,     v=>Math.round(v)+'%'],
-      ['Shade Var',     'shadeVar',   0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Back Dim',      'backDim',    0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Gloss',         'gloss',      0,   1000, 1,     v=>Math.round(v)+'%'],
+      ['Aspect',        'aspect',     20,  300, 0.01,     ParamValues.pct],
+      ['Corner',        'corner',     0,   100, 0.01,     ParamValues.pct],
+      ['Frame',         'frame',      0,   30,  0.5,   v=>v.toFixed(2)+'%'],
+      ['Tex Zoom',      'texZoom',    100, 400, 0.01,     ParamValues.pct],
+      ['Opacity',       'opacity',    10,  100, 0.01,     ParamValues.pct],
+      ['Shade Var',     'shadeVar',   0,   100, 0.01,     ParamValues.pct],
+      ['Back Dim',      'backDim',    0,   100, 0.01,     ParamValues.pct],
+      ['Gloss',         'gloss',      0,   1000, 0.01,     ParamValues.pct],
       ['Gloss Sharp',   'glossPow',   4,   200, 1,     v=>String(Math.round(v))],
-      ['Light Height',  'lightH',     0,   300, 1,     v=>Math.round(v)+'%'],
-      ['Bend 2nd',      'bend2',      0,   500, 1,     v=>Math.round(v)+'%'],
-      ['Layout X',      'layoutX',    10,  250, 1,     v=>Math.round(v)+'%'],
-      ['Layout Y',      'layoutY',    10,  250, 1,     v=>Math.round(v)+'%'],
-      ['Layout Z',      'layoutZ',    10,  250, 1,     v=>Math.round(v)+'%'],
-      ['Hollow',        'hollow',     0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Size Grad',     'sizeGrad',  -60, 60, 1,     v=>Math.round(v)+'%'],
-      ['Pulse',         'pulse',      0,   80,  1,     v=>Math.round(v)+'%'],
-      ['Drift',         'drift',      0,   10,  0.1,   v=>v.toFixed(1)],
-      ['Swirl',         'swirl',     -100, 100, 1,     v=>Math.round(v)+'%'],
-      ['Axis Lock',     'axisLock',   0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Tilt',          'tilt',       0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Face Cam',      'faceCam',    0,   100, 1,     v=>Math.round(v)+'%'],
-      ['Cam Roll',      'camRoll',   -90,  90,  1,     v=>Math.round(v)+'°'],
-      ['Cam Az Offset', 'camAzOff',  -180, 180, 1,     v=>Math.round(v)+'°'],
+      ['Light Height',  'lightH',     0,   300, 0.01,     ParamValues.pct],
+      ['Bend 2nd',      'bend2',      0,   500, 0.01,     ParamValues.pct],
+      ['Layout X',      'layoutX',    10,  250, 0.01,     ParamValues.pct],
+      ['Layout Y',      'layoutY',    10,  250, 0.01,     ParamValues.pct],
+      ['Layout Z',      'layoutZ',    10,  250, 0.01,     ParamValues.pct],
+      ['Hollow',        'hollow',     0,   100, 0.01,     ParamValues.pct],
+      ['Size Grad',     'sizeGrad',  -60, 60, 0.01,     ParamValues.pct],
+      ['Pulse',         'pulse',      0,   80,  0.01,     ParamValues.pct],
+      ['Drift',         'drift',      0,   10,  0.1,   v=>v.toFixed(2)],
+      ['Swirl',         'swirl',     -100, 100, 0.01,     ParamValues.pct],
+      ['Axis Lock',     'axisLock',   0,   100, 0.01,     ParamValues.pct],
+      ['Tilt',          'tilt',       0,   100, 0.01,     ParamValues.pct],
+      ['Face Cam',      'faceCam',    0,   100, 0.01,     ParamValues.pct],
+      ['Cam Roll',      'camRoll',   -90,  90,  0.01,     ParamValues.deg],
+      ['Cam Az Offset', 'camAzOff',  -180, 180, 0.01,     ParamValues.deg],
     ];
     for(const [label, key, mi, ma, st, fmt, cb] of specs){
       const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
@@ -20734,31 +21386,31 @@ void mainImage(out vec4 o, in vec2 f){
       ['Depth',   'depth',  0,   1.0, 0.05, v=>v.toFixed(2)],
       ['Speed',   'speed',  0.1, 3.0, 0.05, v=>v.toFixed(2)],
       ['Color',   'color',  0,   2,   1,    v=>(['Mono','Random','Shared'][v|0] || String(v|0))],
-      ['Perspective',    'persp',     65, 250, 1, v=>Math.round(v)+'%'],   // 遠近感 (小さいほどカメラが近く歪む。見かけの大きさは保つ)
-      ['Cam Pitch',      'camPitch',  -80, 80, 1, v=>Math.round(v)+'°'],   // カメラの仰角に足す
-      ['Cam Yaw',        'camYaw',    -180, 180, 1, v=>Math.round(v)+'°'],   // カメラの方位に足す
-      ['Cam Roll',       'camRoll',   -180, 180, 1, v=>Math.round(v)+'°'],   // 画面の傾き
-      ['Cam Wander',     'camWander', 0, 150, 1, v=>Math.round(v)+'%'],   // カメラが振れる大きさ (0 で固定)
-      ['Spread',         'spread',    20, 160, 1, v=>Math.round(v)+'%'],   // 線を散らす球の大きさ
-      ['Arc Bow',        'arcBow',    0, 250, 1, v=>Math.round(v)+'%'],   // 弧の膨らみ
-      ['Zigzag Rate',    'zigRate',   0, 100, 1, v=>Math.round(v)+'%'],   // 多段カーブになる線の割合
-      ['Zigzag Amount',  'zigAmp',    20, 250, 1, v=>Math.round(v)+'%'],   // 多段カーブの振れ幅
-      ['Milli Ratio',    'milliRate', 0, 100, 1, v=>Math.round(v)+'%'],   // ミリペン (細線) と G ペンの比率
-      ['Jump Rate',      'jumpRate',  0, 100, 1, v=>Math.round(v)+'%'],   // 線幅が段差で跳ぶ線の割合
-      ['Jump Contrast',  'jumpPow',   0, 250, 1, v=>Math.round(v)+'%'],   // 段差の太細の差 (0 で段差なし)
-      ['Blot Size',      'blotSize',  0, 400, 1, v=>Math.round(v)+'%'],   // ミリペンのダマの大きさ
-      ['Waver',          'waver',     0, 400, 1, v=>Math.round(v)+'%'],   // ミリペンの線幅のうねり
-      ['Taper',          'taper',     20, 250, 1, v=>Math.round(v)+'%'],   // 入り抜きの長さ
-      ['Grain Fineness', 'grain',     25, 400, 1, v=>Math.round(v)+'%'],   // かすれの粒の細かさ
-      ['Edge Fineness',  'edgeF',     30, 300, 1, v=>Math.round(v)+'%'],   // 縁のゆらぎの細かさ
-      ['Edge Soft',      'edgeSoft',  0, 100, 1, v=>Math.round(v)+'%'],   // 縁のぼかし
-      ['Hue Run',        'palRun',    -300, 300, 1, v=>Math.round(v)+'%'],   // 1 本の線の中で色が巡る量 (負で逆向き)
-      ['Edge Shade',     'edgeShade', 0, 250, 1, v=>Math.round(v)+'%'],   // パレット色の縁の暗がり
-      ['Ink Opacity',    'opacity',   10, 100, 1, v=>Math.round(v)+'%'],   // インクの濃さ (重なりが透ける)
-      ['Hold',           'hold',      20, 300, 1, v=>Math.round(v)+'%'],   // 描き終えて残る時間
-      ['Fade',           'fade',      20, 300, 1, v=>Math.round(v)+'%'],   // 消えるまでの時間
+      ['Perspective',    'persp',     65, 250, 0.01, ParamValues.pct],   // 遠近感 (小さいほどカメラが近く歪む。見かけの大きさは保つ)
+      ['Cam Pitch',      'camPitch',  -80, 80, 0.01, ParamValues.deg],   // カメラの仰角に足す
+      ['Cam Yaw',        'camYaw',    -180, 180, 0.01, ParamValues.deg],   // カメラの方位に足す
+      ['Cam Roll',       'camRoll',   -180, 180, 0.01, ParamValues.deg],   // 画面の傾き
+      ['Cam Wander',     'camWander', 0, 150, 0.01, ParamValues.pct],   // カメラが振れる大きさ (0 で固定)
+      ['Spread',         'spread',    20, 160, 0.01, ParamValues.pct],   // 線を散らす球の大きさ
+      ['Arc Bow',        'arcBow',    0, 250, 0.01, ParamValues.pct],   // 弧の膨らみ
+      ['Zigzag Rate',    'zigRate',   0, 100, 0.01, ParamValues.pct],   // 多段カーブになる線の割合
+      ['Zigzag Amount',  'zigAmp',    20, 250, 0.01, ParamValues.pct],   // 多段カーブの振れ幅
+      ['Milli Ratio',    'milliRate', 0, 100, 0.01, ParamValues.pct],   // ミリペン (細線) と G ペンの比率
+      ['Jump Rate',      'jumpRate',  0, 100, 0.01, ParamValues.pct],   // 線幅が段差で跳ぶ線の割合
+      ['Jump Contrast',  'jumpPow',   0, 250, 0.01, ParamValues.pct],   // 段差の太細の差 (0 で段差なし)
+      ['Blot Size',      'blotSize',  0, 400, 0.01, ParamValues.pct],   // ミリペンのダマの大きさ
+      ['Waver',          'waver',     0, 400, 0.01, ParamValues.pct],   // ミリペンの線幅のうねり
+      ['Taper',          'taper',     20, 250, 0.01, ParamValues.pct],   // 入り抜きの長さ
+      ['Grain Fineness', 'grain',     25, 400, 0.01, ParamValues.pct],   // かすれの粒の細かさ
+      ['Edge Fineness',  'edgeF',     30, 300, 0.01, ParamValues.pct],   // 縁のゆらぎの細かさ
+      ['Edge Soft',      'edgeSoft',  0, 100, 0.01, ParamValues.pct],   // 縁のぼかし
+      ['Hue Run',        'palRun',    -300, 300, 0.01, ParamValues.pct],   // 1 本の線の中で色が巡る量 (負で逆向き)
+      ['Edge Shade',     'edgeShade', 0, 250, 0.01, ParamValues.pct],   // パレット色の縁の暗がり
+      ['Ink Opacity',    'opacity',   10, 100, 0.01, ParamValues.pct],   // インクの濃さ (重なりが透ける)
+      ['Hold',           'hold',      20, 300, 0.01, ParamValues.pct],   // 描き終えて残る時間
+      ['Fade',           'fade',      20, 300, 0.01, ParamValues.pct],   // 消えるまでの時間
       ['Spawn Divide',   'spawnDiv',  1, 8, 1, v=>String(Math.round(v))],   // 1 拍を何分割して線を入れ替えるか
-      ['Depth Fog',      'depthFog',  0, 100, 1, v=>Math.round(v)+'%'],   // 奥の線ほど薄くする
+      ['Depth Fog',      'depthFog',  0, 100, 0.01, ParamValues.pct],   // 奥の線ほど薄くする
     ];
     for(const [label, key, mi, ma, st, fmt, cb] of specs){
       const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
@@ -20822,7 +21474,7 @@ void mainImage(out vec4 o, in vec2 f){
     {
       const row = mkRow('Scene');
       const sel = document.createElement('select'); sel.style.flex = '1';
-      sel.title = 'Random=Scene Beats 拍ごとに抽選 (beatモードのみ。droneでは現在のシーンを維持) / それ以外=固定';
+      I18n.bind(sel, "Random=Scene Beats 拍ごとに抽選 (beatモードのみ。droneでは現在のシーンを維持) / それ以外=固定", "title");
       const items = [['random','Random'],['editorial','Editorial (組版)'],['fluid','Fluid (構図)'],['melt','Meltdown'],['columns','Columns (段組)'],['vert','Vertical (縦書き)'],['typer','Typer'],['render','ASCII Render']];
       for(const [v, name] of items){ const o = document.createElement('option'); o.value = v; o.textContent = name; sel.appendChild(o); }
       sel.value = items.some(i=>i[0]===P.scene) ? P.scene : 'fluid';
@@ -20891,7 +21543,7 @@ void mainImage(out vec4 o, in vec2 f){
     {
       const row = mkRow('Randomize');
       const b = document.createElement('button'); b.style.flex = '1'; b.textContent = 'Random Params';
-      b.title = '動き・密度・色などのパラメータをランダム生成 (Scene の選択は変えない。保存は右上の Save)';
+      I18n.bind(b, "動き・密度・色などのパラメータをランダム生成 (Scene の選択は変えない。保存は右上の Save)", "title");
       b.addEventListener('click', ()=>{
         const R = (a, bb)=> a + Math.random()*(bb - a);
         const ch = (pp)=> Math.random() < pp;
@@ -20996,7 +21648,7 @@ void mainImage(out vec4 o, in vec2 f){
     {
       const row = mkRow('Ink', 'inkMode');
       const sel = document.createElement('select'); sel.style.flex = '1';
-      sel.title = '文字色: Variant=構図ごとの配色 / 品詞=文字種で色分け / Mono=白 / Terminal=緑 / Duotone=横組み Mono Ink + 縦書き Fluid Accent';
+      I18n.bind(sel, "文字色: Variant=構図ごとの配色 / 品詞=文字種で色分け / Mono=白 / Terminal=緑 / Duotone=横組み Mono Ink + 縦書き Fluid Accent", "title");
       [['0','Variant'],['1','品詞カラー'],['2','Mono'],['3','Terminal'],['4','Duotone']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
       sel.value = String(P.inkMode|0);
       sel.addEventListener('change', ()=>{ P.inkMode = parseInt(sel.value,10)||0; App._undoSchedule(); });
@@ -21005,7 +21657,7 @@ void mainImage(out vec4 o, in vec2 f){
     {
       const row = mkRow('Palette', 'palette');
       const sel = document.createElement('select'); sel.style.flex = '1';
-      sel.title = 'ASCII Render シーンの配色';
+      I18n.bind(sel, "ASCII Render シーンの配色", "title");
       [['-1','Random'],['0','Amber'],['1','Cyan'],['2','Pink'],['3','Green'],['4','Burn'],['5','Mono']].forEach(([v,n])=>{ const o=document.createElement('option'); o.value=v; o.textContent=n; sel.appendChild(o); });
       sel.value = String(P.palette|0);
       sel.addEventListener('change', ()=>{ P.palette = parseInt(sel.value,10); App._undoSchedule(); });
@@ -21013,18 +21665,7 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // ── チェックボックス ──
     mkToggles('Layers', [['vertLayer', '縦書き', 'Fluid: 右→左の縦書きレイヤー'], ['holeLayer', '黒抜き', 'Fluid: 図形内を黒文字で抜くレイヤー'], ['cursor', 'カーソル', 'Fluid: 下部の走査カーソル'], ['fluidRunCaret', '末尾キャレット', 'Fluid: 字のひと続きの末尾ごとにキャレット'], ['clash', '重なり除去', 'Fluid: 横組みと重なる縦書きの字を抜く']]);
-    // グループに組む (見出しで畳む。開閉は端末ごとに覚える)。自動のカテゴリ折りたたみ (_initParamFold) からは外す
-    root.classList.add('fold-skip');
-    const rowOf = k => { const el = root.querySelector(`[data-pkey="${k}"]`); return el && el.closest('.row'); };
-    for(const [title, keys] of (NovelTerminal.PARAM_GROUPS || [])){
-      const rows = [...new Set(keys.map(rowOf).filter(Boolean))];
-      if(!rows.length) continue;
-      const head = document.createElement('div'); head.className = 'fold-head'; head.textContent = title; head.dataset.pkey = 'group:' + title;
-      root.appendChild(head);
-      rows.forEach(r=>{ root.appendChild(r); r.classList.add('fold-child'); });
-      const tog = this.foldToggle(head, rows, 'novel.' + title);
-      head.addEventListener('click', ()=> tog && tog.click());
-    }
+    // 欄 (NovelTerminal.PARAM_GROUPS) ごとのブロックへの分割は bindEngineHints (engineBlocks) が行う
     // 今の Scene で使わないパラメータ (とグループ) をグレーにする (値は保持・Save の対象のまま)。見出しにホバーで説明
     this.bindEngineHints(root, NovelTerminal);
   },
@@ -21045,38 +21686,38 @@ void mainImage(out vec4 o, in vec2 f){
       ['Speed',      'speed',     0.1, 3,   0.05, v=>v.toFixed(2)],   // 全体の時間速度
       ['Audio Sync', 'audioSync', 0,   1,   0.02, v=>v.toFixed(2)],   // 音量同期(0=常時 / 1=無音で引っ込む)
       ['Bar Length', 'barLen',    0.2, 2,   0.05, v=>v.toFixed(2)],   // バーの長さ倍率
-      ['Clock Scale',    'clockScale',  50, 115, 1, v=>Math.round(v)+'%'],   // 時計全体の大きさ
-      ['Clock X',        'clockX',      -40, 40, 1, v=>Math.round(v)+'%'],   // 時計の中心を横へ
-      ['Clock Y',        'clockY',      -40, 40, 1, v=>Math.round(v)+'%'],   // 時計の中心を縦へ
-      ['Ring Tilt',      'ringTilt',    -180, 180, 1, v=>Math.round(v)+'°'],   // リングの向き (回転の起点)
-      ['Ring Radius',    'ringR',       50, 115, 1, v=>Math.round(v)+'%'],   // リング・バー・目盛りの半径 (針とエンブレムは変えない)
+      ['Clock Scale',    'clockScale',  50, 115, 0.01, ParamValues.pct],   // 時計全体の大きさ
+      ['Clock X',        'clockX',      -40, 40, 0.01, ParamValues.pct],   // 時計の中心を横へ
+      ['Clock Y',        'clockY',      -40, 40, 0.01, ParamValues.pct],   // 時計の中心を縦へ
+      ['Ring Tilt',      'ringTilt',    -180, 180, 0.01, ParamValues.deg],   // リングの向き (回転の起点)
+      ['Ring Radius',    'ringR',       50, 115, 0.01, ParamValues.pct],   // リング・バー・目盛りの半径 (針とエンブレムは変えない)
       ['Ring Gap',       'ringGap',     0, 120, 1, v=>Math.round(v)+'px'],   // 外リングと内リングの間隔 (目盛りの長さ)
-      ['Bar Count',      'barCount',    40, 250, 1, v=>Math.round(v)+'%'],   // バーの本数
-      ['Bar Width',      'barFill',     20, 100, 1, v=>Math.round(v)+'%'],   // バーの太さ (ピッチに対する割合)
+      ['Bar Count',      'barCount',    40, 250, 0.01, ParamValues.pct],   // バーの本数
+      ['Bar Width',      'barFill',     20, 100, 0.01, ParamValues.pct],   // バーの太さ (ピッチに対する割合)
       ['Bar Base',       'barMin',      0, 40, 1, v=>Math.round(v)+'px'],   // バーの最短長 (谷の底上げ)
-      ['Hill Sharpness', 'hillSharp',   60, 400, 1, v=>Math.round(v)+'%'],   // 山の鋭さ (指数)
-      ['Spike Amount',   'spikeAmt',    0, 300, 1, v=>Math.round(v)+'%'],   // ランダムに突き出る棒の量
-      ['Bar Shuffle',    'barShuffle',  0, 100, 1, v=>Math.round(v)+'%'],   // 棒ごとの高さのばらつき
-      ['Bar Pulse',      'barPulse',    0, 100, 1, v=>Math.round(v)+'%'],   // 棒の脈動の振れ幅
-      ['Bar Fall',       'barFall',     20, 300, 1, v=>Math.round(v)+'%'],   // 棒の戻りの速さ (小さいほど余韻)
-      ['Attack Punch',   'atkPunch',    0, 300, 1, v=>Math.round(v)+'%'],   // 音の立ち上がりで山が伸びる量
-      ['Inner Bars',     'innerBars',   0, 60, 1, v=>Math.round(v)+'%'],   // 内リングから中心へ向かう鏡像バー
+      ['Hill Sharpness', 'hillSharp',   60, 400, 0.01, ParamValues.pct],   // 山の鋭さ (指数)
+      ['Spike Amount',   'spikeAmt',    0, 300, 0.01, ParamValues.pct],   // ランダムに突き出る棒の量
+      ['Bar Shuffle',    'barShuffle',  0, 100, 0.01, ParamValues.pct],   // 棒ごとの高さのばらつき
+      ['Bar Pulse',      'barPulse',    0, 100, 0.01, ParamValues.pct],   // 棒の脈動の振れ幅
+      ['Bar Fall',       'barFall',     20, 300, 0.01, ParamValues.pct],   // 棒の戻りの速さ (小さいほど余韻)
+      ['Attack Punch',   'atkPunch',    0, 300, 0.01, ParamValues.pct],   // 音の立ち上がりで山が伸びる量
+      ['Inner Bars',     'innerBars',   0, 60, 0.01, ParamValues.pct],   // 内リングから中心へ向かう鏡像バー
       ['Tick Count',     'tickCount',   12, 240, 12, v=>String(Math.round(v))],   // 目盛りの本数 (12 の倍数)
-      ['Tick Weight',    'tickWeight',  30, 300, 1, v=>Math.round(v)+'%'],   // 目盛りの太さ
-      ['Ring Weight',    'ringWeight',  30, 500, 1, v=>Math.round(v)+'%'],   // 同心リングの線の太さ
-      ['Hand Length',    'handLen',     30, 180, 1, v=>Math.round(v)+'%'],   // 針の長さ
-      ['Hand Weight',    'handWeight',  30, 400, 1, v=>Math.round(v)+'%'],   // 針の太さ
-      ['Hand Label',     'handLabel',   0, 500, 1, v=>Math.round(v)+'%'],   // 針先ラベルの大きさ (0 で消す)
-      ['Emblem Size',    'emblemSize',  30, 150, 1, v=>Math.round(v)+'%'],   // 中央エンブレムの大きさ
-      ['Emblem Tilt',    'emblemTilt',  -180, 180, 1, v=>Math.round(v)+'°'],   // エンブレムの向き
-      ['Band Length',    'bandLen',     30, 150, 1, v=>Math.round(v)+'%'],   // 縁のマーキー帯の長さ
+      ['Tick Weight',    'tickWeight',  30, 300, 0.01, ParamValues.pct],   // 目盛りの太さ
+      ['Ring Weight',    'ringWeight',  30, 500, 0.01, ParamValues.pct],   // 同心リングの線の太さ
+      ['Hand Length',    'handLen',     30, 180, 0.01, ParamValues.pct],   // 針の長さ
+      ['Hand Weight',    'handWeight',  30, 400, 0.01, ParamValues.pct],   // 針の太さ
+      ['Hand Label',     'handLabel',   0, 500, 0.01, ParamValues.pct],   // 針先ラベルの大きさ (0 で消す)
+      ['Emblem Size',    'emblemSize',  30, 150, 0.01, ParamValues.pct],   // 中央エンブレムの大きさ
+      ['Emblem Tilt',    'emblemTilt',  -180, 180, 0.01, ParamValues.deg],   // エンブレムの向き
+      ['Band Length',    'bandLen',     30, 150, 0.01, ParamValues.pct],   // 縁のマーキー帯の長さ
       ['Console Lines',  'conLines',    2, 16, 1, v=>String(Math.round(v))],   // 端末の表示行数
-      ['Console Size',   'conSize',     60, 200, 1, v=>Math.round(v)+'%'],   // 端末の文字の大きさ
+      ['Console Size',   'conSize',     60, 200, 0.01, ParamValues.pct],   // 端末の文字の大きさ
       ['Frame Inset',    'frameInset',  0, 80, 1, v=>Math.round(v)+'px'],   // 外枠とコーナーの余白
-      ['Frame Weight',   'frameWeight', 30, 400, 1, v=>Math.round(v)+'%'],   // 外枠の線の太さ
-      ['Bracket Size',   'bracketSize', 30, 250, 1, v=>Math.round(v)+'%'],   // 四隅のコーナーの大きさ
-      ['Title Size',     'titleSize',   0, 200, 1, v=>Math.round(v)+'%'],   // 左上の見出しの大きさ (0 で消す)
-      ['Icon Scale',     'iconScale',   30, 200, 1, v=>Math.round(v)+'%'],   // 右下の HUD アイコンの大きさ
+      ['Frame Weight',   'frameWeight', 30, 400, 0.01, ParamValues.pct],   // 外枠の線の太さ
+      ['Bracket Size',   'bracketSize', 30, 250, 0.01, ParamValues.pct],   // 四隅のコーナーの大きさ
+      ['Title Size',     'titleSize',   0, 200, 0.01, ParamValues.pct],   // 左上の見出しの大きさ (0 で消す)
+      ['Icon Scale',     'iconScale',   30, 200, 0.01, ParamValues.pct],   // 右下の HUD アイコンの大きさ
     ];
     for(const [label, key, mi, ma, st, fmt] of sliders){
       const row = document.createElement('div'); row.className = 'row'; row.dataset.pkey = key;
@@ -21360,7 +22001,7 @@ void mainImage(out vec4 o, in vec2 f){
                 self.set(stops, Math.max(0, idx-1));
               } else {
                 self.set(stops, dragObj);
-                toast('ストップは最低2つ必要です');
+                toast(I18n.t("ストップは最低2つ必要です"));
               }
               return;
             }
@@ -21418,7 +22059,7 @@ void mainImage(out vec4 o, in vec2 f){
       const cur = GradEditor.get();
       const rev = cur.map(s=>({t: 1 - s.t, rgb: s.rgb.slice()}));
       GradEditor.set(rev, (cur.length - 1) - GradEditor.sel);
-      toast('グラデの向きを反転');
+      toast(I18n.t("グラデの向きを反転"));
     };
     // 組み込みグラデ (1〜9,0 キー / リスト番号に対応)
     const BUILTIN_GRADS = [
@@ -21499,7 +22140,7 @@ void mainImage(out vec4 o, in vec2 f){
     };
     // 現在のグラデを名前付きでサーバー保存(追加)
     // Grad Edit の右の ＋ = 現在のグラデを名前付きで新規保存
-    const addCurrentGrad = ()=>{ const stops = GradEditor.get(); App._prompt('保存するグラデの名前:', 'grad '+(GradStore.list.length+1), (name)=>{ if(!name || !name.trim()) return; GradStore.add(name.trim(), stops); toast('グラデを保存: '+name.trim()); }); };
+    const addCurrentGrad = ()=>{ const stops = GradEditor.get(); App._prompt(I18n.t("保存するグラデの名前:"), 'grad '+(GradStore.list.length+1), (name)=>{ if(!name || !name.trim()) return; GradStore.add(name.trim(), stops); toast(I18n.t("グラデを保存: ")+name.trim()); }); };
     { const b = $('#pxGradAdd'); if(b) b.addEventListener('click', addCurrentGrad); }
     document.querySelectorAll('#pxGradFromVisual').forEach(b => b.addEventListener('click', ()=> App.gradFromVisual()));
     // グラデリスト UI (色見本 + 番号 + 名前。番号 1〜9,0 がキーに対応。最上部=現在編集中で sticky)
@@ -21518,10 +22159,10 @@ void mainImage(out vec4 o, in vec2 f){
       box.innerHTML = '';
       box.style.cssText = 'flex:1;min-width:0;display:flex;flex-direction:column;gap:2px';
       // 先頭行 = 現在のグラデを表示。右端の ⇄ で左右 (向き) を入れ替える
-      const cur = mkRow('', _gradCss(GradEditor.get()), '現在');
+      const cur = mkRow('', _gradCss(GradEditor.get()), I18n.t("現在"));
       cur.dataset.cur = '1'; cur.style.borderColor = 'var(--fg)'; cur.style.cursor = 'default';
       const revBtn = document.createElement('span');
-      revBtn.className = 'ico-btn grad-row-btn'; revBtn.style.right = '0'; revBtn.title = 'グラデの向きを反転 (左右入れ替え)';
+      revBtn.className = 'ico-btn grad-row-btn'; revBtn.style.right = '0'; I18n.bind(revBtn, "グラデの向きを反転 (左右入れ替え)", "title");
       VJIcon.set(revBtn, 'swap');
       revBtn.addEventListener('click', e=>{ e.stopPropagation(); reverseGrad(); });
       cur.appendChild(revBtn);
@@ -21546,9 +22187,9 @@ void mainImage(out vec4 o, in vec2 f){
           const mkBtn = (icon, title, slot, fn)=>{ const b=document.createElement('span'); b.className='ico-btn grad-row-btn'; b.title=title;
             b.style.right = 'calc((var(--ctl-h) - 2px) * '+slot+')'; VJIcon.set(b, icon);
             b.addEventListener('click', e=>{ e.stopPropagation(); fn(); }); row.appendChild(b); };
-          mkBtn('edit', '名前を変更', 2, ()=>{ App._prompt('グラデ名を変更:', nm, (nn)=>{ if(nn && nn.trim()){ GradStore.rename(si, nn.trim()); toast('名前変更: '+nn.trim()); } }); });
-          mkBtn('refresh', '現在のグラデで上書き更新', 1, ()=>{ App._confirm('「'+nm+'」を現在のグラデで上書きしますか？', ()=>{ GradStore.update(si, GradEditor.get()); toast('更新: '+nm); }); });
-          mkBtn('close', '削除', 0, ()=>{ App._confirm('「'+nm+'」を削除しますか？', ()=>{ GradStore.remove(si); toast('削除: '+nm); }); });
+          mkBtn('edit', I18n.t("名前を変更"), 2, ()=>{ App._prompt(I18n.t("グラデ名を変更:"), nm, (nn)=>{ if(nn && nn.trim()){ GradStore.rename(si, nn.trim()); toast(I18n.t("名前変更: ")+nn.trim()); } }); });
+          mkBtn('refresh', I18n.t("現在のグラデで上書き更新"), 1, ()=>{ App._confirm('「'+nm+I18n.t("」を現在のグラデで上書きしますか？"), ()=>{ GradStore.update(si, GradEditor.get()); toast(I18n.t("更新: ")+nm); }); });
+          mkBtn('close', '削除', 0, ()=>{ App._confirm('「'+nm+I18n.t("」を削除しますか？"), ()=>{ GradStore.remove(si); toast(I18n.t("削除: ")+nm); }); });
         }
         scroll.appendChild(row);
       });
@@ -21561,8 +22202,8 @@ void mainImage(out vec4 o, in vec2 f){
       if(qb){
         // 1〜9 = 保存パレット / 0 = デフォルト (Hue Shift をかけた既定色)
         const qItems = items.slice(0, 9);
-        while(qItems.length < 9) qItems.push({name:'(空)', css:'#222'});
-        qItems.push({name:'通常色 (Grad Map OFF / Hue Shift は映像へ)', css:'#333'});
+        while(qItems.length < 9) qItems.push({name:I18n.t("(空)"), css:'#222'});
+        qItems.push({name:I18n.t("通常色 (Grad Map OFF / Hue Shift は映像へ)"), css:'#333'});
         const cnt = qItems.length;
         // 下段 = 同じ 1〜0 を Invert ON で見たプレビュー (クリック = パレット適用 + Invert ON)
         const qbi = document.getElementById('gradQuickBarInv');
@@ -21638,6 +22279,8 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxSplit','split',f2);
     slid('pxMos',  'mosaic',f2);
     slid('pxSlit2','slit2', f2);
+    slid('pxSlit2Invert','slit2Invert', f2);
+    slid('pxSlit2Radius','slit2Radius', f2);
     slid('pxFilmBlur','filmBlur', f2);
     slid('pxGlass','glass', f2);
     slid('pxOutline','outline', f2);
@@ -21667,6 +22310,20 @@ void mainImage(out vec4 o, in vec2 f){
     { const el = $('#pxHatchTool'); if(el) el.addEventListener('change', ()=>{ App.post.hatchTool = parseInt(el.value)|0; }); }
     const inkBleedPaper = $('#pxInkBleedPaper');
     if(inkBleedPaper) inkBleedPaper.addEventListener('input', ()=>{ App.post.inkBleedPaper = inkBleedPaper.value; });
+    slid('pxTone','tone', f2);
+    slid('pxToneCell','toneCell', fi);
+    slid('pxToneAngle','toneAngle', v=>String(Math.round(v)) + '°');
+    slid('pxToneThreshold','toneThreshold', f2);
+    slid('pxToneContrast','toneContrast', f2);
+    slid('pxToneLevels','toneLevels', fi);
+    slid('pxToneMix','toneMix', f2);
+    { const el = $('#pxToneType'); if(el){
+      el.dataset.midiKey = '*:__post__toneType';
+      el.addEventListener('change', ()=>{ App.post.toneType = App.snapPost('toneType', +el.value); });
+    } }
+    for(const [id, key] of [['pxToneInk','toneInk'], ['pxTonePaper','tonePaper']]){
+      const el = $('#' + id); if(el) el.addEventListener('input', ()=>{ App.post[key] = el.value; });
+    }
     slid('pxDither','dither', f2);
     slid('pxOrigami','origami', f2);
     slid('pxNeedleScatter','needleScatter', f2);
@@ -21698,7 +22355,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxUzumakiCam', 'uzumakiCam', f2);
     slid('pxFx3dPhoto','fx3dPhoto', f2);
     slid('pxFx3dPhotoCount','fx3dPhotoCount', fi);
-    slid('pxFx3dPhotoCrop','fx3dPhotoCrop', v=>(v|0)+'%');
+    slid('pxFx3dPhotoCrop','fx3dPhotoCrop', ParamValues.pct);
     slid('pxFx3dPhotoCurl', 'fx3dPhotoCurl', f2);
     slid('pxFx3dPhotoCurlAxis', 'fx3dPhotoCurlAxis', f2);
     slid('pxFx3dPhotoFlutter', 'fx3dPhotoFlutter', f2);
@@ -21708,7 +22365,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dSlicerPieces','fx3dSlicerPieces', fi);
     slid('pxFx3dLayer','fx3dLayer', f2);
     slid('pxFx3dLayerCount','fx3dLayerCount', fi);
-    slid('pxFx3dLayerSize','fx3dLayerSize', v=>(v|0)+'%');
+    slid('pxFx3dLayerSize','fx3dLayerSize', ParamValues.pct);
     slid('pxFx3dLayerEdge','fx3dLayerEdge', f2);
     slid('pxFx3dDiorama','fx3dDiorama', f2);
     slid('pxFx3dDioramaLayers','fx3dDioramaLayers', fi);
@@ -21762,7 +22419,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dExtrudeShade','fx3dExtrudeShade', f2);
     slid('pxFx3dExtrudeTwist','fx3dExtrudeTwist', f2);
     slid('pxFx3dExtrudeRound','fx3dExtrudeRound', f2);
-    { const sm = $('#pxFx3dExtrudeMode'); if(sm){ sm.value = App.post.fx3dExtrudeMode === 'depth' ? 'depth' : 'flat'; sm.addEventListener('change', ()=>{ App.post.fx3dExtrudeMode = sm.value; }); } }
+    { const sm = $('#pxFx3dExtrudeMode'); if(sm){ sm.value = ['depth', 'rock'].includes(App.post.fx3dExtrudeMode) ? App.post.fx3dExtrudeMode : 'flat'; sm.addEventListener('change', ()=>{ App.post.fx3dExtrudeMode = sm.value; }); } }
     slid('pxFx3dRoll','fx3dRoll', f2);
     slid('pxFx3dRollRadius', 'fx3dRollRadius', f2);
     slid('pxFx3dRollDepth', 'fx3dRollDepth', f2);
@@ -21770,6 +22427,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxFx3dRollSpin', 'fx3dRollSpin', f2);
     slid('pxFx3dRollCurl', 'fx3dRollCurl', f2);
     slid('pxFx3dRollCam', 'fx3dRollCam', f2);
+    slid('pxFx3dAmount','fx3dAmount', f2);
     slid('pxFx3dDepth','fx3dDepth', f2);
     slid('pxFx3dStretchX','fx3dStretchX', f2);
     slid('pxFx3dStretchY','fx3dStretchY', f2);
@@ -21785,6 +22443,7 @@ void mainImage(out vec4 o, in vec2 f){
     { const sc = $('#pxFx3dScale'); if(sc){ sc.value = String(App.post.fx3dScale); sc.addEventListener('change', ()=>{ App.post.fx3dScale = parseFloat(sc.value); }); } }
     { const sb = $('#pxFx3dBg'); if(sb){ sb.value = App.post.fx3dBg === 'color' ? 'color' : 'auto'; sb.addEventListener('change', ()=>{ App.post.fx3dBg = sb.value; }); } }
     { const sp = $('#pxFx3dPop'); if(sp){ sp.value = App.post.fx3dPop || 'back'; sp.addEventListener('change', ()=>{ App.post.fx3dPop = sp.value; }); } }
+    { const ss = $('#pxFx3dStack'); if(ss){ ss.value = App.post.fx3dStack === 'chain' ? 'chain' : 'build'; ss.addEventListener('change', ()=>{ App.post.fx3dStack = ss.value; }); } }
     { const ss = $('#pxFx3dSlot'); if(ss){ ss.value = ['A','B'].includes(App.post.fx3dSlot) ? App.post.fx3dSlot : 'both'; ss.addEventListener('change', ()=>{ App.post.fx3dSlot = ss.value; }); } }
     { const sm = $('#pxFx3dMix'); if(sm){ sm.value = App.post.fx3dMix === 'blend' ? 'blend' : 'front'; sm.addEventListener('change', ()=>{ App.post.fx3dMix = sm.value; }); } }
     { const st = $('#pxFx3dTarget'); if(st){ st.value = App.post.fx3dTarget === 'all' ? 'all' : 'object'; st.addEventListener('change', ()=>{ App.post.fx3dTarget = st.value; }); } }
@@ -21894,7 +22553,7 @@ void mainImage(out vec4 o, in vec2 f){
       [$('#pxAudioFxAtk'), $('#pxAudioFxRel')].forEach(el=>{
         if(!el) return;
         el.addEventListener('pointerdown', ()=>{
-          if(el.disabled) toast('Drive を上げると有効になります (現在 0 = 無効)', 2600);
+          if(el.disabled) toast(I18n.t("Drive を上げると有効になります (現在 0 = 無効)"), 2600);
         });
       });
       UI._syncSubRows();
@@ -21904,10 +22563,17 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxDenoise', 'denoise', f2);
     slid('pxDeband', 'deband', f2);
     slid('pxVibrance', 'vibrance', f2);
-    slid('pxPollockGloss', 'pollockGloss', f2);
-    slid('pxPollockMatt',  'pollockMatt',  f2);
-    slid('pxPollockFlat',  'pollockFlat',  f2);
-    slid('pxPollockMetal', 'pollockMetal', f2);
+    slid('pxPollock', 'pollock', f2);
+    { const on = $('#pxPollockOn'), type = $('#pxPollockType');
+      if(on){
+        on.checked = !!App.post.pollockOn;
+        on.addEventListener('change', ()=>{ App.post.pollockOn = on.checked ? 1 : 0; UI._syncSubRows(); });
+      }
+      if(type){
+        type.value = App.post.pollockType;
+        type.addEventListener('change', ()=>{ App.post.pollockType = type.value; });
+      }
+    }
     slid('pxPollockSize', 'pollockSize', f2);
     slid('pxPollockLength', 'pollockLength', f2);
     slid('pxPollockDensity', 'pollockDensity', f2);
@@ -21951,7 +22617,13 @@ void mainImage(out vec4 o, in vec2 f){
     slid('pxAShardsMove', 'aShardsMove', f2);
     slid('pxAExplode', 'aExplode', f2);
     slid('pxWaveform', 'waveform', f2);
+    slid('pxWaveformAmp', 'waveformAmp', f2);
+    slid('pxWaveformCount', 'waveformCount', fi);
+    slid('pxWaveformCountVar', 'waveformCountVar', f2);
+    slid('pxWaveformWidth', 'waveformWidth', f2);
+    slid('pxWaveformWidthVar', 'waveformWidthVar', f2);
     slid('pxSlitScan', 'slitScan', f2);
+    slid('pxSlitCalm', 'slitCalm', f2);
     const cpal = $('#pxCosPalette');
     if(cpal){
       cpal.value = String(App.post.cosPalette || 0);
@@ -21974,7 +22646,7 @@ void mainImage(out vec4 o, in vec2 f){
       fxa.addEventListener('change', ()=>{ App.post.fxaa = fxa.checked; });
     }
     const reset = $('#btnPostReset');
-    if(reset) reset.addEventListener('click', ()=>App._confirm('FX をすべて既定値へ戻しますか？', ()=>{
+    if(reset) reset.addEventListener('click', ()=>App._confirm(I18n.t("FX をすべて既定値へ戻しますか？"), ()=>{
       App.post = App.postDefaults();
       App.applyInkBleedDefault();
       this.refreshPost();
@@ -21990,7 +22662,7 @@ void mainImage(out vec4 o, in vec2 f){
   foldToggle(host, rows, id){
     if(!host || !rows.length) return null;
     const tog = document.createElement('span');
-    tog.className = 'fold-tog'; tog.title = '詳細を開く / 閉じる';
+    tog.className = 'fold-tog'; I18n.bind(tog, "詳細を開く / 閉じる", "title");
     const apply = (open)=>{
       tog.classList.toggle('open', open);
       rows.forEach(r => r.classList.toggle('fold-hidden', !open));
@@ -22097,7 +22769,10 @@ void mainImage(out vec4 o, in vec2 f){
   },
   _syncSubRows(){
     const pane = document.querySelector('.pane[data-pane="post"]'); if(!pane) return;
-    const on = id => { const r = (UI._postSlid || []).find(s => s.id === id); return !!r && App.deadParam(App.post[r.key] || 0) > 0.001; };
+    const on = id => {
+      if(id === 'pxPollock' && !App.post.pollockOn) return false;
+      const r = (UI._postSlid || []).find(s => s.id === id); return !!r && App.deadParam(App.post[r.key] || 0) > 0.001;
+    };
     pane.querySelectorAll('[data-sub-of]').forEach(el=>{
       const live = el.dataset.subOf.split(/\s+/).some(on);
       const row = el.closest('.row');
@@ -22186,6 +22861,8 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxSplit', p.split || 0, f2);
     set('pxMos',   p.mosaic,f2);
     set('pxSlit2', p.slit2 || 0, f2);
+    set('pxSlit2Invert', p.slit2Invert != null ? p.slit2Invert : 0.5, f2);
+    set('pxSlit2Radius', p.slit2Radius != null ? p.slit2Radius : 0.5, f2);
     set('pxFilmBlur', p.filmBlur || 0, f2);
     set('pxGlass', p.glass || 0, f2);
     set('pxOutline', p.outline || 0, f2);
@@ -22208,6 +22885,10 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxHatchInk', p.hatchInk || '#1e1e1e');
     set('pxHatchPaper', p.hatchPaper || '#f2eee4');
     if($('#pxHatchTool')) $('#pxHatchTool').value = String(p.hatchTool|0);
+    // Tone のスライダーは _postSlid で同期。select / color も Save・Reset・MIDI・プリセットに追従する。
+    set('pxToneType', Math.round(p.toneType || 0));
+    set('pxToneInk', p.toneInk || '#000000');
+    set('pxTonePaper', p.tonePaper || '#ffffff');
     set('pxDither', p.dither || 0, f2);
     set('pxOrigami', p.origami || 0, f2);
     set('pxNeedleScatter', p.needleScatter != null ? p.needleScatter : 0.6, f2);
@@ -22239,7 +22920,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxUzumakiCam', p.uzumakiCam != null ? p.uzumakiCam : 0.5, f2);
     set('pxFx3dPhoto', p.fx3dPhoto || 0, f2);
     set('pxFx3dPhotoCount', p.fx3dPhotoCount, fi);
-    set('pxFx3dPhotoCrop', p.fx3dPhotoCrop, v=>(v|0)+'%');
+    set('pxFx3dPhotoCrop', p.fx3dPhotoCrop, ParamValues.pct);
     set('pxFx3dPhotoCurl', p.fx3dPhotoCurl != null ? p.fx3dPhotoCurl : 0.65, f2);
     set('pxFx3dPhotoCurlAxis', p.fx3dPhotoCurlAxis != null ? p.fx3dPhotoCurlAxis : 1, f2);
     set('pxFx3dPhotoFlutter', p.fx3dPhotoFlutter != null ? p.fx3dPhotoFlutter : 0.4, f2);
@@ -22249,7 +22930,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxFx3dSlicerPieces', p.fx3dSlicerPieces, fi);
     set('pxFx3dLayer', p.fx3dLayer || 0, f2);
     set('pxFx3dLayerCount', p.fx3dLayerCount, fi);
-    set('pxFx3dLayerSize', p.fx3dLayerSize, v=>(v|0)+'%');
+    set('pxFx3dLayerSize', p.fx3dLayerSize, ParamValues.pct);
     set('pxFx3dLayerEdge', p.fx3dLayerEdge || 0, f2);
     set('pxFx3dDiorama', p.fx3dDiorama || 0, f2);
     set('pxFx3dDioramaLayers', p.fx3dDioramaLayers, fi);
@@ -22303,7 +22984,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxFx3dExtrudeShade', p.fx3dExtrudeShade != null ? p.fx3dExtrudeShade : 0.5, f2);
     set('pxFx3dExtrudeTwist', p.fx3dExtrudeTwist || 0, f2);
     set('pxFx3dExtrudeRound', p.fx3dExtrudeRound || 0, f2);
-    if($('#pxFx3dExtrudeMode')) $('#pxFx3dExtrudeMode').value = p.fx3dExtrudeMode === 'depth' ? 'depth' : 'flat';
+    if($('#pxFx3dExtrudeMode')) $('#pxFx3dExtrudeMode').value = ['depth', 'rock'].includes(p.fx3dExtrudeMode) ? p.fx3dExtrudeMode : 'flat';
     set('pxFx3dRoll', p.fx3dRoll || 0, f2);
     set('pxFx3dRollRadius', p.fx3dRollRadius != null ? p.fx3dRollRadius : 0.5, f2);
     set('pxFx3dRollDepth', p.fx3dRollDepth != null ? p.fx3dRollDepth : 0.5, f2);
@@ -22311,6 +22992,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxFx3dRollSpin', p.fx3dRollSpin != null ? p.fx3dRollSpin : 0.5, f2);
     set('pxFx3dRollCurl', p.fx3dRollCurl != null ? p.fx3dRollCurl : 0.5, f2);
     set('pxFx3dRollCam', p.fx3dRollCam != null ? p.fx3dRollCam : 0.5, f2);
+    set('pxFx3dAmount', p.fx3dAmount != null ? p.fx3dAmount : 1, f2);
     set('pxFx3dDepth', p.fx3dDepth != null ? p.fx3dDepth : 0.5, f2);
     set('pxFx3dStretchX', p.fx3dStretchX || 0, f2);
     set('pxFx3dStretchY', p.fx3dStretchY || 0, f2);
@@ -22319,6 +23001,7 @@ void mainImage(out vec4 o, in vec2 f){
     if($('#pxFx3dScale')) $('#pxFx3dScale').value = String(p.fx3dScale);
     if($('#pxFx3dBg')) $('#pxFx3dBg').value = p.fx3dBg === 'color' ? 'color' : 'auto';
     if($('#pxFx3dPop')) $('#pxFx3dPop').value = ['back','elastic','bounce','out','off'].includes(p.fx3dPop) ? p.fx3dPop : 'back';
+    if($('#pxFx3dStack')) $('#pxFx3dStack').value = p.fx3dStack === 'chain' ? 'chain' : 'build';
     if($('#pxFx3dSlot')) $('#pxFx3dSlot').value = ['A','B'].includes(p.fx3dSlot) ? p.fx3dSlot : 'both';
     if($('#pxFx3dMix')) $('#pxFx3dMix').value = p.fx3dMix === 'blend' ? 'blend' : 'front';
     if($('#pxFx3dTarget')) $('#pxFx3dTarget').value = p.fx3dTarget === 'all' ? 'all' : 'object';
@@ -22366,10 +23049,9 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxDenoise', p.denoise || 0, f2);
     set('pxDeband', p.deband || 0, f2);
     set('pxVibrance', p.vibrance || 0, f2);
-    set('pxPollockGloss', p.pollockGloss || 0, f2);
-    set('pxPollockMatt',  p.pollockMatt  || 0, f2);
-    set('pxPollockFlat',  p.pollockFlat  || 0, f2);
-    set('pxPollockMetal', p.pollockMetal || 0, f2);
+    set('pxPollock', p.pollock || 0, f2);
+    if($('#pxPollockOn')) $('#pxPollockOn').checked = !!p.pollockOn;
+    if($('#pxPollockType')) $('#pxPollockType').value = p.pollockType || 'gloss';
     set('pxPollockSize', p.pollockSize != null ? p.pollockSize : 0.5, f2);
     set('pxPollockLength', p.pollockLength != null ? p.pollockLength : 0.5, f2);
     set('pxPollockDensity', p.pollockDensity != null ? p.pollockDensity : 0.5, f2);
@@ -22400,7 +23082,13 @@ void mainImage(out vec4 o, in vec2 f){
     set('pxAShardsLine', p.aShardsLine != null ? p.aShardsLine : 0.3, f2);
     set('pxAExplode', p.aExplode||0, f2);
     set('pxWaveform', p.waveform||0, f2);
+    set('pxWaveformAmp', p.waveformAmp != null ? p.waveformAmp : 0, f2);
+    set('pxWaveformCount', p.waveformCount != null ? p.waveformCount : 32, fi);
+    set('pxWaveformCountVar', p.waveformCountVar != null ? p.waveformCountVar : 0, f2);
+    set('pxWaveformWidth', p.waveformWidth != null ? p.waveformWidth : 1, f2);
+    set('pxWaveformWidthVar', p.waveformWidthVar != null ? p.waveformWidthVar : 0.55, f2);
     set('pxSlitScan', p.slitScan||0, f2);
+    set('pxSlitCalm', p.slitCalm != null ? p.slitCalm : 0.5, f2);
     set('pxPaletteAmt', p.paletteAmt||0, f2);
     if($('#pxCosPalette')) $('#pxCosPalette').value = String(p.cosPalette||0);
   },
@@ -22519,7 +23207,7 @@ void mainImage(out vec4 o, in vec2 f){
   },
   _renameVisualTile(key, sidPrefix, lblEl){
     const cur = this._visualNames()[key] || (lblEl ? lblEl.textContent.replace(sidPrefix,'') : '');
-    App._prompt('表示名', cur, (nn)=>{
+    App._prompt(I18n.t("表示名"), cur, (nn)=>{
       const v = nn.trim();
       this._saveVisualName(key, (v && v !== key) ? v : '');
       if(lblEl) lblEl.textContent = sidPrefix + (v || key);
@@ -22549,7 +23237,7 @@ void mainImage(out vec4 o, in vec2 f){
     } else {
       this._thumbObserver = null;   // 非対応環境: 従来通り(onerror で即キュー)
     }
-      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype'];
+      const MODE_KINDS = ['none','layer','manga','video','aratanagara','slicer','cyberui','novel','inkelly','boltzmann','grayscott','pen','caverns','shelf','ribbon','photoplane','image','textdeform','ugomeki','spacetype','shredder','transflock','liquidpeel','windflock','rhizome','rzfan','rzpacks','rzstack','rztube','surrealfloat','tower4149','fude','chrometype','glitchtype','imgconstruct'];
       // p5.js/WebGL の多パスシェーダ系エンジンは「Shader」分類に含める(モード扱いしない)
       const SHADER_ENGINES = ['caverns','boltzmann','grayscott','inkelly','ribbon','tower4149'];
       const isModeKind = (k)=> MODE_KINDS.includes(k) && !SHADER_ENGINES.includes(k);
@@ -22643,6 +23331,7 @@ void mainImage(out vec4 o, in vec2 f){
                      : (p.kind === 'rztube') ? 'RHIZOME\n筒と網'
                      : (p.kind === 'surrealfloat') ? 'SURREAL\nFLOAT'
                      : (p.kind === 'chrometype') ? 'CHROME\nTYPE'
+                     : (p.kind === 'imgconstruct') ? 'IMAGE\nCONSTRUCT'
                      : (p.kind === 'glitchtype') ? 'GLITCH\nTYPE'
                      : (p.kind === 'tower4149') ? '41/49\nTOWER'
                      : (p.kind === 'fude') ? 'FUDE'
@@ -22673,7 +23362,7 @@ void mainImage(out vec4 o, in vec2 f){
         const g = UI._gifFor(UI._modeGifMap, p.name);
         if(g) UI._gifStillHover(tile, ph, g);   // 通常静止/ホバーでアニメ
         const b = document.createElement('div');
-        b.className = 'ico-btn'; b.style.cssText = 'top:2px;right:2px'; b.title = 'このモードに切替してGIFサムネを生成';
+        b.className = 'ico-btn'; b.style.cssText = 'top:2px;right:2px'; I18n.bind(b, "このモードに切替してGIFサムネを生成", "title");
         VJIcon.set(b, 'refresh');
         b.addEventListener('click', e=>{ e.stopPropagation(); App.captureVisualGif(i); });
         tile.appendChild(b);
@@ -22681,7 +23370,7 @@ void mainImage(out vec4 o, in vec2 f){
       const _sidPre = (p.sid ? p.sid + ' ' : '');
       const _disp = UI._visualNames()[p.name] || p.name;
       const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = _sidPre + _disp; tile.appendChild(lbl);
-      { const eb = document.createElement('div'); eb.className = 'ico-btn'; eb.style.cssText = 'top:2px;left:2px'; eb.title = '名前変更';
+      { const eb = document.createElement('div'); eb.className = 'ico-btn'; eb.style.cssText = 'top:2px;left:2px'; I18n.bind(eb, "名前変更", "title");
         VJIcon.set(eb, 'edit');
         eb.addEventListener('click', e=>{ e.stopPropagation(); UI._renameVisualTile(p.name, _sidPre, lbl); });
         tile.appendChild(eb); }
@@ -22717,7 +23406,7 @@ void mainImage(out vec4 o, in vec2 f){
       const _mbase = item.name.replace(/\.[^.]+$/, '');
       const _mpre = vsid + ' ';
       const lbl = document.createElement('div'); lbl.className = 'label'; lbl.textContent = _mpre + (UI._visualNames()[_mbase] || _mbase); tile.appendChild(lbl);
-      { const eb = document.createElement('div'); eb.className = 'ico-btn'; eb.style.cssText = 'top:2px;left:2px'; eb.title = '名前変更';
+      { const eb = document.createElement('div'); eb.className = 'ico-btn'; eb.style.cssText = 'top:2px;left:2px'; I18n.bind(eb, "名前変更", "title");
         VJIcon.set(eb, 'edit');
         eb.addEventListener('click', e=>{ e.stopPropagation(); UI._renameVisualTile(_mbase, _mpre, lbl); });
         tile.appendChild(eb); }
@@ -22738,7 +23427,7 @@ void mainImage(out vec4 o, in vec2 f){
       const mg = UI._gifFor(UI._modeGifMap, item.name, 'movie_');
       if(mg) UI._gifStillHover(tile, ph, mg);   // 通常静止/ホバーでアニメ
       const gb = document.createElement('div');
-      gb.className = 'ico-btn'; gb.style.cssText = 'top:2px;right:2px'; gb.title = 'この動画でGIFサムネを生成';
+      gb.className = 'ico-btn'; gb.style.cssText = 'top:2px;right:2px'; I18n.bind(gb, "この動画でGIFサムネを生成", "title");
       VJIcon.set(gb, 'refresh');
       gb.addEventListener('click', e=>{ e.stopPropagation(); App.captureMovieGif(item.url, item.name); });
       tile.appendChild(gb);
@@ -22808,9 +23497,10 @@ void mainImage(out vec4 o, in vec2 f){
   _importTile(what, inputSel, cat){
     const tile = document.createElement('div');
     tile.className = 'thumb-tile import-tile';
+    if(cat === 'image') tile.style.gridColumn = 'auto';   // Image and Folder sit side by side.
     tile.dataset.cat = cat;
-    tile.textContent = '＋ ' + what;
-    tile.title = what + 'を読み込む' + (this._importNote || '');
+    I18n.bind(tile, '＋ {0}', 'textContent', ()=>({0:I18n.t(what)}));
+    I18n.bind(tile, '{0}を読み込む{1}', 'title', ()=>({0:I18n.t(what), 1:I18n.t(this._importNote || '')}));
     tile.addEventListener('click', ()=>{ const f = $(inputSel); if(f) f.click(); });
     return tile;
   },
@@ -22907,7 +23597,7 @@ void mainImage(out vec4 o, in vec2 f){
     modes.forEach(m=>{
       const cell = document.createElement('div');
       cell.className = 'bp';
-      cell.title = 'Blend: ' + m.key + ' (クリックで適用)';
+      cell.title = 'Blend: ' + m.key + I18n.t(" (クリックで適用)");
       const cvs = document.createElement('canvas');
       const lb = document.createElement('span');
       lb.textContent = m.label;
@@ -22934,10 +23624,10 @@ void mainImage(out vec4 o, in vec2 f){
     const pal = dz(P.paletteAmt);
     if(Math.abs(pal) > 0.001){
       main.push({ t:'AUTO MAP', c:'hot', title:'Auto Map ' + (pal < 0 ? '(A ← B)' : '(B ← A)') });
-      (pal < 0 ? a : b).push({ t:'AUTO MAP', c:'hot', title:'このスロットが相手のパレットで再彩色されて出力されます (プレビューは素の絵)' });
+      (pal < 0 ? a : b).push({ t:'AUTO MAP', c:'hot', title:I18n.t("このスロットが相手のパレットで再彩色されて出力されます (プレビューは素の絵)") });
     }
     // 色パイプライン (出力全体 = 合成プレビューにのみ表示。A/B プレビューは Post FX 非適用)
-    if(on(P.gradMix))  main.push({ t:'GRAD', title:'Grad Map' + (dz(P.gradMix) < 0 ? ' (反転)' : '') });
+    if(on(P.gradMix))  main.push({ t:'GRAD', title:'Grad Map' + (dz(P.gradMix) < 0 ? I18n.t(" (反転)") : '') });
     if(on(P.hue))      main.push({ t:'HUE', title:'Hue Shift' });
     if(on(P.inv))      main.push({ t:'INV', title:'Invert' });
     if(on(P.sat, 0.01) && Math.abs(dz(P.sat) - 1) > 0.01) main.push({ t:'SAT', title:'Saturation' });
@@ -22947,11 +23637,11 @@ void mainImage(out vec4 o, in vec2 f){
     { const ovTab = document.querySelector('.tab[data-tab="overlay"]');
       if(ovTab) ovTab.classList.toggle('live', !!(typeof Overlay !== 'undefined' && Overlay.P && Overlay.P.enabled)); }
     if(typeof Overlay !== 'undefined' && Overlay.P && Overlay.P.enabled && (Overlay.strokes||[]).length)
-      main.push({ t:'IMG', title:'IMAGON 描画中' });
-    if(App._drawFrozen) main.push({ t:'FREEZE', c:'warn', title:'Draw フリーズ中 (Space)' });
+      main.push({ t:'IMG', title:I18n.t("IMAGON 描画中") });
+    if(App._drawFrozen) main.push({ t:'FREEZE', c:'warn', title:I18n.t("Draw フリーズ中 (Space)") });
     if(App.blendMode && App.blendMode !== 'normal')
       { const bm = App.blendMode === 'mix' ? 'normal' : App.blendMode; main.push({ t:String(bm).toUpperCase().slice(0,6), title:'Blend: ' + bm }); }
-    if(App.autoCF && App.autoCF.on) main.push({ t:'AUTO FADE', title:'Auto Fade (自動クロスフェード)' });
+    if(App.autoCF && App.autoCF.on) main.push({ t:'AUTO FADE', title:I18n.t("Auto Fade (自動クロスフェード)") });
 
     // スロット固有: 表示中の Visual の番号 (シェーダ = S / コード = C / 動画 = M)。タグの先頭に出す
     const sidOf = (k)=>{
@@ -22969,8 +23659,8 @@ void mainImage(out vec4 o, in vec2 f){
       if(sb) b.unshift({ t:sb, c:'id', title:'Slot B: ' + sb }); }
     // スロット固有: 非表示
     const vis = App.slotVisible || {};
-    if(vis.A === false) a.push({ t:'HIDDEN', c:'warn', title:'Slot A 非表示 ([ で切替)' });
-    if(vis.B === false) b.push({ t:'HIDDEN', c:'warn', title:'Slot B 非表示 (] で切替)' });
+    if(vis.A === false) a.push({ t:'HIDDEN', c:'warn', title:I18n.t("Slot A 非表示 ([ で切替)") });
+    if(vis.B === false) b.push({ t:'HIDDEN', c:'warn', title:I18n.t("Slot B 非表示 (] で切替)") });
 
     this._paintBadges('fxBadgesMain', main);
     this._paintBadges('fxBadgesA', a);
@@ -22999,7 +23689,7 @@ void mainImage(out vec4 o, in vec2 f){
       const visible = v[slot] !== false;
       b.classList.toggle('slot-hidden', !visible);
       b.setAttribute('aria-pressed', visible ? 'true' : 'false');
-      b.title = `Slot ${slot}: ${visible ? '表示中' : '非表示'} (${slot === 'A' ? '[' : ']'} で切替)`;
+      I18n.bind(b, "Slot {0}: {1} ({2} で切替)", "title", () => ({0: slot, 1: I18n.t(visible ? '表示中' : '非表示'), 2: slot === 'A' ? '[' : ']'}));
     });
     $$('.slotPrev').forEach(tile=>tile.classList.toggle('slot-hidden', v[tile.dataset.slot] === false));
     for(const k of ['A','B']){ const b = $('#mixShow' + k); if(b) b.setAttribute('aria-pressed', v[k] !== false ? 'true' : 'false'); }
@@ -23012,7 +23702,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(!pill){
         const anchor = h.querySelector('.default-actions');
         if(!anchor) return;
-        pill = document.createElement('span'); pill.className = 'pill slotPill'; pill.title = '操作中のスロット';
+        pill = document.createElement('span'); pill.className = 'pill slotPill'; I18n.bind(pill, "操作中のスロット", "title");
         h.insertBefore(pill, anchor);
       }
       pill.textContent = App.activeSlot;
@@ -23043,7 +23733,7 @@ void mainImage(out vec4 o, in vec2 f){
     const isTextDeform = slot.kind === 'textdeform';
     const isUgomeki = slot.kind === 'ugomeki';
     const isSpaceType = slot.kind === 'spacetype';
-    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude' && slot.kind !== 'chrometype' && slot.kind !== 'glitchtype';
+    const isShader = !isLayer && !isManga && !isVideo && !isAratanagara && !isSlicer && !isInkelly && !isTextDeform && !isUgomeki && !isSpaceType && slot.kind !== 'cyberui' && slot.kind !== 'novel' && slot.kind !== 'boltzmann' && slot.kind !== 'pen' && slot.kind !== 'caverns' && slot.kind !== 'shelf' && slot.kind !== 'ribbon' && slot.kind !== 'photoplane' && slot.kind !== 'shredder' && slot.kind !== 'transflock' && slot.kind !== 'liquidpeel' && slot.kind !== 'windflock' && !(typeof RhizomeKinds !== 'undefined' && RhizomeKinds[slot.kind]) && slot.kind !== 'surrealfloat' && slot.kind !== 'tower4149' && slot.kind !== 'fude' && slot.kind !== 'chrometype' && slot.kind !== 'glitchtype' && slot.kind !== 'imgconstruct';
     $$('.shader-mode').forEach(el => el.style.display = isShader ? '' : 'none');
     $$('.layer-mode').forEach(el  => el.style.display = isLayer  ? '' : 'none');
     $$('.manga-mode').forEach(el  => el.style.display = isManga  ? '' : 'none');
@@ -23079,6 +23769,9 @@ void mainImage(out vec4 o, in vec2 f){
     const isCT = slot.kind === 'chrometype';
     $$('.chrometype-mode').forEach(el => el.style.display = isCT ? '' : 'none');
     if(isCT && this.refreshChromeTypeParams) this.refreshChromeTypeParams();
+    const isIC = slot.kind === 'imgconstruct';
+    $$('.imgconstruct-mode').forEach(el => el.style.display = isIC ? '' : 'none');
+    if(isIC) this.refreshImageConstructParams();
     const isGT = slot.kind === 'glitchtype';
     $$('.glitchtype-mode').forEach(el => el.style.display = isGT ? '' : 'none');
     if(isGT && this.refreshGlitchTypeParams) this.refreshGlitchTypeParams();
@@ -23154,10 +23847,10 @@ void mainImage(out vec4 o, in vec2 f){
     const fsave = $('#imgFolderSave');
     if(fsave) fsave.addEventListener('click', ()=>{
       const m = ensure(); if(!m) return;
-      if(!m.P.folder){ toast('フォルダ/画像を選択してください'); return; }
+      if(!m.P.folder){ toast(I18n.t("フォルダ/画像を選択してください")); return; }
       const f = m._folderByDir(m.P.folder);
-      if(m.saveFolderParams()) toast('設定を保存: ' + (f ? f.name : m.P.folder));
-      else toast('保存失敗');
+      if(m.saveFolderParams()) toast(I18n.t("設定を保存: ") + (f ? f.name : m.P.folder));
+      else toast(I18n.t("保存失敗"));
       this.refreshImageMode();
     });
     const fclear = $('#imgFolderClear');
@@ -23165,7 +23858,7 @@ void mainImage(out vec4 o, in vec2 f){
       const m = ensure(); if(!m || !m.P.folder) return;
       const f = m._folderByDir(m.P.folder);
       m.clearFolderParams();
-      toast('保存設定を削除: ' + (f ? f.name : m.P.folder));
+      toast(I18n.t("保存設定を削除: ") + (f ? f.name : m.P.folder));
       this.refreshImageMode();
     });
     // 画像の見た目 (Look)
@@ -23191,9 +23884,13 @@ void mainImage(out vec4 o, in vec2 f){
     if(vFile) vFile.addEventListener('change', async ()=>{ await MediaImport.accept(vFile.files); vFile.value = ''; });
     const iFile = $('#fileImageImport');
     if(iFile) iFile.addEventListener('change', async ()=>{ await MediaImport.accept(iFile.files); iFile.value = ''; });
+    const iFolder = $('#fileImageFolderImport');
+    if(iFolder) iFolder.addEventListener('change', async ()=>{ await MediaImport.acceptDirectoryFiles(iFolder.files); iFolder.value = ''; });
     MediaImport.local().then(ok=>{
-      this._importNote = ok ? ' (images/drop/ ・ movies/ へ取り込み、次回起動でも残る)' : ' (このセッション限り。リロードで消えます)';
+      this._importNote = ok ? ' (images/ ・ movies/ へ保存、次回起動でも残る)' : ' (このセッション限り。リロードで消えます)';
       this._mediaLocal = ok;
+      const note = $('#imageImportNote');
+      if(note) I18n.bind(note, ok ? '画像・フォルダは images/ に保存され、次回起動でも残ります。' : 'このセッション限り。リロードで消えます。');
       const grid = $('#imageFolderGrid'); if(grid) grid.dataset.sig = '';   // × ボタン付きで作り直す
       this.refreshImageMode();
     });
@@ -23207,7 +23904,7 @@ void mainImage(out vec4 o, in vec2 f){
     const d = App.paramValues('image', { folder: P.folder, image: P.image, ...Object.fromEntries(ImageMode.FOLDER_KEYS.map(k => [k, P[k]])) });
     Object.assign(P, d);
     try{ localStorage.setItem(this._imageDefKey, JSON.stringify(d)); }catch(e){}
-    toast('デフォルト保存: image' + (P.folder ? ' (' + P.folder.split('/').pop() + ')' : ''));
+    toast(I18n.t("デフォルト保存: image") + (P.folder ? ' (' + P.folder.split('/').pop() + ')' : ''));
   },
   applyImageDefault(){
     if(typeof ImageMode === 'undefined') return;
@@ -23231,7 +23928,7 @@ void mainImage(out vec4 o, in vec2 f){
     Object.assign(ImageMode.P, JSON.parse(JSON.stringify(ImageMode.PDefaults || {})));
     this.applyImageDefault();
     this.refreshImageMode();
-    toast('保存値へ戻しました: image');
+    toast(I18n.t("保存値へ戻しました: image"));
   },
 
   // フォルダの中身を 3×2 (6分割) で敷き詰めたサムネを描く (preset/shader サムネと同じ 4:3)
@@ -23244,7 +23941,7 @@ void mainImage(out vec4 o, in vec2 f){
     ctx.fillStyle = '#0b0b0f'; ctx.fillRect(0, 0, W, H);
     if(!imgs.length) return;
     const srcOf = (idx)=> folder._urls ? folder._urls[idx]                     // 臨時(ドロップ)フォルダは blob URL
-                        : (folder.single ? folder.dir : folder.dir + '/' + imgs[idx]);   // single は dir 自体がファイルパス
+                        : ImageMode.imageURL(folder, imgs[idx]);   // single は dir 自体がファイルパス
     // 均等に CELLS 枚を選ぶ (少なければ繰り返し)
     const pick = [];
     for(let i=0; i<CELLS; i++){
@@ -23267,7 +23964,7 @@ void mainImage(out vec4 o, in vec2 f){
   },
 
   _imgFx(){
-    const n = v=>String(Math.round(v)), pct = v=>Math.round(v)+'%', deg = v=>Math.round(v)+'°';
+    const n = v=>String(Math.round(v)), pct = ParamValues.pct, deg = ParamValues.deg;
     return [['imgRotate','rotate',deg], ['imgSway','sway',deg], ['imgSkewX','skewX',deg], ['imgSkewY','skewY',deg],
             ['imgKeystone','keystone',pct], ['imgStretch','stretch',pct], ['imgTiles','tiles',n], ['imgKaleido','kaleido',n],
             ['imgBulge','bulge',pct], ['imgTwirl','twirl',deg], ['imgWaveAmp','waveAmp',pct], ['imgWaveCount','waveCount',n],
@@ -23300,11 +23997,12 @@ void mainImage(out vec4 o, in vec2 f){
     if(cur) cur.textContent = info.n ? (info.name + '  ' + (info.idx+1) + '/' + info.n) : '';
     const grid = $('#imageFolderGrid');
     if(grid){
-      const sig = (m.folders || []).map(f => f.dir + ':' + f.count).join('|') + '#' + P.folder;
+      const sig = (m.folders || []).map(f => f.dir + ':' + f.count + ':' + !!f.imported + ':' + f.removable).join('|') + '#' + P.folder + ':' + this._mediaLocal;
       if(grid.dataset.sig !== sig){
         grid.dataset.sig = sig;
         grid.innerHTML = '';
-        grid.appendChild(this._importTile('画像', '#fileImageImport', 'image'));   // ドロップできない環境 (スマホ) 向けの読み込み
+        grid.appendChild(this._importTile('画像', '#fileImageImport', 'image'));
+        grid.appendChild(this._importTile('フォルダ', '#fileImageFolderImport', 'image'));   // ドロップできない環境 (スマホ) 向けの読み込み
         for(const f of (m.folders || [])){
           const tile = document.createElement('div');
           tile.className = 'thumb-tile' + (f.dir === P.folder ? ' on' : '');
@@ -23316,17 +24014,17 @@ void mainImage(out vec4 o, in vec2 f){
           lab.textContent = f.name + ' (' + f.count + ')';
           lab.style.cssText = 'position:absolute;left:0;bottom:0;right:0;font:600 10px/1.4 var(--mono);color:#fff;background:rgba(0,0,0,.6);padding:1px 5px;pointer-events:none';
           tile.appendChild(cv); tile.appendChild(lab);
-          // 個別画像 (images/ 直下の臨時ファイル) はローカル起動なら × で実ファイルごと消せる。フォルダは対象外
-          if(f.single && this._mediaLocal){
+          // Only imported folders, root images and session blobs can be removed.
+          if(f._urls || (this._mediaLocal && (f.single || f.imported) && f.removable !== false)){
             const del = document.createElement('button');
             del.className = 'ico-btn'; del.style.cssText = 'top:2px;right:2px';
-            del.title = 'この画像を削除 (images/ から実ファイルを消す)';
+            I18n.bind(del, f._urls ? "一覧から外す (このセッション)" : "削除 (images/_trash へ移す)", "title");
             VJIcon.set(del, 'close');
             del.addEventListener('click', (e)=>{
               e.stopPropagation();
-              App._confirm('削除しますか: ' + f.name + ' (' + f.dir + ' の実ファイルを消します)', async ()=>{
-                try{ await MediaImport.remove(f.dir); toast('削除: ' + f.name); }
-                catch(err){ toast('削除失敗: ' + (err && err.message || err)); }
+              App._confirm(I18n.t("削除しますか: ") + f.name + I18n.t(f._urls ? " (一覧から外します)" : " (images/_trash へ移します)"), async ()=>{
+                try{ await MediaImport.remove(f.dir); toast(I18n.t("削除: ") + f.name); }
+                catch(err){ toast(I18n.t("削除失敗: ") + (err && err.message || err)); }
               });
             });
             tile.appendChild(del);
@@ -23381,7 +24079,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Count','count',1,120,1,v=>String(v|0),true],
       ['Size','size',0.2,4,0.05,v=>v.toFixed(2),true],
       ['Size Var','sizeVar',0,4,0.05,v=>v.toFixed(2),true],
-      ['Spread','spread',2,20,0.5,v=>v.toFixed(1),true],
+      ['Spread','spread',2,20,0.5,v=>v.toFixed(2),true],
       ['Crop Min','cropMin',0.1,1,0.02,v=>v.toFixed(2),true],
       ['Crop Max','cropMax',0.1,1,0.02,v=>v.toFixed(2),true],
       ['Stretch','stretch',0,1,0.02,v=>v.toFixed(2),true],
@@ -23389,9 +24087,9 @@ void mainImage(out vec4 o, in vec2 f){
       ['Roam Speed','autorot',0,2,0.02,v=>v.toFixed(2),false],
       ['Bend','bend',0,2,0.02,v=>v.toFixed(2),false],
       ['Warp Amp','warpAmp',0,0.6,0.01,v=>v.toFixed(2),false],
-      ['Warp Freq','warpFreq',0.5,16,0.1,v=>v.toFixed(1),false],
+      ['Warp Freq','warpFreq',0.5,16,0.1,v=>v.toFixed(2),false],
       ['FOV','fov',30,110,1,v=>String(v|0),false],
-      ['Distance','dist',5,40,0.5,v=>v.toFixed(1),false],
+      ['Distance','dist',5,40,0.5,v=>v.toFixed(2),false],
       ['Cam Elev','camEl',-1.2,1.2,0.02,v=>v.toFixed(2),false],
       ['Ambient','ambient',0,1,0.02,v=>v.toFixed(2),false],
       ['Beat Pulse','beatPulse',0,1.5,0.05,v=>v.toFixed(2),false],
@@ -23439,9 +24137,13 @@ void mainImage(out vec4 o, in vec2 f){
   installSliderDefaults(){
     const stamp = (root, force)=>{
       (root.querySelectorAll ? root.querySelectorAll('input[type=range]') : []).forEach(el=>{
+        ParamValues.precision(el);   // 静的 HTML・動的生成を問わず、粗い step を最初のドラッグから 0.01 に揃える
         if(force || el.dataset.defval === undefined) el.dataset.defval = el.value;
       });
-      if(root.tagName === 'INPUT' && root.type === 'range' && (force || root.dataset.defval === undefined)) root.dataset.defval = root.value;
+      if(root.tagName === 'INPUT' && root.type === 'range'){
+        ParamValues.precision(root);
+        if(force || root.dataset.defval === undefined) root.dataset.defval = root.value;
+      }
     };
     // 初回は init 内の各 slid() が値を入れ終わってから控える (静的 HTML の value は既定値ではない)
     setTimeout(()=>stamp(document, true), 0);
@@ -23464,10 +24166,79 @@ void mainImage(out vec4 o, in vec2 f){
       el.dispatchEvent(new Event('change', {bubbles:true}));
       const row = el.closest('.row');
       const lab = row ? (row.querySelector('label') || {}).textContent : '';
-      toast('既定値に戻しました' + (lab ? ': ' + lab : '') + ' (' + el.value + ')');
+      toast(I18n.t("既定値に戻しました") + (lab ? ': ' + lab : '') + ' (' + el.value + ')');
       App._undoSchedule && App._undoSchedule();
     });
   },
+  // Type Deformer: 見出し (.td-fold) ごとに独立したブロック (.section) へ分ける。
+  //   Look と別に保存できる欄 (Live / Canvas / Canvas Variation / Composition / Look / Text / 文字組 / Vector 3D) は Save / Reset / Random、
+  //   Look の中身の欄 (Type & Color / Motion / Operators / Effects / Surface) は Reset (いまの Look の値へ) / Random。保存は Look の Overwrite
+  TD_LOOK_BLOCKS: ['type', 'motion', 'ops', 'fx', 'surf'],
+  _tdSplitBlocks(top){
+    const esc = s=>String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    const heads = [...top.querySelectorAll(':scope > .td-fold')];
+    const groups = heads.map(h=>{
+      const rows = [];
+      for(let n = h.nextElementSibling; n && !n.classList.contains('td-fold') && !n.classList.contains('td-fold-end'); n = n.nextElementSibling) rows.push(n);
+      return { id:h.dataset.tdFold, title:h.textContent.trim(), rows, head:h };
+    });
+    const g = id=>groups.find(x=>x.id === id);
+    // Look の詳細 (Rand Guard) は Look へ。Composition は Canvas と Canvas の詳細から集めて 1 つに
+    const isComp = el=>!!el.querySelector('[id^="tdComp"], [data-tdp^="comp"]') && !el.querySelector('[data-tdp^="canvas"]');
+    const comp = { id:'comp', title:'Composition', rows:[] };
+    for(const id of ['canvas', 'canvasdetail']){ const x = g(id); if(!x) continue; comp.rows.push(...x.rows.filter(isComp)); x.rows = x.rows.filter(r=>!isComp(r)); }
+    if(g('lookdetail')){ g('look').rows.push(...g('lookdetail').rows); g('lookdetail').rows = []; }
+    if(g('canvasdetail')) g('canvasdetail').title = 'Canvas Variation';
+    const order = [];
+    for(const x of groups){ order.push(x); if(x.id === 'canvasdetail') order.push(comp); }
+    if(!g('canvasdetail')) order.splice(order.indexOf(g('canvas')) + 1, 0, comp);
+    let after = top;
+    for(const x of order){
+      if(x.head) x.head.remove();
+      if(!x.rows.length) continue;
+      const look = this.TD_LOOK_BLOCKS.includes(x.id);
+      const sec = document.createElement('div');
+      sec.className = 'section textdeform-mode td-block fold-skip';
+      sec.dataset.tdBlock = x.id;
+      sec.style.display = top.style.display;
+      const k = esc((look ? 'tdlook:' : 'tdblock:') + x.id);
+      const h = document.createElement('h3');
+      h.innerHTML = esc(x.title) + ' <span class="default-actions">' + (look
+        ? '<button class="resetDefBtn" data-kind="' + k + '" title="この欄だけ、いまの Look の値に戻す (保存は Look の Overwrite)">Reset</button>'
+        : '<button class="saveDefBtn" data-kind="' + k + '" title="この欄の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="' + k + '" title="この欄の値だけ保存したデフォルトに戻す">Reset</button>')
+        + '<button class="randDefBtn" data-kind="' + k + '" title="この欄の値をランダムに変える">Random 🎲</button></span>';
+      const body = document.createElement('div'); body.style.marginTop = '6px';
+      x.rows.forEach(r=>body.appendChild(r));
+      sec.appendChild(h); sec.appendChild(body);
+      after.after(sec); after = sec;
+    }
+    top.querySelectorAll(':scope > .td-fold-end').forEach(el=>el.remove());
+  },
+  // TD のブロックのキー: 行のキー + Composition (P.comp) / Surface (P.surf) / 文字 (P.text) のまとまり
+  _tdBlockKeys(sec){
+    const keys = this._blockKeys(sec);
+    if(sec.querySelector('[id^="tdComp"]')) keys.push('comp');
+    if(sec.querySelector('#tdSurfParams')) keys.push('surf');
+    if(sec.querySelector('#tdTextCustom')) keys.push('text', 'textCustom');
+    return keys;
+  },
+  // Look の中身の欄: その欄の値だけ、いまの Look の値に戻す (ほかの欄・文字はそのまま)
+  async tdResetLookBlock(sec){
+    if(typeof TextDeform === 'undefined' || typeof TDLooks === 'undefined') return;
+    const P = TextDeform.P, keys = new Set(this._tdBlockKeys(sec));
+    if(!P.look){ toast(I18n.t("Look が選ばれていません")); return; }
+    const keep = {};
+    for(const k of Object.keys(P)) if(!keys.has(k)) keep[k] = JSON.parse(JSON.stringify(P[k]));
+    if(!keys.has('surf') && P.surf) keep.surf = JSON.parse(JSON.stringify(P.surf));
+    await TDLooks.apply(P.look);
+    Object.assign(P, keep);
+    TextDeform.applyP();
+    this.refreshTextDeform && this.refreshTextDeform();
+    this.refreshTextDeformSurface && this.refreshTextDeformSurface();
+    toast(I18n.t("Look の値に戻しました: ") + ((sec.querySelector('h3') || {}).firstChild || {}).textContent);
+  },
+  // ブロック (.section) の中の項目のキー (行の data-pkey)
+  _blockKeys(sec){ return sec ? [...new Set([...sec.querySelectorAll('[data-pkey]')].map(el=>el.dataset.pkey).filter(k=>k && k.indexOf('group:') !== 0))] : []; },
   // Save / Reset がある見出しには Random も置く (セクション内のスライダー/プルダウンをランダム化)
   installRandomButtons(){
     document.querySelectorAll('.default-actions').forEach(box=>{
@@ -23477,7 +24248,7 @@ void mainImage(out vec4 o, in vec2 f){
       const b = document.createElement('button');
       b.className = 'randDefBtn';
       b.textContent = 'Random 🎲';
-      b.title = 'このセクションのパラメータをランダム化';
+      I18n.bind(b, "このセクションのパラメータをランダム化", "title");
       b.dataset.kind = ref.dataset.kind || '';
       box.appendChild(b);
     });
@@ -23505,6 +24276,15 @@ void mainImage(out vec4 o, in vec2 f){
       if(f) picked.push(f);
     }
     const fire = (el, type)=> el.dispatchEvent(new Event(type, {bubbles:true}));
+    const pollockOn = sec.querySelector('#pxPollockOn'), pollockType = sec.querySelector('#pxPollockType');
+    if(pollockOn){
+      pollockOn.checked = picked.some(el => el.id === 'pxPollock');
+      fire(pollockOn, 'change');
+      if(pollockOn.checked && pollockType){
+        pollockType.selectedIndex = Math.floor(Math.random() * pollockType.options.length);
+        fire(pollockType, 'change');
+      }
+    }
     const setRange = (el, v)=>{
       const mi = parseFloat(el.min), ma = parseFloat(el.max), step = parseFloat(el.step) || 0.01;
       v = Math.max(mi, Math.min(ma, Math.round((v - mi)/step)*step + mi));
@@ -23531,8 +24311,12 @@ void mainImage(out vec4 o, in vec2 f){
     });
     let n = picked.length;
     picked.forEach(par=>{
-      sec.querySelectorAll('input[type=range][data-sub-of]').forEach(sub=>{
+      sec.querySelectorAll('input[type=range][data-sub-of], select[data-sub-of]').forEach(sub=>{
         if(!sub.dataset.subOf.split(/\s+/).includes(par.id) || sub.dataset.norand) return;
+        if(sub.tagName === 'SELECT'){
+          if(sub.options.length){ sub.selectedIndex = Math.floor(Math.random()*sub.options.length); fire(sub, 'change'); n++; }
+          return;
+        }
         const mi = parseFloat(sub.min), ma = parseFloat(sub.max);
         const lab = ((sub.closest('.row') || {}).querySelector && sub.closest('.row').querySelector('label') || {}).textContent || '';
         const heavy = /count|grid|steps|iter|pieces|size|枚数|個数/i.test(lab);
@@ -23618,9 +24402,9 @@ void mainImage(out vec4 o, in vec2 f){
       {sel:true, label:'Emitter (湧き)', key:'emitter',   opts:['空間全体','中心の球殻','外殻から中へ','中心の点']},
       {sel:true, label:'Near Mode',      key:'nearMode',  opts:['透明度','ディザ','背景へ溶かす','なし']},
       ['Life',       'life',       20, 400, 5,    v=>String(v|0), false],
-      ['FOV',        'fov',        30, 150, 1,    v=>String(v|0)+'°', false],
+      ['FOV',        'fov',        30, 150, 0.01,    ParamValues.deg, false],
       ['Fisheye',    'fisheye',    0,   1,  0.02, v=>v.toFixed(2), false],
-      ['Distance',   'dist',       3,  24,  0.2,  v=>v.toFixed(1), false],
+      ['Distance',   'dist',       3,  24,  0.2,  v=>v.toFixed(2), false],
       ['Cam Elev',   'camEl',      -1.2, 1.2, 0.02, v=>v.toFixed(2), false],
       ['Orbit',      'autorot',    0,   2,  0.02, v=>v.toFixed(2), false],
       ['Spin Rate',  'spinRate',   0,   4,  0.02, v=>v.toFixed(2), false],
@@ -23641,7 +24425,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Chrome Light','chromeLight',0,  2,  0.02, v=>v.toFixed(2), false],
       ['Chrome Con', 'chromeCon',  0,   2,  0.02, v=>v.toFixed(2), false],
       ['Chrome Floor','chromeFloor',0,  0.6, 0.01, v=>v.toFixed(2), false],
-      ['Stripe Freq', 'stripeFreq', 2,  80,  0.5,  v=>v.toFixed(1), false],
+      ['Stripe Freq', 'stripeFreq', 2,  80,  0.5,  v=>v.toFixed(2), false],
       ['Stripe Scale','stripeScale',0,   4,  0.02, v=>v.toFixed(2), false],
       ['Stripe Amt',  'stripeAmt',  0,   1,  0.02, v=>v.toFixed(2), false],
       ['Stripe Width','stripeW',    0,   1,  0.02, v=>v.toFixed(2), false],
@@ -23655,21 +24439,21 @@ void mainImage(out vec4 o, in vec2 f){
       ['Fog Near',   'fogNear',    0,   3,  0.02, v=>v.toFixed(2), false],
       ['Fog Far',    'fogFar',     0.2, 6,  0.05, v=>v.toFixed(2), false],
       ['Beat Kick',  'beatKick',   0,   1.5, 0.05, v=>v.toFixed(2), false],
-      ['Blade Width', 'bladeW', 20, 300, 2, v=>String(Math.round(v))+'%', false],
-      ['Tip Skew', 'tipSkew', -100, 100, 2, v=>String(Math.round(v))+'%', false],
-      ['Tail', 'tail', 0, 300, 2, v=>String(Math.round(v))+'%', false],
-      ['Size Var', 'sizeVar', 0, 200, 2, v=>String(Math.round(v))+'%', false],
-      ['Length Var', 'lenVar', 0, 200, 2, v=>String(Math.round(v))+'%', false],
-      ['Radial Size', 'radialSize', -100, 100, 2, v=>String(Math.round(v))+'%', false],
-      ['Pop', 'pop', 20, 300, 2, v=>String(Math.round(v))+'%', false],
-      ['Light Angle', 'lightAng', -180, 180, 1, v=>String(Math.round(v))+'°', false],
-      ['Ambient', 'ambient', 0, 40, 1, v=>String(Math.round(v))+'%', false],
-      ['Rim', 'rim', 0, 300, 2, v=>String(Math.round(v))+'%', false],
-      ['Chrome Hue', 'chromeHue', -180, 180, 1, v=>String(Math.round(v))+'°', false],
-      ['Chrome Sat', 'chromeSat', 0, 300, 2, v=>String(Math.round(v))+'%', false],
-      ['Tip Light', 'tipLight', -100, 100, 2, v=>String(Math.round(v))+'%', false],
-      ['Cam Roll', 'camRoll', -180, 180, 1, v=>String(Math.round(v))+'°', false],
-      ['Cam Shake', 'camShake', 0, 100, 1, v=>String(Math.round(v))+'%', false],
+      ['Blade Width', 'bladeW', 20, 300, 0.01, ParamValues.pct, false],
+      ['Tip Skew', 'tipSkew', -100, 100, 0.01, ParamValues.pct, false],
+      ['Tail', 'tail', 0, 300, 0.01, ParamValues.pct, false],
+      ['Size Var', 'sizeVar', 0, 200, 0.01, ParamValues.pct, false],
+      ['Length Var', 'lenVar', 0, 200, 0.01, ParamValues.pct, false],
+      ['Radial Size', 'radialSize', -100, 100, 0.01, ParamValues.pct, false],
+      ['Pop', 'pop', 20, 300, 0.01, ParamValues.pct, false],
+      ['Light Angle', 'lightAng', -180, 180, 0.01, ParamValues.deg, false],
+      ['Ambient', 'ambient', 0, 40, 0.01, ParamValues.pct, false],
+      ['Rim', 'rim', 0, 300, 0.01, ParamValues.pct, false],
+      ['Chrome Hue', 'chromeHue', -180, 180, 0.01, ParamValues.deg, false],
+      ['Chrome Sat', 'chromeSat', 0, 300, 0.01, ParamValues.pct, false],
+      ['Tip Light', 'tipLight', -100, 100, 0.01, ParamValues.pct, false],
+      ['Cam Roll', 'camRoll', -180, 180, 0.01, ParamValues.deg, false],
+      ['Cam Shake', 'camShake', 0, 100, 0.01, ParamValues.pct, false],
       ['Seed',       'seed',       1, 999,  1,    v=>String(v|0), true],
     ];
     root.innerHTML = '';
@@ -23713,9 +24497,9 @@ void mainImage(out vec4 o, in vec2 f){
     const f2 = v=>v.toFixed(2);
     const specs = [
       ['Birds',      'birds',     1,    12,  1,     v=>String(Math.round(v))],
-      ['Speed',      'speed',     0,    300, 1,     v=>String(Math.round(v))+'%'],
-      ['Wheel',      'wheel',     0,    300, 1,     v=>String(Math.round(v))+'%'],
-      ['Trail',      'trail',     1,    24,  0.5,   v=>v.toFixed(1)],
+      ['Speed',      'speed',     0,    300, 0.01,     ParamValues.pct],
+      ['Wheel',      'wheel',     0,    300, 0.01,     ParamValues.pct],
+      ['Trail',      'trail',     1,    24,  0.5,   v=>v.toFixed(2)],
       ['Step',       'step',      0.03, 0.3, 0.005, v=>v.toFixed(3)],
       ['Gap',        'gap',       0,    3,   0.02,  f2],
       ['Spread',     'spread',    0,    2,   0.02,  f2],
@@ -23736,36 +24520,36 @@ void mainImage(out vec4 o, in vec2 f){
       ['Warp',       'warp',      0,    1,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
       ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
-      ['Follow',      'follow',     0,    130, 1,    v=>String(Math.round(v))+'%'],
-      ['Center X',    'centerX',   -100,  100, 1,    v=>String(Math.round(v))+'%'],
-      ['Center Y',    'centerY',   -100,  100, 1,    v=>String(Math.round(v))+'%'],
-      ['Roll',        'roll',      -180,  180, 1,    v=>String(Math.round(v))+'°'],
-      ['Eye Dist',    'eyeDist',    2.9,  8,   0.1,  v=>v.toFixed(1)],
-      ['Path Size',   'pathSize',   30,   200, 1,    v=>String(Math.round(v))+'%'],
-      ['Path Depth',  'pathDepth',  20,   200, 1,    v=>String(Math.round(v))+'%'],
-      ['Loop Rate',   'loopRate',   30,   250, 1,    v=>String(Math.round(v))+'%'],
-      ['Flutter',     'flutter',    0,    500, 1,    v=>String(Math.round(v))+'%'],
-      ['Wheel X',     'wheelX',     0,    300, 1,    v=>String(Math.round(v))+'%'],
-      ['Wheel Y',     'wheelY',     0,    300, 1,    v=>String(Math.round(v))+'%'],
-      ['Wheel Z',     'wheelZ',     0,    300, 1,    v=>String(Math.round(v))+'%'],
-      ['Cam Spin',    'camSpin',    0,    300, 1,    v=>String(Math.round(v))+'%'],
-      ['Stamp Len',   'stampLen',   30,   300, 1,    v=>String(Math.round(v))+'%'],
-      ['Stamp Wid',   'stampWid',   30,   300, 1,    v=>String(Math.round(v))+'%'],
-      ['Stamp Round', 'stampRound', 0,    100, 1,    v=>String(Math.round(v))+'%'],
-      ['Twist',       'twist',     -90,   90,  1,    v=>String(Math.round(v))+'°'],
-      ['Press Rate',  'pressRate',  20,   400, 1,    v=>String(Math.round(v))+'%'],
-      ['Press Min',   'pressMin',   0,    100, 1,    v=>String(Math.round(v))+'%'],
-      ['Tail Taper',  'tailTaper',  0,    200, 1,    v=>String(Math.round(v))+'%'],
-      ['Warp Rate',   'warpRate',   20,   400, 1,    v=>String(Math.round(v))+'%'],
-      ['Bird Var',    'birdVar',    0,    100, 1,    v=>String(Math.round(v))+'%'],
-      ['Stray Reach', 'strayReach', 20,   300, 1,    v=>String(Math.round(v))+'%'],
-      ['Cluster R',   'clusterR',   20,   300, 1,    v=>String(Math.round(v))+'%'],
-      ['Depth Slope', 'depthSlope', 0,    200, 1,    v=>String(Math.round(v))+'%'],
+      ['Follow',      'follow',     0,    130, 0.01,    ParamValues.pct],
+      ['Center X',    'centerX',   -100,  100, 0.01,    ParamValues.pct],
+      ['Center Y',    'centerY',   -100,  100, 0.01,    ParamValues.pct],
+      ['Roll',        'roll',      -180,  180, 0.01,    ParamValues.deg],
+      ['Eye Dist',    'eyeDist',    2.9,  8,   0.1,  v=>v.toFixed(2)],
+      ['Path Size',   'pathSize',   30,   200, 0.01,    ParamValues.pct],
+      ['Path Depth',  'pathDepth',  20,   200, 0.01,    ParamValues.pct],
+      ['Loop Rate',   'loopRate',   30,   250, 0.01,    ParamValues.pct],
+      ['Flutter',     'flutter',    0,    500, 0.01,    ParamValues.pct],
+      ['Wheel X',     'wheelX',     0,    300, 0.01,    ParamValues.pct],
+      ['Wheel Y',     'wheelY',     0,    300, 0.01,    ParamValues.pct],
+      ['Wheel Z',     'wheelZ',     0,    300, 0.01,    ParamValues.pct],
+      ['Cam Spin',    'camSpin',    0,    300, 0.01,    ParamValues.pct],
+      ['Stamp Len',   'stampLen',   30,   300, 0.01,    ParamValues.pct],
+      ['Stamp Wid',   'stampWid',   30,   300, 0.01,    ParamValues.pct],
+      ['Stamp Round', 'stampRound', 0,    100, 0.01,    ParamValues.pct],
+      ['Twist',       'twist',     -90,   90,  0.01,    ParamValues.deg],
+      ['Press Rate',  'pressRate',  20,   400, 0.01,    ParamValues.pct],
+      ['Press Min',   'pressMin',   0,    100, 0.01,    ParamValues.pct],
+      ['Tail Taper',  'tailTaper',  0,    200, 0.01,    ParamValues.pct],
+      ['Warp Rate',   'warpRate',   20,   400, 0.01,    ParamValues.pct],
+      ['Bird Var',    'birdVar',    0,    100, 0.01,    ParamValues.pct],
+      ['Stray Reach', 'strayReach', 20,   300, 0.01,    ParamValues.pct],
+      ['Cluster R',   'clusterR',   20,   300, 0.01,    ParamValues.pct],
+      ['Depth Slope', 'depthSlope', 0,    200, 0.01,    ParamValues.pct],
       ['Edge Soft',   'edgeSoft',   70,   800, 5,    v=>(v/100).toFixed(2)+'px'],
-      ['Tail Mix',    'tailMix',    0,    100, 1,    v=>String(Math.round(v))+'%'],
-      ['Tail Fade',   'tailFade',   0,    100, 1,    v=>String(Math.round(v))+'%'],
-      ['Speckle',     'speckle',    0,    100, 1,    v=>String(Math.round(v))+'%'],
-      ['Beat Pulse',  'beatPulse',  0,    150, 1,    v=>String(Math.round(v))+'%'],
+      ['Tail Mix',    'tailMix',    0,    100, 0.01,    ParamValues.pct],
+      ['Tail Fade',   'tailFade',   0,    100, 0.01,    ParamValues.pct],
+      ['Speckle',     'speckle',    0,    100, 0.01,    ParamValues.pct],
+      ['Beat Pulse',  'beatPulse',  0,    150, 0.01,    ParamValues.pct],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
@@ -23791,7 +24575,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Random 🎲 (数値パラメータのみ。色と Audio は変えない。保存は右上の Save)
     { const row = mkRow();
       const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
-      b.title='群れ・筆・破片のパラメータをランダム生成 (色は変えない。保存は右上の Save)';
+      I18n.bind(b, "群れ・筆・破片のパラメータをランダム生成 (色は変えない。保存は右上の Save)", "title");
       b.addEventListener('click', ()=>{
         for(const [label,key,mi,ma,step] of specs){
           if(key === 'audio' || key === 'paperAlpha' || key === 'follow' || key === 'centerX' || key === 'centerY' || key === 'roll' || key === 'eyeDist' || key === 'beatPulse') continue;
@@ -23822,7 +24606,7 @@ void mainImage(out vec4 o, in vec2 f){
       root.innerHTML = '<div class="help">preset を選ぶと初期化されます</div>'; return;
     }
     const P = RZ.P;
-    const formats = { pct:v=>String(Math.round(v))+'%', f2:v=>v.toFixed(2), int:v=>String(Math.round(v)), deg:v=>String(Math.round(v))+'°' };
+    const formats = { pct:ParamValues.pct, f2:v=>v.toFixed(2), int:v=>String(Math.round(v)), deg:ParamValues.deg };
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
     for(const spec of RZ.SPECS){
@@ -23856,25 +24640,25 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const P = WindFlock.P;
     const f2 = v=>v.toFixed(2);
-    const pct = v=>String(Math.round(v))+'%';
-    const deg = v=>String(Math.round(v))+'°';
+    const pct = ParamValues.pct;
+    const deg = ParamValues.deg;
     const specs = [
       ['Sheets',     'sheets',    1,    12,  1,     v=>String(Math.round(v))],
-      ['Speed',      'speed',     0,    300, 1,     pct],
-      ['Angle',      'angle',     0,    360, 1,     deg],
-      ['Yaw',        'yaw',       -60,  60,  1,     deg],
-      ['Cam Yaw',    'camYaw',    -180, 180, 1,     deg],
-      ['Cam Pitch',  'camPitch',  -90,  90,  1,     deg],
+      ['Speed',      'speed',     0,    300, 0.01,     pct],
+      ['Angle',      'angle',     0,    360, 0.01,     deg],
+      ['Yaw',        'yaw',       -60,  60,  0.01,     deg],
+      ['Cam Yaw',    'camYaw',    -180, 180, 0.01,     deg],
+      ['Cam Pitch',  'camPitch',  -90,  90,  0.01,     deg],
       ['Wander',     'wander',    0,    2,   0.02,  f2],
-      ['Trail',      'trail',     0.5,  12,  0.1,   v=>v.toFixed(1)],
+      ['Trail',      'trail',     0.5,  12,  0.1,   v=>v.toFixed(2)],
       ['Gap',        'gap',       0,    4,   0.02,  f2],
       ['Spread',     'spread',    0,    1,   0.02,  f2],
       ['Place',      'place',     0,    2,   0.02,  f2],
-      ['Radius',     'radius',    10,   100, 1,     pct],
-      ['Coil',       'coil',      0,    300, 1,     pct],
-      ['Spin',       'spin',      -200, 200, 1,     pct],
-      ['Warp',       'warp',      0,    200, 1,     pct],
-      ['Width',      'width',     0,    100, 1,     pct],
+      ['Radius',     'radius',    10,   100, 0.01,     pct],
+      ['Coil',       'coil',      0,    300, 0.01,     pct],
+      ['Spin',       'spin',      -200, 200, 0.01,     pct],
+      ['Warp',       'warp',      0,    200, 0.01,     pct],
+      ['Width',      'width',     0,    100, 0.01,     pct],
       ['Density',    'density',   0.3,  6,   0.02,  f2],
       ['Lanes',      'lanes',     1,    6,   1,     v=>String(Math.round(v))],
       ['Overlap',    'overlap',   0.5,  3,   0.02,  f2],
@@ -23902,30 +24686,30 @@ void mainImage(out vec4 o, in vec2 f){
       ['Gust',       'gust',      0,    2,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
       ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
-      ['Pos X',      'posX',     -40,   40,  1,     pct],
-      ['Pos Y',      'posY',     -30,   30,  1,     pct],
-      ['Lens',       'lens',      50,   250, 1,     pct],
-      ['Reach X',    'reachX',    0,    250, 1,     pct],
-      ['Reach Y',    'reachY',    0,    250, 1,     pct],
-      ['Reach Z',    'reachZ',    0,    250, 1,     pct],
-      ['Path Freq',  'pathFreq',  50,   200, 1,     pct],
-      ['Peak Pos',   'peakPos',   30,   250, 1,     pct],
-      ['Sheet Taper','sheetTaper',20,   200, 1,     pct],
-      ['Beads',      'beads',     0,    90,  1,     pct],
+      ['Pos X',      'posX',     -40,   40,  0.01,     pct],
+      ['Pos Y',      'posY',     -30,   30,  0.01,     pct],
+      ['Lens',       'lens',      50,   250, 0.01,     pct],
+      ['Reach X',    'reachX',    0,    250, 0.01,     pct],
+      ['Reach Y',    'reachY',    0,    250, 0.01,     pct],
+      ['Reach Z',    'reachZ',    0,    250, 0.01,     pct],
+      ['Path Freq',  'pathFreq',  50,   200, 0.01,     pct],
+      ['Peak Pos',   'peakPos',   30,   250, 0.01,     pct],
+      ['Sheet Taper','sheetTaper',20,   200, 0.01,     pct],
+      ['Beads',      'beads',     0,    90,  0.01,     pct],
       ['Bead Count', 'beadN',     1,    12,  1,     v=>String(Math.round(v))],
-      ['Flare',      'flare',    -90,   200, 1,     pct],
-      ['Plate Taper','plateTaper',-80,  90,  1,     pct],
-      ['Plate Shear','plateShear',-100, 100, 1,     pct],
-      ['Flutter',    'flutter',   0,    100, 1,     pct],
-      ['Stray Reach','strayReach',20,   300, 1,     pct],
-      ['Stray Size', 'straySize', 30,   300, 1,     pct],
+      ['Flare',      'flare',    -90,   200, 0.01,     pct],
+      ['Plate Taper','plateTaper',-80,  90,  0.01,     pct],
+      ['Plate Shear','plateShear',-100, 100, 0.01,     pct],
+      ['Flutter',    'flutter',   0,    100, 0.01,     pct],
+      ['Stray Reach','strayReach',20,   300, 0.01,     pct],
+      ['Stray Size', 'straySize', 30,   300, 0.01,     pct],
       ['Hatch Pitch','hatchPitch',3,    24,  1,     v=>String(Math.round(v))+'px'],
-      ['Hue Var',    'hueVar',    0,    180, 1,     deg],
-      ['Tone Var',   'toneVar',   0,    100, 1,     pct],
-      ['Tail Mix',   'tailMix',   0,    100, 1,     pct],
+      ['Hue Var',    'hueVar',    0,    180, 0.01,     deg],
+      ['Tone Var',   'toneVar',   0,    100, 0.01,     pct],
+      ['Tail Mix',   'tailMix',   0,    100, 0.01,     pct],
       ['Seed',       'seed',      0,    999, 1,     v=>String(Math.round(v))],
       {sel:true, label:'Hold (静止)', key:'hold', opts:['動く', '静止 (Phase の時刻で固定)']},
-      ['Phase',      'phase',     0,    120, 0.1,   v=>v.toFixed(1)+'s'],
+      ['Phase',      'phase',     0,    120, 0.1,   v=>v.toFixed(2)+'s'],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
@@ -23974,7 +24758,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Random 🎲 (数値パラメータのみ。色・Audio / Paper Alpha・カメラ・Hold/Phase は変えない。保存は右上の Save)
     { const row = mkRow();
       const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
-      b.title='面・板・線のパラメータをランダム生成 (色・カメラ・Hold は変えない。保存は右上の Save)';
+      I18n.bind(b, "面・板・線のパラメータをランダム生成 (色・カメラ・Hold は変えない。保存は右上の Save)", "title");
       b.addEventListener('click', ()=>{
         for(const spec of specs){
           if(spec.sel) continue;
@@ -23996,8 +24780,8 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const P = Tower4149.P;
     const f2 = v=>v.toFixed(2);
-    const pct = v=>String(Math.round(v))+'%';
-    const deg = v=>String(Math.round(v))+'°';
+    const pct = ParamValues.pct;
+    const deg = ParamValues.deg;
     const int = v=>String(Math.round(v));
     const formats = { pct, f2, int, deg };
     const specs = Tower4149.SPECS.map(([label,key,mi,ma,step,fmt])=>[label,key,mi,ma,step,formats[fmt]]);
@@ -24018,7 +24802,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Random 🎲 (スライダーのパラメータのみ。背景色は変えない。保存は右上の Save)
     { const row = mkRow();
       const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
-      b.title='スパイクのパラメータをランダム生成 (背景色は変えない。保存は右上の Save)';
+      I18n.bind(b, "スパイクのパラメータをランダム生成 (背景色は変えない。保存は右上の Save)", "title");
       b.addEventListener('click', ()=>{
         for(const spec of specs){
           const [label,key,mi,ma,step] = spec;
@@ -24037,9 +24821,9 @@ void mainImage(out vec4 o, in vec2 f){
       root.innerHTML = '<div class="help">CHROME TYPE preset を選ぶと初期化されます</div>'; return;
     }
     const CT = ChromeType, P = CT.P;
-    const pct = v=>String(Math.round(v))+'%';
+    const pct = ParamValues.pct;
     const int = v=>String(Math.round(v));
-    const deg = v=>String(Math.round(v))+'°';
+    const deg = ParamValues.deg;
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { seed:1 };
     const NO_RAND = { size:1, posY:1, posX:1, lens:1, speed:1 };   // Random で変えない (画面から外れる・止まる)
@@ -24067,7 +24851,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(col); row.appendChild(val);
     };
     const head = (title)=>{
-      const h=document.createElement('div'); h.className='help'; h.textContent=title;
+      const h=document.createElement('div'); h.className='help'; h.textContent=title; h.dataset.grouphead = '1';   // 欄のブロックに分けるときは消える
       h.style.cssText='font-size:10px;margin-top:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.75';
       root.appendChild(h);
     };
@@ -24093,7 +24877,7 @@ void mainImage(out vec4 o, in vec2 f){
     };
     // 文字入力 (改行で複数行)。日本語の変換中は確定まで反映しない
     {
-      const ta=document.createElement('textarea'); ta.value=P.text; ta.rows=2; ta.spellcheck=false; ta.placeholder='3D にする文字 (改行で複数行)';
+      const ta=document.createElement('textarea'); ta.value=P.text; ta.rows=2; ta.spellcheck=false; I18n.bind(ta, "3D にする文字 (改行で複数行)", "placeholder");
       ta.style.cssText='width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:14px;padding:6px;margin-bottom:4px;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.15);border-radius:4px';
       let composing=false;
       ta.addEventListener('compositionstart', ()=>{ composing=true; });
@@ -24117,71 +24901,71 @@ void mainImage(out vec4 o, in vec2 f){
     stepped({label:'Hold', key:'tyHold', vals:[0, 1, 2, 4, 8, 16], names:['0拍', '1拍', '2拍', '4拍', '8拍', '16拍']});
     mkSel('Order', [[0, '順番'], [1, 'ランダム']], P.tyOrder > 0 ? 1 : 0, v=>{ P.tyOrder = parseInt(v, 10); }, true, 'tyOrder');
     mkSel('End', [[0, '一度に消す'], [1, '1字ずつ消す']], P.tyErase > 0 ? 1 : 0, v=>{ P.tyErase = parseInt(v, 10); }, false, 'tyErase');
-    slider(['Morph', 'tyMorph', 0, 100, 1, pct]);
+    slider(['Morph', 'tyMorph', 0, 100, 0.01, pct]);
     {
       const row = mkRow();
       const lab=document.createElement('label'); lab.textContent='List';
       const info=document.createElement('div'); info.className='help'; info.style.cssText='flex:1;font-size:10px';
       const W = CT._words;
       info.textContent = W ? CT.WORDS_URL + ': ' + W.length + ' 件' + (W.length ? '' : ' (空 → 上の欄の文字を打つ)') : CT.WORDS_URL + ' (On で読む)';
-      const btn=document.createElement('button'); btn.textContent='Reload'; btn.title='md を書き換えたあとに押すと読み直す';
+      const btn=document.createElement('button'); btn.textContent='Reload'; I18n.bind(btn, "md を書き換えたあとに押すと読み直す", "title");
       btn.addEventListener('click', ()=>{ CT.loadWords().then(()=>this.refreshChromeTypeParams()); });
       row.appendChild(lab); row.appendChild(info); row.appendChild(btn);
     }
     const groups = [
       ['Shape', [
-        ['Stretch',   'stretch',  30, 400, 1, pct],
-        ['Smooth',    'smooth',   0,  300, 1, pct],
-        ['Merge',     'merge',    0,  100, 1, pct],
-        ['Melt X',    'meltX',    30, 400, 1, pct],
-        ['Holes',     'holes',    0,  100, 1, pct],
-        ['Hole Size', 'holeSize', 20, 300, 1, pct],
-        ['Web',       'web',      20, 300, 1, pct],
-        ['Soft',      'soft',     0,  300, 1, pct],
+        ['Stretch',   'stretch',  30, 400, 0.01, pct],
+        ['Smooth',    'smooth',   0,  300, 0.01, pct],
+        ['Merge',     'merge',    0,  100, 0.01, pct],
+        ['Melt X',    'meltX',    30, 400, 0.01, pct],
+        ['Holes',     'holes',    0,  100, 0.01, pct],
+        ['Hole Size', 'holeSize', 20, 300, 0.01, pct],
+        ['Web',       'web',      20, 300, 0.01, pct],
+        ['Soft',      'soft',     0,  300, 0.01, pct],
         ['Seed',      'seed',     0,  999, 1, int],
-        ['Taper',     'taper',    -250, 250, 1, pct],
-        ['Skew',      'skew',     -300, 300, 1, pct],
+        ['Taper',     'taper',    -250, 250, 0.01, pct],
+        ['Skew',      'skew',     -300, 300, 0.01, pct],
       ]],
       ['Fins & Roots', [
-        ['Fins',      'fins',     0,  300, 1, pct],
-        ['Fin Len',   'finLen',   10, 300, 1, pct],
-        ['Layers',    'layers',   0,  300, 1, pct],
-        ['Fin Thick', 'finThick', 5,  200, 1, pct],
-        ['Spread',    'spread',   0,  400, 1, pct],
-        ['Splay',     'splay',    0,  400, 1, pct],
-        ['Tendrils',  'tendrils', 0,  300, 1, pct],
-        ['Ten Len',   'tenLen',   10, 300, 1, pct],
+        ['Fins',      'fins',     0,  300, 0.01, pct],
+        ['Fin Len',   'finLen',   10, 300, 0.01, pct],
+        ['Layers',    'layers',   0,  300, 0.01, pct],
+        ['Fin Thick', 'finThick', 5,  200, 0.01, pct],
+        ['Spread',    'spread',   0,  400, 0.01, pct],
+        ['Splay',     'splay',    0,  400, 0.01, pct],
+        ['Tendrils',  'tendrils', 0,  300, 0.01, pct],
+        ['Ten Len',   'tenLen',   10, 300, 0.01, pct],
       ]],
       ['Volume', [
-        ['Thick',     'thick',    5,  400, 1, pct],
-        ['Round',     'round',    10, 400, 1, pct],
-        ['Puff',      'puff',     0,  300, 1, pct],
-        ['Lumps',     'lumps',    0,  150, 1, pct],
+        ['Thick',     'thick',    5,  400, 0.01, pct],
+        ['Round',     'round',    10, 400, 0.01, pct],
+        ['Puff',      'puff',     0,  300, 0.01, pct],
+        ['Lumps',     'lumps',    0,  150, 0.01, pct],
       ]],
       ['Deform', [
-        ['Twist',     'twist',    -300, 300, 1, pct],
-        ['Bend',      'bend',     -300, 300, 1, pct],
-        ['Liquid',    'liquid',   0,  300, 1, pct],
-        ['Liq Freq',  'liqFreq',  10, 400, 1, pct],
-        ['Wave',      'waveAmp',  0,  300, 1, pct],
-        ['Wave Freq', 'waveFreq', 20, 400, 1, pct],
+        ['Twist',     'twist',    -300, 300, 0.01, pct],
+        ['Bend',      'bend',     -300, 300, 0.01, pct],
+        ['Liquid',    'liquid',   0,  300, 0.01, pct],
+        ['Liq Freq',  'liqFreq',  10, 400, 0.01, pct],
+        ['Wave',      'waveAmp',  0,  300, 0.01, pct],
+        ['Wave Freq', 'waveFreq', 20, 400, 0.01, pct],
       ]],
       ['Motion', [
-        ['Spin',      'spin',     -400, 400, 1, pct],
+        ['Spin',      'spin',     -400, 400, 0.01, pct],
         {sel:true, label:'Reverse', key:'spinRev', opts:[[0, 'Off'], [1, 'On (逆回転)']]},
         {sel:true, label:'Random Rev', key:'revAuto', opts:[[0, 'Off'], [1, 'On (ランダムな拍で反転)']]},
         {sel:true, label:'Attack Rev', key:'revAtk', opts:[[0, 'Off'], [1, 'On (アタックで反転)']]},
         {steps:true, label:'Spin Step', key:'spinStep', vals:[0, 45, 90, 180, 360], names:['連続', '45°', '90°', '180°', '360°']},
-        ['Tumble',    'tumble',   -300, 300, 1, pct],
-        ['Tilt',      'tilt',     -90, 90, 1, deg],
-        ['Roll',      'roll',     -180, 180, 1, deg],
-        ['Sway',      'sway',     0,  300, 1, pct],
-        ['Size',      'size',     10, 400, 1, pct],
-        ['Pos Y',     'posY',     -100, 100, 1, pct],
-        ['Pos X',     'posX',     -50, 50, 1, pct],
-        ['Lens',      'lens',     40, 180, 1, pct],
-        ['Speed',     'speed',    0,  400, 1, pct],
-        ['Kick',      'kick',     0,  300, 1, pct],
+        ['Tumble',    'tumble',   -300, 300, 0.01, pct],
+        ['Tilt',      'tilt',     -90, 90, 0.01, deg],
+        ['Roll',      'roll',     -180, 180, 0.01, deg],
+        ['Sway',      'sway',     0,  300, 0.01, pct],
+        ['Size',      'size',     10, 400, 0.01, pct],
+        ['Pos Y',     'posY',     -100, 100, 0.01, pct],
+        ['Pos X',     'posX',     -50, 50, 0.01, pct],
+        ['Lens',      'lens',     40, 180, 0.01, pct],
+        ['Speed',     'speed',    0,  400, 0.01, pct],
+        ['Kick',      'kick',     0,  300, 0.01, pct],
       ]],
     ];
     for(const [title, specs] of groups){
@@ -24195,27 +24979,27 @@ void mainImage(out vec4 o, in vec2 f){
     head('Material');
     mkSel('Material', CT.MATS.map((m, i)=>[i, m.name]), Math.round(P.mat || 0), v=>{ CT.setMat(parseInt(v, 10)); this.refreshChromeTypeParams(); }, true, 'mat');
     for(const spec of [
-      ['Metal',     'metal',    0,  100, 1, pct],
-      ['Rough',     'rough',    0,  100, 1, pct],
-      ['Light',     'envBri',   0,  300, 1, pct],
-      ['Light Rot', 'envRot',   -180, 180, 1, deg],
-      ['Sparkle',   'sparkle',  0,  300, 1, pct],
-      ['Irid',      'irid',     0,  100, 1, pct],
-      ['Grain',     'grain',    0,  200, 1, pct],
-      ['Surface',   'surf',     0,  200, 1, pct],
-      ['Contour',   'contour',  0,  100, 1, pct],
-      ['Contour Freq', 'contourDens', 20, 400, 1, pct],
+      ['Metal',     'metal',    0,  100, 0.01, pct],
+      ['Rough',     'rough',    0,  100, 0.01, pct],
+      ['Light',     'envBri',   0,  300, 0.01, pct],
+      ['Light Rot', 'envRot',   -180, 180, 0.01, deg],
+      ['Sparkle',   'sparkle',  0,  300, 0.01, pct],
+      ['Irid',      'irid',     0,  100, 0.01, pct],
+      ['Grain',     'grain',    0,  200, 0.01, pct],
+      ['Surface',   'surf',     0,  200, 0.01, pct],
+      ['Contour',   'contour',  0,  100, 0.01, pct],
+      ['Contour Freq', 'contourDens', 20, 400, 0.01, pct],
     ]) slider(spec);
     mkColor('Tint', 'tint');
     head('Light');
     for(const spec of [
-      ['Top Box',   'topBox',   0,  300, 1, pct],
-      ['Side Strips', 'sideStrips', 0, 300, 1, pct],
-      ['Key Angle', 'keyRot',   -180, 180, 1, deg],
-      ['Key Height', 'keyEl',   -40, 40, 1, deg],
-      ['Rim',       'rimLight', 0,  300, 1, pct],
-      ['Cavity',    'cavity',   0,  300, 1, pct],
-      ['Depth Shade', 'depthShade', 0, 100, 1, pct],
+      ['Top Box',   'topBox',   0,  300, 0.01, pct],
+      ['Side Strips', 'sideStrips', 0, 300, 0.01, pct],
+      ['Key Angle', 'keyRot',   -180, 180, 0.01, deg],
+      ['Key Height', 'keyEl',   -40, 40, 0.01, deg],
+      ['Rim',       'rimLight', 0,  300, 0.01, pct],
+      ['Cavity',    'cavity',   0,  300, 0.01, pct],
+      ['Depth Shade', 'depthShade', 0, 100, 0.01, pct],
     ]) slider(spec);
     mkColor('Light Color', 'lightCol');
     // 画像テクスチャ: images/ のフォルダ (IMAGE モードと同じ一覧。ドロップした画像も選べる)
@@ -24236,12 +25020,71 @@ void mainImage(out vec4 o, in vec2 f){
       mkSel('Image', (fsel.images || []).map(n=>[n, n]), P.texImage || ((fsel.images || [])[0] || ''), v=>{ P.texImage = v; }, true, 'texImage');
     }
     mkSel('Tex Mode', [[0, '正面に貼る'], [1, '三面から貼る'], [2, '映り込みに使う']], Math.round(P.texMode || 0), v=>{ P.texMode = parseInt(v, 10); }, true, 'texMode');
-    slider(['Tex Amt',   'texAmt',   0,  100, 1, pct]);
-    slider(['Tex Scale', 'texScale', 10, 400, 1, pct]);
+    slider(['Tex Amt',   'texAmt',   0,  100, 0.01, pct]);
+    slider(['Tex Scale', 'texScale', 10, 400, 0.01, pct]);
     head('Background');
     mkColor('BG (Slot A)', 'bgColor');
     mkSel('AA', [[0, 'Off'], [2, '2x'], [4, '4x']], Math.round(P.aa || 0), v=>{ P.aa = parseInt(v, 10); }, true, 'aa');
     this.bindEngineHints(root, ChromeType);
+  },
+  refreshImageConstructParams(){
+    const root = document.getElementById('imgconstructParams'); if(!root || typeof ImageConstruct === 'undefined') return;
+    const E=ImageConstruct, P=E.P;
+    root.innerHTML='';
+    const changed=()=>{ E.restart(); App._undoSchedule(); };
+    const row=(label,key)=>{
+      const r=document.createElement('div'); r.className='row'; r.dataset.pkey=key;
+      const lab=document.createElement('label'); lab.textContent=label; r.appendChild(lab); root.appendChild(r); return r;
+    };
+    const select=(label,key,values,onchange)=>{
+      const r=row(label,key), el=document.createElement('select');
+      for(const [value,name] of values){const o=document.createElement('option');o.value=String(value);o.textContent=name;el.appendChild(o);}
+      el.value=String(P[key]); el.dataset.norand='1';
+      el.addEventListener('change',()=>{if(onchange) onchange(el.value);else {P[key]=+el.value;changed();}});
+      r.appendChild(el); return r;
+    };
+    const button=(r,label,fn)=>{const b=document.createElement('button');b.textContent=label;b.addEventListener('click',fn);r.appendChild(b);};
+    const folders=E.folders().map(f=>[f.dir,f.name || f.dir]);
+    if(!folders.some(([dir])=>dir===P.folder)) folders.push([P.folder,P.folder || 'Auto']);
+    const fr=select('Folder','folder',folders,v=>{P.folder=v;E._syncFolder();changed();});
+    button(fr,'↻',()=>E.loadFolders(true));
+    const lr=select('Look','look',E.LOOKS.map((l,i)=>[i,l.name]),v=>{E.applyLook(+v);App._undoSchedule();});
+    button(lr,'🎲',()=>{E.randomLook();App._undoSchedule();});
+    const ar=row('Auto','lookAuto'), auto=document.createElement('input'); auto.type='checkbox';auto.checked=!!P.lookAuto;
+    auto.addEventListener('change',()=>{P.lookAuto=auto.checked ? 1 : 0;changed();}); ar.appendChild(auto);
+    const beats=[0.125,0.25,0.5,1,2,4,8,16,32];
+    select('Auto Every','lookEvery',beats.map(v=>[v,String(v)]));
+    select('Pattern','pattern',ConstructLayout.PATTERNS.map(([label],i)=>[i,label]));
+    select('Angle System','angleSys',[[0,'45°'],[1,'30°']]);
+    select('Projection','projection',[[0,'Flat'],[1,'Iso']]);
+    select('Faces','faces',[[0,'Floor + Walls'],[1,'Floor'],[2,'Left Wall'],[3,'Right Wall'],[4,'Walls'],[5,'Floor + Left'],[6,'Floor + Right']]);
+    select('Snap','cvSnap',[[0,'Off'],[1,'Angle System'],[2,'90°']]);
+    select('Mirror','cvMirror',[[0,'Off'],[1,'X'],[2,'Y'],[3,'XY'],[4,'Random']]);
+    const specs=[['Count','count',1,48,1],['Size','size',1,250,0.01],['Contrast','contrast',0,400,0.01],['Aspect','aspect',10,400,0.01],
+      ['Angle','cvAngle',-180,180,0.01],['Spread','cvSpread',0,250,0.01],['Offset X','cvOffX',-100,100,0.01],['Offset Y','cvOffY',-100,100,0.01],
+      ['Padding','padding',0,40,0.01],['Frame','frame',0,20,0.01],['Depth','depth',0,200,0.01]];
+    for(const [label,key,min,max,step] of specs){
+      const r=row(label,key), el=document.createElement('input'), val=document.createElement('div');
+      el.type='range';el.min=min;el.max=max;el.step=step;el.value=P[key];val.className='val';
+      const show=v=>key==='count' ? String(Math.round(v)) : App.effDisplay(v, x=>ParamValues.number(x).toFixed(2));
+      val.textContent=show(P[key]);el._paramDisplay=()=>P[key];
+      el.addEventListener('input',()=>{P[key]=ParamValues.read(el);val.textContent=show(P[key]);changed();});
+      r.appendChild(el);r.appendChild(val);
+    }
+    select('Fit','fit',[[0,'Crop'],[1,'Contain'],[2,'Stretch']]);
+    select('Paper Margin','mat',[[0,'Transparent'],[1,'Paper']]);
+    for(const [label,key] of [['Background','bg'],['Paper','paper'],['Frame Color','frameColor']]){
+      const r=row(label,key), el=document.createElement('input');el.type='color';
+      const hex=c=>'#'+c.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
+      el.value=hex(P[key]);el.dataset.default=hex(App.resetValueFor('imgconstruct',key,E.PDefaults[key]));
+      el.addEventListener('input',()=>{P[key]=[1,3,5].map(i=>parseInt(el.value.slice(i,i+2),16)/255);App._undoSchedule();});r.appendChild(el);
+    }
+    select('Timing','timing',[[0,'Place'],[1,'Redraw']]);
+    select('Write Beats','noteWrite',beats.map(v=>[v,String(v)]));
+    select('Hold Beats','noteHold',[0,...beats].map(v=>[v,String(v)]));
+    const status=document.createElement('div');status.className='help';
+    status.textContent=E._loading ? I18n.t('画像を読み込み中…') : E.textures.filter(Boolean).length+' / '+E._urls.length+' '+I18n.t('画像');root.appendChild(status);
+    this.bindEngineHints(root,E);
   },
   refreshGlitchTypeParams(){
     const root = document.getElementById('glitchtypeParams'); if(!root) return;
@@ -24251,9 +25094,9 @@ void mainImage(out vec4 o, in vec2 f){
       root.innerHTML = '<div class="help">GLITCH TYPE preset を選ぶと初期化されます</div>'; return;
     }
     const GT = GlitchType, P = GT.P;
-    const pct = v=>String(Math.round(v))+'%';
+    const pct = ParamValues.pct;
     const int = v=>String(Math.round(v));
-    const f1 = v=>(+v).toFixed(1);
+    const f1 = v=>(+v).toFixed(2);
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { seed:1, cols:1, weight:1, tracking:1 };
     const NO_RAND = { size:1, margin:1, cols:1, weight:1, rate:1 };   // Random で変えない (読めなくなる・大きさが飛ぶ)
@@ -24320,7 +25163,7 @@ void mainImage(out vec4 o, in vec2 f){
       row.appendChild(lab); row.appendChild(inp);
     }
     {
-      const ta=document.createElement('textarea'); ta.value=P.custom; ta.rows=2; ta.spellcheck=false; ta.placeholder='Custom (空ならドゥルーズの引用。貼った文章を段落ごとに打つ)';
+      const ta=document.createElement('textarea'); ta.value=P.custom; ta.rows=2; ta.spellcheck=false; I18n.bind(ta, "Custom (空ならドゥルーズの引用。貼った文章を段落ごとに打つ)", "placeholder");
       ta.dataset.pkey = 'custom';
       ta.style.cssText='width:100%;box-sizing:border-box;resize:vertical;font:inherit;font-size:13px;padding:6px;margin:4px 0;background:rgba(255,255,255,.06);color:inherit;border:1px solid rgba(255,255,255,.15);border-radius:4px';
       let composing=false;
@@ -24349,35 +25192,35 @@ void mainImage(out vec4 o, in vec2 f){
     }
     mkSel('Layout Every', 'layoutEvery', [[0, 'Quote'], [0.25, '1/4'], [0.5, '1/2'], [1, '1'], [2, '2'], [4, '4'], [8, '8'], [16, '16'], [32, '32']], v=>parseFloat(v));
     slider(['Cols', 'cols', 0, 24, 1, v=>v < 1 ? 'Auto' : int(v)]);
-    slider(['Margin', 'margin', 0, 300, 1, pct]);
+    slider(['Margin', 'margin', 0, 300, 0.01, pct]);
     mkSel('Band Align', 'bandAlign', [['cell', 'Cell'], ['line', 'Line'], ['free', 'Free']]);
     mkSel('Rule Align', 'ruleAlign', [['column', 'Column'], ['gutter', 'Gutter'], ['center', 'Center']]);
     onoff('Baseline', 'baseline');
-    slider(['Baseline Shift', 'baseShift', -100, 100, 1, pct]);
+    slider(['Baseline Shift', 'baseShift', -100, 100, 0.01, pct]);
     onoff('Meta', 'meta');
     onoff('Keyword', 'keyword');
-    slider(['Grid Lines', 'grid', 0, 100, 1, pct]);
-    slider(['Kinetic', 'kinetic', 0, 200, 1, pct]);
+    slider(['Grid Lines', 'grid', 0, 100, 0.01, pct]);
+    slider(['Kinetic', 'kinetic', 0, 200, 0.01, pct]);
     slider(['Seed', 'seed', 0, 999, 1, int]);
     block('type', 'Type');
     mkSel('Font', 'font', GT.FONTS.map((f, i)=>[i === 0 ? '' : f.ff, f.name]), null, true);
     slider(['Weight', 'weight', 200, 700, 100, int]);
     onoff('Upper', 'upper');
-    slider(['Size', 'size', 30, 250, 1, pct]);
-    slider(['Leading', 'leading', 60, 200, 1, pct]);
+    slider(['Size', 'size', 30, 250, 0.01, pct]);
+    slider(['Leading', 'leading', 60, 200, 0.01, pct]);
     slider(['Tracking', 'tracking', -120, 300, 5, int]);
     mkSel('Main Style', 'mainStyle', [[0, 'Fill'], [1, 'Outline'], [2, 'Key Fill']], v=>parseInt(v, 10));
     mkSel('Number Style', 'numStyle', [[0, 'Fill'], [1, 'Outline']], v=>parseInt(v, 10));
-    slider(['Stroke', 'stroke', 10, 400, 1, pct]);
-    slider(['Number Stroke', 'numStroke', 5, 400, 1, pct]);
+    slider(['Stroke', 'stroke', 10, 400, 0.01, pct]);
+    slider(['Number Stroke', 'numStroke', 5, 400, 0.01, pct]);
     block('lines', 'Lines');
-    slider(['Top Rule', 'topRuleW', 0, 800, 1, pct]);
-    slider(['Bottom Rule', 'botRuleW', 0, 800, 1, pct]);
-    slider(['Rule', 'ruleW', 0, 800, 1, pct]);
-    slider(['Accent Rule', 'accentW', 0, 800, 1, pct]);
-    slider(['Gauge Line', 'gaugeW', 0, 800, 1, pct]);
-    slider(['Grid Width', 'gridW', 25, 800, 1, pct]);
-    slider(['Cursor Width', 'cursorW', 25, 800, 1, pct]);
+    slider(['Top Rule', 'topRuleW', 0, 800, 0.01, pct]);
+    slider(['Bottom Rule', 'botRuleW', 0, 800, 0.01, pct]);
+    slider(['Rule', 'ruleW', 0, 800, 0.01, pct]);
+    slider(['Accent Rule', 'accentW', 0, 800, 0.01, pct]);
+    slider(['Gauge Line', 'gaugeW', 0, 800, 0.01, pct]);
+    slider(['Grid Width', 'gridW', 25, 800, 0.01, pct]);
+    slider(['Cursor Width', 'cursorW', 25, 800, 0.01, pct]);
     block('color', 'Color');
     mkColor('Text', 'ink');
     mkColor('Background', 'paper');
@@ -24390,7 +25233,7 @@ void mainImage(out vec4 o, in vec2 f){
     slider(['Lead', 'lead', 0, 40, 1, int]);
     slider(['Scramble Hz', 'scrHz', 1, 60, 1, int]);
     mkSel('Charset', 'charset', Object.keys(GT.CHARSETS).map(k=>[k, k[0].toUpperCase() + k.slice(1)]));
-    slider(['Flash', 'flash', 0, 400, 1, pct]);
+    slider(['Flash', 'flash', 0, 400, 0.01, pct]);
     slider(['Hold', 'hold', 0, 32, 1, int]);
     mkSel('Erase', 'erase', [['scramble', 'Scramble'], ['wipe', 'Wipe'], ['cut', 'Cut']]);
     slider(['Erase Beats', 'eraseBeats', 0.25, 8, 0.25, v=>(+v).toFixed(2)]);
@@ -24401,7 +25244,7 @@ void mainImage(out vec4 o, in vec2 f){
     slider(['Ticker Rate', 'tickRate', 0.5, 32, 0.5, f1]);
     block('d3', '3D');
     onoff('3D Mode', 'depth3D');
-    slider(['Depth', 'depth', 0, 100, 1, pct]);
+    slider(['Depth', 'depth', 0, 100, 0.01, pct]);
     this.bindEngineHintsSections('.glitchtype-mode', GlitchType);
   },
   // Glitch Type のブロック単位の Reset: 全体を保存値へ戻してから、ほかのブロックの値は今のまま戻す
@@ -24421,48 +25264,48 @@ void mainImage(out vec4 o, in vec2 f){
       root.innerHTML = '<div class="help">SURREAL FLOAT preset を選ぶと初期化されます</div>'; return;
     }
     const P = SurrealFloat.P;
-    const pct = v=>String(Math.round(v))+'%';
+    const pct = ParamValues.pct;
     const int = v=>String(Math.round(v));
-    const deg = v=>String(Math.round(v))+'°';
+    const deg = ParamValues.deg;
     const specs = [
-      ['Speed',     'speed',    0, 300, 1, pct],
-      ['Depth',     'depth',    0, 300, 1, pct],
-      ['Drift',     'drift',    0, 300, 1, pct],
-      ['Spin',      'spin',     0, 300, 1, pct],
-      ['Morph',     'morph',    0, 300, 1, pct],
+      ['Speed',     'speed',    0, 300, 0.01, pct],
+      ['Depth',     'depth',    0, 300, 0.01, pct],
+      ['Drift',     'drift',    0, 300, 0.01, pct],
+      ['Spin',      'spin',     0, 300, 0.01, pct],
+      ['Morph',     'morph',    0, 300, 0.01, pct],
       ['Count',     'count',    1, 36,  1, int],
-      ['Size',      'size',     20, 300, 1, pct],
-      ['Size Var',  'sizeVar',  0, 200, 1, pct],
-      ['Weird',     'weird',    0, 300, 1, pct],
-      ['Debris',    'debris',   0, 200, 1, pct],
-      ['Oddity',    'oddity',   0, 250, 1, pct],
-      ['Tanguy',    'tanguy',   0, 250, 1, pct],
-      ['Pan',       'pan',      0, 300, 1, pct],
-      ['Cloud',     'cloud',    0, 200, 1, pct],
-      ['Cloud Spd', 'cloudSpd', 0, 300, 1, pct],
-      ['Dunes',     'dunes',    0, 200, 1, pct],
-      ['Haze',      'haze',     0, 300, 1, pct],
-      ['Shadow',    'shadow',   0, 200, 1, pct],
-      ['Brush',     'brush',    0, 300, 1, pct],
-      ['Kick',      'kick',     0, 200, 1, pct],
-      ['Pitch',     'pitch',    -12, 25, 1, deg],
-      ['Roll',      'roll',     -30, 30, 1, deg],
+      ['Size',      'size',     20, 300, 0.01, pct],
+      ['Size Var',  'sizeVar',  0, 200, 0.01, pct],
+      ['Weird',     'weird',    0, 300, 0.01, pct],
+      ['Debris',    'debris',   0, 200, 0.01, pct],
+      ['Oddity',    'oddity',   0, 250, 0.01, pct],
+      ['Tanguy',    'tanguy',   0, 250, 0.01, pct],
+      ['Pan',       'pan',      0, 300, 0.01, pct],
+      ['Cloud',     'cloud',    0, 200, 0.01, pct],
+      ['Cloud Spd', 'cloudSpd', 0, 300, 0.01, pct],
+      ['Dunes',     'dunes',    0, 200, 0.01, pct],
+      ['Haze',      'haze',     0, 300, 0.01, pct],
+      ['Shadow',    'shadow',   0, 200, 0.01, pct],
+      ['Brush',     'brush',    0, 300, 0.01, pct],
+      ['Kick',      'kick',     0, 200, 0.01, pct],
+      ['Pitch',     'pitch',    -12, 25, 0.01, deg],
+      ['Roll',      'roll',     -30, 30, 0.01, deg],
       ['Eye Height','eyeH',     -15, 120, 1, int],
-      ['Lane',      'lane',     50, 250, 1, pct],
-      ['Float H',   'floatH',   20, 250, 1, pct],
-      ['Sun Az',    'sunAz',    -180, 180, 1, deg],
-      ['Sun Elev',  'sunEl',    -40, 40, 1, deg],
-      ['Key Gain',  'keyGain',  0, 250, 1, pct],
-      ['Ambient',   'ambient',  0, 250, 1, pct],
-      ['Dune Scale','duneScale',40, 300, 1, pct],
-      ['Speckle',   'speckle',  0, 400, 1, pct],
-      ['Shade Floor','shadeFloor',0, 70, 1, pct],
-      ['Cloud Scale','cloudScale',30, 300, 1, pct],
-      ['Cloud Base','cloudBase',0, 60, 1, pct],
-      ['Cloud Soft','cloudSoft',20, 400, 1, pct],
-      ['Gloss',     'gloss',    0, 300, 1, pct],
-      ['Brush Scale','brushScale',30, 300, 1, pct],
-      ['Weave',     'weave',    0, 400, 1, pct],
+      ['Lane',      'lane',     50, 250, 0.01, pct],
+      ['Float H',   'floatH',   20, 250, 0.01, pct],
+      ['Sun Az',    'sunAz',    -180, 180, 0.01, deg],
+      ['Sun Elev',  'sunEl',    -40, 40, 0.01, deg],
+      ['Key Gain',  'keyGain',  0, 250, 0.01, pct],
+      ['Ambient',   'ambient',  0, 250, 0.01, pct],
+      ['Dune Scale','duneScale',40, 300, 0.01, pct],
+      ['Speckle',   'speckle',  0, 400, 0.01, pct],
+      ['Shade Floor','shadeFloor',0, 70, 0.01, pct],
+      ['Cloud Scale','cloudScale',30, 300, 0.01, pct],
+      ['Cloud Base','cloudBase',0, 60, 0.01, pct],
+      ['Cloud Soft','cloudSoft',20, 400, 0.01, pct],
+      ['Gloss',     'gloss',    0, 300, 0.01, pct],
+      ['Brush Scale','brushScale',30, 300, 0.01, pct],
+      ['Weave',     'weave',    0, 400, 0.01, pct],
       ['Seed',      'seed',     0, 100, 1, int],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
@@ -24507,9 +25350,9 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const P = Fude.P;
     const f2 = v=>v.toFixed(2);
-    const f1 = v=>v.toFixed(1);
+    const f1 = v=>v.toFixed(2);
     const int = v=>String(Math.round(v));
-    const deg = v=>String(Math.round(v))+'°';
+    const deg = ParamValues.deg;
     const beats = v=>v.toFixed(1)+'b';
     const RAND_UNIT = ['固定', '1文字ごと', '1セットごと'];
     const BEAT_VALS = [0, 1/32, 1/16, 1/8, 1/4, 1/2, 1, 2, 4, 8, 16, 32];
@@ -24518,15 +25361,28 @@ void mainImage(out vec4 o, in vec2 f){
     const groups = [
       ['Canvas', [
         {sel:true, label:'Canvas', key:'noteOn', opts:['Off', 'On (書き置きで画面を埋める)']},
-        {sel:true, label:'Canvas Layout', key:'noteLayout', opts:['Auto (周回ごとにランダム)'].concat(Fude.CV_LAYOUTS)},
-        {sel:true, label:'Constructivist Auto', key:'noteConstAuto', opts:['Off (Auto から外す)', 'On (Auto に含める)']},
-        ['Note Count', 'noteCount', 1,   24,  1,    int],
-        ['Note Scale', 'noteScale', 0.2, 3,   0.01, f2],
+        ['Simultaneous','noteSimul',1,   8,   1,    int],
         ['Note Write', 'noteWrite', 0.25,32,  0.25, beats],
         ['Note Gap',   'noteGap',   0,   16,  0.25, beats],
         ['Canvas Hold','noteHold',  0,   64,  1,    beats],
         {sel:true, label:'When Full', key:'noteFull', opts:['白紙に戻す', '上書きし続ける (古い書き置きを薄める)']},
         ['Dim',        'noteDim',   0,   1,   0.02, f2],
+      ]],
+      ['Canvas Layout', [
+        {sel:true, label:'Angle System', key:'angleSys', opts:['45° (0 / 45 / 90 / 135)', '30° (0 / 30 / 60 / 90 / 120 / 150)']},
+        {sel:true, label:'Projection', key:'projection', opts:['Flat', 'Iso (床と左右の壁に貼る)']},
+        {sel:true, label:'Pattern', key:'noteLayout', opts:['Auto (周回ごとにランダム)'].concat(Fude.CV_PATTERNS.map(([label])=>label)), vals:[0].concat(Fude.CV_PATTERNS.map(([, types])=>Fude.CV_LAYOUTS.indexOf(types[0]) + 1)), norm:Fude.cvLayoutValue},
+        ['Note Count', 'noteCount', 1,   24,  1,    int],
+        ['Note Scale', 'noteScale', 0.2, 3,   0.01, f2],
+        ['Layout Angle','cvAngle',  -180, 180, 0.01,    deg],
+        ['Spread',     'cvSpread',  0.3, 2,   0.01, f2],
+        ['Offset X',   'cvOffX',    -0.5,0.5, 0.01, f2],
+        ['Offset Y',   'cvOffY',    -0.5,0.5, 0.01, f2],
+        {sel:true, label:'Mirror', key:'cvMirror', opts:['Off', '左右', '上下', '上下左右', 'ランダム (周回ごと)']},
+        ['Note Rotate','cvNoteRot', -180, 180, 0.01,    deg],
+        ['Rotate Var', 'cvRotVar',  0,   90,  0.01,    deg],
+        {sel:true, label:'Angle Snap', key:'cvSnap', opts:['Off', '15°', '30°', '45°', '90°']},
+        ['Scale Var',  'cvScaleVar',0,   1,   0.01, f2],
       ]],
       ['Constructivist Brush', [
         {sel:true, label:'Constructivist Brush', key:'noteGeo', opts:['Off', 'On (帯・線・棒・円相を筆で書く)']},
@@ -24534,6 +25390,8 @@ void mainImage(out vec4 o, in vec2 f){
         ['Lines',       'nbLine',      0,     8,    1,     int],
         ['Bars',        'nbBar',       0,     6,    1,     int],
         ['Circles',     'nbCircle',    0,     4,    1,     int],
+        ['Circle Size', 'nbCircleSize',0.05,  0.8,  0.01,  f2],
+        ['Circle Var',  'nbCircleVar', 0,     1,    0.01,  f2],
         {sel:true, label:'Main Axis', key:'nbMainAxis', opts:['H (水平)', 'V (垂直)', 'HV random', 'Free (軸と同じ斜め)']},
         ['Main Offset', 'nbMainOffset',0,     0.4,  0.01,  f2],
         ['Thickness',   'nbThick',     0.001, 0.05, 0.001, v=>v.toFixed(3)],
@@ -24543,7 +25401,7 @@ void mainImage(out vec4 o, in vec2 f){
         ['Length',      'nbLen',       0.2,   2,    0.01,  f2],
         ['Length Var',  'nbLenVar',    0,     1,    0.01,  f2],
         {sel:true, label:'Angle Snap', key:'nbSnap', opts:['Off', '15°', '30°', '45°', '90°']},
-        ['Angle Var',   'nbAngleVar',  0,     45,   1,     deg],
+        ['Angle Var',   'nbAngleVar',  0,     45,   0.01,     deg],
         ['Spread',      'nbSpread',    0.2,   2,    0.01,  f2],
         ['Opacity',     'nbOpacity',   0,     1,    0.01,  f2],
         ['Dry',         'nbDry',       0,     1,    0.01,  f2],
@@ -24573,7 +25431,7 @@ void mainImage(out vec4 o, in vec2 f){
         ['Brush Amt', 'brushAmt',  0,    1,   0.02, f2],
         {sel:true, label:'Layout Rand', key:'layoutRand', opts:['1文字ごと', '1セットごと']},
       ]],
-      ['Layout', [
+      ['Type Layout', [
         {sel:true, label:'Layout',    key:'layout',   opts:['横組', '縦組', 'ランダム配置', '毎回ランダム', '毎回ランダム (ずらし・大きさも)']},
         {sel:true, label:'Align',     key:'align',    opts:['中央', '先頭', '末尾']},
         {sel:true, label:'Weight',    key:'bold',     opts:['Regular', 'Bold']},
@@ -24584,13 +25442,11 @@ void mainImage(out vec4 o, in vec2 f){
         ['Shift',     'shift',     0,    3,   0.02, f2],
         ['Stagger',   'stagger',   -2,   2,   0.02, f2],
         ['Stair',     'stair',     -1,   1,   0.01, f2],
-        ['Rot Rand',  'scatterRot',0,    180, 1,    deg],
         ['Size Min',  'sizeMin',   0.1,  4,   0.01, f2],
         ['Size Max',  'sizeMax',   0.1,  4,   0.01, f2],
         ['Size Skew', 'sizeSkew',  0.3,  5,   0.02, f2],
         ['Aspect',    'aspect',    0.3,  3,   0.01, f2],
         ['Aspect Rand','aspectRand',0,   1,   0.02, f2],
-        ['Slant Rand','slantRand', 0,    1,   0.02, f2],
         {sel:true, label:'Placement', key:'compose', opts:['完全に乱数', '構成 (ポスターの型)']},
         ['Even',      'even',      0,    1,   0.02, f2],
         ['Area',      'area',      0.3,  3,   0.02, f2],
@@ -24598,7 +25454,7 @@ void mainImage(out vec4 o, in vec2 f){
       ['Skeleton', [
         ['Smooth',    'smooth',    0,    12,  1,    int],
         ['Spur',      'spur',      0,    4,   0.02, f2],
-        ['Merge',     'merge',     0,    90,  1,    deg],
+        ['Merge',     'merge',     0,    90,  0.01,    deg],
         ['Hane',      'hane',      0,    1,   0.02, f2],
         ['Harai Len', 'haraiLen',  0,    3,   0.02, f2],
         ['Hataku',    'hataku',    0,    1,   0.02, f2],
@@ -24609,7 +25465,7 @@ void mainImage(out vec4 o, in vec2 f){
         ['Width',     'width',     0.1,  4,   0.01, f2],
         ['Font Width','fontWidth', 0,    1,   0.02, f2],
         ['Nib',       'nib',       0,    1,   0.02, f2],
-        ['Nib Angle', 'nibAngle',  -90,  90,  1,    deg],
+        ['Nib Angle', 'nibAngle',  -90,  90,  0.01,    deg],
         ['Pressure',  'pressure',  0,    1,   0.02, f2],
         ['Press Freq','pressFreq', 0.5,  20,  0.1,  f1],
         ['Entry',     'entry',     0,    2,   0.02, f2],
@@ -24622,6 +25478,10 @@ void mainImage(out vec4 o, in vec2 f){
         ['Wobble',    'wobble',    0,    2,   0.02, f2],
         ['Wobble Freq','wobbleFreq',0.5, 30,  0.1,  f1],
         ['Edge Soft', 'edgeSoft',  0,    1,   0.02, f2],
+        ['Speed Width','speedWidth',0,   1,   0.02, f2],
+        ['Speed Width Curve','speedWidthCurve',0.2,4,0.05, f2],
+        ['Speed Width Var','speedWidthVar',0,1, 0.02, f2],
+        ['Speed Sense','speedSense',0,   3,   0.05, f2],
       ]],
       ['Bristle', [
         ['Bristles',  'bristles',  2,    60,  1,    int],
@@ -24634,31 +25494,44 @@ void mainImage(out vec4 o, in vec2 f){
         ['Splay',     'splay',     0,    1,   0.02, f2],
         ['Rough',     'rough',     0,    1,   0.02, f2],
         ['Bristle Lean','bristleLean',-2, 2,  0.02, f2],
-        ['Fine Hair', 'fineHair',  0,    100, 1,    v=>String(Math.round(v))+'%'],
-        ['Rim Dry',   'rimDry',    0,    150, 1,    v=>String(Math.round(v))+'%'],
+        ['Fine Hair', 'fineHair',  0,    100, 0.01,    ParamValues.pct],
+        ['Rim Dry',   'rimDry',    0,    150, 0.01,    ParamValues.pct],
       ]],
       ['Ink', [
         ['Density',   'density',   0,    1,   0.02, f2],
         ['Tone',      'tone',      0,    1,   0.02, f2],
         ['Pool',      'pool',      0,    1,   0.02, f2],
         ['Overlap',   'overlap',   0,    1,   0.02, f2],
+        ['Ink Gamma', 'inkGamma',  0.4,  3,   0.02, f2],
+        ['Edge Ring', 'edgeRing',  0,    1,   0.02, f2],
+      ]],
+      ['Bleed', [
         ['Bleed',     'bleed',     0,    1,   0.02, f2],
+        {sel:true, label:'Bleed Style', key:'bleedStyle', opts:['Soft (ぼかし)', 'Ink (輪郭のシルエットをにじませる)', 'Random (書くたびに Soft / Ink)']},
         ['Bleed Scale','bleedScale',1,   60,  0.5,  f1],
         ['Bleed Fiber','bleedFiber',0,   1,   0.02, f2],
         ['Bleed Taps','bleedTaps', 4,    12,  1,    int],
+        ['Bleed Halo','bleedHalo', 0,    200, 0.01,    ParamValues.pct],
+        ['Bleed Radius','bleedRadius',0.2, 3,   0.02, f2],
+        ['Bleed Var', 'bleedVar',  0,    1,   0.02, f2],
+        ['Speed Bleed','bleedSpeed',0,   1,   0.02, f2],
+        ['Press Bleed','bleedPress',0,   1,   0.02, f2],
+        ['Ink Bleed', 'bleedInk',  0,    1,   0.02, f2],
+        ['Bleed Grow','bleedGrow', 0,    16,  0.25, beats],
+      ]],
+      ['Splatter', [
         ['Splatter',  'splatter',  0,    1,   0.01, f2],
         ['Splat Size','splatSize', 0.2,  3,   0.02, f2],
         ['Splat Spread','splatSpread',0, 3,   0.02, f2],
+      ]],
+      ['Sheen', [
         ['Sheen',     'sheen',     0,    1,   0.02, f2],
-        ['Sheen Angle','sheenAngle',-180,180,1,    deg],
+        ['Sheen Angle','sheenAngle',-180,180,0.01,    deg],
         ['Sheen Power','sheenPower',1,   30,  0.5,  f1],
-        ['Ink Gamma', 'inkGamma',  0.4,  3,   0.02, f2],
-        ['Edge Ring', 'edgeRing',  0,    1,   0.02, f2],
-        ['Bleed Halo','bleedHalo', 0,    200, 1,    v=>String(Math.round(v))+'%'],
       ]],
       ['Paper', [
         ['Grain',     'grain',     0,    1,   0.02, f2],
-        ['Grain Size','grainSize', 20,   400, 5,    v=>String(Math.round(v))+'%'],
+        ['Grain Size','grainSize', 20,   400, 0.01,    ParamValues.pct],
         ['Paper Mottle','paperMottle',0, 1,   0.02, f2],
         ['Paper Vignette','paperVignette',0,1,0.02, f2],
         ['Paper Alpha','paperAlpha',0,   1,   0.02, f2],
@@ -24683,19 +25556,18 @@ void mainImage(out vec4 o, in vec2 f){
         ['Pulse',     'pulse',     0,    1,   0.02, f2],
         ['Audio',     'audio',     0,    2,   0.02, f2],
         {sel:true, label:'Hold (静止)', key:'hold', opts:['動く', '静止 (Phase の時刻で固定)']},
-        ['Phase',     'phase',     0,    120, 0.1,  v=>v.toFixed(1)+'s'],
+        ['Phase',     'phase',     0,    120, 0.1,  v=>v.toFixed(2)+'s'],
       ]],
       ['Transform', [
         ['Zoom',      'zoom',      0.1,  4,   0.01, f2],
         ['Pos X',     'posX',      -1,   1,   0.01, f2],
         ['Pos Y',     'posY',      -1,   1,   0.01, f2],
-        ['Rotate',    'rotate',    -180, 180, 1,    deg],
-        ['Slant',     'slant',     -1,   1,   0.01, f2],
+        ['Rotate',    'rotate',    -180, 180, 0.01,    deg],
         ['Stretch',   'stretch',   0.3,  3,   0.01, f2],
       ]],
       ['3D', [
-        ['Tilt X',    'tilt3dX',   -90,  90,  1,    deg],
-        ['Tilt Y',    'tilt3dY',   -90,  90,  1,    deg],
+        ['Tilt X',    'tilt3dX',   -90,  90,  0.01,    deg],
+        ['Tilt Y',    'tilt3dY',   -90,  90,  0.01,    deg],
         ['Spin',      'spin3d',    -4,   4,   0.05, f2],
         ['Depth',     'depth3d',   0,    1,   0.01, f2],
         ['Wave',      'wave3d',    0,    1,   0.01, f2],
@@ -24709,10 +25581,11 @@ void mainImage(out vec4 o, in vec2 f){
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     const NO_DEAD = { smooth:1, merge:1, nibAngle:1, pressFreq:1, wobbleFreq:1, bristles:1, streak:1, bristleContrast:1, dryStart:1, refill:1,
       bleedScale:1, bleedTaps:1, splatSize:1, splatSpread:1, wrap:1, sizeMin:1, sizeMax:1, sizeSkew:1, area:1, aspect:1, penTime:1, easePow:1, strokeGap:1, writeBeats:1, holdBeats:1, fadeBeats:1, flow:1, boilRate:1, phase:1,
-      zoom:1, posX:1, posY:1, rotate:1, slant:1, stretch:1, tilt3dX:1, tilt3dY:1, spin3d:1, seed:1, noteCount:1, noteScale:1, noteWrite:1, noteGap:1, noteHold:1, nbBand:1, nbLine:1, nbBar:1, nbCircle:1, nbMainOffset:1, nbThick:1, nbThickMul:1, nbThickRatio:1, nbThickVar:1, nbLen:1, nbLenVar:1, nbAngleVar:1, nbSpread:1, nbOpacity:1, nbDry:1, nbWrite:1, tracking:1, leading:1, taperPow:1,
-      fineHair:1, rimDry:1, sheenAngle:1, sheenPower:1, inkGamma:1, bleedHalo:1, grainSize:1 };   // デッドゾーン表示をしない (設定値)
+      zoom:1, posX:1, posY:1, rotate:1, stretch:1, tilt3dX:1, tilt3dY:1, spin3d:1, seed:1, noteCount:1, noteSimul:1, noteScale:1, cvAngle:1, cvSpread:1, cvOffX:1, cvOffY:1, cvNoteRot:1, cvRotVar:1, cvScaleVar:1, noteWrite:1, noteGap:1, noteHold:1, nbBand:1, nbLine:1, nbBar:1, nbCircle:1, nbCircleSize:1, nbCircleVar:1, nbMainOffset:1, nbThick:1, nbThickMul:1, nbThickRatio:1, nbThickVar:1, nbLen:1, nbLenVar:1, nbAngleVar:1, nbSpread:1, nbOpacity:1, nbDry:1, nbWrite:1, tracking:1, leading:1, taperPow:1,
+      fineHair:1, rimDry:1, sheenAngle:1, sheenPower:1, inkGamma:1, bleedHalo:1, grainSize:1, bleedRadius:1, bleedVar:1, bleedSpeed:1, bleedPress:1, bleedInk:1, bleedGrow:1, speedWidth:1, speedWidthCurve:1, speedWidthVar:1, speedSense:1 };   // デッドゾーン表示をしない (設定値)
     root.innerHTML = '';
-    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; root.appendChild(row); return row; };
+    let cur = root;
+    const mkRow = (key)=>{ const row=document.createElement('div'); row.className='row'; if(key) row.dataset.pkey = key; cur.appendChild(row); return row; };
     // 文字入力。日本語の変換中は確定まで反映しない
     const mkText = (key, rows, hint)=>{
       const ta=document.createElement('textarea'); ta.value=P[key]; ta.rows=rows; ta.spellcheck=false; ta.placeholder=hint;
@@ -24737,6 +25610,7 @@ void mainImage(out vec4 o, in vec2 f){
       const lab=document.createElement('label'); lab.textContent='Style';
       const sel=document.createElement('select');
       Fude.STYLES.forEach((st,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=st.name; sel.appendChild(o); });
+      { const o=document.createElement('option'); o.value=Fude.STYLES.length; I18n.bind(o, "Random (書くたびに選ぶ)", "textContent"); sel.appendChild(o); }   // 番号 = STYLES.length
       sel.value = String(Math.round(P.style || 0));
       sel.addEventListener('change', ()=>{ Fude.applyStyle(parseInt(sel.value, 10)); App._undoSchedule && App._undoSchedule(); this.refreshFudeParams(); });
       row.appendChild(lab); row.appendChild(sel); }
@@ -24747,18 +25621,23 @@ void mainImage(out vec4 o, in vec2 f){
       sel.value = P.fontFamily; if(sel.selectedIndex < 0) sel.selectedIndex = 0;
       sel.addEventListener('change', ()=>{ P.fontFamily = sel.value; App._undoSchedule && App._undoSchedule(); });
       row.appendChild(lab); row.appendChild(sel); }
+    // 欄 (グループ) ごとに行を作り、欄の定義 (Fude.PARAM_GROUPS) は作った行のキーから取る。ブロックへの分割は bindEngineHints (engineBlocks)
+    const NO_RAND = { noteOn:1, noteGeo:1, hold:1, write:1, reseed:1, colorMode:1 };   // Random で変えない (表示の有無・動き方そのものが変わる)
+    const pgroups = [];
     for(const [title, specs] of groups){
-      const head=document.createElement('div'); head.className='help'; head.textContent=title;
-      head.style.cssText='font-size:10px;margin-top:10px;letter-spacing:.08em;text-transform:uppercase;opacity:.75';
-      root.appendChild(head);
+      const n0 = root.children.length;
+      const grp = [title, []];
+      pgroups.push(grp);
+      const collect = ()=>{ [...root.children].slice(n0).forEach(el=>{ if(el.dataset.pkey) grp[1].push(el.dataset.pkey); }); };
       for(const spec of specs){
         if(spec.sel){                                 // 選択肢はプルダウン
           const row = mkRow(spec.key);
           const lab=document.createElement('label'); lab.textContent=spec.label;
           const sel=document.createElement('select');
-          spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value=i; o.textContent=name; sel.appendChild(o); });
-          sel.value = String(Math.round(P[spec.key] || 0));
+          spec.opts.forEach((name,i)=>{ const o=document.createElement('option'); o.value = spec.vals ? spec.vals[i] : i; o.textContent=name; sel.appendChild(o); });   // vals: 保存値が番号順でないとき
+          sel.value = String(spec.norm ? spec.norm(P[spec.key]) : Math.round(P[spec.key] || 0));
           sel.addEventListener('change', ()=>{ P[spec.key] = parseInt(sel.value, 10); App._undoSchedule && App._undoSchedule(); });
+          if(NO_RAND[spec.key]) sel.dataset.norand = '1';
           row.appendChild(lab); row.appendChild(sel);
           continue;
         }
@@ -24766,7 +25645,7 @@ void mainImage(out vec4 o, in vec2 f){
           const row = mkRow('setTransStyle');
           const lab=document.createElement('label'); lab.textContent='Trans Style';
           const sel=document.createElement('select');
-          const first=document.createElement('option'); first.value='-1'; first.textContent='Transition の設定'; sel.appendChild(first);
+          const first=document.createElement('option'); first.value='-1'; I18n.bind(first, "Transition の設定", "textContent"); sel.appendChild(first);
           const src=document.getElementById('transStyle');
           if(src) for(const o of src.options){ const c=document.createElement('option'); c.value=o.value; c.textContent=o.textContent; sel.appendChild(c); }
           sel.value = String(Math.round(P.setTransStyle ?? -1)); if(sel.selectedIndex < 0) sel.selectedIndex = 0;
@@ -24798,10 +25677,12 @@ void mainImage(out vec4 o, in vec2 f){
       if(title === 'Variation'){
         const row = mkRow();
         const b=document.createElement('button'); b.style.flex='1'; b.textContent='New Seed 🎲';
-        b.title='今すぐ別の書きぶりに引き直す。気に入ったら Reseed を固定にすればその Seed のまま止まる';
+        I18n.bind(b, "今すぐ別の書きぶりに引き直す。気に入ったら Reseed を固定にすればその Seed のまま止まる", "title");
         b.addEventListener('click', ()=>{ Fude.nextSet(true); App._undoSchedule && App._undoSchedule(); });
         row.appendChild(b);
+        row.dataset.pkey = 'newSeed';   // Variation のブロックへ一緒に移す
       }
+      collect();
     }
     const toHex = arr=>'#'+arr.map(v=>Math.round(v*255).toString(16).padStart(2,'0')).join('');
     for(const [label,key] of [['Ink','ink'],['Ink 2','ink2'],['Paper','paper']]){
@@ -24817,13 +25698,15 @@ void mainImage(out vec4 o, in vec2 f){
       const val=document.createElement('div'); val.className='val'; val.textContent='';
       row.appendChild(lab); row.appendChild(col); row.appendChild(val);
     }
+    pgroups[pgroups.length - 1][1].push('ink', 'ink2', 'paper');   // 色は Color の欄
+    Fude.PARAM_GROUPS = pgroups;
     // Random 🎲 (筆・毛・墨のみ。文字・書体・色・書き順・配置は変えない。保存は右上の Save)
     { const row = mkRow();
       const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
-      b.title='筆・毛・墨のパラメータをランダム生成 (文字・書体・色・書き順・配置は変えない。保存は右上の Save)';
+      I18n.bind(b, "筆・毛・墨のパラメータをランダム生成 (文字・書体・色・書き順・配置は変えない。保存は右上の Save)", "title");
       b.addEventListener('click', ()=>{
         for(const [title, specs] of groups){
-          if(title !== 'Brush' && title !== 'Bristle' && title !== 'Ink') continue;
+          if(!['Brush', 'Bristle', 'Ink', 'Bleed', 'Splatter', 'Sheen'].includes(title)) continue;
           for(const spec of specs){
             if(spec.sel) continue;
             const [label,key,mi,ma,step] = spec;
@@ -24854,7 +25737,7 @@ void mainImage(out vec4 o, in vec2 f){
       {sel:true, label:'Body Link', tip:'本体色: Body Color を使うか、インク (破片) と連動させる', key:'bodyLink', opts:['Body Color を使う', 'インク (破片) と連動']},
       {sel:true, label:'Edge (縁の線)', key:'edgeOn', opts:['なし', 'あり']},
       {sel:true, label:'Shading (陰影)', key:'lit', opts:['なし', 'あり']},
-      ['Speed',      'speed',     0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Speed',      'speed',     0,    300, 0.01,     ParamValues.pct],
       ['Morph',      'morph',     0,    3,   0.02,  f2],
       ['Blobs',      'blobs',     1,    6,   1,     v=>String(Math.round(v))],
       ['Size',       'size',      0.3,  2,   0.02,  f2],
@@ -24864,20 +25747,20 @@ void mainImage(out vec4 o, in vec2 f){
       ['Jitter',     'jitter',    0,    2,   0.02,  f2],
       ['Overlap',    'overlap',   1,    2.2, 0.02,  f2],
       ['Aspect',     'aspect',    1,    4,   0.05,  f2],
-      ['Rotate',     'rotate',   -180,  180, 1,     v=>String(Math.round(v))+'°'],
+      ['Rotate',     'rotate',   -180,  180, 0.01,     ParamValues.deg],
       ['Rot Var',    'rotVar',    0,    1,   0.02,  f2],
       ['Edge Peel',  'peel',      0.2,  4,   0.05,  f2],
       ['Peel Rate',  'peelRate',  0,    2,   0.02,  f2],
       ['Peel Size',  'peelScale', 0.5,  4,   0.05,  f2],
       ['Peel Var',   'peelVar',   0,    1,   0.02,  f2],
       ['Peel Amt',   'peelAmt',   0.05, 1,   0.01,  f2],
-      ['Brush',      'brush',     2,    50,  1,     v=>String(Math.round(v))+'%'],
+      ['Brush',      'brush',     2,    50,  0.01,     ParamValues.pct],
       ['Lift',       'lift',      0,    4,   0.02,  f2],
       ['Fall',       'fall',      0,    3,   0.05,  f2],
       ['Drift',      'drift',     0,    1,   0.02,  f2],
       ['Tumble',     'tumble',    0,    3,   0.02,  f2],
       ['Tilt',       'tilt',      0,    1.4, 0.02,  f2],
-      ['Spin',       'spin',      0,    300, 1,     v=>String(Math.round(v))+'%'],
+      ['Spin',       'spin',      0,    300, 0.01,     ParamValues.pct],
       ['Swell',      'swell',     0,    1.5, 0.02,  f2],
       ['Depth',      'depth',     0,    1,   0.02,  f2],
       ['Persp',      'persp',     0.3,  2,   0.02,  f2],
@@ -24888,31 +25771,31 @@ void mainImage(out vec4 o, in vec2 f){
       ['Detail',     'detail',    0,    1,   0.02,  f2],
       ['Audio',      'audio',     0,    2,   0.02,  f2],
       ['Paper Alpha','paperAlpha', 0,   1,   0.02,  f2],
-      ['Pos X',      'posX',     -40,   40,  1,     v=>String(Math.round(v))+'%'],
-      ['Pos Y',      'posY',     -30,   30,  1,     v=>String(Math.round(v))+'%'],
-      ['Roll',       'roll',     -180,  180, 1,     v=>String(Math.round(v))+'°'],
-      ['Lens',       'lens',      50,   250, 1,     v=>String(Math.round(v))+'%'],
-      ['Yaw',        'yaw',      -180,  180, 1,     v=>String(Math.round(v))+'°'],
-      ['Light Dir',  'lightA',   -180,  180, 1,     v=>String(Math.round(v))+'°'],
-      ['Light Front','lightZ',    20,   300, 1,     v=>String(Math.round(v))+'%'],
-      ['Piece Shade','pShade',    0,    100, 1,     v=>String(Math.round(v))+'%'],
-      ['Rim',        'rim',      -100,  100, 1,     v=>String(Math.round(v))+'%'],
-      ['Round',      'round',     0,    100, 1,     v=>String(Math.round(v))+'%'],
-      ['Taper',      'taper',    -60,   90,  1,     v=>String(Math.round(v))+'%'],
-      ['Twist',      'twist',    -150,  150, 1,     v=>String(Math.round(v))+'%'],
-      ['Gap',        'gap',       0,    500, 1,     v=>String(Math.round(v))+'%'],
-      ['Len Var',    'lenVar',    0,    200, 1,     v=>String(Math.round(v))+'%'],
-      ['Wid Var',    'widVar',    0,    200, 1,     v=>String(Math.round(v))+'%'],
+      ['Pos X',      'posX',     -40,   40,  0.01,     ParamValues.pct],
+      ['Pos Y',      'posY',     -30,   30,  0.01,     ParamValues.pct],
+      ['Roll',       'roll',     -180,  180, 0.01,     ParamValues.deg],
+      ['Lens',       'lens',      50,   250, 0.01,     ParamValues.pct],
+      ['Yaw',        'yaw',      -180,  180, 0.01,     ParamValues.deg],
+      ['Light Dir',  'lightA',   -180,  180, 0.01,     ParamValues.deg],
+      ['Light Front','lightZ',    20,   300, 0.01,     ParamValues.pct],
+      ['Piece Shade','pShade',    0,    100, 0.01,     ParamValues.pct],
+      ['Rim',        'rim',      -100,  100, 0.01,     ParamValues.pct],
+      ['Round',      'round',     0,    100, 0.01,     ParamValues.pct],
+      ['Taper',      'taper',    -60,   90,  0.01,     ParamValues.pct],
+      ['Twist',      'twist',    -150,  150, 0.01,     ParamValues.pct],
+      ['Gap',        'gap',       0,    500, 0.01,     ParamValues.pct],
+      ['Len Var',    'lenVar',    0,    200, 0.01,     ParamValues.pct],
+      ['Wid Var',    'widVar',    0,    200, 0.01,     ParamValues.pct],
       ['Fall Curve', 'fallCurve', 1,    4,   0.05,  f2],
-      ['Fall Dir',   'fallDir',  -180,  180, 1,     v=>String(Math.round(v))+'°'],
-      ['Fade Start', 'fadeStart', 0,    95,  1,     v=>String(Math.round(v))+'%'],
-      ['Peel Span',  'peelSpan',  5,    60,  1,     v=>String(Math.round(v))+'%'],
-      ['Lift Share', 'liftShare', 10,   80,  1,     v=>String(Math.round(v))+'%'],
-      ['Peel Phase', 'peelPhase', 0,    100, 1,     v=>String(Math.round(v))+'%'],
-      ['Tone Var',   'toneVar',   0,    100, 1,     v=>String(Math.round(v))+'%'],
-      ['Hue Var',    'hueVar',    0,    180, 1,     v=>String(Math.round(v))+'°'],
-      ['Body Line',  'bodyLine',  0,    300, 1,     v=>String(Math.round(v))+'%'],
-      ['Noise Y',    'noiseY',    25,   400, 1,     v=>String(Math.round(v))+'%'],
+      ['Fall Dir',   'fallDir',  -180,  180, 0.01,     ParamValues.deg],
+      ['Fade Start', 'fadeStart', 0,    95,  0.01,     ParamValues.pct],
+      ['Peel Span',  'peelSpan',  5,    60,  0.01,     ParamValues.pct],
+      ['Lift Share', 'liftShare', 10,   80,  0.01,     ParamValues.pct],
+      ['Peel Phase', 'peelPhase', 0,    100, 0.01,     ParamValues.pct],
+      ['Tone Var',   'toneVar',   0,    100, 0.01,     ParamValues.pct],
+      ['Hue Var',    'hueVar',    0,    180, 0.01,     ParamValues.deg],
+      ['Body Line',  'bodyLine',  0,    300, 0.01,     ParamValues.pct],
+      ['Noise Y',    'noiseY',    25,   400, 0.01,     ParamValues.pct],
     ];
     const disp = (v, fmt)=> (App.effDisplay ? App.effDisplay(v, fmt) : fmt(v));
     root.innerHTML = '';
@@ -24949,7 +25832,7 @@ void mainImage(out vec4 o, in vec2 f){
     // Random 🎲 (数値パラメータのみ。Shape・色・Audio / Paper Alpha は変えない。保存は右上の Save)
     { const row = mkRow();
       const b=document.createElement('button'); b.style.flex='1'; b.textContent='Random Params';
-      b.title='本体の形・破片・剥がれ方のパラメータをランダム生成 (Shape と色は変えない。保存は右上の Save)';
+      I18n.bind(b, "本体の形・破片・剥がれ方のパラメータをランダム生成 (Shape と色は変えない。保存は右上の Save)", "title");
       b.addEventListener('click', ()=>{
         for(const spec of specs){
           if(spec.sel) continue;
@@ -24984,7 +25867,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(seedIn) seedIn.value = seed;
       this.refreshUgomeki();
       App._undoSchedule();
-      toast('UGOMEKI 種: ' + seed);
+      toast(I18n.t("UGOMEKI 種: ") + seed);
     };
     const sApply = $('#mtSeedApply');
     if(sApply) sApply.addEventListener('click', ()=> applySeed(Math.max(0, parseInt(seedIn && seedIn.value, 10) || 0)));
@@ -24992,7 +25875,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(sRand) sRand.addEventListener('click', ()=> applySeed(Math.floor(Math.random()*100000)));
     const reseed = $('#mtReseed');
     if(reseed) reseed.addEventListener('click', ()=>{
-      if(typeof Ugomeki !== 'undefined' && Ugomeki.initialized){ Ugomeki.reseed(); toast('UGOMEKI 揺れパターン変更'); }
+      if(typeof Ugomeki !== 'undefined' && Ugomeki.initialized){ Ugomeki.reseed(); toast(I18n.t("UGOMEKI 揺れパターン変更")); }
     });
   },
   refreshUgomeki(){
@@ -25066,39 +25949,39 @@ void mainImage(out vec4 o, in vec2 f){
       ['Lines',      'lineCount',  1, 40,  1,   v=>(v|0)+'ln', true],
       ['Tracking',   'letterSpace',0, 3,   0.05,v=>v.toFixed(2), true],
       ['Leading',    'lineSpace',  0, 3,   0.05,v=>v.toFixed(2), true],
-      ['Size %',     'fontScale',  10, 400,5,   v=>(v|0)+'%', true],
-      ['Margin %',   'marginPct',  0, 30,  1,   v=>(v|0)+'%', true],
+      ['Size %',     'fontScale',  10, 400,0.01,   ParamValues.pct, true],
+      ['Margin %',   'marginPct',  0, 30,  0.01,   ParamValues.pct, true],
       ['Type Speed', 'typeCps',    0, 60, 0.2, v=>v<=0?'cut':Math.round(v*60)+'/min', true],
-      ['Type Hold',  'typeHold',   0, 8,   0.5, v=>v.toFixed(1)+'s', false],
+      ['Type Hold',  'typeHold',   0, 8,   0.5, v=>v.toFixed(2)+'s', false],
       ['Cut Beats',  'cutBeats',   0.25, 32, 0.25, v=>v+' beat', false],
-      ['Sway',       'amp',        0, 40,  0.5, v=>v.toFixed(1)+'%', false],
-      ['Rotate',     'rot',        0, 45,  0.5, v=>v.toFixed(1)+'°', false],
-      ['Scale',      'scale',      0, 60,  1,   v=>(v|0)+'%', false],
-      ['Blink',      'blink',      0, 100, 1,   v=>(v|0)+'%', false],
-      ['Cut V',      'cutV',       0, 100, 1,   v=>(v|0)+'%', false],
-      ['Cut H',      'cutH',       0, 100, 1,   v=>(v|0)+'%', false],
-      ['Cut Diag',   'cutD',       0, 100, 1,   v=>(v|0)+'%', false],
-      ['Float',      'float',      0, 150, 1,   v=>(v|0)+'%', false],
-      ['Beam',       'beam',       0, 100, 1,   v=>(v|0)+'%', false],
+      ['Sway',       'amp',        0, 40,  0.5, v=>v.toFixed(2)+'%', false],
+      ['Rotate',     'rot',        0, 45,  0.5, v=>v.toFixed(2)+'°', false],
+      ['Scale',      'scale',      0, 60,  0.01,   ParamValues.pct, false],
+      ['Blink',      'blink',      0, 100, 0.01,   ParamValues.pct, false],
+      ['Cut V',      'cutV',       0, 100, 0.01,   ParamValues.pct, false],
+      ['Cut H',      'cutH',       0, 100, 0.01,   ParamValues.pct, false],
+      ['Cut Diag',   'cutD',       0, 100, 0.01,   ParamValues.pct, false],
+      ['Float',      'float',      0, 150, 0.01,   ParamValues.pct, false],
+      ['Beam',       'beam',       0, 100, 0.01,   ParamValues.pct, false],
       ['Beam Dist',  'beamDist',   0, 100, 1,   v=>(v|0)+'px', false],
-      ['Echo',       'echo',       0, 100, 1,   v=>(v|0)+'%', false],
+      ['Echo',       'echo',       0, 100, 0.01,   ParamValues.pct, false],
       ['Echo Gap',   'echoLen',    0, 1000,5,   v=>String(v|0), false],
-      ['Aspect',     'aspect',     0, 120, 1,   v=>(v|0)+'%', false],
-      ['Double',     'dbl',        0, 100, 1,   v=>(v|0)+'%', false],
-      ['Glitch',     'glitch',     0, 100, 1,   v=>(v|0)+'%', false],
-      ['Wave',       'wave',       0, 120, 1,   v=>(v|0)+'%', false],
-      ['Hue Shift',  'hue',        0, 100, 1,   v=>(v|0)+'%', false],
-      ['Blur',       'blur',       0, 80,  1,   v=>(v|0)+'%', false],
-      ['Flip H',     'flipH',      0, 100, 1,   v=>(v|0)+'%', false],
-      ['Flip V',     'flipV',      0, 100, 1,   v=>(v|0)+'%', false],
+      ['Aspect',     'aspect',     0, 120, 0.01,   ParamValues.pct, false],
+      ['Double',     'dbl',        0, 100, 0.01,   ParamValues.pct, false],
+      ['Glitch',     'glitch',     0, 100, 0.01,   ParamValues.pct, false],
+      ['Wave',       'wave',       0, 120, 0.01,   ParamValues.pct, false],
+      ['Hue Shift',  'hue',        0, 100, 0.01,   ParamValues.pct, false],
+      ['Blur',       'blur',       0, 80,  0.01,   ParamValues.pct, false],
+      ['Flip H',     'flipH',      0, 100, 0.01,   ParamValues.pct, false],
+      ['Flip V',     'flipV',      0, 100, 0.01,   ParamValues.pct, false],
       ['Serial/Par', 'mix',        0, 100, 1,   v=>v<=0?'Serial':(v>=100?'Parallel':'Par '+(v|0)+'%'), false],
       ['Ease',       'tame',      -100,100, 1,  v=>v===0?'Even':(v<0?'In '+(-v|0):'Out '+(v|0)), false],
       ['Duration',   'dur',        1, 30,  1,   v=>(v|0)+'s', false],
       ['FPS',        'fps',        1, 60,  1,   v=>String(v|0), false],
-      ['Body Kanji', 'bodyKanji',  20, 120, 1,  v=>(v|0)+'%', false],
-      ['Body Hira',  'bodyHira',   20, 120, 1,  v=>(v|0)+'%', false],
-      ['Body Kana',  'bodyKana',   20, 120, 1,  v=>(v|0)+'%', false],
-      ['Body Latin', 'bodyLatin',  20, 120, 1,  v=>(v|0)+'%', false],
+      ['Body Kanji', 'bodyKanji',  20, 120, 0.01,  ParamValues.pct, false],
+      ['Body Hira',  'bodyHira',   20, 120, 0.01,  ParamValues.pct, false],
+      ['Body Kana',  'bodyKana',   20, 120, 0.01,  ParamValues.pct, false],
+      ['Body Latin', 'bodyLatin',  20, 120, 0.01,  ParamValues.pct, false],
       ['Beat Pulse', 'beatPulse',  0, 1,   0.05,v=>v.toFixed(2), false],
     ];
     const sliderMap = {};
@@ -25135,25 +26018,25 @@ void mainImage(out vec4 o, in vec2 f){
     }
     // 第 2 弾の追加行: SpaceType と同じく Ugomeki.P を毎回 live 参照する (loadPreset で P が差し替わっても効く)
     const specsX = [
-      ['Text Angle', 'textAngle', -90, 90,  1,   v=>(v|0)+'°'],
-      ['Slope',      'slope',     -100,100, 1,   v=>(v|0)+'%'],
-      ['Shear',      'shear',     -100,100, 1,   v=>(v|0)+'%'],
-      ['Arc',        'arc',       -100,100, 1,   v=>(v|0)+'%'],
-      ['Stagger',    'stagger',    0, 100,  1,   v=>(v|0)+'%'],
-      ['Size Ramp X','sizeRampX', -60, 60,  1,   v=>(v|0)+'%'],
-      ['Size Ramp Y','sizeRampY', -60, 60,  1,   v=>(v|0)+'%'],
-      ['Size Variance','sizeVar',  0, 100,  1,   v=>(v|0)+'%'],
-      ['Tilt Variance','tiltVar',  0, 45,   1,   v=>(v|0)+'°'],
-      ['Fade Variance','fadeVar',  0, 100,  1,   v=>(v|0)+'%'],
-      ['Opacity',    'opacity',    20, 100, 1,   v=>(v|0)+'%'],
-      ['Stroke',     'strokeW',    0, 30,   1,   v=>(v|0)+'%'],
-      ['Fill',       'fillPct',    0, 100,  1,   v=>(v|0)+'%'],
-      ['Shadow Dist','shadowDist', 0, 60,   1,   v=>(v|0)+'%'],
-      ['Shadow Angle','shadowAngle',0, 360, 1,   v=>(v|0)+'°'],
-      ['Shadow Blur','shadowBlur', 0, 40,   1,   v=>(v|0)+'%'],
-      ['Vignette',   'vignette',   0, 100,  1,   v=>(v|0)+'%'],
-      ['Sway X',     'ampX',       0, 200,  1,   v=>(v|0)+'%'],
-      ['Sway Y',     'ampY',       0, 200,  1,   v=>(v|0)+'%'],
+      ['Text Angle', 'textAngle', -90, 90,  0.01,   ParamValues.deg],
+      ['Slope',      'slope',     -100,100, 0.01,   ParamValues.pct],
+      ['Shear',      'shear',     -100,100, 0.01,   ParamValues.pct],
+      ['Arc',        'arc',       -100,100, 0.01,   ParamValues.pct],
+      ['Stagger',    'stagger',    0, 100,  0.01,   ParamValues.pct],
+      ['Size Ramp X','sizeRampX', -60, 60,  0.01,   ParamValues.pct],
+      ['Size Ramp Y','sizeRampY', -60, 60,  0.01,   ParamValues.pct],
+      ['Size Variance','sizeVar',  0, 100,  0.01,   ParamValues.pct],
+      ['Tilt Variance','tiltVar',  0, 45,   0.01,   ParamValues.deg],
+      ['Fade Variance','fadeVar',  0, 100,  0.01,   ParamValues.pct],
+      ['Opacity',    'opacity',    20, 100, 0.01,   ParamValues.pct],
+      ['Stroke',     'strokeW',    0, 30,   0.01,   ParamValues.pct],
+      ['Fill',       'fillPct',    0, 100,  0.01,   ParamValues.pct],
+      ['Shadow Dist','shadowDist', 0, 60,   0.01,   ParamValues.pct],
+      ['Shadow Angle','shadowAngle',0, 360, 0.01,   ParamValues.deg],
+      ['Shadow Blur','shadowBlur', 0, 40,   0.01,   ParamValues.pct],
+      ['Vignette',   'vignette',   0, 100,  0.01,   ParamValues.pct],
+      ['Sway X',     'ampX',       0, 200,  0.01,   ParamValues.pct],
+      ['Sway Y',     'ampY',       0, 200,  0.01,   ParamValues.pct],
       ['Char Delay', 'charDelay',  0, 300,  1,   v=>(v|0)+'ms'],
       ['Cut Slices', 'cutSlices',  2, 8,    1,   v=>String(v|0)],
     ];
@@ -25235,10 +26118,10 @@ void mainImage(out vec4 o, in vec2 f){
       if(scene.dataset.built !== '2'){
         scene.innerHTML = '';
         const sv = document.createElement('option');
-        sv.value = 'saved'; sv.textContent = 'Saved (mdごとの保存scene)';
+        sv.value = 'saved'; I18n.bind(sv, "Saved (mdごとの保存scene)", "textContent");
         scene.appendChild(sv);
         const any = document.createElement('option');
-        any.value = 'random'; any.textContent = 'Random (毎回抽選)';
+        any.value = 'random'; I18n.bind(any, "Random (毎回抽選)", "textContent");
         scene.appendChild(any);
         for(const s of (T.SCENES || [])){ const o = document.createElement('option'); o.textContent = s; o.value = s; scene.appendChild(o); }
         scene.dataset.built = '2';
@@ -25282,7 +26165,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(sideCol){ sideCol.value = P.sideColor; if(!sideCol._stBound){ sideCol._stBound = true;
       // ピッカーで色を選んだら専用色モードに。ダブルクリックで既定(縁の色を引き延ばす)へ戻す。
       sideCol.addEventListener('input', ()=>{ T.setParams({ sideColor: sideCol.value, sideColorOn: true }); });
-      sideCol.addEventListener('dblclick', ()=>{ T.setParams({ sideColorOn: false }); App._undoSchedule(); toast('押し出し面色: 既定 (文字の縁を引き延ばす)'); }); } }
+      sideCol.addEventListener('dblclick', ()=>{ T.setParams({ sideColorOn: false }); App._undoSchedule(); toast(I18n.t("押し出し面色: 既定 (文字の縁を引き延ばす)")); }); } }
     // スライダー一覧 (spec から生成)
     const root = $('#stParams'); if(!root) return;
     root.innerHTML = '';
@@ -25291,47 +26174,47 @@ void mainImage(out vec4 o, in vec2 f){
       ['Size',       'size',       0.2, 3,  0.05, v=>v.toFixed(2), false],
       ['Density',    'density',    0.2, 3,  0.05, v=>v.toFixed(2), true],
       ['Depth',      'depth',      6, 60,   1,    v=>String(v|0), true],
-      ['Wave Amp',   'waveAmp',    0, 5,    0.1,  v=>v.toFixed(1), false],
-      ['Wave Freq',  'waveFreq',   0.1, 4,  0.1,  v=>v.toFixed(1), false],
+      ['Wave Amp',   'waveAmp',    0, 5,    0.1,  v=>v.toFixed(2), false],
+      ['Wave Freq',  'waveFreq',   0.1, 4,  0.1,  v=>v.toFixed(2), false],
       ['Speed',      'speed',      0, 4,    0.05, v=>v.toFixed(2), false],
       ['Spin',       'spin',       0, 2,    0.02, v=>v.toFixed(2), false],
       ['Jitter',     'jitter',     0, 2,    0.02, v=>v.toFixed(2), false],
-      ['Tilt X',     'tiltX',      0, 90,   1,    v=>(v|0)+'°', false],
-      ['Tilt Y',     'tiltY',      0, 90,   1,    v=>(v|0)+'°', false],
-      ['Roll',       'roll',       0, 90,   1,    v=>(v|0)+'°', false],
-      ['Extrude',    'extrude',    0, 100,  1,    v=>(v|0)+'%', false],
-      ['Side Shade', 'sideShade',  0, 100,  1,    v=>(v|0)+'%', false],
-      ['Fold',       'fold',       0, 100,  1,    v=>(v|0)+'%', false],
-      ['Lag (しなり)','lag',       0, 100,  1,    v=>(v|0)+'%', false],
-      ['Face Vel',   'faceVel',    0, 100,  1,    v=>(v|0)+'%', false],
-      ['Sway',       'swayAmp',    0, 100,  1,    v=>(v|0)+'%', false],
-      ['Sway Freq',  'swayFreq',   0.2, 6,  0.1,  v=>v.toFixed(1), false],
-      ['Droop',      'droop',      0, 100,  1,    v=>(v|0)+'%', false],
-      ['Twist',      'twist',      0, 90,   1,    v=>(v|0)+'°', false],
-      ['Glyph Width','glyphW',     50, 300, 1,    v=>(v|0)+'%', false],
-      ['Size Variance','sizeVar',  0, 100,  1,    v=>(v|0)+'%', false],
-      ['Weight',     'weight',    -30, 40,  1,    v=>(v|0)+'%', false],
-      ['Opacity',    'opacity',    20, 100, 1,    v=>(v|0)+'%', false],
-      ['Spread X',   'spreadX',    30, 250, 1,    v=>(v|0)+'%', false],
-      ['Spread Y',   'spreadY',    30, 250, 1,    v=>(v|0)+'%', false],
-      ['Spread Z',   'spreadZ',    30, 180, 1,    v=>(v|0)+'%', false],
-      ['Fog',        'fog',        0, 100,  1,    v=>(v|0)+'%', false],
-      ['Far Tint',   'farTint',    0, 100,  1,    v=>(v|0)+'%', false],
+      ['Tilt X',     'tiltX',      0, 90,   0.01,    ParamValues.deg, false],
+      ['Tilt Y',     'tiltY',      0, 90,   0.01,    ParamValues.deg, false],
+      ['Roll',       'roll',       0, 90,   0.01,    ParamValues.deg, false],
+      ['Extrude',    'extrude',    0, 100,  0.01,    ParamValues.pct, false],
+      ['Side Shade', 'sideShade',  0, 100,  0.01,    ParamValues.pct, false],
+      ['Fold',       'fold',       0, 100,  0.01,    ParamValues.pct, false],
+      ['Lag (しなり)','lag',       0, 100,  0.01,    ParamValues.pct, false],
+      ['Face Vel',   'faceVel',    0, 100,  0.01,    ParamValues.pct, false],
+      ['Sway',       'swayAmp',    0, 100,  0.01,    ParamValues.pct, false],
+      ['Sway Freq',  'swayFreq',   0.2, 6,  0.1,  v=>v.toFixed(2), false],
+      ['Droop',      'droop',      0, 100,  0.01,    ParamValues.pct, false],
+      ['Twist',      'twist',      0, 90,   0.01,    ParamValues.deg, false],
+      ['Glyph Width','glyphW',     50, 300, 0.01,    ParamValues.pct, false],
+      ['Size Variance','sizeVar',  0, 100,  0.01,    ParamValues.pct, false],
+      ['Weight',     'weight',    -30, 40,  0.01,    ParamValues.pct, false],
+      ['Opacity',    'opacity',    20, 100, 0.01,    ParamValues.pct, false],
+      ['Spread X',   'spreadX',    30, 250, 0.01,    ParamValues.pct, false],
+      ['Spread Y',   'spreadY',    30, 250, 0.01,    ParamValues.pct, false],
+      ['Spread Z',   'spreadZ',    30, 180, 0.01,    ParamValues.pct, false],
+      ['Fog',        'fog',        0, 100,  0.01,    ParamValues.pct, false],
+      ['Far Tint',   'farTint',    0, 100,  0.01,    ParamValues.pct, false],
       ['Fog Distance','fogDist',   4, 60,   1,    v=>String(v|0), false],
-      ['Wave Skew',  'waveSkew',   0, 120,  1,    v=>(v|0)+'%', false],
-      ['Ring Twist', 'ringTwist',  0, 120,  1,    v=>(v|0)+'%', false],
-      ['Counter Spin','counterSpin',-100, 200, 1, v=>(v|0)+'%', false],
+      ['Wave Skew',  'waveSkew',   0, 120,  0.01,    ParamValues.pct, false],
+      ['Ring Twist', 'ringTwist',  0, 120,  0.01,    ParamValues.pct, false],
+      ['Counter Spin','counterSpin',-100, 200, 0.01, ParamValues.pct, false],
       ['Radius',     'radius',     0.3, 3,  0.05, v=>v.toFixed(2), false],
       ['Row Gap',    'rowGap',     0.3, 3,  0.05, v=>v.toFixed(2), true],
       ['Tracking',   'tracking',   0.3, 2.5,0.05, v=>v.toFixed(2), true],
-      ['Accent %',   'accentRatio',0, 60,   1,    v=>(v|0)+'%', true],
+      ['Accent %',   'accentRatio',0, 60,   0.01,    ParamValues.pct, true],
       ['FOV',        'fov',        30, 110, 1,    v=>String(v|0), false],
-      ['Distance',   'dist',       4, 40,   0.5,  v=>v.toFixed(1), false],
+      ['Distance',   'dist',       4, 40,   0.5,  v=>v.toFixed(2), false],
       ['Cam Elev',   'camEl',     -1.2, 1.2,0.02, v=>v.toFixed(2), false],
-      ['Cam Azimuth','camAz',     -180, 180, 1,   v=>(v|0)+'°', false],
-      ['Cam Roll',   'camRoll',   -90, 90,  1,    v=>(v|0)+'°', false],
-      ['Look X',     'lookX',     -6, 6,  0.5,  v=>v.toFixed(1), false],
-      ['Look Y',     'lookY',     -6, 6,  0.5,  v=>v.toFixed(1), false],
+      ['Cam Azimuth','camAz',     -180, 180, 0.01,   ParamValues.deg, false],
+      ['Cam Roll',   'camRoll',   -90, 90,  0.01,    ParamValues.deg, false],
+      ['Look X',     'lookX',     -6, 6,  0.5,  v=>v.toFixed(2), false],
+      ['Look Y',     'lookY',     -6, 6,  0.5,  v=>v.toFixed(2), false],
       ['Orbit Speed','orbitSpeed', 0, 1,    0.01, v=>v.toFixed(2), false],
       ['Cycle Beats','sceneBeats', 1, 64,   1,    v=>(v|0)+' beat', false],
       ['Beat Pulse', 'beatPulse',  0, 1.5,  0.05, v=>v.toFixed(2), false],
@@ -25521,7 +26404,7 @@ void mainImage(out vec4 o, in vec2 f){
       if(!list.length){
         const msg = document.createElement('div');
         msg.style.cssText = 'grid-column:1/-1;color:var(--dim);font-size:10px;padding:6px';
-        msg.textContent = 'images/slicer/ 未検出';
+        I18n.bind(msg, "images/slicer/ 未検出", "textContent");
         grid.appendChild(msg);
         return;
       }
@@ -25532,7 +26415,7 @@ void mainImage(out vec4 o, in vec2 f){
         rt.style.cssText = 'position:relative;cursor:pointer;border:1px solid #555;border-radius:3px;overflow:hidden;'
           + 'background:linear-gradient(135deg,#1b1b22,#2a2130);aspect-ratio:1/1;display:flex;align-items:center;'
           + 'justify-content:center;font:600 11px var(--mono);color:#ddd;letter-spacing:0.5px';
-        rt.title = '画像をランダム表示 (Img Beats 拍ごとに切替。画像ごとの保存値もそのまま適用)';
+        I18n.bind(rt, "画像をランダム表示 (Img Beats 拍ごとに切替。画像ごとの保存値もそのまま適用)", "title");
         rt.innerHTML = '<span style="text-align:center;line-height:1.5">🎲<br>Random</span>';
         rt.addEventListener('click', ()=>{
           Slicer.P.imgMode = 'random';
@@ -25629,7 +26512,7 @@ void mainImage(out vec4 o, in vec2 f){
     slid('slShadowRad','shadowRadius', v=>v.toFixed(1), false);
     slid('slShadowBias','shadowBias',  v=>ParamValues.format(v, {step:0.0005}, f3), false);
     slid('slPostScale', 'postScale',   f2, false);
-    const pc = v=>v + '%', pd = v=>v + '°';
+    const pc = ParamValues.pct, pd = ParamValues.deg;
     // 断片の形を作り直すもの: つまみを止めて 0.15 秒後に組み直す
     const slidB = (id, key, fmt)=>{
       slid(id, key, fmt, false);
@@ -25722,7 +26605,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('slShadowRad', S.shadowRadius, v=>v.toFixed(1));
     set('slShadowBias', S.shadowBias, v=>ParamValues.format(v, {step:0.0005}, f3));
     set('slPostScale',  S.postScale,  f2);
-    { const pc = v=>v + '%', pd = v=>v + '°';
+    { const pc = ParamValues.pct, pd = ParamValues.deg;
       set('slShardScale', S.shardScale, pc); set('slSmallShare', S.smallShare, pc); set('slLargeShare', S.largeShare, pc);
       set('slScatterX', S.scatterX, pc); set('slScatterY', S.scatterY, pc);
       set('slPolyBoost', S.polyBoost, pc); set('slSliverBoost', S.sliverBoost, pc);
@@ -25751,7 +26634,7 @@ void mainImage(out vec4 o, in vec2 f){
       }
       if(out && fmt) out.textContent = fmt(v);
     };
-    const f2 = v=>v.toFixed(2), f1 = v=>v.toFixed(1), fi = v=>String(v|0);
+    const f2 = v=>v.toFixed(2), f1 = v=>v.toFixed(2), fi = v=>String(v|0);
     set('mgSpawnMin',   M.spawnMin,      fi);
     set('mgSpawnMax',   M.spawnMax,      fi);
     set('mgJitter',     M.jitterPx,      fi);
@@ -25767,7 +26650,7 @@ void mainImage(out vec4 o, in vec2 f){
     set('mgInit',       M.initialCount,  fi);
     set('mgPageScale',  M.pageScale,     f1);
     set('mgManualZoom', M.manualZoom,    f2);
-    { const pc = v=>v + '%', pd = v=>v + '°', ppx = v=>v + 'px', pms = v=>v + 'ms';
+    { const pc = ParamValues.pct, pd = ParamValues.deg, ppx = v=>v + 'px', pms = v=>v + 'ms';
       set('mgTaper', M.clusterTaper, pc); set('mgSpread', M.clusterSpread, pc);
       set('mgFocusPull', M.focusPull, pc); set('mgFocusX', M.focusX, pc); set('mgFocusY', M.focusY, pc);
       set('mgAnimSlide', M.animSlide, pc); set('mgAnimStagger', M.animStagger, pms);
@@ -25806,22 +26689,22 @@ void mainImage(out vec4 o, in vec2 f){
   saveUgomekiMdDefault(){
     if(typeof Ugomeki === 'undefined' || !Ugomeki.initialized) return;
     const i = this._fixedUgomekiMdIndex();
-    if(i < 0){ toast('保存するmdを選択してください'); return; }
+    if(i < 0){ toast(I18n.t("保存するmdを選択してください")); return; }
     const ok = Ugomeki.saveMdParams(i);
     this.refreshUgomeki();
     App._undoSchedule();
     const pr = Ugomeki.mdSources[i];
-    toast(ok ? ('mdデフォルト保存: ' + (pr && pr.name || 'md')) : '保存に失敗しました');
+    toast(ok ? (I18n.t("mdデフォルト保存: ") + (pr && pr.name || 'md')) : I18n.t("保存に失敗しました"));
   },
   resetUgomekiMdDefault(){
     if(typeof Ugomeki === 'undefined' || !Ugomeki.initialized) return;
     const i = this._fixedUgomekiMdIndex();
-    if(i < 0){ toast('リセットするmdを選択してください'); return; }
+    if(i < 0){ toast(I18n.t("リセットするmdを選択してください")); return; }
     Ugomeki.loadPreset(i);               // 再読込 = 保存値 (無ければ初期値) へ戻る
     this.refreshUgomeki();
     App._undoSchedule();
     const pr = Ugomeki.mdSources[i];
-    toast('mdを保存値へ戻しました: ' + ((pr && pr.name) || 'md'));
+    toast(I18n.t("mdを保存値へ戻しました: ") + ((pr && pr.name) || 'md'));
   },
 
   // SpaceType の md別プリセット保存 (Ugomeki と同じ仕様)
@@ -25833,12 +26716,12 @@ void mainImage(out vec4 o, in vec2 f){
   saveSpaceTypeMdDefault(){
     if(typeof SpaceType === 'undefined' || !SpaceType.initialized) return;
     const i = this._fixedSpaceTypeMdIndex();
-    if(i < 0){ toast('保存するmdを選択してください'); return; }
+    if(i < 0){ toast(I18n.t("保存するmdを選択してください")); return; }
     const ok = SpaceType.saveMdParams(i);
     this.refreshSpaceType();
     App._undoSchedule();
     const pr = SpaceType.mdSources[i];
-    toast(ok ? 'mdデフォルト保存: ' + (pr && pr.name || 'md') : '保存失敗');
+    toast(ok ? I18n.t("mdデフォルト保存: ") + (pr && pr.name || 'md') : I18n.t("保存失敗"));
   },
   // リセット: ライブ調整を捨てて「デフォルト保存」した内容へ戻す (保存が無ければ初期値)。
   //   Shift+クリック時のみ保存そのものを削除して初期値へ。
@@ -25846,21 +26729,21 @@ void mainImage(out vec4 o, in vec2 f){
   resetSpaceTypeMdDefault(){
     if(typeof SpaceType === 'undefined' || !SpaceType.initialized) return;
     const i = this._fixedSpaceTypeMdIndex() >= 0 ? this._fixedSpaceTypeMdIndex() : SpaceType.currentMdIndex();
-    if(i < 0){ toast('リセットするmdがありません'); return; }
+    if(i < 0){ toast(I18n.t("リセットするmdがありません")); return; }
     const had = SpaceType.hasMdParams(i);
     SpaceType.loadPreset(i);          // 初期値へ戻す → 保存済み md パラメータを再適用
     this.refreshSpaceType();
     App._undoSchedule();
     const pr = SpaceType.mdSources[i], nm = (pr && pr.name) || 'md';
-    toast(had ? ('mdを保存値へ戻しました: ' + nm) : ('初期値へリセット(保存なし): ' + nm));
+    toast(had ? (I18n.t("mdを保存値へ戻しました: ") + nm) : (I18n.t("初期値へリセット(保存なし): ") + nm));
   },
 
   // ─── Slicer: 画像ごとのデフォルト保存 (md セクションと同じ操作系) ───────
   saveSlicerImgDefault(){
     if(typeof Slicer === 'undefined' || !Slicer.saveImgParams) return;
-    if(!Slicer.curName){ toast('images/slicer/ の画像を選択してください'); return; }
-    if(Slicer.saveImgParams()){ Slicer.noteAutoBase(); App._undoSchedule(); toast('画像デフォルト保存: ' + Slicer.curName); }
-    else toast('保存失敗');
+    if(!Slicer.curName){ toast(I18n.t("images/slicer/ の画像を選択してください")); return; }
+    if(Slicer.saveImgParams()){ Slicer.noteAutoBase(); App._undoSchedule(); toast(I18n.t("画像デフォルト保存: ") + Slicer.curName); }
+    else toast(I18n.t("保存失敗"));
   },
   resetSlicerImgDefault(){
     if(typeof Slicer === 'undefined' || !Slicer.PDefaults) return;
@@ -25871,7 +26754,7 @@ void mainImage(out vec4 o, in vec2 f){
     Slicer.markDirty();
     this.refreshSlicer();
     App._undoSchedule();
-    toast(had ? ('画像の保存値へ戻しました: ' + name) : '初期値へリセット(保存なし)');
+    toast(had ? (I18n.t("画像の保存値へ戻しました: ") + name) : I18n.t("初期値へリセット(保存なし)"));
   },
 
   // ─── C003: 表示中の md にランダムスタイルを適用 (保存はセクション右上の Save で) ───────
@@ -25915,13 +26798,13 @@ void mainImage(out vec4 o, in vec2 f){
         ms = await trial();
         ok = ms <= budget;
       }
-      if(!ok){ restore(); toast('重いので元に戻しました (' + Math.round(ms) + 'ms / 1 フレーム > ' + Math.round(budget) + 'ms)'); return; }
+      if(!ok){ restore(); toast(I18n.t("重いので元に戻しました (") + Math.round(ms) + I18n.t("ms / 1 フレーム > ") + Math.round(budget) + 'ms)'); return; }
       // 適用後の見張り
       const until = performance.now() + 3000;
       T._renderMs = null;
       const watch = ()=>{
         if(token !== this._tdRandToken || performance.now() > until) return;
-        if(T._renderMs != null && T._renderMs > budget*1.5){ restore(); toast('描画が重くなったので元に戻しました (' + Math.round(T._renderMs) + 'ms / 1 フレーム)'); return; }
+        if(T._renderMs != null && T._renderMs > budget*1.5){ restore(); toast(I18n.t("描画が重くなったので元に戻しました (") + Math.round(T._renderMs) + I18n.t("ms / 1 フレーム)")); return; }
         setTimeout(watch, 250);
       };
       setTimeout(watch, 400);
@@ -25945,14 +26828,13 @@ void mainImage(out vec4 o, in vec2 f){
   refreshTextDeform(){
     if(typeof TextDeform === 'undefined') return;
     const P = TextDeform.P;
-    const sec = document.querySelector('.section.textdeform-mode'); if(!sec) return;
-    this.applyParamWhen(sec);   // Look の切り替えなどで効く行が変わる
-    // Canvas が Off のときは、Canvas の行 (canvas* / cv* / tdCanvas*) は On / Off の行だけ見せる。Composition の行は同じ段にあるが隠さない
-    const cvHead = sec.querySelector('[data-td-fold="canvas"]');
-    if(cvHead) for(let n = cvHead.nextElementSibling; n && n.dataset.tdFold !== 'look'; n = n.nextElementSibling){
-      if(n.classList.contains('td-fold') || !/^(canvas|cv[A-Z]|tdCanvas)/.test(n.dataset.pkey || '') || n.dataset.pkey === 'canvasOn') continue;
+    const secs = [...document.querySelectorAll('.section.textdeform-mode')]; if(!secs.length) return;
+    secs.forEach(s=>this.applyParamWhen(s));   // Look の切り替えなどで効く行が変わる
+    // Canvas が Off のときは、Canvas / Canvas Variation の行 (canvas* / cv* / tdCanvas*) は On / Off の行だけ見せる
+    document.querySelectorAll('.td-block[data-td-block="canvas"] .row, .td-block[data-td-block="canvasdetail"] .row').forEach(n=>{
+      if(!/^(canvas|cv[A-Z]|tdCanvas)/.test(n.dataset.pkey || '') || n.dataset.pkey === 'canvasOn') return;
       n.classList.toggle('td-off-hidden', !P.canvasOn);
-    }
+    });
     const pct = v=>Math.round(v * 100) + '%';
     const FMT = {
       pct, pcti: v=>Math.round(v) + '%', int: v=>String(Math.round(v)), f2: v=>v.toFixed(2), f3: v=>v.toFixed(3),
@@ -25971,7 +26853,7 @@ void mainImage(out vec4 o, in vec2 f){
       const on = TextDeform.textPools();
       pool.querySelectorAll('.td-chip').forEach(b=>b.classList.toggle('on', on.includes(b.dataset.pool)));
     }
-    sec.querySelectorAll('[data-tdp]').forEach(el=>{
+    document.querySelectorAll('.section.textdeform-mode [data-tdp]').forEach(el=>{
       const key = el.dataset.tdp, v = P[key], k = el.dataset.tdkind;
       if(v === undefined) return;
       if(el.tagName === 'INPUT') el.dataset.default = String(App.resetValueFor('textdeform', key, (TextDeform.PDefaults || {})[key]));   // ダブルクリックで戻す値
@@ -26026,7 +26908,7 @@ void mainImage(out vec4 o, in vec2 f){
   refreshTextDeformLooks(){
     if(typeof TDLooks === 'undefined' || typeof TextDeform === 'undefined') return;
     const L = TDLooks, P = TextDeform.P, D = TextDeform.PDefaults || {};
-    const tdSecW = document.querySelector('.section.textdeform-mode'); if(tdSecW) this.applyParamWhen(tdSecW);
+    document.querySelectorAll('.section.textdeform-mode').forEach(s=>this.applyParamWhen(s));
     const esc = s=>String(s == null ? '' : s).replace(/[&<>"]/g, c=>({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]);
     const hex = (v, f)=>/^#[0-9a-f]{6}$/i.test(String(v)) ? v : f;
     const pool = $('#tdLookPool');
@@ -26073,7 +26955,7 @@ void mainImage(out vec4 o, in vec2 f){
   refreshTextDeformSurface(){
     if(typeof TDSurf === 'undefined') return;
     const S = TDSurf, c = S.cfg;
-    const tdSecW = document.querySelector('.section.textdeform-mode'); if(tdSecW) this.applyParamWhen(tdSecW);
+    document.querySelectorAll('.section.textdeform-mode').forEach(s=>this.applyParamWhen(s));
     const dz = v=> Math.abs(v) < 0.1 && v !== 0 ? '0.0 (' + v.toFixed(2) + ')' : v.toFixed(2);   // デッドゾーン表示 (規約)
     const setSel = (id, v)=>{ const el = $('#'+id); if(el) el.value = String(v); };
     const setRange = (id, v, fmt)=>{
@@ -26202,9 +27084,9 @@ void mainImage(out vec4 o, in vec2 f){
     const slot = GL.slots[App.activeSlot];
     const root = $('#chans'); if(!root) return; root.innerHTML='';
     const sources = [
-      {id:'', label:'— なし —', kind:'empty'},
+      {id:'', label:I18n.t("— なし —"), kind:'empty'},
       {id:'__audio__', label:'Audio FFT', kind:'audio'},
-      {id:'__feedback__', label:'Feedback (前フレーム)', kind:'feedback'},
+      {id:'__feedback__', label:I18n.t("Feedback (前フレーム)"), kind:'feedback'},
       {id:'__slotA__', label:'Slot A output', kind:'slot'},
       {id:'__slotB__', label:'Slot B output', kind:'slot'},
       ...Inputs.list().map(e=>({id:e.id, label:`${e.label} (${e.kind})`, kind:e.kind}))
@@ -26252,7 +27134,7 @@ void mainImage(out vec4 o, in vec2 f){
       const cfg = document.createElement('div'); cfg.className='cfg';
       const top = document.createElement('div'); top.className='top';
       const lab = document.createElement('div'); lab.className='name'; lab.textContent = e.label;
-      const del = document.createElement('button'); del.className='ico-only'; del.title='削除'; VJIcon.set(del, 'close'); del.addEventListener('click',()=>Inputs.remove(e.id));
+      const del = document.createElement('button'); del.className='ico-only'; I18n.bind(del, "削除", "title"); VJIcon.set(del, 'close'); del.addEventListener('click',()=>Inputs.remove(e.id));
       top.appendChild(lab); top.appendChild(del);
       cfg.appendChild(top);
       r.appendChild(th); r.appendChild(cfg);
@@ -26293,8 +27175,9 @@ void mainImage(out vec4 o, in vec2 f){
     });
   },
   // Code エンジンの Params パネル用 (共通): エンジンが PARAM_HELP (キー → 説明) と paramOn(key) (効くとき true) を持っていれば付ける
-  bindEngineHints(root, mod){
+  bindEngineHints(root, mod, inBlock){
     if(!root || !mod) return;
+    if(!inBlock && mod.PARAM_GROUPS){ this.engineBlocks(root, mod); return; }
     const need = mod.PARAM_NEEDS;   // キー → そのキー (複数ならどれか) が 0 のときは効かない
     if(need || mod.paramOn){
       const dz = v => (App.deadParam && typeof v === 'number') ? App.deadParam(v) : v;
@@ -26305,6 +27188,40 @@ void mainImage(out vec4 o, in vec2 f){
     }
     const HELP = mod.PARAM_HELP || {};
     this.bindParamHelp(root, key=>HELP[key]);
+  },
+  // エンジンの PARAM_GROUPS ([[欄名, [キー…]], …]) で、Params を欄ごとの独立したブロック (.section) に分ける。
+  //   各ブロックの Save = その欄の項目だけを保存値に重ねて保存 / Reset = その欄だけ保存値へ / Random = その欄だけ。
+  //   欄に入らない項目は元のブロック (見出しの Save / Reset = エンジン全体) に残る。データ側 (P・プリセット) は変えない
+  engineBlocks(root, mod){
+    const top = root.closest('.section');
+    const btn = top && top.querySelector('.saveDefBtn');
+    const kind = btn && btn.dataset.kind;
+    if(!kind){ this.bindEngineHints(root, mod, true); return; }
+    document.querySelectorAll('.vj-block').forEach(el=>{ if(el.dataset.of === kind) el.remove(); });
+    root.classList.add('fold-skip');   // 自動のカテゴリ折りたたみ (_initParamFold) はしない
+    root.querySelectorAll(':scope > .fold-head, :scope > [data-grouphead]').forEach(h=>h.remove());   // 欄の見出しはブロックの見出しになる
+    const modeCls = [...top.classList].filter(c=>/-mode$/.test(c)).join(' ');
+    const esc = s=>String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+    let after = top;
+    const bodies = [];
+    for(const [title, keys] of mod.PARAM_GROUPS){
+      const rows = [...new Set(keys.map(k=>{ const el = root.querySelector('[data-pkey="' + k + '"]'); return el && (el.closest('.row') || el); }).filter(Boolean))];
+      if(!rows.length) continue;
+      const sec = document.createElement('div');
+      sec.className = 'section ' + modeCls + ' vj-block';
+      sec.dataset.of = kind;
+      sec.style.display = top.style.display;
+      const k = esc('block:' + kind + ':' + title);
+      const h = document.createElement('h3');
+      h.innerHTML = esc(title) + ' <span class="default-actions"><button class="saveDefBtn" data-kind="' + k + '" title="このブロックの値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="' + k + '" title="このブロックの値だけ保存したデフォルトに戻す">Reset</button><button class="randDefBtn" data-kind="' + k + '" title="このブロックの値をランダムに変える">Random 🎲</button></span>';
+      const body = document.createElement('div'); body.style.marginTop = '6px'; body.className = 'fold-skip';
+      rows.forEach(r=>{ r.classList.remove('fold-child', 'fold-hidden'); body.appendChild(r); });
+      sec.appendChild(h); sec.appendChild(body);
+      after.after(sec); after = sec;
+      bodies.push(body);
+    }
+    this.bindEngineHints(root, mod, true);
+    bodies.forEach(b=>this.bindEngineHints(b, mod, true));
   },
   // 複数の .section に分かれた静的パネル用: 各 section に bindEngineHints し、どれかの操作で全 section を付け直す (ボタンの click も拾う)
   bindEngineHintsSections(selector, mod){
@@ -26328,7 +27245,7 @@ void mainImage(out vec4 o, in vec2 f){
       hide(); if(!t) return; cur = t;
       timer = setTimeout(()=>{
         if(cur !== t || !t.isConnected) return;
-        tip.textContent = t.dataset.help; tip.classList.add('show');
+        I18n.bind(tip, t.dataset.help); tip.classList.add('show');
         const r = t.getBoundingClientRect(), tw = tip.offsetWidth, th = tip.offsetHeight;
         let y = r.top - th - 6; if(y < 6) y = r.bottom + 6;
         tip.style.left = Math.max(6, Math.min(innerWidth - tw - 6, r.left)) + 'px'; tip.style.top = y + 'px';
@@ -26401,7 +27318,7 @@ void mainImage(out vec4 o, in vec2 f){
       badge.addEventListener('click',()=>{
         if(MIDI.map[key]){ delete MIDI.map[key]; MIDI.saveMap(); this.refreshParams(); return; }
         MIDI.learn = key; badge.classList.add('learn'); badge.textContent='…';
-        toast(`MIDI Learn → ${p.name}: CCを動かして`);
+        toast(I18n.t("MIDI Learn → {0}: CCを動かして", {0: p.name}));
       });
       row.appendChild(badge);
       root.appendChild(row);
@@ -26463,6 +27380,10 @@ void mainImage(out vec4 o, in vec2 f){
     if(updateSlider) $('#cf').value = App.crossfade;
     $('#cfVal').textContent = App.crossfade.toFixed(2);
     const cb = $('#cfBlend'); if(cb) cb.value = App.blendMode;
+    const shift = App.slotBOffsetBeats || 0;
+    const bs = $('#mixBShiftOn'); if(bs) bs.checked = shift > 0;
+    const bo = $('#mixBOffset'); if(bo) bo.value = shift;
+    const bv = $('#mixBOffsetVal'); if(bv) bv.textContent = shift.toFixed(2);
     this.refreshSlotABg();
     const ca = $('#cfAuto'); if(ca) ca.checked = !!(App.autoCF && App.autoCF.on);
     const cab = $('#cfBeats'); if(cab) cab.value = String((App.autoCF && App.autoCF.beats) || 8);
@@ -26525,9 +27446,9 @@ void mainImage(out vec4 o, in vec2 f){
       info.innerHTML = '<div>' + when + '</div><div style="color:var(--dim,#888);font-size:10px">'
         + h.count + ' 件' + (diff > 0 ? ('　(今より +' + diff + ')') : '') + '</div>';
       const btn = document.createElement('button');
-      btn.textContent = 'この世代から復元';
+      I18n.bind(btn, "この世代から復元", "textContent");
       btn.style.cssText = 'font-size:10px;padding:3px 8px';
-      btn.addEventListener('click', async ()=>{ btn.disabled = true; btn.textContent = '復元中…'; await App.presetHistoryRestore(h.file); close(); });
+      btn.addEventListener('click', async ()=>{ btn.disabled = true; I18n.bind(btn, "復元中…", "textContent"); await App.presetHistoryRestore(h.file); close(); });
       row.appendChild(info); row.appendChild(btn);
       el.appendChild(row);
     }
@@ -26545,7 +27466,7 @@ void mainImage(out vec4 o, in vec2 f){
     if(!lib.length){
       const empty = document.createElement('div');
       empty.className = 'help'; empty.style.cssText = 'font-size:10px;padding:6px 2px;grid-column:1/-1';
-      empty.textContent = 'プリセットがありません。「+ Save Current」で追加してください。';
+      I18n.bind(empty, "プリセットがありません。「+ Save Current」で追加してください。", "textContent");
       wrap.appendChild(empty);
       return;
     }
@@ -26569,7 +27490,7 @@ void mainImage(out vec4 o, in vec2 f){
     lib.forEach((p, i) => {
       const tile = document.createElement('div');
       tile.className = 'thumb-tile';
-      tile.title = 'クリック=呼出 / Shift+クリック=上書き保存';
+      I18n.bind(tile, "クリック=呼出 / Shift+クリック=上書き保存", "title");
       const r = repr(p.state);
       const isShaderPreset = !!(r && r.src && (!r.kind || r.kind === 'shader'));
       const isVideo = !!(r && r.kind === 'video' && r.video);
@@ -26634,8 +27555,8 @@ void mainImage(out vec4 o, in vec2 f){
         tile.appendChild(b);
       };
       mkBtn('close', 0, '削除', ()=>App.presetDelete(i));
-      mkBtn('edit', 1, '名前変更', ()=>{ App._prompt('プリセット名', p.name || ('Preset '+(i+1)), (nn)=>{ App.presetRename(i, nn); UI.refreshPresetLib(); }); });
-      mkBtn('refresh', 2, '現在の状態で上書き保存(更新)', ()=>App.presetOverwrite(i, p.name));
+      mkBtn('edit', 1, '名前変更', ()=>{ App._prompt(I18n.t("プリセット名"), p.name || ('Preset '+(i+1)), (nn)=>{ App.presetRename(i, nn); UI.refreshPresetLib(); }); });
+      mkBtn('refresh', 2, I18n.t("現在の状態で上書き保存(更新)"), ()=>App.presetOverwrite(i, p.name));
       tile.addEventListener('click', e=>{ if(e.shiftKey) App.presetOverwrite(i, p.name); else App.presetApply(i); });
       UI._precompileOnHover(tile, ()=>App.precompileState(p.state));
       // ホバー = 毎フレーム優先描画 (シェーダプリセットは常時ラウンドロビンでアニメ。animatePresetThumbs)
@@ -26763,10 +27684,10 @@ void mainImage(out vec4 o, in vec2 f){
     { const e=$('#autoBpmStat'); if(e){
         let txt, lock = false;
         if(!BPM.auto) txt = 'OFF';
-        else if(typeof Audio === 'undefined' || !Audio.analyser) txt = '入力なし (Mic / System をON)';
+        else if(typeof Audio === 'undefined' || !Audio.analyser) txt = I18n.t("入力なし (Mic / System をON)");
         else if(BPM.autoState === 'lock'){ txt = '● LOCK ' + BPM.autoBpm.toFixed(1) + ' (' + Math.round(BPM.autoConf*100) + '%)'; lock = true; }
-        else if(BPM.autoBpm > 0) txt = '… 解析中 ' + BPM.autoBpm.toFixed(1) + ' (' + Math.round(BPM.autoConf*100) + '%)';
-        else txt = '… 解析中';
+        else if(BPM.autoBpm > 0) txt = I18n.t("… 解析中 ") + BPM.autoBpm.toFixed(1) + ' (' + Math.round(BPM.autoConf*100) + '%)';
+        else txt = I18n.t("… 解析中");
         if(BPM.auto && Audio && Audio.bpmBandLabel) txt += ' · ' + Audio.bpmBandLabel;
         e.textContent = txt;
         e.style.color = lock ? 'var(--acc2)' : 'var(--dim)';

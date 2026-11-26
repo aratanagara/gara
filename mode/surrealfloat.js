@@ -1662,4 +1662,15 @@ SurrealFloat.PARAM_HELP = {
   skyLow:'空の地平線側の色',
   sand:'砂の色',
 };
+
+// Params パネルの欄分け (UI.bindEngineHints → UI.engineBlocks)。ここに無い行は元のブロックに残る
+SurrealFloat.PARAM_GROUPS = [
+  ['Motion', ['speed','depth','drift','spin','morph','pan','kick']],
+  ['Objects', ['count','size','sizeVar','weird','debris','oddity','tanguy','lane','floatH','seed']],
+  ['Camera', ['pitch','roll','eyeH']],
+  ['Sky', ['mood','cloud','cloudSpd','haze','cloudScale','cloudBase','cloudSoft','skyTop','skyLow']],
+  ['Ground', ['dunes','shadow','duneScale','speckle','shadeFloor','sand']],
+  ['Light', ['sunAz','sunEl','keyGain','ambient','gloss']],
+  ['Brush', ['brush','brushScale','weave']],
+];
 SurrealFloat.PARAM_NEEDS = {cloudSpd:'cloud', cloudScale:'cloud', cloudBase:'cloud', cloudSoft:'cloud', brushScale:'brush', weave:'brush', duneScale:'dunes'};

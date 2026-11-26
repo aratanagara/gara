@@ -78,11 +78,11 @@ const CrashGuard = {
     try{
       if(target === 'esc'){
         App._blankResetCore();
-        toast('描画が止まったため、全スロットをなしにしました (' + reason + ')', 5000);
+        toast(I18n.t("描画が止まったため、全スロットをなしにしました (") + reason + ')', 5000);
       } else {
         App._applyState(JSON.parse(target), { instantPost: true });
         if(UI && UI.refreshAll) UI.refreshAll();
-        toast('描画が止まったため、直前の正常な状態に戻しました (' + reason + ')', 5000);
+        toast(I18n.t("描画が止まったため、直前の正常な状態に戻しました (") + reason + ')', 5000);
       }
     }catch(e){
       try{ App._blankResetCore(); }catch(_){}
@@ -103,7 +103,7 @@ const CrashGuard = {
     try{ localStorage.setItem(this.KEY, target); }catch(_){ return false; }
     try{ Diag.log('crash', 'lost sig=' + sig + ' count=' + count + ' -> reload ' + (target === 'esc' ? 'esc' : 'last good')); }catch(_){}
     this._reloading = true;
-    try{ toast('GPU のコンテキストが失われました。直前の状態で再起動します…', 4000); }catch(_){}
+    try{ toast(I18n.t("GPU のコンテキストが失われました。直前の状態で再起動します…"), 4000); }catch(_){}
     setTimeout(() => location.reload(), 900);
     return true;
   },
@@ -115,7 +115,7 @@ const CrashGuard = {
     try{
       if(v === 'esc') App._blankResetCore();
       else { App._applyState(JSON.parse(v), { restoreOverlayEnabled: true, restoreMixControls: true, restoreBeatScale: true, freshShaders: true }); if(UI && UI.refreshAll) UI.refreshAll(); }
-      toast(v === 'esc' ? 'クラッシュから復帰: 全スロットをなしにしました' : 'クラッシュから復帰: 直前の正常な状態に戻しました', 5000);
+      toast(v === 'esc' ? I18n.t("クラッシュから復帰: 全スロットをなしにしました") : I18n.t("クラッシュから復帰: 直前の正常な状態に戻しました"), 5000);
       return true;
     }catch(e){ return false; }
   },

@@ -6,10 +6,10 @@
  *   - 動き: V Spin (Y 軸の回転) × Rhythm の量・拍の脈動、V Tilt (前後の傾き)、V Wave (Z の波)、V Audio (頂点ごとの揺れ。音と拍で強まる)
  *   - 状態は TextDeform.P の vec* (全 Look 共通。TD_LOOK_KEYS に入れない)。色は TextDeform.color、配置は TextDeform の組版と Motion をそのまま使う
  * ==================================================================== */
-(function(){
+function createTDVec(TD, peers){
 'use strict';
-if(typeof TextDeform === 'undefined') return;
-const TD = TextDeform;
+peers = peers || globalThis;
+if(!TD) return;
 const RS = 128;   // 輪郭を取るときの文字の解像度 (px)
 
 const TDVec = {
@@ -152,5 +152,7 @@ const TDVec = {
     this.ms = this.ms*0.8 + (performance.now() - t0)*0.2;
   }
 };
-globalThis.TDVec = TDVec;
-})();
+
+return TDVec;
+}
+if(typeof TextDeform !== 'undefined') globalThis.TDVec = createTDVec(TextDeform);

@@ -21,10 +21,11 @@
  *   - 状態: TextDeform.P.canvasOn / canvasStamps ([{ look, text, x, y, s, rot, z, seed }]。x, y = 画面の 0..1) / canvasSource / canvasMax。
  *     Visual の Save・状態の復元・Undo は P と一緒に読み書きする。構成の保存は store「tdcanvas」(保存のたびに世代が残る)
  * ==================================================================== */
-(function(){
+function createTDCanvas(TD, peers){
 'use strict';
-if(typeof TextDeform === 'undefined') return;
-const TD = TextDeform;
+peers = peers || globalThis;
+if(!TD) return;
+const B = TDPixels;
 const clone = v => JSON.parse(JSON.stringify(v));
 const BASE = 0.42;   // 大きさ 1 のスタンプの幅・高さ (画面に対する比)
 const STAMP_PIXEL_BUDGET = 24e6;   // 分身・Full Look の合計画素数 (余白込み)。表示サイズは保ち、描画解像度だけを落とす (12M では 32 枚で文字がぼけた)
@@ -148,7 +149,7 @@ const TDCanvas = {
   max(){ return Math.max(1, Math.min(32, +TD.P.canvasMax || 12)); },
 
   // 全枚数の余白込みの面積から共通倍率を決める。焼き付けも同じ寸法を使う。
-  // 下げるのは即時、戻すのは余裕ができてから。0.125 刻み (下限 0.5) で再確保の往復を防ぐ。
+  // 下げるのは即時、戻すのは余裕ができてから。通常は 0.125 刻み、最後に整数寸法の合計を検査する。
   _pixelQ: 1,
   _prepareResolution(W, H, now){
     let pixels = 0;
@@ -180,14 +181,32 @@ const TDCanvas = {
     let q = Math.max(0.25, Math.floor(limit*8)/8);
     // 上げるのは余裕があり、かつ最後に下げてから 4 秒たってから (枚数の入れ替えで 0.5⇄1 を数秒ごとに往復し、そのたび全スタンプを確保し直していた)
     if(q > this._pixelQ && (pixels*q*q > STAMP_PIXEL_BUDGET*0.85 || now - (this._pixelQDownAt || 0) < 4000)) q = this._pixelQ;
+    const dimensions = q => {
+      let total = 0;
+      for(const inst of this._inst.values()){
+        const r = inst._raster; if(inst.img || !r) continue;
+        const scale = q*Math.min(1, 4096/Math.max(r.sw*r.pf, r.sh*r.pf));
+        const size = x => Math.max(16, q < 1 ? Math.floor(x*scale/16)*16 : (r.full ? Math.round(x*scale) : Math.ceil(x*scale/16)*16));
+        r.pw = size(r.sw*r.pf); r.ph = size(r.sh*r.pf);
+        total += r.pw*r.ph;
+      }
+      return total;
+    };
+    // 下限倍率や長辺 cap、16px 丸めの後の値で保証する。予算内なら従来の寸法を一切変えない。
+    let finalPixels = dimensions(q);
+    while(finalPixels > STAMP_PIXEL_BUDGET){
+      q *= Math.min(0.99, Math.sqrt(STAMP_PIXEL_BUDGET/finalPixels));
+      finalPixels = dimensions(q);
+    }
     if(q < this._pixelQ) this._pixelQDownAt = now;
     this._pixelQ = q;
+    // 先に縮む通常 canvas を解放してから Full の縮小・通常描画の拡大を行う。
+    for(const inst of this._inst.values()){
+      const r = inst._raster;
+      if(inst._stamp && r && (inst.canvas.width > r.pw || inst.canvas.height > r.ph)) B.free(inst.canvas);
+    }
     for(const [st, inst] of this._inst){
       const r = inst._raster; if(inst.img || !r) continue;
-      const scale = q*Math.min(1, 4096/Math.max(r.sw*r.pf, r.sh*r.pf));   // 1 枚の長辺は 4096px まで (2048 では大きなスタンプに余白が付くと 0.4 倍まで落ちてぼけた。全体は STAMP_PIXEL_BUDGET が抑える)
-      // 制限中は切り下げ、16px の切り上げで上限を超えないようにする。
-      const size = x => Math.max(16, q < 1 ? Math.floor(x*scale/16)*16 : (r.full ? Math.round(x*scale) : Math.ceil(x*scale/16)*16));
-      r.pw = size(r.sw*r.pf); r.ph = size(r.sh*r.pf);
       // まだ表示しない分身に、プールから来た大きな描画メモリを残さない。
       if(inst._stamp && !inst.full && (this._gunHidden.has(st) || r.full && now - (inst._born || 0) < 1500)){
         if(inst.canvas.width || inst.canvas.height){ inst.canvas.width = 0; inst.canvas.height = 0; }
@@ -196,7 +215,7 @@ const TDCanvas = {
         // 縮小は焼き直しを待たず適用。大きい旧画像を抱えたまま上限を超え続けない。
         if(inst.full.width*inst.full.height > r.pw*r.ph){
           const old = inst.full, cv = inst.canvas;
-          cv.width = r.pw; cv.height = r.ph;
+          if(!B.resize(cv, r.pw, r.ph)) continue;
           inst.ctx.drawImage(old, 0, 0, cv.width, cv.height);
           inst.full = cv; inst.canvas = old; inst.ctx = old.getContext('2d');
           inst.fullS = this._es(st);   // 縮めた絵の大きさ。ここからまた大きくなったら下で焼き直す
@@ -229,9 +248,9 @@ const TDCanvas = {
   _fullMode(){ const m = TD.P.canvasFull; return m === 'off' || m === 'bake' ? m : 'live'; },
   // Surface / Vector 3D があり、分身だけでは Look を再現できないスタンプ
   _needsFull(st){
-    if(this._fullMode() === 'off' || st.hero || st.img || typeof TDLooks === 'undefined') return false;
+    if(this._fullMode() === 'off' || st.hero || st.img || typeof peers.TDLooks === 'undefined') return false;
     if(TD.P.vecMode && TD.P.vecMode !== 'off') return true;
-    const L = TDLooks.get(st.look); if(!L) return false;
+    const L = peers.TDLooks.get(st.look); if(!L) return false;
     if(L.kind === 'f') return (L.item.operators || []).length > 0;
     return !!(L.item.surf && L.item.surf.enabled);
   },
@@ -246,7 +265,7 @@ const TDCanvas = {
   // 2D キャンバスの使い回し。スタンプの小キャンバスと焼き付けは作り捨てず、ここへ返して次に使う
   // (Auto Swap などで毎秒 10 枚ほど作り捨てていて、GC までの間 GPU 側の描画メモリが溜まり、メモリの少ない機体でコンテキストが失われていた)
   _pool: [],
-  _takeCanvas(){ return this._pool.pop() || document.createElement('canvas'); },
+  _takeCanvas(){ return this._pool.pop() || B.createCanvas(); },
   // 箱の中身は合計 16M 画素まで (大きな焼き付けを何枚も抱えたままにすると、それ自体が GPU メモリを圧迫する)
   _giveCanvas(c){
     if(!c) return;
@@ -258,27 +277,26 @@ const TDCanvas = {
   _saveMain(){
     const P = TD.P, style = {};
     for(const k of TD_LOOK_KEYS) style[k] = clone(P[k]);
-    return { style, text: P.text, look: P.look, surf: TDSurf.snapshot(), layers: TDSurf.layers, twKey: TD._twKey, twStart: TD._twStart, twShown: TD._twShown };
+    peers.TDSurf._held = peers.TDSurf.layers;   // 焼き付け中に Surface を切り替えても、本体のレイヤーは使い回しへ返さない
+    return { style, text: P.text, look: P.look, surf: peers.TDSurf.snapshot(), layers: peers.TDSurf.layers, twKey: TD._twKey, twStart: TD._twStart, twShown: TD._twShown };
   },
   _restoreMain(s){
     const P = TD.P;
     for(const k of TD_LOOK_KEYS) P[k] = s.style[k];
     P.text = s.text; P.look = s.look;
     TD._applyStageStyle(); TD._createSpans(P.text);
-    const baked = TDSurf.layers;   // apply が layers を空にするので先に控える
-    TDSurf.apply(s.surf);
-    for(const L of baked) if(!s.layers.includes(L)) TDSurf._giveCanvas(L.canvas);   // 焼き付けで作った効果の絵は使い回す
-    TDSurf.layers = s.layers; TDSurf._fresh = false;   // 主役がすぐ元の絵を出せるよう、前の効果の絵を戻す
+    peers.TDSurf.apply(s.surf);   // 焼き付けで作った効果の絵は使い回しへ返る (本体のものは _held で残す)
+    peers.TDSurf.layers = s.layers; peers.TDSurf._held = null; peers.TDSurf._fresh = false;   // 主役がすぐ元の絵を出せるよう、前の効果の絵を戻す
     TD._twKey = s.twKey; TD._twStart = s.twStart; TD._twShown = s.twShown;   // 一文字ずつ入力の進み具合も本体のものに戻す
     this._heroHoldUntil = performance.now() + 1500;
   },
   // 本体にスタンプの Look を当てる (分身の値 = Look + ばらつき、文字、Surface)
   _applyToMain(st, inst){
-    const P = TD.P, L = TDLooks.get(st.look);
+    const P = TD.P, L = peers.TDLooks.get(st.look);
     for(const k of TD_LOOK_KEYS) P[k] = clone(inst.P[k]);
     P.text = inst.P.text; P.look = st.look;
     TD._applyStageStyle(); TD._createSpans(P.text);
-    if(L && L.kind === 'f') TDSurf.applyPreset(L.item.id);
+    if(L && L.kind === 'f') peers.TDSurf.applyPreset(L.item.id);
     else if(L){ P.surf = L.item.surf ? clone(L.item.surf) : { enabled: false }; }
   },
   // 焼き付ける瞬間のスタンプの文字ごとの伸び縮み (向き・強さ・段階・Operator) を本体の文字へ写す。
@@ -298,7 +316,7 @@ const TDCanvas = {
   _stepBake(now){
     const list = this.stamps();
     if(!this._bake){
-      if(TDSurf.status !== 'ready'){ if(this._bakeQ.length) TDSurf.ensure().catch(()=>{}); return; }
+      if(peers.TDSurf.status !== 'ready'){ if(this._bakeQ.length) peers.TDSurf.ensure().catch(()=>{}); return; }
       let st = null;
       while(this._bakeQ.length && !st){ const c = this._bakeQ.shift(); if(list.includes(c) && this._inst.get(c) && this._inst.get(c)._stamp && this._needsFull(c)) st = c; }
       if(!st) return;
@@ -319,14 +337,15 @@ const TDCanvas = {
     let cv;
     try{ cv = TD._renderHero(pw, ph, 1/pf); }   // 描くことで Surface の Worker へも頼む
     finally{ TD._typeAll = false; }
+    if(!cv) return;
     b.frames++;
     // Vector 3D の間は Surface を描かない (TextDeform._renderToCanvas) ので、その絵を待たない (待つと毎回 2.5 秒の打ち切りまで素の文字が出ていた)
     const vecOn = !!TD.P.vecMode && TD.P.vecMode !== 'off';
-    const surfOk = vecOn || !TDSurf.cfg.enabled || TDSurf.layers.length > 0;
+    const surfOk = vecOn || !peers.TDSurf.cfg.enabled || peers.TDSurf.layers.length > 0;
     if((surfOk && b.frames >= 3) || now - b.t0 > 2500){
       const f = inst.full || (inst.full = this._takeCanvas());
-      f.width = cv.width; f.height = cv.height;
-      const fx = f.getContext('2d'); fx.clearRect(0, 0, f.width, f.height); fx.drawImage(cv, 0, 0);
+      if(!B.resize(f, cv.width, cv.height)) return;
+      const fx = f.getContext('2d'); fx.clearRect(0, 0, f.width, f.height); if(f.width === cv.width && f.height === cv.height) fx.drawImage(cv, 0, 0); else fx.drawImage(cv, 0, 0, f.width, f.height);
       inst.fullPf = pf; inst.fullS = this._es(b.st);
       inst._fullPixelQ = this._pixelQ; inst._queuedPixelQ = null;
       inst.canvas.width = 0; inst.canvas.height = 0;
@@ -347,11 +366,20 @@ const TDCanvas = {
   },
   _makeInner(st){
     if(st.hero) return { hero: true };
-    if(st.img){ const im = new Image(); im.src = st.img; return { img: im }; }
+    if(st.img){
+      const im = new Image(), pixels = B.webpPixels(st.img);
+      im._tdLoading = true;
+      const done = () => {
+        if(!im.naturalWidth || im.naturalWidth*im.naturalHeight !== pixels) im.removeAttribute('src');
+        im._tdLoading = false; B.reserve(im, 0);
+      };
+      if(pixels && B.reserve(im, pixels)){ im.onload = done; im.onerror = done; im.src = st.img; }
+      return { img: im };
+    }
     const inst = Object.create(TD);
     const P = inst.P = Object.create(TD.P);
-    const L = (typeof TDLooks !== 'undefined') ? TDLooks.get(st.look) : null;
-    const style = L ? (L.kind === 'f' ? TDLooks.featuredStyle(L.item) : (L.item.style || {})) : {};
+    const L = (typeof peers.TDLooks !== 'undefined') ? peers.TDLooks.get(st.look) : null;
+    const style = L ? (L.kind === 'f' ? peers.TDLooks.featuredStyle(L.item) : (L.item.style || {})) : {};
     const D = TD.PDefaults || {};
     for(const k of TD_LOOK_KEYS) P[k] = clone(style[k] !== undefined ? style[k] : D[k]);
     P.text = st.text || 'FORM';
@@ -393,13 +421,16 @@ const TDCanvas = {
           if(c === inst.full) inst.full = null; else inst.canvas = null;
         } else {
           c = this._takeCanvas();
-          c.width = ld.src.width; c.height = ld.src.height;
-          const cx = c.getContext('2d'); cx.clearRect(0, 0, c.width, c.height); cx.drawImage(ld.src, 0, 0);
+          if(!B.resize(c, ld.src.width, ld.src.height)) throw new Error('ghost budget');
+          const cx = c.getContext('2d'); cx.clearRect(0, 0, c.width, c.height); if(c.width === ld.src.width && c.height === ld.src.height) cx.drawImage(ld.src, 0, 0); else cx.drawImage(ld.src, 0, 0, c.width, c.height);
         }
         const g = this._ghosts || (this._ghosts = []);
         g.push({ c, ld: Object.assign({}, ld, { src: null }), born: performance.now() });
         this._trimGhosts(48);
       }catch(e){}
+    }
+    if(inst && inst.img){
+      inst.img.onload = inst.img.onerror = null; inst.img.removeAttribute('src'); B.reserve(inst.img, 0);
     }
     if(inst && inst._stageWrap) inst._stageWrap.remove();
     if(inst && inst._stamp){ this._giveCanvas(inst.canvas); this._giveCanvas(inst.full); inst.canvas = inst.full = null; }
@@ -424,11 +455,14 @@ const TDCanvas = {
     this._trimGhosts(0);
     for(const c of this._pool){ c.width = 0; c.height = 0; }
     this._pool.length = 0;
+    B.free(TD._heroCv);
     for(const k of ['_bgHold', '_heroCache']) if(this[k]){ this[k].width = 0; this[k].height = 0; this[k] = null; }
   },
   // canvasStamps と分身を揃える (状態の復元・Undo で配列が差し替わったとき)
   _sync(){
-    const list = this.stamps(), live = new Set(list);
+    const list = this.stamps();
+    if(list.length > 32) list.length = 32;
+    const live = new Set(list);
     for(const st of Array.from(this._inst.keys())) if(!live.has(st)) this._drop(st);
     for(const st of list) if(!this._inst.has(st)) this._inst.set(st, this._make(st));
   },
@@ -445,7 +479,7 @@ const TDCanvas = {
 
   // ---- 置く・動かす ----
   _sourceLook(){
-    if(TD.P.canvasSource === 'random' && typeof TDLooks !== 'undefined'){ const id = TDLooks.pickRandom(); if(id) return id; }
+    if(TD.P.canvasSource === 'random' && typeof peers.TDLooks !== 'undefined'){ const id = peers.TDLooks.pickRandom(); if(id) return id; }
     return TD.stateP().look || 'f:055-mirrored-sigil';   // 焼き付け中も本体の Look (スタンプの Look ではなく)
   },
   // 重なりと画面の端を避けた位置を、大きいものから順に選ぶ (Random レイアウトと C Motion = Jump の置き直しで使う)
@@ -619,9 +653,9 @@ const TDCanvas = {
     tick('canvasJumpEvery', '_jumpSlot', ()=>{ this.jump(); });
     tick('canvasAutoSwap', '_swpSlot', ()=>{
       const live = this.stamps().filter(s => !s.hero && !s.img);
-      if(!live.length || typeof TDLooks === 'undefined') return;
+      if(!live.length || typeof peers.TDLooks === 'undefined') return;
       const st = live[Math.floor(Math.random()*live.length)];
-      const id = TDLooks.pickRandom(); if(!id) return;
+      const id = peers.TDLooks.pickRandom(); if(!id) return;
       if(this._bake && this._bake.st === st) this.cancelBake(true);   // 焼いている途中のスタンプを替えるなら、旧 Look の焼き付けはやめる
       // 新しい Look の焼き付けができるまでは、前の焼き付けを出しておく (素の文字を見せない)
       const old = this._inst.get(st), prev = old && old.full, prevPf = old && old.fullPf;
@@ -666,11 +700,12 @@ const TDCanvas = {
     // 焼き付けを始めた瞬間の背景 (紙 + 本体の Composition) を控える。焼き付け中は本体の値がスタンプのものに替わるので、
     // 背景はこの絵を敷く (描き直すと、Composition と紙がスタンプの文字・色に一瞬替わり、重い作り直しも 2 回走っていた)
     if(this._bake && !wasBaking){
-      const bg = this._bgHold || (this._bgHold = document.createElement('canvas'));
-      if(bg.width !== ctx.canvas.width || bg.height !== ctx.canvas.height){ bg.width = ctx.canvas.width; bg.height = ctx.canvas.height; }
-      const bx = bg.getContext('2d'); bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, bg.width, bg.height); bx.drawImage(ctx.canvas, 0, 0);
+      const bg = this._bgHold || (this._bgHold = B.createCanvas());
+      if(!B.resize(bg, ctx.canvas.width, ctx.canvas.height)){ this.cancelBake(); return; }
+      this._bgScaled = bg.width !== ctx.canvas.width || bg.height !== ctx.canvas.height;
+      const bx = bg.getContext('2d'); bx.setTransform(1, 0, 0, 1, 0, 0); bx.clearRect(0, 0, bg.width, bg.height); if(!this._bgScaled) bx.drawImage(ctx.canvas, 0, 0); else bx.drawImage(ctx.canvas, 0, 0, bg.width, bg.height);
     }
-    const holdHero = !!this._bake || t0 < (this._heroHoldUntil || 0) && TDSurf.cfg.enabled && !TDSurf.layers.length;
+    const holdHero = !!this._bake || t0 < (this._heroHoldUntil || 0) && peers.TDSurf.cfg.enabled && !peers.TDSurf.layers.length;
     const list = this.stamps().slice().sort((a, b) => (a.z || 0) - (b.z || 0));
     for(const st of list){
       const inst = this._inst.get(st); if(!inst) continue;
@@ -690,9 +725,10 @@ const TDCanvas = {
         pf = inst._raster.pf;
         if(inst.hero){
           src = TD._renderHero(pw, ph, 1/pf);
-          const hc = this._heroCache || (this._heroCache = document.createElement('canvas'));
-          if(hc.width !== pw || hc.height !== ph){ hc.width = pw; hc.height = ph; }
-          const hx = hc.getContext('2d'); hx.clearRect(0, 0, pw, ph); hx.drawImage(src, 0, 0); this._heroCachePf = pf;
+          if(!src) continue;
+          const hc = this._heroCache || (this._heroCache = B.createCanvas());
+          if(!B.resize(hc, src.width, src.height)) continue;
+          const hx = hc.getContext('2d'); hx.clearRect(0, 0, pw, ph); if(hc.width === src.width && hc.height === src.height) hx.drawImage(src, 0, 0); else hx.drawImage(src, 0, 0, hc.width, hc.height); this._heroCachePf = pf;
         }
         else {
           const z0 = inst.P.zoom; inst.P.zoom = 1/pf;
@@ -701,6 +737,7 @@ const TDCanvas = {
           if(inst._lastPf !== pf){ inst._lastPf = pf; inst._fitDirty = true; }
         }
       }
+      if(!src || !src.width || !src.height) continue;
       // 表示位置はレイアウトの位置へなめらかに追いつく (レイアウトを替えたとき流れるように動く)
       const a = inst._a || (inst._a = { x: st.x, y: st.y, s: st.s, r: st.rot || 0 });
       // C Motion: Glide = 新しい位置へなめらかに追いつく / Jump = 瞬間的に移る (漂い・ゆらぎもなし)
@@ -809,7 +846,7 @@ const TDCanvas = {
   },
   async saveAs(name){
     await this.loadSaved();
-    const thumb = (typeof TDLooks !== 'undefined') ? TDLooks.snapshotThumb() : '';
+    const thumb = (typeof peers.TDLooks !== 'undefined') ? peers.TDLooks.snapshotThumb() : '';
     this.saved.push({ name: name || ('Canvas ' + (this.saved.length + 1)), thumb, stamps: clone(this.stamps()) });
     await this._save();
     return this.saved.length - 1;
@@ -827,5 +864,7 @@ const TDCanvas = {
   async removeSaved(i){ await this.loadSaved(); if(!this.saved[i]) return; this.saved.splice(i, 1); await this._save(); }
 };
 TDCanvas.LAYOUTS = LAYOUTS;   // FUDE の Canvas (書き置き) も同じ配置を使う
-globalThis.TDCanvas = TDCanvas;
-})();
+
+return TDCanvas;
+}
+if(typeof TextDeform !== 'undefined') globalThis.TDCanvas = createTDCanvas(TextDeform);

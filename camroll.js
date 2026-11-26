@@ -119,7 +119,7 @@
       return ok;
     };
     if(typeof toast === 'function' && isMobile()){
-      toast('カメラロール保存パッチ有効');
+      toast(I18n.t("カメラロール保存パッチ有効"));
     }
     return true;
   }

@@ -19,6 +19,9 @@ const Fx3d = {
   ORDER: ['extrude', 'photo', 'slicer', 'layer', 'diorama', 'points', 'cubes', 'blinds', 'tunnel', 'gravity', 'globe'],   // Extrude は先頭 = 押し出した絵をほかの 3D FX の素材にする
   KEY: { photo: 'fx3dPhoto', slicer: 'fx3dSlicer', layer: 'fx3dLayer', diorama: 'fx3dDiorama', points: 'fx3dPoints',
          cubes: 'fx3dCubes', blinds: 'fx3dBlinds', tunnel: 'fx3dTunnel', gravity: 'fx3dGravity', globe: 'fx3dGlobe', extrude: 'fx3dExtrude' },
+  PARTS: ['slicer', 'photo', 'layer', 'cubes', 'blinds', 'diorama', 'points'],
+  BUILD_ORDER: ['extrude', 'slicer', 'photo', 'layer', 'cubes', 'blinds', 'diorama', 'points', 'tunnel', 'gravity', 'globe'],
+  order(post){ return post && post.fx3dStack === 'chain' ? this.ORDER : this.BUILD_ORDER; },
   // 自前レンダラ: name -> { render(gl, o) }。各 fx3d-<name>.js が Fx3d.EXTRA.<name> = {...} で登録する。
   //   o = { srcTex, fbo, w, h, e, k, asp, clock, beat, hit, beatMode, post }  (k = smooth(e) / hit = 0..1 / beatMode = beat モードか)
   //   戻り値: 描けたら true。透明背景・前乗算 (clear(0,0,0,0)、不透明な面は vec4(rgb,1)) で o.fbo へ描く。
@@ -59,7 +62,7 @@ const Fx3d = {
       o.PDefaults = JSON.parse(JSON.stringify(this.FACTORY[name]));
       o.cam = { az:0, el:0.3, dist:2.5 };
       // buildScene / _ensureSceneTargets は「いまの値を削除してから作り直す」ので、元エンジン (スロット) の資源を指さないよう空にしておく
-      o.posBuf = o.uvBuf = o.seedBuf = o.idxBuf = o.ctrBuf = null; o.numIdx = 0;
+      o.posBuf = o.uvBuf = o.seedBuf = o.idxBuf = o.ctrBuf = o.nrmBuf = o.planeBuf = null; o.numIdx = 0;
       o.spkBuf = o.spkVAO = null; o.spkN = 0;
       o.sceneFbo = o.sceneColorTex = o.sceneDepthTex = o.postFbo = o.postColorTex = null; o.fboW = o.fboH = 0;
       o.imgTex = null; o.imgW = 1; o.imgH = 1; o.imgAsp = 1; o.imageReady = true; o.bgFromImage = null;
@@ -78,8 +81,13 @@ const Fx3d = {
   //   GL が最後の段を描く間だけ foldFrame = { g, F } を立てる。レンダラは uniform を送ったあと Fx3d.fold(gl, pr, proj, paperD) を呼ぶ
   //   (paperD = z=0 の紙が画面をちょうど満たすカメラ距離。camera() なら 1.35)
   foldFrame: null,
-  canFold(name){ const x = this.EXTRA[name]; return name === 'slicer' || !!(x && x.foldHook); },
-  fold(gl, pr, proj, paperD){ GL.fx3dUniforms(pr, proj, paperD, this.foldFrame); },
+  shapeFrame: null,
+  canFold(name, shape = false){ const x = this.EXTRA[name]; return name === 'slicer' || (name === 'photo' && shape) || !!(x && x.foldHook); },
+  fold(gl, pr, proj, paperD, view, paperScale){
+    GL.fx3dShapeUniforms(pr, proj, paperD, this.shapeFrame && { ...this.shapeFrame, paperScale }, view);
+    const s = this.shapeFrame;
+    GL.fx3dUniforms(pr, s ? s.state.cam.proj : proj, s ? 1.35 : paperD, this.foldFrame);
+  },
 
   // ── 面を覆う針 (Needle を物体の面へ) ──
   //   最後の段が対応エンジン (Slicer / Photos / Layers / spikes: true) で Needle が ON のとき、GL がその段を描く間だけ spikeFrame を立てる。
@@ -123,9 +131,11 @@ const Fx3d = {
   _ps(name){ return this._pop[name] || (this._pop[name] = { on: false, tOn: -1e9, tOff: -1e9, held: 0, ep: -1e9, cnt: null }); },
   _now(){ return performance.now() / 1000; },
   popFrame(p, safe){
+    const muted = p && p.fx3dAmount === 0;
     const t = this._now(), live = this.popMode() !== 'off' ? this.popDur() + this.POP_STAG : 0;
     for(const name of this.ORDER){
       const e = safe ? 0 : Math.max(0, Math.min(1, +(p && p[this.KEY[name]]) || 0)), s = this._ps(name);
+      if(muted){ s.on = false; s.tOff = -1e9; s.held = 0; this.effE[name] = 0; continue; }
       if(e > 0.001){ if(!s.on){ s.on = true; s.tOn = t; } s.held = e; this.effE[name] = e; continue; }
       if(s.on){ s.on = false; s.tOff = t; }
       this.effE[name] = (!safe && t - s.tOff < live) ? s.held : 0;
@@ -231,11 +241,13 @@ float fx3dPop(float idx){
     if(id in c) return c[id];
     vs = this._withHooks(vs, 'fx3dNeedleH(', GL.needleCellGLSL());
     vs = this._withHooks(vs, 'fx3dPop(', this.POP_GLSL);
-    vs = this._withHooks(vs, 'fx3dRelief(', GL.reliefGLSL());   // シェーダの深度 (vjDepth) で面を持ち上げる
+    vs = this._withHooks(vs, 'fx3dShape(', GL.fx3dShapeGLSL());
+    vs = this._withHooks(vs, /fx3d(?:Relief|Height(?:HC)?)\(/.exec(vs)?.[0] || 'fx3dRelief(', GL.reliefGLSL());   // H 優先、なければスロットの深度
     vs = this._withHooks(vs, 'fx3dApply(', GL.fx3dHookGLSL());
     vs = this._withHooks(vs, /fx3dAB\(|fx3dSrc|uOvM/.exec(vs) ? /fx3dAB\(|fx3dSrc|uOvM/.exec(vs)[0] : 'fx3dAB(', this.OV_GLSL);
     fs = this._withHooks(fs, 'fx3dSrc', this.OV_GLSL);
     fs = this._withHooks(fs, 'fx3dFoldShade(', GL.fx3dShadeGLSL());
+    fs = this._withHooks(fs, 'fx3dShapeShade(', GL.fx3dShapeShadeGLSL());
     const v = GL._compile(gl.VERTEX_SHADER, vs), f = GL._compile(gl.FRAGMENT_SHADER, fs);
     const p = GL._link(v, f);
     if(!p || p.err){ console.error('fx3d program failed:', id, p && p.err); return (c[id] = null); }

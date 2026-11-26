@@ -11,11 +11,11 @@
  *   - P.look = 'f:<id>' / 's:<番号>'。P.lookPool で一覧・Random・Auto の対象を絞り、P.lookEvery 拍ごとに Auto で引き直す。
  *     Random / Auto は重い Operator (TDSurf.HEAVY) を含む Featured を選ばない
  * ======================================================== */
-(function(){
+function createTDLooks(TD, peers){
 'use strict';
-if(typeof TextDeform === 'undefined') return;
-const TD = TextDeform;
-const VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ''; })();
+peers = peers || globalThis;
+if(!TD) return;
+const VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ((globalThis.TDUpstream && globalThis.TDUpstream.q || '').replace(/^\?v=/, '')); })();
 const clone = v => JSON.parse(JSON.stringify(v));
 const DEFAULT_LOOK = 'f:055-mirrored-sigil';   // 既定の Look (Surface が軽く、サムネと同じ構図になるもの)
 // Surface の Worker では描かない上流の Operator のうち、TextDeform 側に同じ名前の値があるもの (プリセットの値をそのまま当てる)
@@ -29,7 +29,7 @@ const TDLooks = {
 
   // ---- 一覧 ----
   load(){
-    const f = (typeof TDSurf !== 'undefined') ? TDSurf.loadPresets() : Promise.resolve();
+    const f = (typeof peers.TDSurf !== 'undefined') ? peers.TDSurf.loadPresets() : Promise.resolve();
     return Promise.all([f, this.loadSaved()]).then(()=>{ this._notify(); return this; });
   },
   loadSaved(){
@@ -49,9 +49,9 @@ const TDLooks = {
     return this._loading;
   },
   // 上流のプリセット全件 (436 案、作者の許諾済み)。作者のオススメは p.featured
-  featured(){ return (typeof TDSurf !== 'undefined' && TDSurf.presets) ? TDSurf.presets.presets : []; },
-  families(){ return (typeof TDSurf !== 'undefined' && TDSurf.presets) ? TDSurf.presets.families : []; },
-  heavy(p){ return !!p && p.operators.some(o => TDSurf.HEAVY.includes(o)); },
+  featured(){ return (typeof peers.TDSurf !== 'undefined' && peers.TDSurf.presets) ? peers.TDSurf.presets.presets : []; },
+  families(){ return (typeof peers.TDSurf !== 'undefined' && peers.TDSurf.presets) ? peers.TDSurf.presets.families : []; },
+  heavy(p){ return !!p && p.operators.some(o => peers.TDSurf.HEAVY.includes(o)); },
   // pool の Look の id (表示順)。pool = all / saved / featured / family id
   // pool = all (全プリセット + 保存) / recommended (作者のオススメ = p.featured) / presets (全プリセット) / 系統 id / saved。前の 'featured' はオススメとして読む
   ids(pool){
@@ -74,7 +74,7 @@ const TDLooks = {
     return L.kind === 'f' ? String(L.item.n).padStart(3, '0') + ' ' + L.item.name : L.item.name;
   },
   thumb(id){
-    if(id.startsWith('f:')) return TDSurf.presetThumb(id.slice(2));
+    if(id.startsWith('f:')) return peers.TDSurf.presetThumb(id.slice(2));
     const L = this.get(id);
     return (L && L.item.thumb) || '';
   },
@@ -109,9 +109,9 @@ const TDLooks = {
     if(!L){ await this.load(); L = this.get(id); }
     if(!L) return false;
     if(L.kind === 'f'){
-      try{ await TDSurf.ensure(); }catch(e){ return false; }
+      try{ await peers.TDSurf.ensure(); }catch(e){ return false; }
       TD.applyLookStyle(this.featuredStyle(L.item), L.item.text);
-      TDSurf.applyPreset(L.item.id);
+      peers.TDSurf.applyPreset(L.item.id);
     } else {
       const c = L.item;
       TD.applyLookStyle(c.style || {}, '');
@@ -161,7 +161,7 @@ const TDLooks = {
     TD._endBake();   // 焼き付け中はスタンプの Look が本体に入っているので、本体の Look に戻してから保存する
     const P = TD.P, D = TD.PDefaults || {}, style = {};
     for(const k of TD_LOOK_KEYS) if(P[k] !== undefined && JSON.stringify(P[k]) !== JSON.stringify(D[k])) style[k] = clone(P[k]);
-    const surf = TDSurf.cfg.enabled ? TDSurf.snapshot() : null;
+    const surf = peers.TDSurf.cfg.enabled ? peers.TDSurf.snapshot() : null;
     return { name: name || ('Look ' + ((this.saved || []).length + 1)), style, surf, thumb: this.snapshotThumb() };
   },
   async _save(){
@@ -172,5 +172,7 @@ const TDLooks = {
   async overwrite(i){ await this.loadSaved(); if(!this.saved[i]) return; this.saved[i] = this.capture(this.saved[i].name); TD.P.look = 's:' + i; await this._save(); this._notify(); },
   async remove(i){ await this.loadSaved(); if(!this.saved[i]) return; this.saved.splice(i, 1); TD.P.look = ''; await this._save(); this._notify(); }
 };
-globalThis.TDLooks = TDLooks;
-})();
+
+return TDLooks;
+}
+if(typeof TextDeform !== 'undefined') globalThis.TDLooks = createTDLooks(TextDeform);

@@ -114,11 +114,9 @@ const ss = (a, b, x)=>{ const y = Math.max(0, Math.min(1, (x - a) / (b - a))); r
 // 投影: Fx3d.camera と同じ画角 (f = 1.35) で、奥の端 (カメラから 80 ほど) まで描けるよう遠い側の切り取りを伸ばす
 function tunnelProj(asp){ const f = 1.35, zn = 0.03, zf = 120.0; return [f / asp,0,0,0, 0,f,0,0, 0,0,(zf + zn) / (zn - zf),-1, 0,0,2 * zf * zn / (zn - zf),0]; }
 Fx3d.EXTRA.tunnel = {
-  foldHook: true,
-  _trav: 0, _lastT: null, _bPos: null,
-  render(gl, o){
-    const pr = Fx3d.prog(gl, 'tunnel', VS, FS);
-    if(!pr) return false;
+  // 同じ壁の式・時間積算・カメラを単体描画 / Build で使う。
+  shapeGLSL(){ return SURF.replace(/\b(u[A-Z]\w*|h3|vn|pathRaw|path|Z0|SC|tSurf)\b/g, 'f3t_$1'); },
+  shapeState(o){
     const post = o.post || {};
     // サブパラメータ (0..1。post = App.post = デッドゾーン前の値)
     const pv = (key, def)=>{ const v = post[key] == null ? def : +post[key]; return Number.isFinite(v) ? Math.max(0, Math.min(1, v)) : def; };
@@ -179,6 +177,36 @@ Fx3d.EXTRA.tunnel = {
     const dd = (u, v)=>u[0] * v[0] + u[1] * v[1] + u[2] * v[2];
     const view0 = [xc[0], yc[0], zc[0], 0, xc[1], yc[1], zc[1], 0, xc[2], yc[2], zc[2], 0, -dd(xc, eye), -dd(yc, eye), -dd(zc, eye), 1];
     const cam = { view: (typeof GL !== 'undefined' && GL._stretchView) ? GL._stretchView(view0) : view0, proj: tunnelProj(asp), eye };
+    let bias;
+    {
+      // うねり (Curve) の横ずれの平均を打ち消す: 通路の中ほどが片側へまとめて寄らないよう、手前ほど重く平均を取り、sin² の山で引く。Bend は引かない (意図した曲がり)
+      const T = this._trav, z0 = 1 + (Z0 - 1) * m * m, sh = Math.max(z0 - CAMZ, 0), L = LEN - sh;
+      const raw = (x)=>[ (Math.cos((x + T) * 0.2) - Math.cos(T * 0.2) + 0.2 * Math.sin(T * 0.2) * x) * 2.2 * curve,
+                         (Math.sin((x + T) * 0.26) - Math.sin(T * 0.26) - 0.26 * Math.cos(T * 0.26) * x) * 2.2 * curve ];
+      const rL = raw(L);
+      let mx = 0, my = 0, mh = 0, ws = 0;
+      for(let i = 0; i < 48; i++){
+        const x = (i + 0.5) / 48 * L, w = 1 / (1 + 0.15 * x), r = raw(x), q = (x * x) / (L * L), h = Math.sin(Math.PI * x / L) ** 2;
+        mx += w * (r[0] - rL[0] * q); my += w * (r[1] - rL[1] * q); mh += w * h; ws += w;
+      }
+      bias = [mx / mh, my / mh];
+    }
+    return {cam, k, uniforms:{uAsp:asp, uK:k, uM:m, uTrav:this._trav, uRad:rad, uTwist:twist,
+      uFlip:flip, uCurve:curve, uBump:bump, uPulse:pulse, uRound:round, uSpinA:this._spin * m,
+      uTile:tile, uFlow:1, uFog:fog, uShine:shine, uEdge:edge, uShade:Fx3d.shade(k), uT:t, uHit:o.hit || 0},
+      bias, bend:[bendX * m, bendY * m]};
+  },
+  shapeUniforms(gl, pr, s, prefix = ''){
+    for(const [n,v] of Object.entries(s.uniforms)) gl.uniform1f(uloc(gl, pr, prefix + n), v);
+    gl.uniform2f(uloc(gl, pr, prefix + 'uBias'), ...s.bias);
+    gl.uniform2f(uloc(gl, pr, prefix + 'uBend'), ...s.bend);
+  },
+  foldHook: true,
+  _trav: 0, _lastT: null, _bPos: null,
+  render(gl, o){
+    const pr = Fx3d.prog(gl, 'tunnel', VS, FS);
+    if(!pr) return false;
+    const state = this.shapeState(o), {cam, k} = state;
     const M = Fx3d.msaa(gl, o.w, o.h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
     gl.viewport(0, 0, o.w, o.h);
@@ -195,40 +223,7 @@ Fx3d.EXTRA.tunnel = {
     gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
     gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
     gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
-    gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
-    gl.uniform1f(uloc(gl, pr, 'uK'), k);
-    gl.uniform1f(uloc(gl, pr, 'uM'), m);
-    gl.uniform1f(uloc(gl, pr, 'uTrav'), this._trav);
-    gl.uniform1f(uloc(gl, pr, 'uRad'), rad);
-    gl.uniform1f(uloc(gl, pr, 'uTwist'), twist);
-    gl.uniform1f(uloc(gl, pr, 'uFlip'), flip);
-    gl.uniform1f(uloc(gl, pr, 'uCurve'), curve);
-    {
-      // うねり (Curve) の横ずれの平均を打ち消す: 通路の中ほどが片側へまとめて寄らないよう、手前ほど重く平均を取り、sin² の山で引く。Bend は引かない (意図した曲がり)
-      const T = this._trav, z0 = 1 + (Z0 - 1) * m * m, sh = Math.max(z0 - CAMZ, 0), L = LEN - sh;
-      const raw = (x)=>[ (Math.cos((x + T) * 0.2) - Math.cos(T * 0.2) + 0.2 * Math.sin(T * 0.2) * x) * 2.2 * curve,
-                         (Math.sin((x + T) * 0.26) - Math.sin(T * 0.26) - 0.26 * Math.cos(T * 0.26) * x) * 2.2 * curve ];
-      const rL = raw(L);
-      let mx = 0, my = 0, mh = 0, ws = 0;
-      for(let i = 0; i < 48; i++){
-        const x = (i + 0.5) / 48 * L, w = 1 / (1 + 0.15 * x), r = raw(x), q = (x * x) / (L * L), h = Math.sin(Math.PI * x / L) ** 2;
-        mx += w * (r[0] - rL[0] * q); my += w * (r[1] - rL[1] * q); mh += w * h; ws += w;
-      }
-      gl.uniform2f(uloc(gl, pr, 'uBias'), mx / mh, my / mh);
-    }
-    gl.uniform1f(uloc(gl, pr, 'uBump'), bump);
-    gl.uniform1f(uloc(gl, pr, 'uPulse'), pulse);
-    gl.uniform1f(uloc(gl, pr, 'uRound'), round);
-    gl.uniform1f(uloc(gl, pr, 'uSpinA'), this._spin * m);
-    gl.uniform2f(uloc(gl, pr, 'uBend'), bendX * m, bendY * m);
-    gl.uniform1f(uloc(gl, pr, 'uTile'), tile);
-    gl.uniform1f(uloc(gl, pr, 'uFlow'), 1);
-    gl.uniform1f(uloc(gl, pr, 'uFog'), fog);
-    gl.uniform1f(uloc(gl, pr, 'uShine'), shine);
-    gl.uniform1f(uloc(gl, pr, 'uEdge'), edge);
-    gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
-    gl.uniform1f(uloc(gl, pr, 'uT'), t);
-    gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
+    this.shapeUniforms(gl, pr, state);
     Fx3d.popUniforms(gl, pr, 'tunnel');
     Fx3d.reliefUniforms(gl, pr, [1 / SEG, 1 / RING]);
     Fx3d.fold(gl, pr, cam.proj, 1.35);

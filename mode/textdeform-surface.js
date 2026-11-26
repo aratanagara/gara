@@ -12,13 +12,15 @@
  *   - Worker が描いている間は位相を止め、描き終えたら次のフレームを頼む (上流 editor の clock hold と同じ)。
  *     届いた効果レイヤーは自前のキャンバスへ写してから使う (キューは次の結果で古いビットマップを閉じるため)。
  * ===================================================================================== */
-(function(){
+function createTDSurf(TD, peers){
 'use strict';
-if(typeof TextDeform === 'undefined') return;
-const TD = TextDeform;
-const UP = globalThis.TDUpstream;   // 共通部 (mode/textdeform-upstream.js)
+peers = peers || globalThis;
+if(!TD) return;
+const B = TDPixels;
+const UP = peers.TDUpstream;   // 共通部 (mode/textdeform-upstream.js)
 const SCRIPTS = ['operator-registry.js', 'editor-model.js', 'surface-state.js', 'render-jobs.js'];
 const BLENDS = ['source-over', 'multiply', 'screen', 'overlay', 'difference', 'lighter'];
+const SURF_MAX_SIDE = 1920;   // 効果の絵の長辺の上限 (px)。1920x1080 以下の出力は等倍のまま
 // 半透明そのものが表現の Operator (版ずれ・重ね刷り・光の重なり・残像や時間の蓄積・掠れ・透過開口)。これ以外は Look の値に関係なく効果を不透明で描く
 // (全体の透明度は Surface の Opacity と Canvas の Opacity で決める)
 const KEEP_ALPHA = new Set(['misregistration', 'risoSeparation', 'causticGlass', 'copyDecay', 'dataMosh', 'slitSweep', 'diffractiveGlyph', 'plotterTrace', 'blobTrack', 'softBlob', 'ligatureCrypt', 'naveCutter']);
@@ -65,7 +67,7 @@ const TDSurf = {
   // 保存値を当てる (P.surf への代入)。エンジンの読み込みは advance で
   apply(saved){
     this.cfg = merge(DEFAULTS, saved);
-    this.layers = []; this._fresh = !!this.cfg.enabled;
+    this._dropLayers(); this._fresh = !!this.cfg.enabled;
     this._reset();
   },
   set(over){
@@ -73,7 +75,7 @@ const TDSurf = {
     this.cfg = merge(this.cfg, over);
     if(over && Array.isArray(over.ops)) this.cfg.ops = over.ops.slice();
     // 重ねる Operator が変わったら前の絵は捨てる (新しい絵が届くまでは元の字をそのまま見せる)
-    if(this.activeOps().join() !== prev) this.layers = [];
+    if(this.activeOps().join() !== prev) this._dropLayers();
     // params は差分なので、値を null で渡したキーは既定値へ戻す
     for(const op of Object.keys(this.cfg.params)){
       const p = this.cfg.params[op];
@@ -84,7 +86,7 @@ const TDSurf = {
   },
   // 重ねる Operator (プリセットの surfaceOrder、無ければ上流の既定の重ね順)
   activeOps(){
-    const list = (this.cfg.ops && this.cfg.ops.length ? this.cfg.ops : [this.cfg.op]).filter(o=>!this.meta || this.meta.ops[o]);
+    const list = [...new Set(this.cfg.ops && this.cfg.ops.length ? this.cfg.ops : [this.cfg.op])].filter(o=>!this.meta || this.meta.ops[o]);
     const order = String((this.cfg.params['*'] || {}).surfaceOrder || '').split(',').filter(Boolean);
     const base = order.length ? order : (this.registry ? this.registry.renderOrder : []);
     return list.slice().sort((a, b)=>{
@@ -166,7 +168,7 @@ const TDSurf = {
     this.cfg.preset = id; this.cfg.ops = p.operators.slice(); this.cfg.op = p.operators[0];
     this.cfg.params = params;
     this.cfg.source = 'op'; this.cfg.blend = 'op'; this.cfg.color = 'op'; this.cfg.opacity = 1; this.cfg.pixel = 1;
-    this.layers = []; this._fresh = true;
+    this._dropLayers(); this._fresh = true;
     this._reset();
     if(this.cfg.enabled) this.ensure();
   },
@@ -175,12 +177,19 @@ const TDSurf = {
   _reset(){
     this.envelopeScale = 1; this._noEnvelope = false;
     this._dirty = true;
-    if(this.jobs) this.jobs.invalidate();
-    if(!this.cfg.enabled) this.layers = [];
+    if(this.jobs){ if(this.cfg.enabled) this.jobs.invalidate(); else this.jobs.cancel(); }
+    if(!this.cfg.enabled){
+      this._pending = null; B.reserve(this, 0);
+      this._dropLayers();
+      for(const c of this._pool) B.free(c);
+      this._pool.length = 0;
+    }
     this._notify();
   },
 
   _onJobState(s){
+    // invalidate 中の古い Worker も予約を持つ。停止/結果受信が確認できるまでは返さない。
+    if(!s.busy && (!s.ready || !this._pending || s.key !== this._pending.key)) B.reserve(this, 0);
     if(s.error && this._pending && s.key === this._pending.key){
       this._pending = null;
       // Worker ごと落ちた (読み込み失敗・クラッシュ) ときは間を空けて作り直す。描画範囲の問題ではないので envelope は触らない
@@ -200,32 +209,56 @@ const TDSurf = {
     const r = s.result;
     if(r.kind === 'envelope'){
       this.envelopeScale = Math.max(this.envelopeScale * 1.5, r.requiredScale || 1);
+      if(!s.busy) B.reserve(this, 0);
       return;
     }
-    const next = [];
-    req.ops.forEach((o, i)=>{
-      const bmp = r.layers && r.layers[o.id];
-      if(!bmp) return;
-      const c = (this.layers[i] && this.layers[i].canvas) || this._takeCanvas();
-      if(c.width !== req.w || c.height !== req.h){ c.width = req.w; c.height = req.h; }
-      const x = c.getContext('2d');
-      x.setTransform(1,0,0,1,0,0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
-      x.clearRect(0, 0, c.width, c.height);
-      x.drawImage(bmp, 0, 0);
-      next.push({ canvas: c, w: req.w, h: req.h, k: req.k || 1, px: req.px || 1, opacity: o.opacity, blend: o.blend, under: !!o.under });
-    });
-    if(!next.length) return;
-    this.layers = next; this._fresh = false;
-    this.lastMs = r.duration || 0;
-    this.error = ''; this._errShown = false; this._workerRetry = 0;
-    this._notify();
+    const next = this._receiving = [];
+    try{
+      req.ops.forEach((o, i)=>{
+        const bmp = r.layers && r.layers[o.id];
+        if(!bmp) return;
+        const c = (this.layers[i] && this.layers[i].canvas) || this._takeCanvas();
+        // 予約したコピー先 1 枚を実画像へ移す。bitmap の予約は close まで残す。
+        B.reserve(this, Math.max(0, B.reserved(this) - req.w*req.h));
+        if(c.width !== req.w || c.height !== req.h){ c.width = 0; c.height = req.h; c.width = req.w; }
+        next.push({ canvas: c, w: req.w, h: req.h, k: req.k || 1, px: req.px || 1, opacity: o.opacity, blend: o.blend, under: !!o.under });
+        const x = c.getContext('2d');
+        x.setTransform(1,0,0,1,0,0); x.globalAlpha = 1; x.globalCompositeOperation = 'source-over';
+        x.clearRect(0, 0, c.width, c.height);
+        x.drawImage(bmp, 0, 0);
+        if(bmp.close) bmp.close();   // 写したら手放す (GC 待ちの間、出力と同寸の絵が Operator の数だけ残る)
+        B.reserve(this, Math.max(0, B.reserved(this) - req.w*req.h));
+      });
+      if(!next.length) return;
+      this._dropLayers(next);
+      this.layers = next; this._fresh = false;
+      this.lastMs = r.duration || 0;
+      this.error = ''; this._errShown = false; this._workerRetry = 0;
+      this._notify();
+    }finally{
+      // jobs は結果を再利用するので、閉じた bitmap への参照も外す。
+      for(const bmp of Object.values(r.layers || {})) if(bmp.close) bmp.close();
+      r.layers = {};
+      if(this.layers !== next) for(const l of next) if(!this.layers.some(x => x.canvas === l.canvas)) B.free(l.canvas);
+      this._receiving = null;
+      if(!s.busy) B.reserve(this, 0);
+    }
   },
 
   // 効果の絵のキャンバスの使い回し (Canvas の焼き付けで毎回作り捨てると GPU 側の描画メモリが溜まる)
   _pool: [],
-  _takeCanvas(){ return this._pool.pop() || document.createElement('canvas'); },
+  // 今のレイヤーのキャンバスを使い回しへ返す (keep に残るものは除く)。捨てるだけだと GC まで出力と同寸の絵が積み上がる
+  // _held = Canvas の焼き付けが控えている本体のレイヤー (焼き付け後に戻すので返さない)
+  _held: null,
+  _dropLayers(keep){
+    const live = new Set((keep || []).map(l => l.canvas));
+    if(this._held) for(const l of this._held) live.add(l.canvas);
+    for(const l of this.layers) if(l && l.canvas && !live.has(l.canvas)) this._giveCanvas(l.canvas);
+    this.layers = [];
+  },
+  _takeCanvas(){ return this._pool.pop() || B.createCanvas(); },
   _giveCanvas(c){
-    if(!c) return;
+    if(!c || this._pool.includes(c)) return;
     const px = this._pool.reduce((a, x) => a + x.width*x.height, 0);
     if(this._pool.length < 8 && px + c.width*c.height <= 8e6) this._pool.push(c); else { c.width = 0; c.height = 0; }   // 合計 8M 画素まで
   },
@@ -406,8 +439,19 @@ const TDSurf = {
     // 字を大きく拡大した版面 (fit.s > 2) は効果を拡大率の半分の縮小解像度で描いて引き伸ばす
     // (等倍で描くと作業キャンバスが上限を超えやすく、時間も拡大率に比例して延びる。拡大率そのままでは 1 語の Look がぼやける)
     // Pixel (粗さ) > 1 はさらにその倍率で粗く描き、draw でドットのまま拡大する
+    // 出力が大きいときは長辺 SURF_MAX_SIDE で頭打ち (上流の作業ラスタは長辺 1440 なので、それより大きく描いても細部は増えず、
+    // 出力と同寸の絵がレイヤー・Worker・転送の 3 か所に Operator の数だけ立ってメモリを食う。2400x1600 で落ちる一因)
     const px = Math.max(1, Math.min(16, Math.round(+this.cfg.pixel || 1)));
-    const k = Math.max(1, f.s / 2) * px, rw = Math.max(1, Math.ceil(w/k)), rh = Math.max(1, Math.ceil(h/k));
+    let k = Math.max(1, f.s / 2, Math.max(w, h) / SURF_MAX_SIDE) * px;
+    let rw = Math.max(1, Math.ceil(w/k)), rh = Math.max(1, Math.ceil(h/k));
+    // Worker 出力 (bitmap) と main のコピー先を一緒に予約。元の layers/_held/Full も B.used に含む。
+    // キューは直列なので、古い実行中と新しい待機分の大きい方を、両方が終わるまで残す。
+    const size = B.fit(rw, rh, ops.length*2, [this]);
+    if(!size.w || !size.h){ this._dirty = true; return; }
+    if(size.w !== rw || size.h !== rh){
+      k *= Math.max(rw/size.w, rh/size.h);
+      rw = Math.max(1, Math.floor(w/k)); rh = Math.max(1, Math.floor(h/k));
+    }
     this.moshFrame++;
     const frame = {
       kind: 'frame', purpose: 'edit', mobile: false,
@@ -422,6 +466,7 @@ const TDSurf = {
     const key = this._paramsKey + JSON.stringify(frame);
     frame.params = params;
     frame.fontCss = this._collectFontCss(params.fontFamily, frame.text + glyphs.map(g=>g.ch).join(''));
+    if(!B.reserve(this, Math.max(B.reserved(this), rw*rh*ops.length*2))){ this._dirty = true; return; }
     this._pending = { key, w: rw, h: rh, k, px, ops: ops.map(op=>({ id: op, opacity: this._opOpacity(op, params), blend: this._opBlend(op, params), under: this._forcedOpaque(op, params) })) };
     this.jobs.request(key, frame);
   },
@@ -443,9 +488,11 @@ const TDSurf = {
     ctx.restore();
   }
 };
-globalThis.TDSurf = TDSurf;
+
 // P.surf = Surface の保存値。JSON 化・Object.assign がこのアクセサを通る
 Object.defineProperty(TD.P, 'surf', { enumerable: true, configurable: true,
   get(){ return TDSurf.snapshot(); },
   set(v){ TDSurf.apply(v); } });
-})();
+return TDSurf;
+}
+if(typeof TextDeform !== 'undefined') globalThis.TDSurf = createTDSurf(TextDeform);

@@ -6,7 +6,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_7sKSDd.frag",
@@ -15,7 +15,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_7sSGWD.frag",
@@ -24,7 +24,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_NdsSzl.frag",
@@ -33,7 +33,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_abstract.frag",
@@ -42,7 +42,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_abstract.frag",
@@ -51,7 +51,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_abstract.frag",
@@ -60,7 +60,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_abstract.frag",
@@ -69,7 +69,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_bonetunnel.frag",
@@ -78,7 +78,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_bonetunnel.frag",
@@ -87,7 +87,7 @@
     "min": 40,
     "max": 120,
     "defaultValue": 64,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_bonetunnel.frag",
@@ -96,7 +96,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_bonetunnel.frag",
@@ -105,7 +105,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_bonetunnel.frag",
@@ -114,7 +114,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_bonetunnel.frag",
@@ -123,7 +123,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_boogie_woogie.frag",
@@ -132,7 +132,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_boogie_woogie.frag",
@@ -141,7 +141,7 @@
     "min": 0,
     "max": 80,
     "defaultValue": 45,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_composition.frag",
@@ -150,7 +150,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_composition.frag",
@@ -159,7 +159,7 @@
     "min": 0,
     "max": 80,
     "defaultValue": 45,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_cos20.frag",
@@ -168,7 +168,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_cpuffs.frag",
@@ -177,7 +177,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_cpuffs.frag",
@@ -186,7 +186,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_cpuffs.frag",
@@ -195,7 +195,7 @@
     "min": -35,
     "max": 35,
     "defaultValue": 0,
-    "sliderStep": 0.07
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_cpuffs.frag",
@@ -204,7 +204,7 @@
     "min": 0,
     "max": 300,
     "defaultValue": 100,
-    "sliderStep": 0.3
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalPath.frag",
@@ -213,7 +213,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalPath.frag",
@@ -222,7 +222,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalPath.frag",
@@ -231,7 +231,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalPath.frag",
@@ -240,7 +240,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalPath.frag",
@@ -249,7 +249,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalice.frag",
@@ -258,7 +258,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_crystalnoise.frag",
@@ -267,7 +267,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_decon.frag",
@@ -276,7 +276,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_discharge.frag",
@@ -285,7 +285,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_echeveria.frag",
@@ -294,7 +294,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_echeveria.frag",
@@ -303,7 +303,7 @@
     "min": -45,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.135
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_echeveria.frag",
@@ -312,7 +312,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_echeveria.frag",
@@ -321,7 +321,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowcollage.frag",
@@ -330,7 +330,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowcollage.frag",
@@ -339,7 +339,7 @@
     "min": 0,
     "max": 300,
     "defaultValue": 100,
-    "sliderStep": 0.3
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flower.frag",
@@ -348,7 +348,7 @@
     "min": 0,
     "max": 360,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flower.frag",
@@ -357,7 +357,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flower.frag",
@@ -366,7 +366,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flower.frag",
@@ -375,7 +375,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowers.frag",
@@ -384,7 +384,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowers.frag",
@@ -393,7 +393,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowingMetal.frag",
@@ -402,7 +402,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowingMetal.frag",
@@ -411,7 +411,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_flowingMetal.frag",
@@ -420,7 +420,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_formation.frag",
@@ -429,7 +429,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_formation.frag",
@@ -438,7 +438,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_fragile.frag",
@@ -447,7 +447,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_fragile.frag",
@@ -456,7 +456,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_futurist.frag",
@@ -465,7 +465,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ghost.frag",
@@ -474,7 +474,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ghost.frag",
@@ -483,7 +483,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ghost.frag",
@@ -492,7 +492,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ghost.frag",
@@ -501,7 +501,7 @@
     "min": 0,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ghost.frag",
@@ -510,7 +510,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_glass_frost.frag",
@@ -519,7 +519,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_greyliquid.frag",
@@ -528,7 +528,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_hinotori.frag",
@@ -537,7 +537,7 @@
     "min": 2,
     "max": 60,
     "defaultValue": 12,
-    "sliderStep": 0.058
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_hinotori.frag",
@@ -546,7 +546,7 @@
     "min": 0,
     "max": 30,
     "defaultValue": 6,
-    "sliderStep": 0.03
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_hinotori.frag",
@@ -555,7 +555,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_iridiscious.frag",
@@ -564,7 +564,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_iridiscious.frag",
@@ -573,7 +573,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_jflow.frag",
@@ -582,7 +582,7 @@
     "min": 0,
     "max": 500,
     "defaultValue": 100,
-    "sliderStep": 0.5
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_jflow.frag",
@@ -591,7 +591,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_jflow.frag",
@@ -600,7 +600,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_juice.frag",
@@ -609,7 +609,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_juice.frag",
@@ -618,7 +618,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_juice.frag",
@@ -627,7 +627,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_juice.frag",
@@ -636,7 +636,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_juice.frag",
@@ -645,7 +645,7 @@
     "min": 0,
     "max": 100,
     "defaultValue": 25,
-    "sliderStep": 0.1
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_kandinsky.frag",
@@ -654,7 +654,7 @@
     "min": 0,
     "max": 180,
     "defaultValue": 60,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_kuko.frag",
@@ -663,7 +663,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_kuko.frag",
@@ -672,7 +672,7 @@
     "min": 40,
     "max": 220,
     "defaultValue": 100,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_kuko.frag",
@@ -681,7 +681,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_kuko.frag",
@@ -690,7 +690,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_kuko.frag",
@@ -699,7 +699,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liqmount.frag",
@@ -708,7 +708,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liqmount.frag",
@@ -717,7 +717,7 @@
     "min": -40,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.07
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liqmount.frag",
@@ -726,7 +726,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liqmount.frag",
@@ -735,7 +735,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liqmount.frag",
@@ -744,7 +744,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liquicolor.frag",
@@ -753,7 +753,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liquicolor.frag",
@@ -762,7 +762,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liquicolor.frag",
@@ -771,7 +771,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liquid.frag",
@@ -780,7 +780,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_liquid.frag",
@@ -789,7 +789,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_mandelbaum.frag",
@@ -798,7 +798,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_mandelbaum.frag",
@@ -807,7 +807,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_mandelbaum.frag",
@@ -816,7 +816,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_mandelbaum.frag",
@@ -825,7 +825,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_manga.frag",
@@ -834,7 +834,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_manga.frag",
@@ -843,7 +843,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_marble.frag",
@@ -852,7 +852,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_marble.frag",
@@ -861,7 +861,7 @@
     "min": -80,
     "max": 80,
     "defaultValue": 0,
-    "sliderStep": 0.16
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_marble.frag",
@@ -870,7 +870,7 @@
     "min": -80,
     "max": 80,
     "defaultValue": 0,
-    "sliderStep": 0.16
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_marble.frag",
@@ -879,7 +879,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_marble.frag",
@@ -888,7 +888,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_marble.frag",
@@ -897,7 +897,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_matrixjulia.frag",
@@ -906,7 +906,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_meguru.frag",
@@ -915,7 +915,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_meguru.frag",
@@ -924,7 +924,7 @@
     "min": 100,
     "max": 500,
     "defaultValue": 100,
-    "sliderStep": 0.4
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_metalSlab.frag",
@@ -933,7 +933,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_metalSlab.frag",
@@ -942,7 +942,7 @@
     "min": 0,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_metalSlab.frag",
@@ -951,7 +951,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_metalSlab.frag",
@@ -960,7 +960,7 @@
     "min": 0,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.1
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_moreFract.frag",
@@ -969,7 +969,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_moreFract.frag",
@@ -978,7 +978,7 @@
     "min": -35,
     "max": 35,
     "defaultValue": 0,
-    "sliderStep": 0.07
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_moreFract.frag",
@@ -987,7 +987,7 @@
     "min": -80,
     "max": 80,
     "defaultValue": 0,
-    "sliderStep": 0.16
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_moreFract.frag",
@@ -996,7 +996,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_moreFract.frag",
@@ -1005,7 +1005,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_moreFract.frag",
@@ -1014,7 +1014,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_nebula.frag",
@@ -1023,7 +1023,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_nebula.frag",
@@ -1032,7 +1032,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_nebula.frag",
@@ -1041,7 +1041,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_newSinFract.frag",
@@ -1050,7 +1050,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ngray.frag",
@@ -1059,7 +1059,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ngray.frag",
@@ -1068,7 +1068,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ngray.frag",
@@ -1077,7 +1077,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ngray.frag",
@@ -1086,7 +1086,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_nitro.frag",
@@ -1095,7 +1095,7 @@
     "min": -40,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.1
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_nitro.frag",
@@ -1104,7 +1104,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_nitro.frag",
@@ -1113,7 +1113,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1122,7 +1122,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1131,7 +1131,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1140,7 +1140,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1149,7 +1149,7 @@
     "min": -20,
     "max": 85,
     "defaultValue": 32,
-    "sliderStep": 0.105
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1158,7 +1158,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1167,7 +1167,7 @@
     "min": -70,
     "max": 70,
     "defaultValue": 0,
-    "sliderStep": 0.14
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_origami.frag",
@@ -1176,7 +1176,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_paperfractal.frag",
@@ -1185,7 +1185,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_paperfractal.frag",
@@ -1194,7 +1194,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_paperfractal.frag",
@@ -1203,7 +1203,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_paperfractal.frag",
@@ -1212,7 +1212,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_patchsdf.frag",
@@ -1221,7 +1221,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_patchsdf.frag",
@@ -1230,7 +1230,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_patchsdf.frag",
@@ -1239,7 +1239,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_patchsdf.frag",
@@ -1248,7 +1248,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_patchsdf.frag",
@@ -1257,7 +1257,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_patchsdf.frag",
@@ -1266,7 +1266,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_rain.frag",
@@ -1275,7 +1275,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_rain.frag",
@@ -1284,7 +1284,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_rainbowWater.frag",
@@ -1293,7 +1293,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_rainbowWater.frag",
@@ -1302,7 +1302,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ravecube.frag",
@@ -1311,7 +1311,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ribbon.frag",
@@ -1320,7 +1320,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_ribpillar.frag",
@@ -1329,7 +1329,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_romhack.frag",
@@ -1338,7 +1338,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_romhack.frag",
@@ -1347,7 +1347,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_romhack.frag",
@@ -1356,7 +1356,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_romhack.frag",
@@ -1365,7 +1365,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_sdjGWR.frag",
@@ -1374,7 +1374,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_sdjGWR.frag",
@@ -1383,7 +1383,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_shard_collage.frag",
@@ -1392,7 +1392,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_shard_collage.frag",
@@ -1401,7 +1401,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_sinFBM.frag",
@@ -1410,7 +1410,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_sinedeform.frag",
@@ -1419,7 +1419,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_sinedeform.frag",
@@ -1428,7 +1428,7 @@
     "min": -70,
     "max": 70,
     "defaultValue": 0,
-    "sliderStep": 0.14
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_sinedeform.frag",
@@ -1437,7 +1437,7 @@
     "min": -50,
     "max": 50,
     "defaultValue": 0,
-    "sliderStep": 0.1
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_slimeframe.frag",
@@ -1446,7 +1446,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_slimeframe.frag",
@@ -1455,7 +1455,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_slimeframe.frag",
@@ -1464,7 +1464,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_slimeframe.frag",
@@ -1473,7 +1473,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_slimeframe.frag",
@@ -1482,7 +1482,7 @@
     "min": 0,
     "max": 360,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_smear_tear.frag",
@@ -1491,7 +1491,7 @@
     "min": 0,
     "max": 360,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_smear_tear.frag",
@@ -1500,7 +1500,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spell.frag",
@@ -1509,7 +1509,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spell.frag",
@@ -1518,7 +1518,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spell.frag",
@@ -1527,7 +1527,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spikeball.frag",
@@ -1536,7 +1536,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spikeball.frag",
@@ -1545,7 +1545,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spikeball.frag",
@@ -1554,7 +1554,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spikeball.frag",
@@ -1563,7 +1563,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spikeball.frag",
@@ -1572,7 +1572,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spiky.frag",
@@ -1581,7 +1581,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spiky.frag",
@@ -1590,7 +1590,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spiky.frag",
@@ -1599,7 +1599,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spiky.frag",
@@ -1608,7 +1608,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spiky.frag",
@@ -1617,7 +1617,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_spiky.frag",
@@ -1626,7 +1626,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_storming.frag",
@@ -1635,7 +1635,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_storming.frag",
@@ -1644,7 +1644,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_storming.frag",
@@ -1653,7 +1653,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_stractium.frag",
@@ -1662,7 +1662,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_stractium.frag",
@@ -1671,7 +1671,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_stractium.frag",
@@ -1680,7 +1680,7 @@
     "min": -50,
     "max": 50,
     "defaultValue": 0,
-    "sliderStep": 0.1
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_stractium.frag",
@@ -1689,7 +1689,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_stractium.frag",
@@ -1698,7 +1698,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_tronclouds.frag",
@@ -1707,7 +1707,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_tronclouds.frag",
@@ -1716,7 +1716,7 @@
     "min": 30,
     "max": 170,
     "defaultValue": 100,
-    "sliderStep": 0.14
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_tronclouds.frag",
@@ -1725,7 +1725,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_tronclouds.frag",
@@ -1734,7 +1734,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_twistors.frag",
@@ -1743,7 +1743,7 @@
     "min": 75,
     "max": 130,
     "defaultValue": 100,
-    "sliderStep": 0.055
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_twistors.frag",
@@ -1752,7 +1752,7 @@
     "min": 0,
     "max": 300,
     "defaultValue": 100,
-    "sliderStep": 0.3
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_twistors.frag",
@@ -1761,7 +1761,7 @@
     "min": 0,
     "max": 300,
     "defaultValue": 100,
-    "sliderStep": 0.3
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_twistors.frag",
@@ -1770,7 +1770,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_twistors.frag",
@@ -1779,7 +1779,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_uniflash.frag",
@@ -1788,7 +1788,7 @@
     "min": 0,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.045
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_uniflash.frag",
@@ -1797,7 +1797,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_vangogh.frag",
@@ -1806,7 +1806,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_water.frag",
@@ -1815,7 +1815,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_watercolors.frag",
@@ -1824,7 +1824,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_watercolors.frag",
@@ -1833,7 +1833,7 @@
     "min": 25,
     "max": 300,
     "defaultValue": 100,
-    "sliderStep": 0.275
+    "sliderStep": 0.01
   },
   {
     "file": "shaders/bg_watercolors.frag",
@@ -1842,7 +1842,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1851,7 +1851,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1860,7 +1860,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1869,7 +1869,7 @@
     "min": -2,
     "max": 2,
     "defaultValue": 0.6,
-    "sliderStep": 0.004
+    "sliderStep": 0.002
   },
   {
     "file": "presets.js",
@@ -1878,7 +1878,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1887,7 +1887,7 @@
     "min": -15,
     "max": 35,
     "defaultValue": 0,
-    "sliderStep": 0.05
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1896,7 +1896,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1905,7 +1905,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1914,7 +1914,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1923,7 +1923,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1932,7 +1932,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1941,7 +1941,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1950,7 +1950,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1959,7 +1959,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1968,7 +1968,7 @@
     "min": 20,
     "max": 250,
     "defaultValue": 100,
-    "sliderStep": 0.23
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1977,7 +1977,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1986,7 +1986,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -1995,7 +1995,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2004,7 +2004,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2013,7 +2013,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2022,7 +2022,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2031,7 +2031,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2040,7 +2040,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2049,7 +2049,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2058,7 +2058,7 @@
     "min": -300,
     "max": 300,
     "defaultValue": 0,
-    "sliderStep": 0.6
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2067,7 +2067,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2076,7 +2076,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2085,7 +2085,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2094,7 +2094,7 @@
     "min": -60,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.105
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2103,7 +2103,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2112,7 +2112,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2121,7 +2121,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2130,7 +2130,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2139,7 +2139,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2148,7 +2148,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2157,7 +2157,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2166,7 +2166,7 @@
     "min": 0,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2175,7 +2175,7 @@
     "min": 30,
     "max": 70,
     "defaultValue": 45,
-    "sliderStep": 0.04
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2184,7 +2184,7 @@
     "min": -25,
     "max": 25,
     "defaultValue": 0,
-    "sliderStep": 0.05
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2193,7 +2193,7 @@
     "min": -4,
     "max": 12,
     "defaultValue": 0,
-    "sliderStep": 0.016
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2202,7 +2202,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2211,7 +2211,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2220,7 +2220,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2229,7 +2229,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2238,7 +2238,7 @@
     "min": -70,
     "max": 70,
     "defaultValue": 0,
-    "sliderStep": 0.14
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2247,7 +2247,7 @@
     "min": -30,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2256,7 +2256,7 @@
     "min": 40,
     "max": 200,
     "defaultValue": 100,
-    "sliderStep": 0.16
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2265,7 +2265,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2274,7 +2274,7 @@
     "min": -35,
     "max": 35,
     "defaultValue": 0,
-    "sliderStep": 0.07
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2283,7 +2283,7 @@
     "min": -25,
     "max": 25,
     "defaultValue": 0,
-    "sliderStep": 0.05
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2292,7 +2292,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2301,7 +2301,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2310,7 +2310,7 @@
     "min": -45,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.105
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2319,7 +2319,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2328,7 +2328,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2337,7 +2337,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2346,7 +2346,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2355,7 +2355,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2364,7 +2364,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2373,7 +2373,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2382,7 +2382,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2391,7 +2391,7 @@
     "min": 70,
     "max": 140,
     "defaultValue": 100,
-    "sliderStep": 0.07
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2400,7 +2400,7 @@
     "min": 70,
     "max": 140,
     "defaultValue": 100,
-    "sliderStep": 0.07
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2409,7 +2409,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2418,7 +2418,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2427,7 +2427,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2436,7 +2436,7 @@
     "min": 0,
     "max": 200,
     "defaultValue": 100,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2445,7 +2445,7 @@
     "min": -150,
     "max": 150,
     "defaultValue": 0,
-    "sliderStep": 0.3
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2454,7 +2454,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2463,7 +2463,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2472,7 +2472,7 @@
     "min": -80,
     "max": 80,
     "defaultValue": 0,
-    "sliderStep": 0.16
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2481,7 +2481,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2490,7 +2490,7 @@
     "min": 0,
     "max": 360,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2499,7 +2499,7 @@
     "min": -75,
     "max": 75,
     "defaultValue": 0,
-    "sliderStep": 0.15
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2508,7 +2508,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2517,7 +2517,7 @@
     "min": -75,
     "max": 75,
     "defaultValue": 0,
-    "sliderStep": 0.15
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2526,7 +2526,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2535,7 +2535,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2544,7 +2544,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2553,7 +2553,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2562,7 +2562,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2571,7 +2571,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2580,7 +2580,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2589,7 +2589,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2598,7 +2598,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2607,7 +2607,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2616,7 +2616,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2625,7 +2625,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2634,7 +2634,7 @@
     "min": -45,
     "max": 45,
     "defaultValue": 0,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2643,7 +2643,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2652,7 +2652,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2661,7 +2661,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2670,7 +2670,7 @@
     "min": 60,
     "max": 125,
     "defaultValue": 100,
-    "sliderStep": 0.065
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2679,7 +2679,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2688,7 +2688,7 @@
     "min": -25,
     "max": 25,
     "defaultValue": 0,
-    "sliderStep": 0.05
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2697,7 +2697,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2706,7 +2706,7 @@
     "min": -25,
     "max": 25,
     "defaultValue": 0,
-    "sliderStep": 0.05
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2715,7 +2715,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2724,7 +2724,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2733,7 +2733,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2742,7 +2742,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2751,7 +2751,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2760,7 +2760,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2769,7 +2769,7 @@
     "min": -40,
     "max": 40,
     "defaultValue": 0,
-    "sliderStep": 0.08
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2778,7 +2778,7 @@
     "min": -15,
     "max": 25,
     "defaultValue": 0,
-    "sliderStep": 0.04
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2787,7 +2787,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2796,7 +2796,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2805,7 +2805,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2814,7 +2814,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2823,7 +2823,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2832,7 +2832,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2841,7 +2841,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2850,7 +2850,7 @@
     "min": -100,
     "max": 100,
     "defaultValue": 0,
-    "sliderStep": 0.2
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2859,7 +2859,7 @@
     "min": -300,
     "max": 300,
     "defaultValue": 0,
-    "sliderStep": 0.6
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2868,7 +2868,7 @@
     "min": -300,
     "max": 300,
     "defaultValue": 0,
-    "sliderStep": 0.6
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2877,7 +2877,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2886,7 +2886,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2895,7 +2895,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2904,7 +2904,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2913,7 +2913,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2922,7 +2922,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2931,7 +2931,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2940,7 +2940,7 @@
     "min": -2,
     "max": 2,
     "defaultValue": 1,
-    "sliderStep": 0.004
+    "sliderStep": 0.002
   },
   {
     "file": "presets.js",
@@ -2949,7 +2949,7 @@
     "min": -2,
     "max": 2,
     "defaultValue": 1,
-    "sliderStep": 0.004
+    "sliderStep": 0.002
   },
   {
     "file": "presets.js",
@@ -2958,7 +2958,7 @@
     "min": -2,
     "max": 2,
     "defaultValue": 1,
-    "sliderStep": 0.004
+    "sliderStep": 0.002
   },
   {
     "file": "presets.js",
@@ -2967,7 +2967,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2976,7 +2976,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2985,7 +2985,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -2994,7 +2994,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3003,7 +3003,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3012,7 +3012,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3021,7 +3021,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3030,7 +3030,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3039,7 +3039,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3048,7 +3048,7 @@
     "min": -30,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.06
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3057,7 +3057,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3066,7 +3066,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3075,7 +3075,7 @@
     "min": -25,
     "max": 30,
     "defaultValue": 0,
-    "sliderStep": 0.055
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3084,7 +3084,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3093,7 +3093,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3102,7 +3102,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3111,7 +3111,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3120,7 +3120,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3129,7 +3129,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3138,7 +3138,7 @@
     "min": -180,
     "max": 180,
     "defaultValue": 0,
-    "sliderStep": 0.36
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3147,7 +3147,7 @@
     "min": -60,
     "max": 60,
     "defaultValue": 0,
-    "sliderStep": 0.12
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3156,7 +3156,7 @@
     "min": 30,
     "max": 140,
     "defaultValue": 100,
-    "sliderStep": 0.11
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3165,7 +3165,7 @@
     "min": -90,
     "max": 90,
     "defaultValue": 0,
-    "sliderStep": 0.18
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3174,7 +3174,7 @@
     "min": 0,
     "max": 150,
     "defaultValue": 100,
-    "sliderStep": 0.15
+    "sliderStep": 0.01
   },
   {
     "file": "presets.js",
@@ -3183,6 +3183,6 @@
     "min": 0,
     "max": 90,
     "defaultValue": 50,
-    "sliderStep": 0.09
+    "sliderStep": 0.01
   }
 ]

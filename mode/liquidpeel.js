@@ -956,6 +956,17 @@ void main(){
 LiquidPeel.PDefaults = JSON.parse(JSON.stringify(LiquidPeel.P));
 
 if (typeof window !== 'undefined') window.LiquidPeel = LiquidPeel;
+// Params を欄ごとのブロックに分ける (UI.bindEngineHints → UI.engineBlocks。欄に無い行は元のブロックに残る)
+LiquidPeel.PARAM_GROUPS = [
+  ['Body', ['shape', 'speed', 'morph', 'blobs', 'size', 'wobble', 'deform', 'cells', 'jitter', 'overlap', 'aspect', 'rotate', 'rotVar', 'noiseY']],
+  ['Piece', ['reveal', 'appear', 'order', 'round', 'taper', 'twist', 'gap', 'lenVar', 'widVar', 'brush']],
+  ['Peel', ['peelMode', 'peel', 'peelRate', 'peelScale', 'peelVar', 'peelAmt', 'peelSpan', 'peelPhase']],
+  ['Fall', ['lift', 'fall', 'drift', 'tumble', 'tilt', 'spin', 'swell', 'liftShare', 'fallCurve', 'fallDir', 'fadeStart']],
+  ['Camera', ['depth', 'persp', 'posX', 'posY', 'roll', 'lens', 'yaw']],
+  ['Line', ['edgeOn', 'fill', 'body', 'line', 'lineSkip', 'detail', 'bodyLine']],
+  ['Light', ['lit', 'lightA', 'lightZ', 'pShade', 'rim']],
+  ['Color', ['bodyLink', 'ink', 'paper', 'bodyCol', 'toneVar', 'hueVar', 'paperAlpha']],
+];
 LiquidPeel.PARAM_HELP = {
   shape:'本体の形。液体 (2D) / 球 / 縦の面 / 円柱 / 立方体',
   reveal:'皮を常に表示するか、めくれる破片だけ表示するか',

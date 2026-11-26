@@ -158,31 +158,46 @@ float fm_fbm(vec3 p){ return 0.5*fm_noise(p) + 0.25*fm_noise(p*2.03) + 0.125*fm_
 // SDF をサンプルした「表面と一緒に流れる」低周波スカラ。苔/土のパッチ駆動に使う。
 float fm_flow(vec3 q){ return sin(fm_sdf(q * 0.85) * 1.2 + 1.3) * 0.5 + 0.5; }
 vec3 fm_ry(vec3 v, float a){ float c = cos(a), s = sin(a); return vec3(c*v.x + s*v.z, v.y, -s*v.x + c*v.z); }
-vec3 bg_flowingMetal(vec2 fc){
+// カメラの基準: 目の位置 eye・ビュー→ワールドの回転 v2w・焦点距離 zf (画素)。岩のメッシュ化 (3D FX) も同じカメラを使う
+void fm_camBasis(out vec3 eye, out mat3 v2w, out float zf){
+  float tnH = tan(radians(45.0)/2.0);
+  if(uFov != 100.0) tnH = tan(radians(45.0 * (uFov / 100.0))/2.0);
+  zf = resolution.y / tnH;
+  // カメラの公転 (原点を中心に周回 + ゆるい上下動)。半径は十分大きく取り内部に入らない。
+  float ct = time * 0.12;
+  eye = vec3(cos(ct)*(3.2 * (uCamDist / 100.0)), sin(ct*0.5)*(1.4 * (uCamBob / 100.0)), sin(ct)*(3.2 * (uCamDist / 100.0)));
+  if(uOrbitOffset != 0.0){ eye = fm_ry(eye, radians(uOrbitOffset)); }
+  if(uCamLift != 0.0){ eye.y += uCamLift / 100.0 * 3.0; }
+  v2w = fm_view(eye, vec3(0.0), vec3(0.0, 1.0, 0.0));
+}
+// カメラ: 画面の点 fc (画素) から、目の位置 eye と光線の向き wd (ワールド) を求める
+void fm_cam(vec2 fc, out vec3 eye, out vec3 wd){
   vec2 I  = (fc - resolution*0.5) / max(bgZoom, 0.001) + resolution*0.5 + bgCamPx;
   vec2 xy = I - resolution/2.0;
   if(uCamRoll != 0.0){ float rl = radians(uCamRoll); float rc = cos(rl), rs = sin(rl); xy = mat2(rc, -rs, rs, rc) * xy; }
-  float tnH = tan(radians(45.0)/2.0);
-  if(uFov != 100.0) tnH = tan(radians(45.0 * (uFov / 100.0))/2.0);
-  float z = resolution.y / tnH;
-  vec3 viewDir = normalize(vec3(xy, -z));
-  // カメラの公転 (原点を中心に周回 + ゆるい上下動)。半径は十分大きく取り内部に入らない。
-  float ct = time * 0.12;
-  vec3 eye = vec3(cos(ct)*(3.2 * (uCamDist / 100.0)), sin(ct*0.5)*(1.4 * (uCamBob / 100.0)), sin(ct)*(3.2 * (uCamDist / 100.0)));
-  if(uOrbitOffset != 0.0){ eye = fm_ry(eye, radians(uOrbitOffset)); }
-  if(uCamLift != 0.0){ eye.y += uCamLift / 100.0 * 3.0; }
-  mat3 v2w = fm_view(eye, vec3(0.0), vec3(0.0, 1.0, 0.0));
-  vec3 wd = v2w * viewDir;
+  mat3 v2w; float zf;
+  fm_camBasis(eye, v2w, zf);
+  wd = v2w * normalize(vec3(xy, -zf));
+}
+vec3 fm_shade(vec3 p, vec3 n, vec3 wd, float dist, vec2 fc);
+vec3 bg_flowingMetal(vec2 fc){
+  vec3 eye, wd;
+  fm_cam(fc, eye, wd);
   float dist = fm_march(eye, wd, 0.0, FM_MAXD);
   if(dist > FM_MAXD - FM_EPS){
     bgAlpha = 0.0;   // 背景(ミス)は Slot B で透過(黒キーではなく元から透明)
     return vec3(0.0);
   }
   vec3 p  = eye + dist*wd;
-  vjDepth = exp(-dist * 0.15);   // 深度 (近いほど 1。距離フォグ 0.06 より立たせる)。折り系・3D FX が紙をこれで持ち上げる
-
   // === 固有色のある金属(色付きクローム) ===
   vec3 n = fm_normal(p);
+  // 深度 (近いほど 1)。折り系・3D FX が紙をこれで持ち上げる。距離に、面の向き (正面ほど手前 = 塊の丸み) と細かい凹凸を足して、岩のような量感を出す
+  vjDepth = clamp(exp(-dist * 0.15) * 0.72 + 0.24 * sqrt(clamp(dot(n, -wd), 0.0, 1.0)) + 0.08 * (fm_fbm(p * 5.0) - 0.5), 0.0, 1.0);
+  bgAlpha = 1.0;                              // 金属表面はヒット=不透明
+  return fm_shade(p, n, wd, dist, fc);
+}
+// 表面の色: 当たった点 p・法線 n・光線の向き wd・目からの距離 dist・画面の点 fc (周辺減光用) から。岩のメッシュ化 (3D FX) も同じ色付けを使う
+vec3 fm_shade(vec3 p, vec3 n, vec3 wd, float dist, vec2 fc){
   vec3 refl = reflect(wd, n);
   // クローム反射: なめらかなフルレンジのグラデで階調を増やす(2値潰しを回避)。
   float t = clamp(0.5 + 0.5*refl.y, 0.0, 1.0);
@@ -260,6 +275,5 @@ vec3 bg_flowingMetal(vec2 fc){
   col += fres * (1.0 - 0.6*matte) * vec3(0.8, 0.85, 0.95) * 0.22 * (uGlow / 100.0) * (uFresnel / 100.0);
   if(uDepthFade != 0.0){ col *= exp(-dist * 0.06 * uDepthFade / 100.0); }
   if(uVignette != 0.0){ vec2 vq = (fc - 0.5 * resolution.xy) / resolution.y; col *= 1.0 - clamp(uVignette / 100.0, 0.0, 1.5) * smoothstep(0.25, 0.95, length(vq)); }
-  bgAlpha = 1.0;                              // 金属表面はヒット=不透明
   return clamp(col, 0.0, 1.0);
 }

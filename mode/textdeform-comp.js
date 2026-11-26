@@ -8,11 +8,11 @@
  * phase は TextDeform.update() から自動進行。状態は TextDeform.P.comp (末尾のアクセサ) — Look の一部として
  * 保存デフォルト・状態の復元・Undo・保存 Look と一緒に読み書きする。
  * ======================================================================== */
-(function(){
+function createTDComp(TD, peers){
 'use strict';
-if(typeof TextDeform === 'undefined') return;
-const TD = TextDeform;
-const COMP_VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ''; })();
+peers = peers || globalThis;
+if(!TD) return;
+const COMP_VER = (()=>{ const s = document.currentScript && document.currentScript.src; const m = s && /[?&]v=([^&]+)/.exec(s); return m ? m[1] : ((globalThis.TDUpstream && globalThis.TDUpstream.q || '').replace(/^\?v=/, '')); })();
 
 /* ---- 元エディタのグローバルへのシム ---- */
 const params = new Proxy({}, {
@@ -802,7 +802,7 @@ function snapshotGlyphs(forceAll){
       var fontRuntime = null, renderErrorShown = false;
       function ensureEngine(){
         if(engine || engineLoading) return engineLoading;
-        var UP = globalThis.TDUpstream;
+        var UP = peers.TDUpstream;
         engineLoading = UP.load(UP.ENGINE).then(function(){
           fontRuntime = globalThis.TypeDeformerAxes.createRuntime({ fonts: document.fonts });
           engine = globalThis.TypeDeformerWorkerAdapter.create({
@@ -852,8 +852,8 @@ function snapshotGlyphs(forceAll){
         w = Math.max(1, w); h = Math.max(1, h);
         compositionScene.width = w; compositionScene.height = h;
         var layout = { w: w, h: h, s: 1, dx: 0, dy: 0 };
-        var key = globalThis.TDUpstream.paramsKey();
-        if(envState.paramsKey !== key){ envState.params = globalThis.TDUpstream.params(); envState.paramsKey = key; }
+        var key = peers.TDUpstream.paramsKey();
+        if(envState.paramsKey !== key){ envState.params = peers.TDUpstream.params(); envState.paramsKey = key; }
         envState.fontMetrics = fontMetrics();
         var glyphs = snapshotGlyphs(true);
         envState.sourceGlyphs = glyphs;
@@ -883,9 +883,9 @@ function snapshotGlyphs(forceAll){
 
       /* ---- 永続化: TextDeform.P.comp (このファイルの末尾のアクセサ)。保存デフォルト・状態の復元・Undo・保存 Look が
        * P と一緒に読み書きする。v6 以前の保存値は normalizeComposition が v10 へ読み替える。 ---- */
-      try{ localStorage.removeItem('vj.textdeform.comp'); }catch(e){}
+      if(peers === globalThis) try{ localStorage.removeItem('vj.textdeform.comp'); }catch(e){}
 
-      window.TDComp = {
+      peers.TDComp = {
         defs: COMPOSITION_DEFS,
         guides: COMPOSITION_ENGINE_GUIDES,
         get(){ return compositionState; },
@@ -966,5 +966,7 @@ function snapshotGlyphs(forceAll){
       // P.comp = Composition の保存値 (Off なら null)。JSON 化・Object.assign がこのアクセサを通る
       Object.defineProperty(TD.P, 'comp', { enumerable: true, configurable: true,
         get: function(){ return compositionState.enabled ? persistentCompositionState() : null; },
-        set: function(v){ window.TDComp.apply(v); } });
-})();
+        set: function(v){ peers.TDComp.apply(v); } });
+return peers.TDComp;
+}
+if(typeof TextDeform !== 'undefined') globalThis.TDComp = createTDComp(TextDeform);

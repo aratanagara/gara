@@ -24,12 +24,13 @@ void main(){
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   vec2 q = (uv - 0.5) * 2.0 * vec2(uAsp, 1.0);
   vec3 P = vec3(q, (l - 0.5) * 1.2 * uK * uSign);
+  if(uFx3dHeightOn > 0.5) P.z += fx3dHeight(uv);
   float r1 = h1(cell + 0.3), r2 = h1(cell + 3.3);
   vec3 dir = vec3(r1, r2, h1(cell + 9.1)) * 2.0 - 1.0;
   P += dir * (0.08 * uK * uK * sin(uT * 0.6 + r1 * 6.2832) + 0.45 * uHit * uK * r2);   // 漂い + ヒットで散る
   vec4 vp = uView * vec4(P, 1.0);
-  gl_Position = fx3dApply(uProj * vp);
-  float viewZ = max(0.05, -vp.z);
+  gl_Position = fx3dApply(fx3dShape(uProj * vp, uv));
+  float viewZ = max(0.05, uFx3dShapeOn > 0.5 ? gl_Position.w : -vp.z);
   float pp = fx3dPop(float(gl_VertexID));   // ポップ: 点ごとに大きさが弾む (0 の点は描かない)
   gl_PointSize = min(uMaxPt, max(1.0, uCellPx * (1.15 - 0.45 * uK) * (uDist / viewZ) * pp));
   if(pp < 0.02) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
@@ -71,6 +72,7 @@ void main(){
   float l = dot(c, vec3(0.299, 0.587, 0.114));
   vec2 q = (uv - 0.5) * 2.0 * vec2(uAsp, 1.0);
   vec3 P = vec3(q, (l - 0.5) * 1.2 * uK * uSign);
+  if(uFx3dHeightOn > 0.5) P.z += fx3dHeight(uv);   // 針も同じ点中心の H を土台へ
   float r1 = h1(cell + 0.3), r2 = h1(cell + 3.3);
   vec3 dir = vec3(r1, r2, h1(cell + 9.1)) * 2.0 - 1.0;
   P += dir * (0.08 * uK * uK * sin(uT * 0.6 + r1 * 6.2832) + 0.45 * uHit * uK * r2);
@@ -84,7 +86,7 @@ void main(){
     P.xy += vec2(cos(an), sin(an)) * 0.5 * cl;
   }
   vW = P;
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), uv));
   if(pp < 0.02) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
   vCol = c;
 }`;
@@ -98,7 +100,7 @@ out vec4 frag;
 ${Fx3d.GLSL_LIT}
 void main(){
   if(vA < 0.5) discard;
-  frag = vec4(fx3dLit(vCol, vW, uEye, 1.0), 1.0) * uA0;
+  frag = vec4(fx3dShapeShade(fx3dLit(vCol, vW, uEye, 1.0), vCol), 1.0) * uA0;
 }`;
 
   const hash = (n)=>{ const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -155,6 +157,7 @@ void main(){
       gl.uniform1f(u('uCols'), cols2);
       gl.uniform1f(u('uRows'), rows2);
       Fx3d.ovUniforms(gl, p, o);
+      GL._fx3dHeightBind(p, [(1 + 2 * om[0]) / cols2, (1 + 2 * om[1]) / rows2]);
       gl.uniform1f(u('uK'), k);
       gl.uniform1f(u('uHit'), o.hit);
       gl.uniform1f(u('uT'), t);
@@ -167,7 +170,7 @@ void main(){
       gl.bindTexture(gl.TEXTURE_2D, o.srcTex);
       gl.uniform1i(u('uTex'), 0);
       Fx3d.popUniforms(gl, p, 'points');
-      Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+      Fx3d.fold(gl, p, cam.proj, 1.35, cam.view);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
       if(nvp){
         gl.uniform1f(u('uSides'), sides);
         gl.uniform1f(u('uThick'), sf.thick || 1);

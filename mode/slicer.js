@@ -16,7 +16,7 @@ const SL_IMG_KEYS = ['depth3D','pieces','seed','sides','maxSides','explode','ben
 
 /* Object.create(Slicer) で派生インスタンス (3D FX 等) を作るとき、own プロパティにしなければならないもの:
      P, PDefaults, cam   (in-place 更新される。deep copy を渡す)
-     posBuf, uvBuf, seedBuf, ctrBuf, idxBuf, numIdx   (buildScene が delete→createBuffer で代入)
+     posBuf, uvBuf, seedBuf, ctrBuf, nrmBuf, idxBuf, numIdx   (buildScene が delete→createBuffer で代入)
      sceneFbo, sceneColorTex, sceneDepthTex, postFbo, postColorTex, fboW, fboH   (_ensureSceneTargets が作り直す)
      imgTex, imgW, imgH, imgAsp, imageReady, bgFromImage   (loadFromUrl 系が delete→create。FX 側は imgTex=ソース, imgAsp=w/h, imageReady=true)
      _needsRebuild, _t, _autoBase, _autoEpoch, _imgEpoch, _imgLoading, curName, library, _skipImgParams
@@ -126,17 +126,22 @@ vec3 slDisp(vec3 pos, float seed){
 `,
   get VS(){ return `#version 300 es
 in vec3 a_pos;
+in vec3 a_nrm;              // CPU の wpos 差分。動的な高さは VS で読む
 in vec2 a_uv;
 in float a_seed;
 in vec3 a_ctr;              // 断片の中心 (3D FX のポップ = 断片の中心から拡大縮小)
+in vec4 a_plane;            // Build の形へ渡す平面上の位置 xy と断片中心 zw (素材 UV と独立)
 uniform mat4 u_proj;
 uniform mat4 u_view;
 ${this.DISP_GLSL}
 out vec2 v_uv;
 void main(){
   v_uv = a_uv;
-  vec3 pos = slDisp(a_ctr + (a_pos - a_ctr) * fx3dPop(floor(a_seed / 7.3713 + 0.5)), a_seed);
-  gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));   // 3D FX の Slicer に折りを掛けるフック (Code の Slicer では素通し)
+  vec3 base = a_pos;
+  if(uFx3dHeightOn > 0.5) base += a_nrm * fx3dHeight(clamp(a_uv, 0.0, 1.0));
+  vec3 pos = slDisp(a_ctr + (base - a_ctr) * fx3dPop(floor(a_seed / 7.3713 + 0.5)), a_seed);
+  vec2 plane = a_plane.zw + (a_plane.xy - a_plane.zw) * fx3dPop(floor(a_seed / 7.3713 + 0.5));
+  gl_Position = fx3dApply(fx3dShape(u_proj * u_view * vec4(pos, 1.0), clamp(v_uv, 0.0, 1.0), plane));   // Code / Chain では素通し
 }`; },
   // 3D FX の Needle: 断片の代わりに描く針の面 (buildScene の spikesFor)。a_k = (w, 面の種, 格子 1 つぶんの長さ, 断片番号)。
   //   法線方向へ突起 / 凹み (表の突起は裏から見ると凹み = 1 枚の紙がでこぼこになる)
@@ -146,16 +151,19 @@ layout(location = 1) in vec3 a_sn;
 layout(location = 2) in vec2 a_suv;
 layout(location = 3) in vec4 a_sk;
 layout(location = 4) in vec3 a_sc;   // 断片の中心 (ポップ)
+layout(location = 5) in vec4 a_plane;
 uniform mat4 u_proj;
 uniform mat4 u_view;
 ${this.DISP_GLSL}
 out vec2 v_uv; out vec3 v_w;
 void main(){
   float h = a_sk.x * fx3dNeedleH(vec2(a_sk.y, 3.7), a_suv * vec2(1.78, 1.0) * 3.2) * a_sk.z;
+  if(uFx3dHeightOn > 0.5) h += fx3dHeight(clamp(a_suv, 0.0, 1.0));
   vec3 pos = slDisp(a_sc + (a_sp + a_sn * h - a_sc) * fx3dPop(a_sk.w), a_sk.w * 7.3713);
   v_uv = a_suv;
   v_w = pos;
-  gl_Position = fx3dApply(u_proj * u_view * vec4(pos, 1.0));
+  vec2 plane = a_plane.zw + (a_plane.xy - a_plane.zw) * fx3dPop(a_sk.w);
+  gl_Position = fx3dApply(fx3dShape(u_proj * u_view * vec4(pos, 1.0), clamp(v_uv, 0.0, 1.0), plane));
 }`; },
   get SPK_FS(){ return `#version 300 es
 precision highp float;
@@ -172,7 +180,7 @@ void main(){
   vec3 c = t0.rgb;
   if(u_sat != 1.0){ float l = dot(c, vec3(0.299, 0.587, 0.114)); c = mix(vec3(l), c, u_sat); }
   c *= u_tint;
-  fragOut = vec4(fx3dFoldShade(fx3dLit(c, v_w, u_eye, 1.0)), 1.0);
+  fragOut = vec4(fx3dFoldShade(fx3dShapeShade(fx3dLit(c, v_w, u_eye, 1.0), c)), 1.0);
 }`; },
   FS:`#version 300 es
 precision highp float;
@@ -193,7 +201,7 @@ void main(){
   }
   c *= u_tint;
   if(u_shade > 0.0) c *= 1.0 - u_shade * clamp((1.0 / gl_FragCoord.w - u_camDist) * 0.8, 0.0, 1.0);
-  fragOut = vec4(c, 1.0);
+  fragOut = vec4(fx3dShapeShade(c, c), 1.0);
 }`,
   POST_VS:`#version 300 es
 in vec2 a_xy;
@@ -239,7 +247,7 @@ void main(){
     vec2 laneOffset = perpDir * laneT * texel * 1.4;
     float laneShadow = 0.0;
     float laneWeight = 0.0;
-    for(int i = 1; i <= 12; i++){
+    for(int i = 1; i <= min(12, int(maxSteps)); i++){
       float fi = float(i);
       if(fi > maxSteps) break;
       float t = fi / maxSteps;
@@ -326,14 +334,16 @@ void main(){
     this.PDefaults = JSON.parse(JSON.stringify(this.P));
     // メインシェーダ
     // 折りの頂点フック (GL.fx3dHookGLSL) を #version の直後へ差し込む。uFx3dOn = 0 (既定) では gl_Position をそのまま返す
-    this.prog = this._compileProg(this.VS.replace('#version 300 es\n', '#version 300 es\nprecision highp float;\n' + GL.fx3dHookGLSL() + (typeof Fx3d !== 'undefined' ? Fx3d.POP_GLSL : 'float fx3dPop(float i){ return 1.0; }\n')), this.FS);
+    this.prog = this._compileProg(this.VS.replace('#version 300 es\n', '#version 300 es\nprecision highp float;\n' + GL.reliefGLSL() + GL.fx3dShapeGLSL() + GL.fx3dHookGLSL() + (typeof Fx3d !== 'undefined' ? Fx3d.POP_GLSL : 'float fx3dPop(float i){ return 1.0; }\n')), this.FS.replace('precision highp float;\n', 'precision highp float;\n' + GL.fx3dShapeShadeGLSL()));
     this.postProg = this._compileProg(this.POST_VS, this.POST_FS);
     if(!this.prog || !this.postProg){ console.error('Slicer: shader compile failed'); return false; }
     this.locs = {
       a_pos:  gl.getAttribLocation(this.prog,'a_pos'),
+      a_nrm:  gl.getAttribLocation(this.prog,'a_nrm'),
       a_uv:   gl.getAttribLocation(this.prog,'a_uv'),
       a_seed: gl.getAttribLocation(this.prog,'a_seed'),
       a_ctr:  gl.getAttribLocation(this.prog,'a_ctr'),
+      a_plane:gl.getAttribLocation(this.prog,'a_plane'),
       u_popM: gl.getUniformLocation(this.prog,'uPopM'),
       u_proj: gl.getUniformLocation(this.prog,'u_proj'),
       u_view: gl.getUniformLocation(this.prog,'u_view'),
@@ -474,7 +484,8 @@ void main(){
     const tcs = Math.cos(TEXR), tsn = Math.sin(TEXR);
     const FLIPV = !!this.texFlipY;
 
-    const posArr=[], uvArr=[], seedArr=[], idxArr=[], ctrArr=[];
+    const posArr=[], uvArr=[], seedArr=[], idxArr=[], ctrArr=[], nrmArr=[], planeArr=[];
+    const heightFX = !!this._fx;
     let vi = 0;
     const SEED = (this.P.seed || 0) * 0.137;
     const rnd  = (s)=> Math.abs(Math.sin((s+SEED)*127.1+1.3)*43758.5453%1);
@@ -525,6 +536,14 @@ void main(){
     function emit(fx, fy, fid, p){
       const w = wpos(fx, fy, p);
       posArr.push(w[0], w[1], w[2]);
+      if(heightFX){
+        planeArr.push(fx, fy, p.cx, p.cy);
+        const E = 1e-3, a = wpos(fx + E, fy, p), b = wpos(fx, fy + E, p);
+        const T = a.map((v, i)=>v - w[i]), B = b.map((v, i)=>v - w[i]);
+        const n = [T[1]*B[2]-T[2]*B[1], T[2]*B[0]-T[0]*B[2], T[0]*B[1]-T[1]*B[0]];
+        const len = Math.hypot(...n) || 1;
+        nrmArr.push(n[0] / len, n[1] / len, n[2] / len);
+      }
       const uv = uvOf(fx, fy);
       uvArr.push(uv[0], uv[1]);
       seedArr.push(fid*7.3713);
@@ -569,7 +588,7 @@ void main(){
         const cw=SP*0.5*(Math.hypot(T[0],T[1],T[2])+Math.hypot(B[0],B[1],B[2]))/E;
         const uv=uvOf(x,y);
         const pc = p._ctr || (p._ctr = wpos(p.cx, p.cy, p));
-        spk.push(b[0],b[1],b[2], n[0],n[1],n[2], uv[0],uv[1], w,key,cw,fid, pc[0],pc[1],pc[2]);
+        spk.push(b[0],b[1],b[2], n[0],n[1],n[2], uv[0],uv[1], w,key,cw,fid, pc[0],pc[1],pc[2], x,y,p.cx,p.cy);
       };
       for(let cy=Math.floor(y0/SP)-1; cy<=Math.floor(y1/SP)+1; cy++) for(let cx=Math.floor(x0/SP)-1; cx<=Math.floor(x1/SP)+1; cx++){
         const LL=nvSeed(cx,cy), LR=nvSeed(cx+1,cy), UR=nvSeed(cx+1,cy+1), UL=nvSeed(cx,cy+1);
@@ -724,6 +743,8 @@ void main(){
     if(this.uvBuf)  gl.deleteBuffer(this.uvBuf);
     if(this.seedBuf)gl.deleteBuffer(this.seedBuf);
     if(this.ctrBuf) gl.deleteBuffer(this.ctrBuf);
+    if(this.nrmBuf) gl.deleteBuffer(this.nrmBuf);
+    if(this.planeBuf) gl.deleteBuffer(this.planeBuf);
     if(this.idxBuf) gl.deleteBuffer(this.idxBuf);
     this.posBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuf);
@@ -737,6 +758,16 @@ void main(){
     this.ctrBuf = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.ctrBuf);
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(ctrArr), gl.STATIC_DRAW);
+    this.nrmBuf = null;
+    this.planeBuf = null;
+    if(heightFX){
+      this.planeBuf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.planeBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(planeArr), gl.STATIC_DRAW);
+      this.nrmBuf = gl.createBuffer();
+      gl.bindBuffer(gl.ARRAY_BUFFER, this.nrmBuf);
+      gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(nrmArr), gl.STATIC_DRAW);
+    }
     this.idxBuf = gl.createBuffer();
     gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.idxBuf);
     // 頂点数が多いので UNSIGNED_INT 推奨 (WebGL2 ネイティブ対応)
@@ -748,13 +779,13 @@ void main(){
         this.spkVAO = gl.createVertexArray();
         gl.bindVertexArray(this.spkVAO);
         gl.bindBuffer(gl.ARRAY_BUFFER, this.spkBuf);
-        const st = 15 * 4, L = [[0,3,0],[1,3,3],[2,2,6],[3,4,8],[4,3,12]];
+        const st = 19 * 4, L = [[0,3,0],[1,3,3],[2,2,6],[3,4,8],[4,3,12],[5,4,15]];
         for(const [loc, n, off] of L){ gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, n, gl.FLOAT, false, st, off * 4); }
         gl.bindVertexArray(null);
       }
       gl.bindBuffer(gl.ARRAY_BUFFER, this.spkBuf);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(spk), gl.DYNAMIC_DRAW);
-      this.spkN = spk.length / 15;
+      this.spkN = spk.length / 19;
     }
     this._needsRebuild = false;
   },
@@ -775,7 +806,8 @@ void main(){
           const gl = this.gl;
           this.imgW = img.width; this.imgH = img.height;
           this.imgAsp = this.imgW / this.imgH;
-          if(this.imgTex) gl.deleteTexture(this.imgTex);
+          // B Beat Shift may borrow A's source image; only delete textures owned by this instance.
+          if(this.imgTex && this.imgTex !== this._bShiftSourceTex) gl.deleteTexture(this.imgTex);
           this.imgTex = gl.createTexture();
           gl.bindTexture(gl.TEXTURE_2D, this.imgTex);
           gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
@@ -1098,7 +1130,8 @@ void main(){
       gl.uniformMatrix4fv(this.locs.u_proj, false, proj);
       gl.uniformMatrix4fv(this.locs.u_view, false, view);
       // 3D FX の最後の段のときだけ Fx3d.foldFrame が立つ (紙の距離 = w=0 の正面距離)。Code の Slicer は常に OFF
-      GL.fx3dUniforms(this.prog, proj, 1 / Math.tan(fovRad * 0.5), (this._fx && typeof Fx3d !== 'undefined') ? Fx3d.foldFrame : null);
+      if(this._fx && typeof Fx3d !== 'undefined') Fx3d.fold(gl, this.prog, proj, 1 / Math.tan(fovRad * 0.5), view, 1);
+      else { GL.fx3dShapeUniforms(this.prog, null, 0, null); GL.fx3dUniforms(this.prog, proj, 0, null); }
       gl.uniform1f(this.locs.u_time, this._t);
       gl.uniform1f(this.locs.u_warpAmp,  this.P.warpAmp || 0);
       gl.uniform1f(this.locs.u_warpFreq, this.P.warpFreq || 2.0);
@@ -1113,6 +1146,27 @@ void main(){
       gl.bindBuffer(gl.ARRAY_BUFFER, this.posBuf);
       gl.enableVertexAttribArray(this.locs.a_pos);
       gl.vertexAttribPointer(this.locs.a_pos, 3, gl.FLOAT, false, 0, 0);
+      if(this.locs.a_plane >= 0){
+        if(this._fx && this.planeBuf){
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.planeBuf);
+          gl.enableVertexAttribArray(this.locs.a_plane);
+          gl.vertexAttribPointer(this.locs.a_plane, 4, gl.FLOAT, false, 0, 0);
+        } else {
+          gl.disableVertexAttribArray(this.locs.a_plane);
+          gl.vertexAttrib4f(this.locs.a_plane, 0, 0, 0, 0);
+        }
+      }
+      if(this.locs.a_nrm >= 0){
+        if(this._fx && this.nrmBuf){
+          gl.bindBuffer(gl.ARRAY_BUFFER, this.nrmBuf);
+          gl.enableVertexAttribArray(this.locs.a_nrm);
+          gl.vertexAttribPointer(this.locs.a_nrm, 3, gl.FLOAT, false, 0, 0);
+        } else {
+          gl.disableVertexAttribArray(this.locs.a_nrm);
+          gl.vertexAttrib3f(this.locs.a_nrm, 0, 0, 1);
+        }
+      }
+      GL._fx3dHeightBind(this.prog, null, !!this._fx);   // Code との共有プログラムは毎回明示的に OFF
       gl.bindBuffer(gl.ARRAY_BUFFER, this.uvBuf);
       gl.enableVertexAttribArray(this.locs.a_uv);
       gl.vertexAttribPointer(this.locs.a_uv, 2, gl.FLOAT, false, 0, 0);
@@ -1144,9 +1198,10 @@ void main(){
           gl.uniform1f(U('u_sat'), dz(this.P.pieceSat) / 100);
           gl.uniform3f(U('u_eye'), ex, ey, ez);
           gl.uniform1i(U('u_map'), 0);
-          GL.fx3dUniforms(sp, proj, 1 / Math.tan(fovRad * 0.5), Fx3d.foldFrame);
+          Fx3d.fold(gl, sp, proj, 1 / Math.tan(fovRad * 0.5), view, 1);
           Fx3d.spikeUniforms(gl, sp);
           Fx3d.popUniforms(gl, sp, 'slicer');
+          GL._fx3dHeightBind(sp);
           gl.bindVertexArray(this.spkVAO);
           gl.drawArrays(gl.TRIANGLES, 0, this.spkN);
           gl.bindVertexArray(null);

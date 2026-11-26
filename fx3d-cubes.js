@@ -7,7 +7,7 @@
    k = 0 で回転 0・正面カメラ = 元画面と画素一致。カメラは正面のまま振らない (傾けると画面の外が見えるため)。
    面は 32 × 32 に分割してある (折り系を物体へ掛けたとき折り線が面の中で曲がり、立体シェーダの深度で面を持ち上げたとき物体の形が出るように)。 */
 (function(){
-const SUB = 32;                                    // 1 面の分割 (SUB × SUB マス。立体シェーダの深度で面を持ち上げたとき、頂点が物体の形を拾える細かさ)
+const SUB = 64;                                    // 1 面の分割 (SUB × SUB マス。立体シェーダの深度で面を持ち上げたとき、頂点が物体の形を拾える細かさ)
 const FV = SUB * SUB * 6;                          // 1 面あたりの頂点数
 const PER = 6 * FV;                                // 1 キューブあたりの頂点数
 // キューブ cube (0 .. gx*gy-1) の面 face (0 前 / 1 奥 / 2 +x / 3 -x / 4 +y / 5 -y) の面内座標 ab (0..1) → 位置。uvo = 貼る絵の uv、ctr = キューブの中心
@@ -96,7 +96,7 @@ void main(){
   }
   P = ctr + (P - ctr) * fx3dPop(float(cube));   // ポップ: キューブごとに中心から
   vW = P;
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), vUv));
 }`;
 // 面を覆う針 (Needle): 各キューブの 6 面を GL.needleCellGLSL の針の面 (三角形・四角形の角錐) で覆い、キューブの外向きへ突起 / 凹み。元の面の代わりに描く
 const NV_VS = `#version 300 es
@@ -127,7 +127,7 @@ void main(){
   vUv = uv0;
   vW = P;
   vN = vec3(0.0);   // 針の面は三角形ごとの陰影のまま (FS が差分の法線を使う)
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), vUv));
 }`;
 const FS = `#version 300 es
 precision highp float;
@@ -139,7 +139,7 @@ void main(){
   vec4 t0 = texture(uTex, fx3dSrcC(vUv));
   if(t0.a < 0.5) discard;   // 前の段 (3D FX) が抜いた背景は描かない = 前の段の物体だけがこの段に乗る
   vec3 c = dot(vN, vN) > 0.25 ? fx3dLitN(t0.rgb, normalize(vN), vW, uEye, uShade) : fx3dLit(t0.rgb, vW, uEye, uShade);
-  frag = vec4(fx3dFoldShade(c), 1.0);
+  frag = vec4(fx3dFoldShade(fx3dShapeShade(c, t0.rgb)), 1.0);
 }`;
 const U = {};
 function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get(p); if(l === undefined){ l = gl.getUniformLocation(p, n); m.set(p, l); } return l; }
@@ -188,7 +188,7 @@ Fx3d.EXTRA.cubes = {
       Fx3d.popUniforms(gl, pr, 'cubes');
       Fx3d.ovUniforms(gl, pr, o);
       Fx3d.reliefUniforms(gl, pr, [1 / SUB, 1 / SUB]);   // 立体シェーダの深度で面を持ち上げる
-      Fx3d.fold(gl, pr, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+      Fx3d.fold(gl, pr, cam.proj, 1.35, cam.view);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
     };
     const nvp = Fx3d.spikeFrame ? Fx3d.prog(gl, 'cubesNeedle', NV_VS, FS) : null;
     if(nvp){

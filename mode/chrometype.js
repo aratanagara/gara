@@ -1476,6 +1476,21 @@ void main(){
 ChromeType.PDefaults = JSON.parse(JSON.stringify(ChromeType.P));
 
 // Params パネルのホバー説明・効かないパラメータのグレー表示
+// Params パネルの欄 (UI.bindEngineHints が欄ごとの .section に分ける。行は data-pkey で探す)
+ChromeType.PARAM_GROUPS = [
+    ['Style', ['style', 'font', 'weight']],
+    ['Typing', ['typing', 'tyRate', 'tyHold', 'tyOrder', 'tyErase', 'tyMorph']],
+    ['Shape', ['stretch', 'smooth', 'merge', 'meltX', 'holes', 'holeSize', 'web', 'soft', 'seed', 'taper', 'skew']],
+    ['Fins & Roots', ['fins', 'finLen', 'layers', 'finThick', 'spread', 'splay', 'tendrils', 'tenLen']],
+    ['Volume', ['thick', 'round', 'puff', 'lumps']],
+    ['Deform', ['twist', 'bend', 'liquid', 'liqFreq', 'waveAmp', 'waveFreq']],
+    ['Motion', ['spin', 'spinRev', 'revAuto', 'revAtk', 'spinStep', 'tumble', 'tilt', 'roll', 'sway', 'size', 'posY', 'posX', 'lens', 'speed', 'kick']],
+    ['Material', ['mat', 'metal', 'rough', 'envBri', 'envRot', 'sparkle', 'irid', 'grain', 'surf', 'contour', 'contourDens', 'tint']],
+    ['Light', ['topBox', 'sideStrips', 'keyRot', 'keyEl', 'rimLight', 'cavity', 'depthShade', 'lightCol']],
+    ['Texture', ['texFolder', 'texImage', 'texMode', 'texAmt', 'texScale']],
+    ['Background', ['bgColor', 'aa']],
+];
+
 ChromeType.PARAM_HELP = {
   style:'形のプリセット。選ぶと溶かし・穴・ヒレ・根がまとめて入れ替わる',
   font:'文字のフォント',

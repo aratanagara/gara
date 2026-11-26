@@ -7,7 +7,7 @@
    変形は量に対して早く立ち上がり (少し上げただけで平面でなくなる)、布全体も大きくうねる。
    布は画面の外まで余白を持たせ (絵はミラー)、引き込み・めくれでも縁が見えないようにする。 */
 (function(){
-const COLS = 288, ROWS = 180, MARGIN = 3.0, NW = 6;
+const COLS = 480, ROWS = 300, MARGIN = 3.0, NW = 6;
 // 重力の場: 位置 P (紙の座標 xy = q、z = 高さ) → 吸い込まれた位置。deep = 喉の深さ (陰影)。
 //   Gravity 自身の布 (gSurf) と、Origami / Kaiser / Roll / Uzumaki のあとに掛ける統合パス (GL の foldStack) が共有する。
 //   uniform は他のシェーダとぶつからないよう uG で始める (fieldUniforms が送る)

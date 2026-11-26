@@ -1,6 +1,7 @@
 <!doctype html>
 <html lang="ja">
 <head>
+<script src="i18n.js?v=1795660965"></script>
 <script>
   // テーマ (vj.theme) と UI 設定 (vj.ui) を最初の描画前に当てる。ui-settings.js も同じ関数を使う。
   window.VJUI = {
@@ -70,7 +71,7 @@
   <meta name="robots" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="googlebot" content="noindex, nofollow, noarchive, nosnippet, noimageindex">
   <meta name="referrer" content="no-referrer">
-<link rel="stylesheet" href="style.css?v=1795581078">
+<link rel="stylesheet" href="style.css?v=1795660965">
 <script>
 // 画面上にエラーを赤く表示 (スマホでのデバッグ用)。最優先で登録。
 (function(){
@@ -239,7 +240,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
         <div class="section">
           <div id="presetList" style="display:grid;gap:6px;margin-top:4px"></div>
-          <div class="help" style="margin-top:6px;font-size:10px"><span class="t-fine">クリック</span><span class="t-coarse">タップ</span>=<b>呼出</b> / <b>⟳</b>=現在の状態で更新 / <b>✎</b>=名前変更 / <b>×</b>=削除 <span style="color:var(--dim)">(数字キー <kbd>1</kbd>〜<kbd>9</kbd> = Grad Preset / <kbd>0</kbd> = 解除)</span></div>
+          <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.718"><span class="t-fine">クリック</span><span class="t-coarse">タップ</span>=<b>呼出</b> / <b>⟳</b>=現在の状態で更新 / <b>✎</b>=名前変更 / <b>×</b>=削除 <span style="color:var(--dim)">(数字キー <kbd>1</kbd>〜<kbd>9</kbd> = Grad Preset / <kbd>0</kbd> = 解除)</span></div>
         </div>
       </div>
 
@@ -264,17 +265,17 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="section visSec" data-cat="mode">
             <h3>Code</h3>
             <div class="visGrid"></div>
-            <div class="help" style="margin-top:6px;font-size:10px"><span class="t-fine">ホバーでライブプレビュー / クリック</span><span class="t-coarse">タップ</span>で現スロットにロード。</div>
+            <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.719"><span class="t-fine">ホバーでライブプレビュー / クリック</span><span class="t-coarse">タップ</span>で現スロットにロード。</div>
           </div>
           <div class="section visSec" data-cat="movie">
             <h3>Movie</h3>
             <div class="visGrid"></div>
-            <div class="help" style="margin-top:6px;font-size:10px"><span class="t-fine">クリック</span><span class="t-coarse">タップ</span>で現スロットにロード。動画ファイルをこのタブへ<b>ドラッグ&amp;ドロップ</b>するか「＋ 動画」タイルで読み込み (ローカル起動時は movies/ へ取り込み、次回以降も残ります)。</div>
+            <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.720"><span class="t-fine">クリック</span><span class="t-coarse">タップ</span>で現スロットにロード。動画ファイルをこのタブへ<b>ドラッグ&amp;ドロップ</b>するか「＋ 動画」タイルで読み込み (ローカル起動時は movies/ へ取り込み、次回以降も残ります)。</div>
           </div>
           <div class="section visSec" data-cat="shader">
             <h3>Shader</h3>
             <div class="visGrid"></div>
-            <div class="help" style="margin-top:6px;font-size:10px"><span class="t-fine">ホバーでライブプレビュー / クリック</span><span class="t-coarse">タップ</span>で現スロットにロード。</div>
+            <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.719"><span class="t-fine">ホバーでライブプレビュー / クリック</span><span class="t-coarse">タップ</span>で現スロットにロード。</div>
           </div>
         </div>
 
@@ -282,9 +283,11 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <div class="section" id="imageSection">
           <h3>Image</h3>
           <input type="file" id="fileImageImport" accept="image/*" multiple hidden>
+          <input type="file" id="fileImageFolderImport" accept="image/*" webkitdirectory multiple hidden>
           <input type="file" id="fileMovieImport" accept="video/*" multiple hidden>
           <div id="imageFolderGrid" class="visGrid"></div>
-          <div class="help" style="margin-top:6px;font-size:10px">フォルダを<span class="t-fine">クリック</span><span class="t-coarse">タップ</span>で Slot にロード。サムネは中身を 3×2 表示。beat モードで自動送り / <kbd>C</kbd> で次へ。drone は送りなし。<br>画像ファイルをここへドラッグ&ドロップするか「＋ 画像」タイルで読み込むと<b>臨時フォルダ</b>として追加 (セッション限り。リロードで消える)。</div>
+          <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.721">フォルダを<span class="t-fine">クリック</span><span class="t-coarse">タップ</span>で Slot にロード。サムネは中身を 3×2 表示。beat モードで自動送り / <kbd>C</kbd> で次へ。drone は送りなし。<br>画像・フォルダをここへドラッグ&amp;ドロップするか「＋ 画像」「＋ フォルダ」タイルで読み込みます。</div>
+          <div id="imageImportNote" class="help" style="font-size:10px"></div>
         </div>
 
         <details id="editorDetails" class="section">
@@ -346,8 +349,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="slotABgReset" class="ico-only" title="黒 (既定) に戻す" data-icon="reset"></button>
           </div>
           <div class="row">
-            <label>B Offset</label>
-            <input type="range" id="mixBOffset" min="0" max="8" step="0.25" value="0" title="Slot B のシェーダ位相ずらし (拍)。A/B に同じシェーダを入れて周期をずらして重ねる用">
+            <label>Double Mix</label>
+            <input type="checkbox" id="mixBShiftOn" title="Double Mix: Slot B を A と別の動きにする (OFF = 0 拍)">
+            <input type="range" id="mixBOffset" min="0" max="8" step="0.25" value="0" title="Double Mix: Slot B の時間 (拍) を先へずらす。A/B に同じシェーダや Visual を入れてタイミング違いで重ねる用。動画は再生位置、Code の Visual は拍と時計をずらす。状態を持つ Visual は B 専用の初期状態で動かす">
             <div class="val" id="mixBOffsetVal">0.00</div>
           </div>
           <div class="row">
@@ -1189,6 +1193,10 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div id="chrometypeParams" style="margin-top:6px"></div>
         </div>
 
+        <div class="section imgconstruct-mode" style="display:none">
+          <h3 title="画像フォルダを構成主義の配置で組む。取り込み済み・臨時ドロップのフォルダも選べます。">Image Construct <span class="default-actions"><button class="saveDefBtn" data-kind="imgconstruct" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="imgconstruct" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="imgconstruct">Random 🎲</button></span></h3>
+          <div id="imgconstructParams" style="margin-top:6px"></div>
+        </div>
         <div class="section glitchtype-mode" style="display:none">
           <h3 title="Aratana などの書体で、ドゥルーズの引用をスイス・タイポグラフィのグリッドに組み、ランダムな記号や英数字がスクランブルしながら確定していくグリッチタイピングで打ち続ける。引用ごとに Layout (Hero / Column / Stack / Split / Rotate) を組み替える。">Glitch Type <span class="pill section-tag">Swiss タイポ</span> <span class="default-actions"><button class="saveDefBtn" data-kind="glitchtype" title="現在の値をデフォルトとして保存">Save</button><button class="resetDefBtn" data-kind="glitchtype" title="保存したデフォルトに戻す (保存がなければ初期値)">Reset</button><button class="randDefBtn" data-kind="glitchtype" title="パラメータをランダムに変える (文字・書体・大きさは変えない)">Random 🎲</button></span></h3>
           <div id="glitchtypeParams" style="margin-top:6px"></div>
@@ -1231,7 +1239,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             </select>
           </div>
           <div class="row" data-pkey="rate"><label>Rate</label><input type="range" id="vidRate" min="0.1" max="4.0" step="0.05" value="1.0"><div class="val" id="vidRateVal">1.00</div></div>
-          <div class="row" data-pkey="rotate"><label>Rotate</label><input type="range" id="vidRotate" min="-180" max="180" step="1" value="0"><div class="val" id="vidRotateVal">0°</div></div>
+          <div class="row" data-pkey="rotate"><label>Rotate</label><input type="range" id="vidRotate" min="-180" max="180" step="0.01" value="0"><div class="val" id="vidRotateVal">0°</div></div>
           <div class="row" data-pkey="mirror"><label>Mirror</label>
             <select id="vidMirror" style="flex:1">
               <option value="0" selected>Off</option>
@@ -1240,13 +1248,27 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
               <option value="3">Both</option>
             </select>
           </div>
-          <div class="row" data-pkey="tile"><label>Tile</label><input type="range" id="vidTile" min="100" max="800" step="1" value="100"><div class="val" id="vidTileVal">100%</div></div>
-          <div class="row" data-pkey="aspect"><label>Aspect</label><input type="range" id="vidAspect" min="50" max="200" step="1" value="100"><div class="val" id="vidAspectVal">100%</div></div>
-          <div class="row" data-pkey="wave"><label>Wave</label><input type="range" id="vidWave" min="0" max="100" step="1" value="0"><div class="val" id="vidWaveVal">0%</div></div>
+          <div class="row" data-pkey="tile"><label>Tile</label><input type="range" id="vidTile" min="100" max="800" step="0.01" value="100"><div class="val" id="vidTileVal">100%</div></div>
+          <div class="row" data-pkey="columns"><label for="vidColumns">Columns</label><input type="range" id="vidColumns" min="1" max="16" step="1" value="1" title="格子の列数 (1〜16)。Tile は格子全体の繰り返し倍率"><div class="val" id="vidColumnsVal">1</div></div>
+          <div class="row" data-pkey="rows"><label for="vidRows">Rows</label><input type="range" id="vidRows" min="1" max="16" step="1" value="1" title="格子の行数 (1〜16)。Tile は格子全体の繰り返し倍率"><div class="val" id="vidRowsVal">1</div></div>
+          <div class="row" data-pkey="gapX"><label for="vidGapX">Gap X</label><input type="range" id="vidGapX" min="0" max="50" step="0.01" value="0" title="横の間隔 (画面幅の %)。隙間は透明。セル幅以上で非表示"><div class="val" id="vidGapXVal">0%</div></div>
+          <div class="row" data-pkey="gapY"><label for="vidGapY">Gap Y</label><input type="range" id="vidGapY" min="0" max="50" step="0.01" value="0" title="縦の間隔 (画面高さの %)。隙間は透明。セル高さ以上で非表示"><div class="val" id="vidGapYVal">0%</div></div>
+          <div class="row" data-pkey="offsetX"><label for="vidOffsetX">Offset X</label><input type="range" id="vidOffsetX" min="-100" max="100" step="0.01" value="0" title="格子全体の横位置 (画面幅の %、正で右へ、繰り返し)"><div class="val" id="vidOffsetXVal">0%</div></div>
+          <div class="row" data-pkey="offsetY"><label for="vidOffsetY">Offset Y</label><input type="range" id="vidOffsetY" min="-100" max="100" step="0.01" value="0" title="格子全体の縦位置 (画面高さの %、正で上へ、繰り返し)"><div class="val" id="vidOffsetYVal">0%</div></div>
+          <div class="row" data-pkey="cellSize"><label for="vidCellSize">Cell Size</label><input type="range" id="vidCellSize" min="10" max="200" step="0.01" value="100" title="1 枚の大きさ (%)。100 を超える部分はセル枠で切り取る"><div class="val" id="vidCellSizeVal">100%</div></div>
+          <div class="row" data-pkey="rowShift"><label for="vidRowShift">Row Shift</label><input type="range" id="vidRowShift" min="-100" max="100" step="0.01" value="0" title="奇数行の横ずらし (セル幅の %)。レンガ積み"><div class="val" id="vidRowShiftVal">0%</div></div>
+          <div class="row" data-pkey="colShift"><label for="vidColShift">Col Shift</label><input type="range" id="vidColShift" min="-100" max="100" step="0.01" value="0" title="奇数列の縦ずらし (セル高さの %)。レンガ積み"><div class="val" id="vidColShiftVal">0%</div></div>
+          <div class="row" data-pkey="cellRotate"><label for="vidCellRotate">Cell Rotate</label><input type="range" id="vidCellRotate" min="-180" max="180" step="0.01" value="0" title="セル枠内で 1 枚ずつ回転 (度)。枠外は切り取る"><div class="val" id="vidCellRotateVal">0°</div></div>
+          <div class="row" data-pkey="flipAlt"><label for="vidFlipAlt">Flip Alt</label><input type="range" id="vidFlipAlt" min="0" max="1" step="1" value="0" title="1 枚おきに左右反転 (0=なし / 1=反転)"><div class="val" id="vidFlipAltVal">0</div></div>
+          <div class="row" data-pkey="scrollX"><label for="vidScrollX">Scroll X</label><input type="range" id="vidScrollX" min="-1" max="1" step="0.01" value="0" title="格子の横移動速度 (画面幅 / 拍、Drone は画面幅 / 秒)。Beat は拍ごとに移動"><div class="val" id="vidScrollXVal">0.00</div></div>
+          <div class="row" data-pkey="scrollY"><label for="vidScrollY">Scroll Y</label><input type="range" id="vidScrollY" min="-1" max="1" step="0.01" value="0" title="格子の縦移動速度 (画面高さ / 拍、Drone は画面高さ / 秒)。Beat は拍ごとに移動"><div class="val" id="vidScrollYVal">0.00</div></div>
+          <div class="row" data-pkey="timeOffset"><label for="vidTimeOffset">Time Offset</label><input type="range" id="vidTimeOffset" min="0" max="1" step="0.01" value="0" title="タイルごとの UV ずらし (0〜1)。再生時刻は変えず、同じ絵の横・縦位置をずらす"><div class="val" id="vidTimeOffsetVal">0.00</div></div>
+          <div class="row" data-pkey="aspect"><label>Aspect</label><input type="range" id="vidAspect" min="50" max="200" step="0.01" value="100"><div class="val" id="vidAspectVal">100%</div></div>
+          <div class="row" data-pkey="wave"><label>Wave</label><input type="range" id="vidWave" min="0" max="100" step="0.01" value="0"><div class="val" id="vidWaveVal">0%</div></div>
           <div class="row" data-pkey="waveFreq"><label>Wave Freq</label><input type="range" id="vidWaveFreq" min="1" max="20" step="1" value="6"><div class="val" id="vidWaveFreqVal">6</div></div>
-          <div class="row" data-pkey="vignette"><label>Vignette</label><input type="range" id="vidVignette" min="0" max="100" step="1" value="0"><div class="val" id="vidVignetteVal">0%</div></div>
-          <div class="row" data-pkey="bars"><label>Letterbox</label><input type="range" id="vidBars" min="0" max="60" step="1" value="0"><div class="val" id="vidBarsVal">0%</div></div>
-          <div class="help" style="margin-top:6px">D&D でも読込可。&lt;&gt; でズーム。Rotate / Mirror / Tile / Aspect / Wave (Wave Freq = 波の本数) / Vignette / Letterbox は画面に対する変形。方向は矢印 ←→ (順/逆)。Motion Mode = Beat では拍ごとにランダム位置へジャンプ (常時 ON)。常にミュート再生。</div>
+          <div class="row" data-pkey="vignette"><label>Vignette</label><input type="range" id="vidVignette" min="0" max="100" step="0.01" value="0"><div class="val" id="vidVignetteVal">0%</div></div>
+          <div class="row" data-pkey="bars"><label>Letterbox</label><input type="range" id="vidBars" min="0" max="60" step="0.01" value="0"><div class="val" id="vidBarsVal">0%</div></div>
+          <div class="help" style="margin-top:6px" data-i18n-html="html.723">D&D でも読込可。&lt;&gt; でズーム。Rotate / Mirror / Tile / Aspect / Wave (Wave Freq = 波の本数) / Vignette / Letterbox は画面に対する変形。方向は矢印 ←→ (順/逆)。Motion Mode = Beat では拍ごとにランダム位置へジャンプ (常時 ON)。常にミュート再生。</div>
         </div>
 
         <!-- Image (images/ のフォルダのスライドショー) 設定: Image スロットのときだけ表示 -->
@@ -1354,21 +1376,21 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" data-pkey="curl"><label>Curl</label><input type="range" id="slCurl" min="0" max="12" step="0.05" value="0.4"><div class="val" id="slCurlVal">0.40</div></div>
           <div class="row" data-pkey="warpAmp"><label>Warp Amp</label><input type="range" id="slWarpAmp" min="0" max="1.5" step="0.01" value="0" title="空間全体を波打たせる (M006 相当・アニメ)"><div class="val" id="slWarpAmpVal">0.00</div></div>
           <div class="row" data-pkey="warpFreq"><label>Warp Freq</label><input type="range" id="slWarpFreq" min="0.3" max="12" step="0.1" value="2.0"><div class="val" id="slWarpFreqVal">2.0</div></div>
-          <div class="row" data-pkey="shardScale"><label>Shard Size</label><input type="range" id="slShardScale" min="20" max="300" step="5" value="100" title="断片の大きさ"><div class="val" id="slShardScaleVal">100%</div></div>
-          <div class="row" data-pkey="smallShare"><label>Small Share</label><input type="range" id="slSmallShare" min="0" max="100" step="1" value="50" title="小さい断片の割合"><div class="val" id="slSmallShareVal">50%</div></div>
-          <div class="row" data-pkey="largeShare"><label>Large Share</label><input type="range" id="slLargeShare" min="0" max="100" step="1" value="18" title="大きい断片の割合"><div class="val" id="slLargeShareVal">18%</div></div>
-          <div class="row" data-pkey="scatterX"><label>Scatter W</label><input type="range" id="slScatterX" min="10" max="200" step="5" value="90" title="断片を撒く幅"><div class="val" id="slScatterXVal">90%</div></div>
-          <div class="row" data-pkey="scatterY"><label>Scatter H</label><input type="range" id="slScatterY" min="10" max="200" step="5" value="90" title="断片を撒く高さ"><div class="val" id="slScatterYVal">90%</div></div>
-          <div class="row" data-pkey="polyBoost"><label>Polygon Boost</label><input type="range" id="slPolyBoost" min="0" max="100" step="1" value="0" title="多角形の断片へ置き換える割合"><div class="val" id="slPolyBoostVal">0%</div></div>
-          <div class="row" data-pkey="sliverBoost"><label>Sliver Boost</label><input type="range" id="slSliverBoost" min="0" max="100" step="1" value="0" title="細い針の断片へ置き換える割合"><div class="val" id="slSliverBoostVal">0%</div></div>
-          <div class="row" data-pkey="alignPull"><label>Align Pull</label><input type="range" id="slAlignPull" min="0" max="100" step="1" value="0" title="断片の向きを揃える"><div class="val" id="slAlignPullVal">0%</div></div>
-          <div class="row" data-pkey="alignAngle"><label>Align Angle</label><input type="range" id="slAlignAngle" min="-90" max="90" step="1" value="0" title="揃える向き"><div class="val" id="slAlignAngleVal">0°</div></div>
-          <div class="row" data-pkey="tiltAmt"><label>Tilt</label><input type="range" id="slTiltAmt" min="0" max="300" step="5" value="100" title="断片の傾き"><div class="val" id="slTiltAmtVal">100%</div></div>
-          <div class="row" data-pkey="depthAmt"><label>Depth Spread</label><input type="range" id="slDepthAmt" min="0" max="300" step="5" value="100" title="断片の奥行きの散らばり"><div class="val" id="slDepthAmtVal">100%</div></div>
-          <div class="row" data-pkey="curlFreqAmt"><label>Curl Detail</label><input type="range" id="slCurlFreqAmt" min="30" max="300" step="5" value="100" title="Curl のうねりの細かさ"><div class="val" id="slCurlFreqAmtVal">100%</div></div>
-          <div class="row" data-pkey="texZoom"><label>Tex Zoom</label><input type="range" id="slTexZoom" min="100" max="400" step="5" value="100" title="断片に写る画像の拡大"><div class="val" id="slTexZoomVal">100%</div></div>
-          <div class="row" data-pkey="texRotate"><label>Tex Rotate</label><input type="range" id="slTexRotate" min="-45" max="45" step="1" value="0" title="断片に写る画像の回転"><div class="val" id="slTexRotateVal">0°</div></div>
-          <div class="row" data-pkey="drift"><label>Drift</label><input type="range" id="slDrift" min="0" max="2000" step="25" value="100" title="断片の浮遊の振れ幅"><div class="val" id="slDriftVal">100%</div></div>
+          <div class="row" data-pkey="shardScale"><label>Shard Size</label><input type="range" id="slShardScale" min="20" max="300" step="0.01" value="100" title="断片の大きさ"><div class="val" id="slShardScaleVal">100%</div></div>
+          <div class="row" data-pkey="smallShare"><label>Small Share</label><input type="range" id="slSmallShare" min="0" max="100" step="0.01" value="50" title="小さい断片の割合"><div class="val" id="slSmallShareVal">50%</div></div>
+          <div class="row" data-pkey="largeShare"><label>Large Share</label><input type="range" id="slLargeShare" min="0" max="100" step="0.01" value="18" title="大きい断片の割合"><div class="val" id="slLargeShareVal">18%</div></div>
+          <div class="row" data-pkey="scatterX"><label>Scatter W</label><input type="range" id="slScatterX" min="10" max="200" step="0.01" value="90" title="断片を撒く幅"><div class="val" id="slScatterXVal">90%</div></div>
+          <div class="row" data-pkey="scatterY"><label>Scatter H</label><input type="range" id="slScatterY" min="10" max="200" step="0.01" value="90" title="断片を撒く高さ"><div class="val" id="slScatterYVal">90%</div></div>
+          <div class="row" data-pkey="polyBoost"><label>Polygon Boost</label><input type="range" id="slPolyBoost" min="0" max="100" step="0.01" value="0" title="多角形の断片へ置き換える割合"><div class="val" id="slPolyBoostVal">0%</div></div>
+          <div class="row" data-pkey="sliverBoost"><label>Sliver Boost</label><input type="range" id="slSliverBoost" min="0" max="100" step="0.01" value="0" title="細い針の断片へ置き換える割合"><div class="val" id="slSliverBoostVal">0%</div></div>
+          <div class="row" data-pkey="alignPull"><label>Align Pull</label><input type="range" id="slAlignPull" min="0" max="100" step="0.01" value="0" title="断片の向きを揃える"><div class="val" id="slAlignPullVal">0%</div></div>
+          <div class="row" data-pkey="alignAngle"><label>Align Angle</label><input type="range" id="slAlignAngle" min="-90" max="90" step="0.01" value="0" title="揃える向き"><div class="val" id="slAlignAngleVal">0°</div></div>
+          <div class="row" data-pkey="tiltAmt"><label>Tilt</label><input type="range" id="slTiltAmt" min="0" max="300" step="0.01" value="100" title="断片の傾き"><div class="val" id="slTiltAmtVal">100%</div></div>
+          <div class="row" data-pkey="depthAmt"><label>Depth Spread</label><input type="range" id="slDepthAmt" min="0" max="300" step="0.01" value="100" title="断片の奥行きの散らばり"><div class="val" id="slDepthAmtVal">100%</div></div>
+          <div class="row" data-pkey="curlFreqAmt"><label>Curl Detail</label><input type="range" id="slCurlFreqAmt" min="30" max="300" step="0.01" value="100" title="Curl のうねりの細かさ"><div class="val" id="slCurlFreqAmtVal">100%</div></div>
+          <div class="row" data-pkey="texZoom"><label>Tex Zoom</label><input type="range" id="slTexZoom" min="100" max="400" step="0.01" value="100" title="断片に写る画像の拡大"><div class="val" id="slTexZoomVal">100%</div></div>
+          <div class="row" data-pkey="texRotate"><label>Tex Rotate</label><input type="range" id="slTexRotate" min="-45" max="45" step="0.01" value="0" title="断片に写る画像の回転"><div class="val" id="slTexRotateVal">0°</div></div>
+          <div class="row" data-pkey="drift"><label>Drift</label><input type="range" id="slDrift" min="0" max="2000" step="0.01" value="100" title="断片の浮遊の振れ幅"><div class="val" id="slDriftVal">100%</div></div>
           <div class="row" data-pkey="autoMode"><label for="slAutoMode">Auto</label><input type="checkbox" id="slAutoMode" checked title="パラメータ + カメラを自動変調"><span style="font-size:10px;color:var(--dim);margin-left:6px">params/cam/zoom</span></div>
           <div class="row" data-pkey="autoRebuildBeats"><label>Auto Rebuild</label>
             <select id="slAutoBeats" style="flex:1">
@@ -1388,20 +1410,20 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" data-pkey="autoZoomAmp"><label>Auto Zoom</label><input type="range" id="slAutoZoom" min="0" max="0.95" step="0.01" value="0.75"><div class="val" id="slAutoZoomVal">0.75</div></div>
           <div class="row" data-pkey="autoElAmp"><label>Auto Elev</label><input type="range" id="slAutoEl" min="0" max="1.5" step="0.01" value="0.65"><div class="val" id="slAutoElVal">0.65</div></div>
           <div class="row" data-pkey="autorot"><label>AutoRot</label><input type="range" id="slAutorot" min="0" max="4" step="0.01" value="1.2"><div class="val" id="slAutorotVal">1.20</div></div>
-          <div class="row" data-pkey="reshuffle"><label>Reshuffle</label><input type="range" id="slReshuffle" min="0" max="100" step="1" value="100" title="Auto: 拍ごとに断片配置を組み直す割合"><div class="val" id="slReshuffleVal">100%</div></div>
+          <div class="row" data-pkey="reshuffle"><label>Reshuffle</label><input type="range" id="slReshuffle" min="0" max="100" step="0.01" value="100" title="Auto: 拍ごとに断片配置を組み直す割合"><div class="val" id="slReshuffleVal">100%</div></div>
           <div class="row" data-pkey="camEl"><label>Cam Elev</label><input type="range" id="slCamEl" min="-1.2" max="1.2" step="0.01" value="0.3"><div class="val" id="slCamElVal">0.30</div></div>
           <div class="row" data-pkey="fov"><label>FOV</label><input type="range" id="slFov" min="20" max="120" step="1" value="60"><div class="val" id="slFovVal">60</div></div>
-          <div class="row" data-pkey="camRoll"><label>Cam Roll</label><input type="range" id="slCamRoll" min="-180" max="180" step="1" value="0" title="カメラの回転"><div class="val" id="slCamRollVal">0°</div></div>
-          <div class="row" data-pkey="camAz"><label>Cam Azimuth</label><input type="range" id="slCamAz" min="-180" max="180" step="1" value="0" title="カメラの方位のずれ"><div class="val" id="slCamAzVal">0°</div></div>
-          <div class="row" data-pkey="lookX"><label>Look X</label><input type="range" id="slLookX" min="-100" max="100" step="1" value="0" title="注視点の X"><div class="val" id="slLookXVal">0%</div></div>
-          <div class="row" data-pkey="lookY"><label>Look Y</label><input type="range" id="slLookY" min="-100" max="100" step="1" value="0" title="注視点の Y"><div class="val" id="slLookYVal">0%</div></div>
+          <div class="row" data-pkey="camRoll"><label>Cam Roll</label><input type="range" id="slCamRoll" min="-180" max="180" step="0.01" value="0" title="カメラの回転"><div class="val" id="slCamRollVal">0°</div></div>
+          <div class="row" data-pkey="camAz"><label>Cam Azimuth</label><input type="range" id="slCamAz" min="-180" max="180" step="0.01" value="0" title="カメラの方位のずれ"><div class="val" id="slCamAzVal">0°</div></div>
+          <div class="row" data-pkey="lookX"><label>Look X</label><input type="range" id="slLookX" min="-100" max="100" step="0.01" value="0" title="注視点の X"><div class="val" id="slLookXVal">0%</div></div>
+          <div class="row" data-pkey="lookY"><label>Look Y</label><input type="range" id="slLookY" min="-100" max="100" step="0.01" value="0" title="注視点の Y"><div class="val" id="slLookYVal">0%</div></div>
           <div class="row" data-pkey="overlapShadow"><label for="slOverlapShadow">Overlap Shadow</label><input type="checkbox" id="slOverlapShadow" checked></div>
           <div class="row" data-pkey="shadowStr"><label>Shadow Str</label><input type="range" id="slShadowStr" min="0" max="1.5" step="0.01" value="0.45"><div class="val" id="slShadowStrVal">0.45</div></div>
           <div class="row" data-pkey="shadowRadius"><label>Shadow Length</label><input type="range" id="slShadowRad" min="0.5" max="6" step="0.1" value="2.2"><div class="val" id="slShadowRadVal">2.2</div></div>
           <div class="row" data-pkey="shadowBias"><label>Shadow Depth</label><input type="range" id="slShadowBias" min="0.0005" max="0.03" step="0.0005" value="0.006"><div class="val" id="slShadowBiasVal">0.006</div></div>
           <div class="row" data-pkey="pieceTint"><label>Piece Tint</label><input type="color" id="slPieceTint" value="#ffffff" title="断片に掛ける色"></div>
-          <div class="row" data-pkey="pieceSat"><label>Piece Sat</label><input type="range" id="slPieceSat" min="0" max="200" step="5" value="100" title="断片の彩度 (背景には掛けない)"><div class="val" id="slPieceSatVal">100%</div></div>
-          <div class="row" data-pkey="depthShade"><label>Depth Shade</label><input type="range" id="slDepthShade" min="0" max="100" step="1" value="0" title="奥の断片を暗くする"><div class="val" id="slDepthShadeVal">0%</div></div>
+          <div class="row" data-pkey="pieceSat"><label>Piece Sat</label><input type="range" id="slPieceSat" min="0" max="200" step="0.01" value="100" title="断片の彩度 (背景には掛けない)"><div class="val" id="slPieceSatVal">100%</div></div>
+          <div class="row" data-pkey="depthShade"><label>Depth Shade</label><input type="range" id="slDepthShade" min="0" max="100" step="0.01" value="0" title="奥の断片を暗くする"><div class="val" id="slDepthShadeVal">0%</div></div>
           <div class="row" data-pkey="bgMode"><label>BG</label>
             <select id="slBgMode" style="flex:1">
               <option value="black">Black</option>
@@ -1412,7 +1434,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <input type="color" id="slBgColor" value="#000000" title="BG=Color のときの背景色 (Slot A で敷く / Slot B は透過)">
           </div>
           <div class="row" data-pkey="postScale"><label>Render Scale</label><input type="range" id="slPostScale" min="0.25" max="1.0" step="0.05" value="0.75" title="低いほど高速 (0.5=1/4 pixel)"><div class="val" id="slPostScaleVal">0.75</div></div>
-          <div class="help" style="margin-top:6px">画像は images/slicer/ から自動列挙。カーソルキーでオービット、&lt;&gt;でズーム。</div>
+          <div class="help" style="margin-top:6px" data-i18n-html="html.724">画像は images/slicer/ から自動列挙。カーソルキーでオービット、&lt;&gt;でズーム。</div>
         </div>
 
         <div class="section inkelly-mode" style="display:none">
@@ -1461,7 +1483,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row" data-pkey="tintStrength"><label>Tint Strength</label><input type="range" id="ikTintStrength" min="0" max="100" step="1" value="100" title="Hue の色の濃さ (%)"><div class="val" id="ikTintStrengthVal">100</div></div>
           <div class="row" data-pkey="inkFill"><label>Ink Fill</label><input type="range" id="ikInkFill" min="0" max="100" step="1" value="0" title="Slot B: インクの塊を塗りつぶす濃さ (%)"><div class="val" id="ikInkFillVal">0</div></div>
           <div class="row" data-pkey="wetShine"><label>Wet Shine</label><input type="range" id="ikWetShine" min="0" max="300" step="5" value="100" title="Black のウェット反射の強さ (%)"><div class="val" id="ikWetShineVal">100</div></div>
-          <div class="help" style="margin-top:6px">フィードバック式インク流体 (Inkelly by leon denise)。Beat Sync で拍に合わせてインク場が切替。</div>
+          <div class="help" style="margin-top:6px" data-i18n-html="html.725">フィードバック式インク流体 (Inkelly by leon denise)。Beat Sync で拍に合わせてインク場が切替。</div>
         </div>
 
               </div>
@@ -1573,24 +1595,22 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxNovelSep" class="sub-label">Novel Sep</label><input type="range" id="pxNovelSep" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0" title="分版: 0 = しない / 〜1/3 = RGB + 明度 / 〜2/3 = CMYK / それ以上 = 全 8 版。版ごとに画面を不揃いな区画に割り (区画の数 = Cluster)、区画ごとに字の大きさと組み方向を変える。字の明るさ = 版の濃さ。版はグレーで描き、重ねて一枚の絵に戻す (地が暗いと白の光、明るいと黒のインク)。全面の格子とクラスターの代わりに出る"><div class="val" id="pxNovelSepVal">0</div></div>
           <div class="row"><label for="pxNovelTone" class="sub-label">Novel Tone</label><input type="range" id="pxNovelTone" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.7" title="字の大小で階調を出す割合: 0 = 明るさ (字の濃さ) で出す / 1 = 大きさで出す (明るい所ほど字が大きく、暗い所ほど小さい。網点の代わり)"><div class="val" id="pxNovelToneVal">0.7</div></div>
           <div class="row"><label for="pxNovelShape" class="sub-label">Novel Shape</label><input type="range" id="pxNovelShape" data-sub-of="pxNovel" min="0" max="1" step="0.01" value="0.6" title="3D の形を残す量: 元のシェーダの深度 (3D Mode) から面の向きを出して字に陰影をつけ、深度の段に輪郭線を引き、物体の外の字を沈める (深度を出すシェーダ + FX の 3D Depth が 0 より大きいとき)"><div class="val" id="pxNovelShapeVal">0.6</div></div>
-          <div class="row"><label>Pollock Gloss</label><input type="range" id="pxPollockGloss" min="0" max="1" step="0.01" value="0" title="光沢(gloss)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockGlossVal">0.0</div></div>
-          <div class="row"><label>Pollock Matt</label><input type="range" id="pxPollockMatt" min="0" max="1" step="0.01" value="0" title="マット(matt)ポロック。0=off。現フレームを捕獲して徐々にポロック化"><div class="val" id="pxPollockMattVal">0.0</div></div>
-          <div class="row"><label>Pollock Flat</label><input type="range" id="pxPollockFlat" min="0" max="1" step="0.01" value="0" title="フラット(単色+エンボスのみ)ポロック。0=off"><div class="val" id="pxPollockFlatVal">0.0</div></div>
-          <div class="row"><label>Pollock Metal</label><input type="range" id="pxPollockMetal" min="0" max="1" step="0.01" value="0" title="液体金属(クローム・水銀)ポロック。0=off。塗りの厚みで空と地平を映す"><div class="val" id="pxPollockMetalVal">0.0</div></div>
-          <div class="row"><label for="pxPollockSize" class="sub-label">Pollock Size</label><input type="range" id="pxPollockSize" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="筆の太さ (0.5 = 従来)"><div class="val" id="pxPollockSizeVal">0.50</div></div>
-          <div class="row"><label for="pxPollockLength" class="sub-label">Pollock Length</label><input type="range" id="pxPollockLength" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="一筆の長さ (0.5 = 従来)"><div class="val" id="pxPollockLengthVal">0.50</div></div>
-          <div class="row"><label for="pxPollockDensity" class="sub-label">Pollock Density</label><input type="range" id="pxPollockDensity" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="描き足す速さ・量 (0.5 = 従来。上げると重くなる)"><div class="val" id="pxPollockDensityVal">0.50</div></div>
-          <div class="row"><label for="pxPollockDrops" class="sub-label">Pollock Drops</label><input type="range" id="pxPollockDrops" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="しずく・飛び散りの量 (0 = なし / 0.5 = 従来)"><div class="val" id="pxPollockDropsVal">0.50</div></div>
-          <div class="row"><label for="pxPollockCurve" class="sub-label">Pollock Curve</label><input type="range" id="pxPollockCurve" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="線の曲がり (0 = まっすぐ / 0.5 = 従来)"><div class="val" id="pxPollockCurveVal">0.50</div></div>
-          <div class="row"><label for="pxPollockLife" class="sub-label">Pollock Life</label><input type="range" id="pxPollockLife" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="塗りが残る長さ (0 = すぐ消える / 0.5 = 従来 / 1 = 長く残る)"><div class="val" id="pxPollockLifeVal">0.50</div></div>
-          <div class="row"><label for="pxPollockRelief" class="sub-label">Pollock Relief</label><input type="range" id="pxPollockRelief" data-sub-of="pxPollockMetal pxPollockGloss pxPollockMatt pxPollockFlat" min="0" max="1" step="0.01" value="0.5" title="塗りの厚み・陰影の強さ (0 = 平ら / 0.5 = 従来)"><div class="val" id="pxPollockReliefVal">0.50</div></div>
+          <div class="row"><label for="pxPollockOn">Pollock</label><input type="checkbox" id="pxPollockOn" data-midi-key="*:__post__pollockOn" aria-label="Pollock On" title="Pollock をオン / オフ (量と詳細値は保持)"><select id="pxPollockType" data-norand="1" aria-label="Pollock Type" title="Pollock の種類 (詳細値は全種類で共通)" style="width:70px;flex:0 0 auto"><option value="gloss">Gloss</option><option value="matt">Matt</option><option value="flat">Flat</option><option value="metal">Metal</option></select><input type="range" id="pxPollock" min="0" max="1" step="0.01" value="0" aria-label="Pollock Amount" title="Pollock の量。オンのとき現フレームを捕獲して徐々に描く (0 = 効果なし)"><div class="val" id="pxPollockVal">0.0</div></div>
+          <div class="row"><label for="pxPollockSize" class="sub-label">Pollock Size</label><input type="range" id="pxPollockSize" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="筆の太さ (0.5 = 従来)"><div class="val" id="pxPollockSizeVal">0.50</div></div>
+          <div class="row"><label for="pxPollockLength" class="sub-label">Pollock Length</label><input type="range" id="pxPollockLength" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="一筆の長さ (0.5 = 従来)"><div class="val" id="pxPollockLengthVal">0.50</div></div>
+          <div class="row"><label for="pxPollockDensity" class="sub-label">Pollock Density</label><input type="range" id="pxPollockDensity" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="描き足す速さ・量 (0.5 = 従来。上げると重くなる)"><div class="val" id="pxPollockDensityVal">0.50</div></div>
+          <div class="row"><label for="pxPollockDrops" class="sub-label">Pollock Drops</label><input type="range" id="pxPollockDrops" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="しずく・飛び散りの量 (0 = なし / 0.5 = 従来)"><div class="val" id="pxPollockDropsVal">0.50</div></div>
+          <div class="row"><label for="pxPollockCurve" class="sub-label">Pollock Curve</label><input type="range" id="pxPollockCurve" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="線の曲がり (0 = まっすぐ / 0.5 = 従来)"><div class="val" id="pxPollockCurveVal">0.50</div></div>
+          <div class="row"><label for="pxPollockLife" class="sub-label">Pollock Life</label><input type="range" id="pxPollockLife" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="塗りが残る長さ (0 = すぐ消える / 0.5 = 従来 / 1 = 長く残る)"><div class="val" id="pxPollockLifeVal">0.50</div></div>
+          <div class="row"><label for="pxPollockRelief" class="sub-label">Pollock Relief</label><input type="range" id="pxPollockRelief" data-sub-of="pxPollock" min="0" max="1" step="0.01" value="0.5" title="塗りの厚み・陰影の強さ (0 = 平ら / 0.5 = 従来)"><div class="val" id="pxPollockReliefVal">0.50</div></div>
         </div>
         <div class="section">
           <h3>3D <span class="default-actions"><button class="saveDefBtn" data-kind="post:fx3d" title="3Dの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:fx3d" title="保存した3Dの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
+          <h4 class="sub-label" style="margin:10px 0 4px">高さ</h4>
           <div class="row"><label for="pxFx3dExtrude">Extrude</label><input type="range" id="pxFx3dExtrude" min="0" max="1" step="0.01" value="0" title="Extrude: 画面の絵を形に沿って厚みのある立体に押し出し、カメラを少し傾けて見せる。形 = 背景が透過のフレーム (3D Target = Object で深度を出す Visual など) は透けていない所、それ以外は地 (画面の縁の色) と違う所。地は押し出しの奥に床として残る。値=厚み・傾き (0=元画像→1=全開)"><div class="val" id="pxFx3dExtrudeVal">0.00</div></div>
           <div class="row"><label for="pxFx3dExtrudeMode" class="sub-label">Extrude Mode</label>
-            <select id="pxFx3dExtrudeMode" data-sub-of="pxFx3dExtrude" data-norand="1" style="flex:1" title="Flat = 形を一律の厚みで押し出す / Depth = 表示中のシェーダ・Code の深度 (3D Depth と同じもの) に応じた高さで押し出す (深度が無いときは形の濃さ)。Depth は手前ほど高い地形になり、Depth の値が高さの最大">
-              <option value="flat">Flat</option><option value="depth">Depth</option>
+            <select id="pxFx3dExtrudeMode" data-sub-of="pxFx3dExtrude" data-norand="1" style="flex:1" title="Flat = 形を一律の厚みで押し出す / Depth = 表示中のシェーダ・Code の深度 (3D Depth と同じもの) に応じた高さで押し出す (深度が無いときは形の濃さ)。Depth は手前ほど高い地形になり、Depth の値が高さの最大。Rock = 表示中のシェーダの SDF (S035 Flowing Metal) をそのまま閉じたポリゴンの岩にして、縦軸まわりに回るカメラで横・裏まで見せる S091 SigInt Bands は 16 本の帯を厚みのある板 (厚み = Extrude Depth、前の面は波形で凹凸) にして並べる。どちらでもないシェーダは Depth と同じ)">
+              <option value="flat">Flat</option><option value="depth">Depth</option><option value="rock">Rock</option>
             </select>
           </div>
           <div class="row"><label for="pxFx3dExtrudeDepth" class="sub-label">Extrude Depth</label><input type="range" id="pxFx3dExtrudeDepth" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0.5" title="押し出しの厚み"><div class="val" id="pxFx3dExtrudeDepthVal">0.50</div></div>
@@ -1599,29 +1619,21 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxFx3dExtrudeShade" class="sub-label">Extrude Shade</label><input type="range" id="pxFx3dExtrudeShade" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0.5" title="側面の暗さ (陰影)。0 = 縁の色のまま"><div class="val" id="pxFx3dExtrudeShadeVal">0.50</div></div>
           <div class="row"><label for="pxFx3dExtrudeTwist" class="sub-label">Extrude Twist</label><input type="range" id="pxFx3dExtrudeTwist" data-sub-of="pxFx3dExtrude" min="-1" max="1" step="0.01" value="0" title="ひねり: 奥へ行くほど断面を画面の中心まわりに回す (らせん状の押し出し)。±1 = 厚み全体で ±90°。0 = まっすぐ"><div class="val" id="pxFx3dExtrudeTwistVal">0.00</div></div>
           <div class="row"><label for="pxFx3dExtrudeRound" class="sub-label">Extrude Round</label><input type="range" id="pxFx3dExtrudeRound" data-sub-of="pxFx3dExtrude" min="0" max="1" step="0.01" value="0" title="角丸: 前面と側面の境 (形の縁) を丸める。1 = 1080p で半径 24px。Mode = Flat のとき"><div class="val" id="pxFx3dExtrudeRoundVal">0.00</div></div>
+          <h4 class="sub-label" style="margin:10px 0 4px">分け方</h4>
+          <div class="row"><label for="pxFx3dSlicer">Slicer</label><input type="range" id="pxFx3dSlicer" min="0" max="1" step="0.01" value="0" title="Slicer: 画面を多角形の断片に砕いて 3D 空間に散らす (Code の Slicer を画面素材で描く)。値=砕け方 (0=元画像→1=全開)。後段の Layers / Needle / Origami / Drape はこの結果ごと処理する"><div class="val" id="pxFx3dSlicerVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dSlicerPieces" class="sub-label">Slicer Pieces</label><input type="range" id="pxFx3dSlicerPieces" data-sub-of="pxFx3dSlicer" min="20" max="400" step="5" value="150" title="断片の数"><div class="val" id="pxFx3dSlicerPiecesVal">150</div></div>
           <div class="row"><label for="pxFx3dPhoto">Photos</label><input type="range" id="pxFx3dPhoto" min="0" max="1" step="0.01" value="0" title="Photos: 画面をランダムな矩形に切り抜き、3D 空間に浮かせる (Code の PhotoPlane を画面素材で描く)。値=展開量 (0=元画像→1=全開)。後段の Needle / Origami / Drape はこの結果ごと折る"><div class="val" id="pxFx3dPhotoVal">0.00</div></div>
           <div class="row"><label for="pxFx3dPhotoCount" class="sub-label">Photos Count</label><input type="range" id="pxFx3dPhotoCount" data-sub-of="pxFx3dPhoto" min="4" max="80" step="1" value="24" title="切り抜きの枚数"><div class="val" id="pxFx3dPhotoCountVal">24</div></div>
-          <div class="row"><label for="pxFx3dPhotoCrop" class="sub-label">Photos Crop</label><input type="range" id="pxFx3dPhotoCrop" data-sub-of="pxFx3dPhoto" min="30" max="100" step="1" value="70" title="切り抜きの大きさ (画面比の長辺の上限)"><div class="val" id="pxFx3dPhotoCropVal">70%</div></div>
+          <div class="row"><label for="pxFx3dPhotoCrop" class="sub-label">Photos Crop</label><input type="range" id="pxFx3dPhotoCrop" data-sub-of="pxFx3dPhoto" min="30" max="100" step="0.01" value="70" title="切り抜きの大きさ (画面比の長辺の上限)"><div class="val" id="pxFx3dPhotoCropVal">70%</div></div>
           <div class="row"><label for="pxFx3dPhotoCurl" class="sub-label">Photos Curl</label><input type="range" id="pxFx3dPhotoCurl" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.65" title="紙全体が円筒のように丸まる強さ"><div class="val" id="pxFx3dPhotoCurlVal">0.65</div></div>
           <div class="row"><label for="pxFx3dPhotoCurlAxis" class="sub-label">Photos Curl Axis</label><input type="range" id="pxFx3dPhotoCurlAxis" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="1" title="曲げる軸のばらつき (0 = 板の縦軸に揃う / 1 = 板ごとにばらばら)"><div class="val" id="pxFx3dPhotoCurlAxisVal">1.00</div></div>
           <div class="row"><label for="pxFx3dPhotoFlutter" class="sub-label">Photos Flutter</label><input type="range" id="pxFx3dPhotoFlutter" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.4" title="ゆっくりたわむ揺れ (0 = 止まる)"><div class="val" id="pxFx3dPhotoFlutterVal">0.40</div></div>
           <div class="row"><label for="pxFx3dPhotoCorner" class="sub-label">Photos Corner</label><input type="range" id="pxFx3dPhotoCorner" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.45" title="片端・片隅を巻き上げる強さ"><div class="val" id="pxFx3dPhotoCornerVal">0.45</div></div>
           <div class="row"><label for="pxFx3dPhotoSpin" class="sub-label">Photos Spin</label><input type="range" id="pxFx3dPhotoSpin" data-sub-of="pxFx3dPhoto" min="0" max="1" step="0.01" value="0.35" title="板の自転の速さ (0 = 止まる)"><div class="val" id="pxFx3dPhotoSpinVal">0.35</div></div>
-          <div class="row"><label for="pxFx3dSlicer">Slicer</label><input type="range" id="pxFx3dSlicer" min="0" max="1" step="0.01" value="0" title="Slicer: 画面を多角形の断片に砕いて 3D 空間に散らす (Code の Slicer を画面素材で描く)。値=砕け方 (0=元画像→1=全開)。後段の Layers / Needle / Origami / Drape はこの結果ごと処理する"><div class="val" id="pxFx3dSlicerVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dSlicerPieces" class="sub-label">Slicer Pieces</label><input type="range" id="pxFx3dSlicerPieces" data-sub-of="pxFx3dSlicer" min="20" max="400" step="5" value="150" title="断片の数"><div class="val" id="pxFx3dSlicerPiecesVal">150</div></div>
           <div class="row"><label for="pxFx3dLayer">Layers</label><input type="range" id="pxFx3dLayer" min="0" max="1" step="0.01" value="0" title="Layers: 画面と同じ形の板を揃えたまま奥へ積み、拍ごとに回転の波が 1 枚ずつ遅れて積層を通り抜ける (軸は縦 / 横 / 面内)。積層全体も回り続ける。値=開き方 (0=元画像→1=全開)。後段の Needle / Origami / Drape はこの結果ごと折る"><div class="val" id="pxFx3dLayerVal">0.00</div></div>
           <div class="row"><label for="pxFx3dLayerCount" class="sub-label">Layers Count</label><input type="range" id="pxFx3dLayerCount" data-sub-of="pxFx3dLayer" min="1" max="40" step="1" value="12" title="重ねる板の枚数"><div class="val" id="pxFx3dLayerCountVal">12</div></div>
-          <div class="row"><label for="pxFx3dLayerSize" class="sub-label">Layers Size</label><input type="range" id="pxFx3dLayerSize" data-sub-of="pxFx3dLayer" min="20" max="300" step="5" value="100" title="板の大きさ (%)"><div class="val" id="pxFx3dLayerSizeVal">100%</div></div>
+          <div class="row"><label for="pxFx3dLayerSize" class="sub-label">Layers Size</label><input type="range" id="pxFx3dLayerSize" data-sub-of="pxFx3dLayer" min="20" max="300" step="0.01" value="100" title="板の大きさ (%)"><div class="val" id="pxFx3dLayerSizeVal">100%</div></div>
           <div class="row"><label for="pxFx3dLayerEdge" class="sub-label">Layers Edge</label><input type="range" id="pxFx3dLayerEdge" data-sub-of="pxFx3dLayer" min="0" max="1" step="0.01" value="0" title="板の縁の線の太さ。0 = 線なし"><div class="val" id="pxFx3dLayerEdgeVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dDiorama">Diorama</label><input type="range" id="pxFx3dDiorama" min="0" max="1" step="0.01" value="0" title="Diorama: 明るさで画面を何層かの切り絵に分け、奥行きに並べて視差を出す。値=層の間隔・カメラの振り (0=元画像→1=全開)"><div class="val" id="pxFx3dDioramaVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dDioramaLayers" class="sub-label">Diorama Layers</label><input type="range" id="pxFx3dDioramaLayers" data-sub-of="pxFx3dDiorama" min="2" max="24" step="1" value="8" title="層の数"><div class="val" id="pxFx3dDioramaLayersVal">8</div></div>
-          <div class="row"><label for="pxFx3dDioramaSwing" class="sub-label">Diorama Swing</label><input type="range" id="pxFx3dDioramaSwing" data-sub-of="pxFx3dDiorama" min="0" max="1" step="0.01" value="0.5" title="カメラの振りの大きさ。0.5 = 従来、0 = 振らない"><div class="val" id="pxFx3dDioramaSwingVal">0.50</div></div>
-          <div class="row"><label for="pxFx3dDioramaSpeed" class="sub-label">Diorama Speed</label><input type="range" id="pxFx3dDioramaSpeed" data-sub-of="pxFx3dDiorama" min="0" max="1" step="0.01" value="0.5" title="カメラの振りの速さ。drone は回る速さ、beat は向きを替える間隔 (0 = 4 拍、0.5 = 1 拍、1 = 1/4 拍)"><div class="val" id="pxFx3dDioramaSpeedVal">0.50</div></div>
-          <div class="row"><label for="pxFx3dDioramaPan" class="sub-label">Diorama Pan</label><input type="range" id="pxFx3dDioramaPan" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの左右の向き (振りの中心)"><div class="val" id="pxFx3dDioramaPanVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dDioramaTilt" class="sub-label">Diorama Tilt</label><input type="range" id="pxFx3dDioramaTilt" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの上下の向き (振りの中心)"><div class="val" id="pxFx3dDioramaTiltVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dDioramaZoom" class="sub-label">Diorama Zoom</label><input type="range" id="pxFx3dDioramaZoom" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの寄り (+) と引き (-)"><div class="val" id="pxFx3dDioramaZoomVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dPoints">Points</label><input type="range" id="pxFx3dPoints" min="0" max="1" step="0.01" value="0" title="Points: 画面を点群にして、明るさを奥行きに取り、音で散らす。値=奥行き・散り・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dPointsVal">0.00</div></div>
-          <div class="row"><label for="pxFx3dPointsDensity" class="sub-label">Points Density</label><input type="range" id="pxFx3dPointsDensity" data-sub-of="pxFx3dPoints" min="60" max="1200" step="10" value="400" title="横の点の数 (多いほど細かく重い)"><div class="val" id="pxFx3dPointsDensityVal">400</div></div>
           <div class="row"><label for="pxFx3dCubes">Box</label><input type="range" id="pxFx3dCubes" min="0" max="1" step="0.01" value="0" title="Box: 画面全体を 1 個の直方体にし、拍ごとに縦か横へ 90° 転がる。6 面すべてに画面の絵を貼るので、転がり終わると正立した同じ絵に戻る"><div class="val" id="pxFx3dCubesVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlinds">Blinds</label><input type="range" id="pxFx3dBlinds" min="0" max="1" step="0.01" value="0" title="Blinds: 画面を横長の帯に割り、ブラインドのように回転・らせん状にねじれる。値=回転の振れ幅・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dBlindsVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlindsCount" class="sub-label">Blinds Count</label><input type="range" id="pxFx3dBlindsCount" data-sub-of="pxFx3dBlinds" min="2" max="48" step="1" value="14" title="帯の本数"><div class="val" id="pxFx3dBlindsCountVal">14</div></div>
@@ -1632,6 +1644,22 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxFx3dBlindsOpen" class="sub-label">Blinds Open</label><input type="range" id="pxFx3dBlindsOpen" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="羽根の開き角 (0.5 = 従来、0 / 1 で ±90° 開いたまま)"><div class="val" id="pxFx3dBlindsOpenVal">0.50</div></div>
           <div class="row"><label for="pxFx3dBlindsGap" class="sub-label">Blinds Gap</label><input type="range" id="pxFx3dBlindsGap" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0" title="羽根の間のすき間 (0 = 従来)"><div class="val" id="pxFx3dBlindsGapVal">0.00</div></div>
           <div class="row"><label for="pxFx3dBlindsRandom" class="sub-label">Blinds Random</label><input type="range" id="pxFx3dBlindsRandom" data-sub-of="pxFx3dBlinds" min="0" max="1" step="0.01" value="0.5" title="羽根の幅のばらつき (0 = 等幅 / 0.5 = 従来)"><div class="val" id="pxFx3dBlindsRandomVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dDiorama">Diorama</label><input type="range" id="pxFx3dDiorama" min="0" max="1" step="0.01" value="0" title="Diorama: 明るさで画面を何層かの切り絵に分け、奥行きに並べて視差を出す。値=層の間隔・カメラの振り (0=元画像→1=全開)"><div class="val" id="pxFx3dDioramaVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dDioramaLayers" class="sub-label">Diorama Layers</label><input type="range" id="pxFx3dDioramaLayers" data-sub-of="pxFx3dDiorama" min="2" max="24" step="1" value="8" title="層の数"><div class="val" id="pxFx3dDioramaLayersVal">8</div></div>
+          <div class="row"><label for="pxFx3dDioramaSwing" class="sub-label">Diorama Swing</label><input type="range" id="pxFx3dDioramaSwing" data-sub-of="pxFx3dDiorama" min="0" max="1" step="0.01" value="0.5" title="カメラの振りの大きさ。0.5 = 従来、0 = 振らない"><div class="val" id="pxFx3dDioramaSwingVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dDioramaSpeed" class="sub-label">Diorama Speed</label><input type="range" id="pxFx3dDioramaSpeed" data-sub-of="pxFx3dDiorama" min="0" max="1" step="0.01" value="0.5" title="カメラの振りの速さ。drone は回る速さ、beat は向きを替える間隔 (0 = 4 拍、0.5 = 1 拍、1 = 1/4 拍)"><div class="val" id="pxFx3dDioramaSpeedVal">0.50</div></div>
+          <div class="row"><label for="pxFx3dDioramaPan" class="sub-label">Diorama Pan</label><input type="range" id="pxFx3dDioramaPan" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの左右の向き (振りの中心)"><div class="val" id="pxFx3dDioramaPanVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dDioramaTilt" class="sub-label">Diorama Tilt</label><input type="range" id="pxFx3dDioramaTilt" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの上下の向き (振りの中心)"><div class="val" id="pxFx3dDioramaTiltVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dDioramaZoom" class="sub-label">Diorama Zoom</label><input type="range" id="pxFx3dDioramaZoom" data-sub-of="pxFx3dDiorama" min="-1" max="1" step="0.01" value="0" title="カメラの寄り (+) と引き (-)"><div class="val" id="pxFx3dDioramaZoomVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dPoints">Points</label><input type="range" id="pxFx3dPoints" min="0" max="1" step="0.01" value="0" title="Points: 画面を点群にして、明るさを奥行きに取り、音で散らす。値=奥行き・散り・カメラ (0=元画像→1=全開)"><div class="val" id="pxFx3dPointsVal">0.00</div></div>
+          <div class="row"><label for="pxFx3dPointsDensity" class="sub-label">Points Density</label><input type="range" id="pxFx3dPointsDensity" data-sub-of="pxFx3dPoints" min="60" max="1200" step="10" value="400" title="横の点の数 (多いほど細かく重い)"><div class="val" id="pxFx3dPointsDensityVal">400</div></div>
+          <h4 class="sub-label" style="margin:10px 0 4px">凹凸</h4>
+          <div class="row"><label>Needle</label><input type="range" id="pxOrigami" min="0" max="1" step="0.01" value="0" title="三角錐主峰が拍頭のEase Outで大きく変形し、重なった裾野だけが峰間のブリッジを形成。Droneでは緩やかに成長し、元映像を内部反射へ使用"><div class="val" id="pxOrigamiVal">0.00</div></div>
+          <div class="row"><label for="pxNeedleScatter" class="sub-label">Needle Scatter</label><input type="range" id="pxNeedleScatter" data-sub-of="pxOrigami" min="0" max="1" step="0.01" value="0.6" title="針の散らばり: 0 = 格子に近い等間隔 → 1 = 位置の揺れが大きく、密な群れと空き地ができる"><div class="val" id="pxNeedleScatterVal">0.60</div></div>
+          <div class="row"><label for="pxNeedleThick" class="sub-label">Needle Thick</label><input type="range" id="pxNeedleThick" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の太さ (底面の大きさ): 0 = 従来 → マイナスで細かく (針の数が増える)・プラスで太く。長さは変わらない"><div class="val" id="pxNeedleThickVal">0.00</div></div>
+          <div class="row"><label for="pxNeedleLen" class="sub-label">Needle Length</label><input type="range" id="pxNeedleLen" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の長さ (高さ): 0 = 従来 → マイナスで短く (最短で半分)・プラスで長く (最長で 2 倍)"><div class="val" id="pxNeedleLenVal">0.00</div></div>
+          <div class="row"><label for="pxNeedleSides" class="sub-label">Needle Sides</label><input type="range" id="pxNeedleSides" data-sub-of="pxOrigami" min="3" max="5" step="1" value="5" title="針の底の最大辺数: 5 = 従来 (面を覆う針は三角形と四角形、ほかの針は三〜五角形) → 3 = 三角錐だけ"><div class="val" id="pxNeedleSidesVal">5</div></div>
+          <h4 class="sub-label" style="margin:10px 0 4px">形</h4>
           <div class="row"><label for="pxFx3dTunnel">Tunnel</label><input type="range" id="pxFx3dTunnel" min="0" max="1" step="0.01" value="0" title="Tunnel (Wax Tunnel): 画面をキャンバスの縦横比の長方形の筒に丸め、うねる道に沿ってねじれて脈打つ凸凹の通路にして奥へ進む。映像は内壁にタイル状に流れる。値 = 0 で元の画面 → 1 で奥まで続く通路"><div class="val" id="pxFx3dTunnelVal">0.00</div></div>
           <div class="row"><label for="pxFx3dTunnelSpeed" class="sub-label">Tunnel Speed</label><input type="range" id="pxFx3dTunnelSpeed" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="奥へ進む速さ (0 = 止まる / 1 = 2 倍)"><div class="val" id="pxFx3dTunnelSpeedVal">0.50</div></div>
           <div class="row"><label for="pxFx3dTunnelRadius" class="sub-label">Tunnel Radius</label><input type="range" id="pxFx3dTunnelRadius" data-sub-of="pxFx3dTunnel" min="0" max="1" step="0.01" value="0.5" title="通路の太さ"><div class="val" id="pxFx3dTunnelRadiusVal">0.50</div></div>
@@ -1681,6 +1709,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxRiverLight" class="sub-label">Passage Light</label><input type="range" id="pxRiverLight" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="壁の陰影の深さ (0 = 平ら / 0.5 = 従来)"><div class="val" id="pxRiverLightVal">0.50</div></div>
           <div class="row"><label for="pxRiverFog" class="sub-label">Passage Fog</label><input type="range" id="pxRiverFog" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="奥の暗さ (0 = 奥まで明るい / 0.5 = 従来)"><div class="val" id="pxRiverFogVal">0.50</div></div>
           <div class="row"><label for="pxRiverSway" class="sub-label">Passage Sway</label><input type="range" id="pxRiverSway" data-sub-of="pxRiver" min="0" max="1" step="0.01" value="0.5" title="カメラの揺れ (0 = まっすぐ / 0.5 = 従来)"><div class="val" id="pxRiverSwayVal">0.50</div></div>
+          <h4 class="sub-label" style="margin:10px 0 4px">複製・場</h4>
           <div class="row"><label>Uzumaki</label><input type="range" id="pxUzumaki" min="0" max="1" step="0.01" value="0" title="Uzumaki: 画面をカードの束として3D空間で対数螺旋状にファン展開。値=展開量 (0=元画像→1=全開の渦)。カードは面と面が平行のまま一枚ごとに浮かび、渦は徐々に逆回転、カメラが渦の周りを公転。Needle/Origami/Drape と重ねがけすると折った紙だけがカードに乗って渦巻く。背景は 3D BG"><div class="val" id="pxUzumakiVal">0.00</div></div>
           <div class="row"><label for="pxUzumakiCards" class="sub-label">Uzumaki Cards</label><input type="range" id="pxUzumakiCards" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カードの枚数 (0 = 4 枚 / 0.5 = 24 枚 = 従来 / 1 = 44 枚)"><div class="val" id="pxUzumakiCardsVal">0.50</div></div>
           <div class="row"><label for="pxUzumakiTwist" class="sub-label">Uzumaki Twist</label><input type="range" id="pxUzumakiTwist" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="渦の巻き数 (0 = 回さず重ねる / 0.5 = 従来)"><div class="val" id="pxUzumakiTwistVal">0.50</div></div>
@@ -1690,17 +1719,19 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxUzumakiCard" class="sub-label">Uzumaki Card</label><input type="range" id="pxUzumakiCard" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カード 1 枚の縮み具合 (0 = 縮まない / 0.5 = 従来)"><div class="val" id="pxUzumakiCardVal">0.50</div></div>
           <div class="row"><label for="pxUzumakiSpin" class="sub-label">Uzumaki Spin</label><input type="range" id="pxUzumakiSpin" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="渦全体が回る量 (0 = 止める / 0.5 = 従来)"><div class="val" id="pxUzumakiSpinVal">0.50</div></div>
           <div class="row"><label for="pxUzumakiCam" class="sub-label">Uzumaki Cam</label><input type="range" id="pxUzumakiCam" data-sub-of="pxUzumaki" min="0" max="1" step="0.01" value="0.5" title="カメラが回り込む動き (0 = 正面で固定 / 0.5 = 従来)"><div class="val" id="pxUzumakiCamVal">0.50</div></div>
-          <div class="row"><label>Needle</label><input type="range" id="pxOrigami" min="0" max="1" step="0.01" value="0" title="三角錐主峰が拍頭のEase Outで大きく変形し、重なった裾野だけが峰間のブリッジを形成。Droneでは緩やかに成長し、元映像を内部反射へ使用"><div class="val" id="pxOrigamiVal">0.00</div></div>
-          <div class="row"><label for="pxNeedleScatter" class="sub-label">Needle Scatter</label><input type="range" id="pxNeedleScatter" data-sub-of="pxOrigami" min="0" max="1" step="0.01" value="0.6" title="針の散らばり: 0 = 格子に近い等間隔 → 1 = 位置の揺れが大きく、密な群れと空き地ができる"><div class="val" id="pxNeedleScatterVal">0.60</div></div>
-          <div class="row"><label for="pxNeedleThick" class="sub-label">Needle Thick</label><input type="range" id="pxNeedleThick" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の太さ (底面の大きさ): 0 = 従来 → マイナスで細かく (針の数が増える)・プラスで太く。長さは変わらない"><div class="val" id="pxNeedleThickVal">0.00</div></div>
-          <div class="row"><label for="pxNeedleLen" class="sub-label">Needle Length</label><input type="range" id="pxNeedleLen" data-sub-of="pxOrigami" min="-1" max="1" step="0.01" value="0" title="針の長さ (高さ): 0 = 従来 → マイナスで短く (最短で半分)・プラスで長く (最長で 2 倍)"><div class="val" id="pxNeedleLenVal">0.00</div></div>
-          <div class="row"><label for="pxNeedleSides" class="sub-label">Needle Sides</label><input type="range" id="pxNeedleSides" data-sub-of="pxOrigami" min="3" max="5" step="1" value="5" title="針の底の最大辺数: 5 = 従来 (面を覆う針は三角形と四角形、ほかの針は三〜五角形) → 3 = 三角錐だけ"><div class="val" id="pxNeedleSidesVal">5</div></div>
           <div class="row"><label for="pxFx3dGravity">Gravity</label><input type="range" id="pxFx3dGravity" min="0" max="1" step="0.01" value="0" title="Gravity: 画面の布が重力井戸に吸い込まれて渦を巻く (漏斗形)。値=井戸の深さ・引き込み (0=元画像→1=全開)"><div class="val" id="pxFx3dGravityVal">0.00</div></div>
           <div class="row"><label for="pxFx3dGravitySpin" class="sub-label">Gravity Spin</label><input type="range" id="pxFx3dGravitySpin" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="渦のねじれ量"><div class="val" id="pxFx3dGravitySpinVal">0.50</div></div>
           <div class="row"><label for="pxFx3dGravityDepth" class="sub-label">Gravity Depth</label><input type="range" id="pxFx3dGravityDepth" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="喉 (井戸) の深さ。0.5 = 標準、1 = 2 倍の深さ"><div class="val" id="pxFx3dGravityDepthVal">0.50</div></div>
           <div class="row"><label for="pxFx3dGravityFlip" class="sub-label">Gravity Flip</label><input type="range" id="pxFx3dGravityFlip" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="拍ごとのめくれ (布が裏返る) の強さ。0 = めくれない"><div class="val" id="pxFx3dGravityFlipVal">0.50</div></div>
           <div class="row"><label for="pxFx3dGravityPoints" class="sub-label">Gravity Points</label><input type="range" id="pxFx3dGravityPoints" data-sub-of="pxFx3dGravity" min="1" max="4" step="1" value="2" title="吸い込み口 (消失点) の数 (1〜4)。拍の切り替わりで反映"><div class="val" id="pxFx3dGravityPointsVal">2</div></div>
           <div class="row"><label for="pxFx3dGravityWave" class="sub-label">Gravity Wave</label><input type="range" id="pxFx3dGravityWave" data-sub-of="pxFx3dGravity" min="0" max="1" step="0.01" value="0.5" title="布全体のうねり。0 = うねりなし、1 = 2 倍"><div class="val" id="pxFx3dGravityWaveVal">0.50</div></div>
+          <h4 class="sub-label" style="margin:10px 0 4px">設定</h4>
+          <div class="row"><label for="pxFx3dAmount">3D Amount</label><input type="range" id="pxFx3dAmount" data-norand="1" min="0" max="1" step="0.01" value="1" title="設定中の 3D FX 全体の量に掛ける倍率。1 = そのまま / 0.5 = 半分 / 0 = 3D FX なし。各 FX の設定値は保持する"><div class="val" id="pxFx3dAmountVal">1.00</div></div>
+          <div class="row"><label for="pxFx3dStack">Stack</label>
+            <select id="pxFx3dStack" data-norand="1" data-no-midi="1" style="flex:1" title="重ね方。Build = 高さ・分け方・形を組み立てる / Chain = 前の段の絵を次の段に貼る (従来の見え方)">
+              <option value="build" title="組み立て">Build</option><option value="chain" title="絵の連鎖">Chain</option>
+            </select>
+          </div>
           <div class="row"><label for="pxFx3dDepth">3D Depth</label><input type="range" id="pxFx3dDepth" min="0" max="1" step="0.01" value="0.5" title="立体を描くシェーダ (深度を出すもの) のとき、Origami / Drape / Roll / Uzumaki / Gravity / Needle が紙をその深度で持ち上げてから折る = 立体のまま 3D FX が重なる。0 = 平らな紙 (従来どおり)"><div class="val" id="pxFx3dDepthVal">0.50</div></div>
           <div class="row"><label for="pxFx3dStretchX">3D Stretch X</label><input type="range" id="pxFx3dStretchX" min="-1" max="1" step="0.01" value="0" title="3D FX と折り (Needle / Origami / Drape / Roll / Uzumaki / Gravity) の頂点を横方向に伸び縮みさせる。0 = 等倍 / +1 = 4 倍 / -1 = 1/4"><div class="val" id="pxFx3dStretchXVal">0.00</div></div>
           <div class="row"><label for="pxFx3dStretchY">3D Stretch Y</label><input type="range" id="pxFx3dStretchY" min="-1" max="1" step="0.01" value="0" title="3D FX と折り (Needle / Origami / Drape / Roll / Uzumaki / Gravity) の頂点を縦方向に伸び縮みさせる。0 = 等倍 / +1 = 4 倍 / -1 = 1/4"><div class="val" id="pxFx3dStretchYVal">0.00</div></div>
@@ -1762,6 +1793,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <div class="section">
           <h3>Glitch <span class="pill section-tag">beat-sync</span> <span class="default-actions"><button class="saveDefBtn" data-kind="post:glitch" title="Glitchの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:glitch" title="保存したGlitchの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
           <div class="row"><label>Slit-scan</label><input type="range" id="pxSlitScan" min="0" max="1" step="0.01" value="0" title="時間が縦に流れるスクロール型slit-scan。値=分割数。上下方向はランダムなタイミングで反転。0=OFF"><div class="val" id="pxSlitScanVal">0.0</div></div>
+          <div class="row"><label for="pxSlitCalm" class="sub-label">Slit-scan Calm</label><input type="range" id="pxSlitCalm" data-sub-of="pxSlitScan" min="0" max="1" step="0.01" value="0.5" title="低い値での上下の動きの穏やかさ。0.6 以上の見た目は変わらない"><div class="val" id="pxSlitCalmVal">0.5</div></div>
           <div class="row"><label>Barcode</label><input type="range" id="pxBarcode" min="0" max="1" step="0.01" value="0" title="ランダムなピクセルを横に引き延ばし、ランダムな周期・高さのバーコード状の行に。行ごとに違う速さで変異する"><div class="val" id="pxBarcodeVal">0.00</div></div>
           <div class="row"><label>Datamosh</label><input type="range" id="pxGlitchTrail" min="0" max="1" step="0.01" value="0" title="細面ほど1/16〜1/4拍で速く動き、未分割の大面を遅く残しながら分節スキャンを刻むデータモッシュ。0=OFF"><div class="val" id="pxGlitchTrailVal">0.00</div></div>
           <div class="row"><label>Datamosh Type</label><div id="pxGlitchTrailTypes" class="toggle-btns" title="Datamosh の種類 (複数を同時に重ねられる。全部外すと未選択 = Datamosh は掛からない)"><button data-type="mondrian" title="面ごとの動き + 走査帯">Mondrian</button><button data-type="block" title="マクロブロックの流れ + 4 拍ごとの I フレーム">Block</button><button data-type="melt" title="縦の帯が下へ垂れる">Melt</button><button data-type="tear" title="横帯の横ずれ + ロール">Tear</button><button data-type="freeze" title="面が数拍そのまま固まる">Freeze</button></div></div>
@@ -1795,7 +1827,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Echo Pull</label><input type="range" id="pxFbResiduePull" min="0" max="1" step="0.01" value="0.35" title="動きに沿って前の画を引き延ばす強さ。0 で位置ずれなし"><div class="val" id="pxFbResiduePullVal">0.35</div></div>
           <div class="row"><label>Polygon</label><input type="range" id="pxFbResiduePoly" min="0" max="1" step="0.01" value="0" title="選ばれた大きな多角形の面がそれぞれ独立して揺れ、たわみながら前の映像を運ぶ。分割面の形は時間で連続的に変わる。Polygon 1 では粉を出さない。0 は従来の有機的な残像"><div class="val" id="pxFbResiduePolyVal">0.00</div></div>
           <div class="row"><label>Face Size</label><input type="range" id="pxFbResidueFaceSize" min="0" max="1" step="0.01" value="0.5" title="Polygon の面の大きさ。上げるほど分割数が指数的に減り、最大では画面をまたぐ大きな面になる"><div class="val" id="pxFbResidueFaceSizeVal">0.50</div></div>
-          <div class="help">人物・物体・文字など、動いた部分にだけ残像が生じます。</div>
+          <div class="help" data-i18n-html="html.726">人物・物体・文字など、動いた部分にだけ残像が生じます。</div>
           </div>
         </div>
         <div class="section">
@@ -1835,11 +1867,13 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label>Dither Blur</label><input type="range" id="pxDither" min="0" max="1" step="0.01" value="0" title="Kawase Jitter Blur: ジッター付き 2 半径 Kawase ブラー。指数カーブ"><div class="val" id="pxDitherVal">0.00</div></div>
           <div class="row"><label>Ring Blur</label><input type="range" id="pxRingBlur" min="0" max="1" step="0.01" value="0" title="Ring Slice と同じ同心円の帯ごとに、円周方向の回転ブラー。帯ごとに量と向きが違い、時間で脈動する。一部の帯はぼかさない"><div class="val" id="pxRingBlurVal">0.00</div></div>
           <div class="row"><label>Gaussian Blur</label><input type="range" id="pxSlit2" min="0" max="1" step="0.01" value="0" title="〜0.5は輪郭を残しつつぼかし、0.5以降で完全にぼかす"><div class="val" id="pxSlit2Val">0.00</div></div>
+          <div class="row"><label for="pxSlit2Invert" class="sub-label">Gaussian Blur Invert</label><input type="range" id="pxSlit2Invert" data-sub-of="pxSlit2" min="0" max="1" step="0.01" value="0.5" title="輪郭が反転するハローの強さ (0 = 反転なし / 0.5 = 従来 / 1 = さらに強く)。Gaussian Blur の値が大きいほど効く"><div class="val" id="pxSlit2InvertVal">0.50</div></div>
+          <div class="row"><label for="pxSlit2Radius" class="sub-label">Gaussian Blur Radius</label><input type="range" id="pxSlit2Radius" data-sub-of="pxSlit2" min="0" max="1" step="0.01" value="0.5" title="ぼかしの半径 = 反転する輪郭の幅 (0 = 半分 / 0.5 = 従来 / 1 = 2 倍)"><div class="val" id="pxSlit2RadiusVal">0.50</div></div>
           <div class="row"><label>Film Blur</label><input type="range" id="pxFilmBlur" min="0" max="1" step="0.01" value="0" title="手ブレしたフィルム写真の質感。方向ブレ + 赤橙の滲み + 沈んだ黒 + 粗い粒子。向きは drone でゆっくり揺れ、beat で拍ごとに振れる"><div class="val" id="pxFilmBlurVal">0.00</div></div>
         </div>
         <div class="section">
           <h3>Audio <span class="pill section-tag">needs audio</span> <span class="default-actions"><button class="saveDefBtn" data-kind="post:audioFx" title="Audioの現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:audioFx" title="保存したAudioの既定値へ戻す (保存が無ければ初期値)">Reset</button></span></h3>
-          <div class="row"><label>Drive</label><input type="range" id="pxAudioFx" min="0" max="1" step="0.01" value="0" title="【これを上げないと Drive Atk / Drive Rel は効きません】Lens / Blur・Feedback / Glitch を音で持ち上げる。値が 0 の FX は鳴らない。色調補正・Grad / Auto Map・Material・Texture・Quality は対象外"><div class="val" id="pxAudioFxVal">0.00</div></div>
+          <div class="row"><label>Drive</label><input type="range" id="pxAudioFx" min="0" max="1" step="0.01" value="0" title="【これを上げないと Drive Atk / Drive Rel は効きません】Lens / Blur・Feedback / Glitch / Tone を音で持ち上げる。値が 0 の FX は鳴らない。色調補正・Grad / Auto Map・Material・Texture・Quality は対象外"><div class="val" id="pxAudioFxVal">0.00</div></div>
           <div class="row"><label>Drive Atk</label><input type="range" id="pxAudioFxAtk" data-sub-of="pxAudioFx" min="0" max="1" step="0.01" value="0.6" title="0=音の持続 (energy) 寄り / 1=打点 (hit/onset) 寄り"><div class="val" id="pxAudioFxAtkVal">0.60</div></div>
           <div class="row"><label>Drive Rel</label><input type="range" id="pxAudioFxRel" data-sub-of="pxAudioFx" min="0.05" max="1.5" step="0.01" value="0.28" title="打点で跳ねたあと元に戻るまでの秒数。長いほどアタックの余韻が残る"><div class="val" id="pxAudioFxRelVal">0.28</div></div>
           <div class="row sep-top"><label>Shake</label><input type="range" id="pxShake" min="0" max="1" step="0.01" value="0" title="強い音で発火: 発火ごとにランダム方向へ画面シェイク"><div class="val" id="pxShakeVal">0.00</div></div>
@@ -1869,7 +1903,36 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           <div class="row"><label for="pxAShardsLine" class="sub-label">Shards Line</label><input type="range" id="pxAShardsLine" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.3" title="多角形の縁の線の太さ (色は Slice / Mondrian と同じ線の色)。0 = 線なし"><div class="val" id="pxAShardsLineVal">0.30</div></div>
           <div class="row"><label for="pxAShardsMove" class="sub-label">Shards Move</label><input type="range" id="pxAShardsMove" data-sub-of="pxAShards" min="0" max="1" step="0.01" value="0.5" title="破片ごとにランダムに漂って回る量 (音が大きい破片ほど大きく動く)。0 = その場で拡縮するだけ (従来)"><div class="val" id="pxAShardsMoveVal">0.50</div></div>
           <div class="row"><label>Waveform</label><input type="range" id="pxWaveform" min="0" max="1" step="0.01" value="0" title="画面を 32 本の縦帯に分け、帯ごとに音声スペクトルの高さへ縦に圧縮する (帯の幅はゆっくり揺れる)。1.0 で無音の帯は高さ 0。0=OFF"><div class="val" id="pxWaveformVal">0.00</div></div>
+          <div class="row"><label for="pxWaveformAmp" class="sub-label">Waveform Amp</label><input type="range" id="pxWaveformAmp" data-sub-of="pxWaveform" min="0" max="1" step="0.01" value="0" title="帯の高さの倍率 (0 = 従来 / 1 = 8 倍。小さい音でも高さいっぱいまで振れる)"><div class="val" id="pxWaveformAmpVal">0.00</div></div>
+          <div class="row"><label for="pxWaveformCount" class="sub-label">Waveform Count</label><input type="range" id="pxWaveformCount" data-sub-of="pxWaveform" min="1" max="64" step="1" value="32" title="帯の本数"><div class="val" id="pxWaveformCountVal">32</div></div>
+          <div class="row"><label for="pxWaveformCountVar" class="sub-label">Waveform Count Var</label><input type="range" id="pxWaveformCountVar" data-sub-of="pxWaveform" min="0" max="1" step="0.01" value="0" title="本数のゆらぎ (0 = 固定。時間とともに本数が増減する)"><div class="val" id="pxWaveformCountVarVal">0.00</div></div>
+          <div class="row"><label for="pxWaveformWidth" class="sub-label">Waveform Width</label><input type="range" id="pxWaveformWidth" data-sub-of="pxWaveform" min="0.02" max="1" step="0.01" value="1" title="帯ごとの中身の幅 (1 = 隙間なし / 小さいほど細い線になる)"><div class="val" id="pxWaveformWidthVal">1.00</div></div>
+          <div class="row"><label for="pxWaveformWidthVar" class="sub-label">Waveform Width Var</label><input type="range" id="pxWaveformWidthVar" data-sub-of="pxWaveform" min="0" max="0.95" step="0.01" value="0.55" title="帯の幅のばらつき (0 = 均等 / 0.55 = 従来)"><div class="val" id="pxWaveformWidthVarVal">0.55</div></div>
           <div class="row"><label>Pixelsort</label><input type="range" id="pxPixsort" min="0" max="1" step="0.01" value="0" title="Freeangle Pixelsort: 明るい部分を角度方向にソート。音量で閾値(ソート量)が変化 (NdGXWD)"><div class="val" id="pxPixsortVal">0.00</div></div>
+        </div>
+        <div class="section">
+          <h3>Tone <span class="default-actions"><button class="saveDefBtn" data-kind="post:tone" title="Tone の現在値を既定値として保存">Save</button><button class="resetDefBtn" data-kind="post:tone" title="保存した Tone の既定値へ戻す (保存が無ければ初期値)">Reset</button><button class="randDefBtn" data-kind="post:tone" title="Tone の量・種類・詳細をランダムに変える (色は保持)">Random 🎲</button></span></h3>
+          <div class="row"><label for="pxTone">Tone</label><input type="range" id="pxTone" min="0" max="1" step="0.01" value="0" title="輝度をディザやトーンに変える量。0 = OFF。Audio のあと、Color の前に適用"><div class="val" id="pxToneVal">0.00</div></div>
+          <div class="row"><label for="pxToneType" class="sub-label">Tone Type</label><select id="pxToneType" data-sub-of="pxTone" style="flex:1" title="ディザ・網点・線の種類。Blue Noise と Error Diffusion はテクスチャ不要の近似">
+            <option value="0">Bayer 4×4</option>
+            <option value="1">Bayer 8×8</option>
+            <option value="2">Blue Noise (Approx)</option>
+            <option value="3">Error Diffusion (Approx)</option>
+            <option value="4">Halftone Dot</option>
+            <option value="5">Line</option>
+            <option value="6">Crosshatch</option>
+            <option value="7">Concentric</option>
+            <option value="8">Noise Dots</option>
+          </select></div>
+          <div class="row"><label for="pxToneCell" class="sub-label">Tone Cell</label><input type="range" id="pxToneCell" data-sub-of="pxTone" min="1" max="64" step="1" value="6" title="模様のセルサイズ (描画解像度の px)。ディザは 1 ドット、網点・線は 1 周期の大きさ"><div class="val" id="pxToneCellVal">6</div></div>
+          <div class="row"><label for="pxToneAngle" class="sub-label">Tone Angle</label><input type="range" id="pxToneAngle" data-sub-of="pxTone" min="-180" max="180" step="1" value="0" title="格子・網点・線の角度 (度)。同心円には影響しない"><div class="val" id="pxToneAngleVal">0°</div></div>
+          <div class="row"><label for="pxToneThreshold" class="sub-label">Tone Threshold</label><input type="range" id="pxToneThreshold" data-sub-of="pxTone" min="-1" max="1" step="0.01" value="0" title="しきい値の偏り。0 = 中立、正 = 暗く、負 = 明るく"><div class="val" id="pxToneThresholdVal">0.00</div></div>
+          <div class="row"><label for="pxToneContrast" class="sub-label">Tone Contrast</label><input type="range" id="pxToneContrast" data-sub-of="pxTone" min="-1" max="1" step="0.01" value="0" title="量子化前の輝度コントラスト。0 = 等倍、両端で 1/16〜16 倍"><div class="val" id="pxToneContrastVal">0.00</div></div>
+          <div class="row"><label for="pxToneLevels" class="sub-label">Tone Levels</label><input type="range" id="pxToneLevels" data-sub-of="pxTone" min="2" max="16" step="1" value="2" title="Ink と Paper の間の階調数。2 = 2 色、増やすと中間の階調も使う"><div class="val" id="pxToneLevelsVal">2</div></div>
+          <div class="row"><label for="pxToneInk" class="sub-label">Tone Ink</label><input type="color" id="pxToneInk" data-sub-of="pxTone" value="#000000" title="トーンのインク色"></div>
+          <div class="row"><label for="pxTonePaper" class="sub-label">Tone Paper</label><input type="color" id="pxTonePaper" data-sub-of="pxTone" value="#ffffff" title="トーンの紙色"></div>
+          <div class="row"><label for="pxToneMix" class="sub-label">Tone Mix</label><input type="range" id="pxToneMix" data-sub-of="pxTone" min="0" max="1" step="0.01" value="0" title="0 = Ink/Paper の色。1 = 元の色を紙にして Ink を重ねる"><div class="val" id="pxToneMixVal">0.00</div></div>
+          <div class="help" data-i18n-html="tone.help">Tone は Audio のあとに適用。通常の Grad Map で再彩色できます。A BG = None / @gradmask の Grad Map は合成段のままです。</div>
         </div>
       </div>
 
@@ -1985,7 +2048,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
         <div class="section sub">
           <h3>Probe Motion</h3>
-          <div class="help" style="margin-bottom:6px">始点を固定したまま終点を「探る」モーション → 確定 → フェード</div>
+          <div class="help" style="margin-bottom:6px" data-i18n-html="html.727">始点を固定したまま終点を「探る」モーション → 確定 → フェード</div>
           <div class="row"><label>Search Time</label><input type="range" id="ovSearchPhase" min="0.05" max="0.9" step="0.01" value="0.05"><div class="val" id="ovSearchPhaseVal">0.05</div></div>
           <div class="row"><label>Search Amp</label><input type="range" id="ovSearchAmp" min="0" max="1" step="0.01" value="0.35"><div class="val" id="ovSearchAmpVal">0.35</div></div>
           <div class="row"><label>Search Freq</label><input type="range" id="ovSearchFreq" min="0.5" max="20" step="0.1" value="5"><div class="val" id="ovSearchFreqVal">5.0</div></div>
@@ -1994,7 +2057,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
         <div class="section sub">
           <h3>Brush Shape</h3>
-          <div class="help" style="margin-bottom:6px">imagon.app のブラシ形状を VJ の拍に合わせて生成</div>
+          <div class="help" style="margin-bottom:6px" data-i18n-html="html.728">imagon.app のブラシ形状を VJ の拍に合わせて生成</div>
           <div class="row"><label>Points</label><input type="range" id="ovSides" min="3" max="40" step="1" value="15"><div class="val" id="ovSidesVal">15</div></div>
           <div class="row"><label>Max Points</label><input type="range" id="ovMaxSides" min="0" max="40" step="1" value="0"><div class="val" id="ovMaxSidesVal">0</div></div>
           <div class="row"><label>Size</label><input type="range" id="ovSize" min="0.001" max="0.6" step="0.001" value="0.15"><div class="val" id="ovSizeVal">0.150</div></div>
@@ -2015,7 +2078,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         </div>
 
         <div class="section">
-          <div class="help">
+          <div class="help" data-i18n-html="html.729">
             ブラシは <b>始点周辺の画面ピクセル</b> をテクスチャとして拾い、ブラシ形状で歪めて再投影します。<br>
             <b>Search Time/Amp/Freq</b> で「探る」モーションの長さ・ぶれ幅・速さを制御。<br>
             <b>Paint Mode</b> ON でフェードせず蓄積、シェーダ下のアニメは継続。<br>
@@ -2071,7 +2134,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="btnModeDrone" class="on" title="DRONE: 時間駆動">Drone</button>
             <button id="btnModeBeat" title="BEAT: 拍同期">Beat</button>
           </div>
-          <div class="help" style="margin-top:6px">Layer モードなど独自パラメータを持つエンジンの動きを切替えます。</div>
+          <div class="help" style="margin-top:6px" data-i18n-html="html.730">Layer モードなど独自パラメータを持つエンジンの動きを切替えます。</div>
           <div class="row" style="margin-top:8px"><label>Speed</label><input type="range" id="globalSpeed" min="0" max="4" step="0.01" value="1" title="全体の再生速度 (シェーダ time / 動画 playbackRate に乗算)"><div class="val" id="globalSpeedVal">1.00</div></div>
         </div>
 
@@ -2135,7 +2198,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="btnAudioMic" title="クリックでON / 点灯中に再クリックでOFF (マイク)">Mic</button>
             <button id="btnAudioDisp" title="クリックでON / 点灯中に再クリックでOFF (画面音声)">System</button>
           </div>
-          <div class="help" style="margin-top:8px">
+          <div class="help" style="margin-top:8px" data-i18n-html="html.731">
             <b>System (画面音声・Chrome 系):</b> ピッカーで <b>「Chrome タブ」を選択</b> → 下部の <b>「タブの音声を共有」にチェック</b> → Share。<br>
             ※ 「ウィンドウ」「画面全体」を選ぶと音声が取れず Permission denied になります。<br>
             ※ macOS では初回 System Settings → Privacy → Screen Recording で Chrome を許可。<br>
@@ -2191,7 +2254,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
           </div>
           <div class="row"><label>Depth</label><input type="range" id="atDepth" min="0" max="1" step="0.01" value="0.5" title="Speed 変調の深さ。Energy: 無音〜大音量で ×1/(1+3d)〜×(1+3d) / Hit Boost: 最大 ×(1+3d) / Hit Duck: 最小 ×(1-0.95d)"><div class="val" id="atDepthVal">0.50</div></div>
           <div class="row"><label>Threshold</label><input type="range" id="atThr" min="0" max="1" step="0.01" value="0.5" title="Direction の発火閾値 (Audio hit がこの値以上で発火)。低いほど敏感。Flip Charge では反転に必要なアタック累積量 (低いほど頻繁に反転)"><div class="val" id="atThrVal">0.50</div></div>
-          <div class="help" style="margin-top:6px">音の検知は Timing タブの Audio Detect (Target / Sensitivity / Attack) を共用。Mic / System を ON にしてから使用。</div>
+          <div class="help" style="margin-top:6px" data-i18n-html="html.732">音の検知は Timing タブの Audio Detect (Target / Sensitivity / Attack) を共用。Mic / System を ON にしてから使用。</div>
         </div>
 
       </div>
@@ -2200,6 +2263,12 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
       <div class="pane" data-pane="settings" id="settingsPane">
         <div class="pane-head">
           <h3>Settings <span class="set-dirty" id="setDirty" hidden>Unsaved</span><span class="grow"></span><button type="button" class="modal-close" data-icon="close" title="閉じる (Esc)"></button></h3>
+        </div>
+        <div class="section">
+          <div class="row"><label id="setLangLabel">言語</label><div id="setLang" class="toggle-btns" role="group" aria-labelledby="setLangLabel">
+            <button type="button" data-lang="ja" lang="ja" aria-label="日本語" aria-pressed="false">JA</button>
+            <button type="button" data-lang="en" lang="en" aria-label="English" aria-pressed="false">EN</button>
+          </div></div>
         </div>
         <div class="section">
           <h3>Display <span class="default-actions"><button id="setSave" title="表示の現在の設定を保存">Save</button><button id="setReset" title="表示を初期値に戻して保存">Reset</button></span></h3>
@@ -2256,7 +2325,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="btnMidiPush" style="flex:2" title="この端末の MIDI マップ (learn 差分) をサーバーへ送り、他の端末 (ブラウザ / デスクトップアプリ) に反映する">Share MIDI Map ▸ Push</button>
             <button id="btnMidiPull" style="flex:1" title="サーバーの MIDI マップをこの端末へ取り込む (リロードで反映)">Pull</button>
           </div>
-          <div class="help" style="font-size:10px;margin-top:4px">MIDI マップは端末ごとに保存されます。正にしたい端末で <b>Push</b> → 反映したい端末で <b>Pull</b>。</div>
+          <div class="help" style="font-size:10px;margin-top:4px" data-i18n-html="html.733">MIDI マップは端末ごとに保存されます。正にしたい端末で <b>Push</b> → 反映したい端末で <b>Pull</b>。</div>
         </div>
         <div class="section">
           <h3>Output</h3>
@@ -2313,9 +2382,9 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="btnExportTool" title="ツール一式 (コード) を ZIP でダウンロード">Download Code</button>
             <button id="btnExportToolAll" title="動画・画像も含む全ファイルを ZIP でダウンロード (大容量)">Download All</button>
           </div>
-          <div class="help" style="margin-top:6px;font-size:10px">サーバー上のツールを丸ごと ZIP 保存。既定は movies/ images/ を除いたコード一式、All はメディアも含みます。PHP の動くサーバー (本番) でだけ使えます。裏 URL: <code>export.php</code> / <code>export.php?all=1</code></div>
+          <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.734">サーバー上のツールを丸ごと ZIP 保存。既定は movies/ images/ を除いたコード一式、All はメディアも含みます。PHP の動くサーバー (本番) でだけ使えます。裏 URL: <code>export.php</code> / <code>export.php?all=1</code></div>
         </div>
-          <div class="help" style="margin-top:6px;font-size:10px">エラー・WebGLコンテキストロスト・メモリ/FPSを記録（リロード後も保持）。落ちた後にここから保存して原因を確認できます。</div>
+          <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.735">エラー・WebGLコンテキストロスト・メモリ/FPSを記録（リロード後も保持）。落ちた後にここから保存して原因を確認できます。</div>
         </div>
         <div class="section">
           <h3>Defaults <span class="default-actions" data-no-rand>
@@ -2324,7 +2393,7 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
             <button id="btnDefaultsImport" title="JSON の Save 値を確認して読み込む">Import</button>
           </span></h3>
           <input type="file" id="defaultsFile" accept=".json,application/json" hidden>
-          <div class="help" style="margin-top:6px;font-size:10px">Save したパラメータを JSON で保存・復元します。画像・動画・プリセット一覧・端末固有の設定は対象外です。Import はファイル内のキーだけを上書きし、現在のビジュアルが含まれていれば保存値を反映します。</div>
+          <div class="help" style="margin-top:6px;font-size:10px" data-i18n-html="html.736">Save したパラメータを JSON で保存・復元します。画像・動画・プリセット一覧・端末固有の設定は対象外です。Import はファイル内のキーだけを上書きし、現在のビジュアルが含まれていれば保存値を反映します。</div>
         </div>
       </div>
       <!-- HELP (トップバーの Help で右パネルを切替)。ショートカットは CLAUDE.md のホットキー節が正。変更したらここも合わせて更新する -->
@@ -2335,101 +2404,101 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
         <div class="section">
           <h3>はじめに</h3>
           <ol class="help-steps">
-            <li><b>Visual</b> タブのサムネをクリックして、操作中のスロット (マゼンタ枠) に読み込む。</li>
-            <li><b>Slot A</b> が下地、<b>Slot B</b> がその上に重なる。重ね具合は <b>Mix</b> の Opacity と Blend。</li>
-            <li><b>Timing</b> でテンポを合わせ (<kbd>T</kbd> でタップ)、Audio Input を Mic か System にすると音に反応する。</li>
-            <li>色は <kbd>1</kbd>〜<kbd>9</kbd> の Grad Preset、仕上げは <b>FX</b> タブ。FX タブの <b>Color</b> 欄 (Grad Map・Hue・Brightness・Gamma・Invert ほか) は欄だけ先頭にあり、効くのは Post FX の最後 (3D FX・Glitch・残像・ブラーにも掛かる)。</li>
-            <li>画面上部のクイック行: <b>Freeze</b> (<kbd>Space</kbd>) / <b>↶ ↷</b> (Undo / Redo) / <b>Reset</b> (<kbd>R</kbd>) / <b>Clear</b> (<kbd>C</kbd>) / <b>All Off</b> (<kbd>Esc</kbd>。スマホでは二度押し)。</li>
-            <li><b>3D FX</b> (FX タブの 3D 欄: Photo / Slicer / Layers / Needle / Origami / Drape / Passage / Uzumaki): 量 0 から元の画面とつながり、重ねがけできる。重いときは <b>3D Res</b> を下げる。</li>
-            <li>気に入った状態は <b>Preset</b> タブの「+ Save Current」で残す。</li>
-            <li>本番の出力は <b>Projector</b> (スマホは <b>Full</b> = フルスクリーン)、録画は <b>Record</b>、静止画は <b>Shot</b>。</li>
+            <li data-i18n-html="help.start.0"><b>Visual</b> タブのサムネをクリックして、操作中のスロット (マゼンタ枠) に読み込む。</li>
+            <li data-i18n-html="help.start.1"><b>Slot A</b> が下地、<b>Slot B</b> がその上に重なる。重ね具合は <b>Mix</b> の Opacity と Blend。</li>
+            <li data-i18n-html="help.start.2"><b>Timing</b> でテンポを合わせ (<kbd>T</kbd> でタップ)、Audio Input を Mic か System にすると音に反応する。</li>
+            <li data-i18n-html="help.start.3">色は <kbd>1</kbd>〜<kbd>9</kbd> の Grad Preset、仕上げは <b>FX</b> タブ。FX タブの <b>Color</b> 欄 (Grad Map・Hue・Brightness・Gamma・Invert ほか) は欄だけ先頭にあり、効くのは Post FX の最後 (3D FX・Glitch・残像・ブラーにも掛かる)。</li>
+            <li data-i18n-html="help.start.4">画面上部のクイック行: <b>Freeze</b> (<kbd>Space</kbd>) / <b>↶ ↷</b> (Undo / Redo) / <b>Reset</b> (<kbd>R</kbd>) / <b>Clear</b> (<kbd>C</kbd>) / <b>All Off</b> (<kbd>Esc</kbd>。スマホでは二度押し)。</li>
+            <li data-i18n-html="help.start.5"><b>3D FX</b> (FX タブの 3D 欄: Photo / Slicer / Layers / Needle / Origami / Drape / Passage / Uzumaki): 量 0 から元の画面とつながり、重ねがけできる。重いときは <b>3D Res</b> を下げる。</li>
+            <li data-i18n-html="help.start.6">気に入った状態は <b>Preset</b> タブの「+ Save Current」で残す。</li>
+            <li data-i18n-html="help.start.7">本番の出力は <b>Projector</b> (スマホは <b>Full</b> = フルスクリーン)、録画は <b>Record</b>、静止画は <b>Shot</b>。</li>
           </ol>
         </div>
         <div class="section">
           <h3>ショートカット: 基本</h3>
           <table class="help-table">
-            <tr><td><kbd>Space</kbd></td><td>Draw フリーズ (シェーダ類の時間更新 ON/OFF。描画は継続)</td></tr>
-            <tr><td><kbd>Esc</kbd></td><td>全スロットを「なし(透明)」に + 各パラメータを保存値/初期値へリセット (Settings の Esc Reset で二度押し・無効に変更可)。Settings / Help を開いているときは閉じるだけ</td></tr>
-            <tr><td><kbd>R</kbd></td><td>FX / Params / Transition / Code / IMAGON / Pan・Zoom を保存値・初期値へリセット (スロットは保持)</td></tr>
+            <tr><td><kbd>Space</kbd></td><td data-i18n-html="html.737">Draw フリーズ (シェーダ類の時間更新 ON/OFF。描画は継続)</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td data-i18n-html="html.738">全スロットを「なし(透明)」に + 各パラメータを保存値/初期値へリセット (Settings の Esc Reset で二度押し・無効に変更可)。Settings / Help を開いているときは閉じるだけ</td></tr>
+            <tr><td><kbd>R</kbd></td><td data-i18n-html="html.739">FX / Params / Transition / Code / IMAGON / Pan・Zoom を保存値・初期値へリセット (スロットは保持)</td></tr>
             <tr><td><kbd>Cmd/Ctrl + Z</kbd></td><td>Undo / <kbd>Cmd/Ctrl + Shift + Z</kbd>・<kbd>Cmd/Ctrl + Y</kbd> Redo</td></tr>
-            <tr><td><kbd>Tab</kbd></td><td>パネルのタブ送り (Preset → Visual → Params → … / <kbd>Shift + Tab</kbd> で逆順)</td></tr>
-            <tr><td><kbd>Enter</kbd></td><td>表示中パネルの検索バーへフォーカス (もう一度押すと解除。何も打たずに 2 回押すと検索欄を空にする) / Manga スロット時はマシンガン配置</td></tr>
-            <tr><td>タッチ</td><td>ダブルタップで既定値に戻す / MIDI 割り当ては PC のみ</td></tr>
+            <tr><td><kbd>Tab</kbd></td><td data-i18n-html="html.740">パネルのタブ送り (Preset → Visual → Params → … / <kbd>Shift + Tab</kbd> で逆順)</td></tr>
+            <tr><td><kbd>Enter</kbd></td><td data-i18n-html="html.741">表示中パネルの検索バーへフォーカス (もう一度押すと解除。何も打たずに 2 回押すと検索欄を空にする) / Manga スロット時はマシンガン配置</td></tr>
+            <tr><td data-i18n-html="html.742">タッチ</td><td data-i18n-html="html.743">ダブルタップで既定値に戻す / MIDI 割り当ては PC のみ</td></tr>
           </table>
         </div>
         <div class="section">
           <h3>ショートカット: スロット</h3>
           <table class="help-table">
-            <tr><td><kbd>X</kbd></td><td>操作中のスロットを切替 / <kbd>Shift + X</kbd> Slot A ⇄ B 交換 (Live Lock 中は無効)</td></tr>
-            <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td>Slot A / B の表示 ON/OFF / <kbd>\</kbd> クロスフェードのフリップ</td></tr>
-            <tr><td><kbd>Backspace</kbd></td><td>操作中のスロットを透明に (Settings の Backspace Clear で無効にできる) / <kbd>Shift + Backspace</kbd> Visual 固有の操作</td></tr>
-            <tr><td><kbd>Shift</kbd> 単押し</td><td>Visual 固有の操作 (背景切替、組方向など)</td></tr>
-            <tr><td>A/B タイル</td><td>クリック = そのスロットを操作対象に (合成プレビューのクリックでは変わらない) / ダブルクリック = 表示切替 / もう一方へドラッグ = A ⇄ B 交換</td></tr>
-            <tr><td><kbd>C</kbd></td><td>IMAGON / Manga キャンバスとドラッグで置いた吹き出しをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
-            <tr><td>左ドラッグ</td><td>S128 Uni Flash のスロットがアクティブのとき、押している間カーソル位置へ吹き出しを連射 (MANGA のマシンガンと同じ)</td></tr>
+            <tr><td><kbd>X</kbd></td><td data-i18n-html="html.744">操作中のスロットを切替 / <kbd>Shift + X</kbd> Slot A ⇄ B 交換 (Live Lock 中は無効)</td></tr>
+            <tr><td><kbd>[</kbd> / <kbd>]</kbd></td><td data-i18n-html="html.745">Slot A / B の表示 ON/OFF / <kbd>\</kbd> クロスフェードのフリップ</td></tr>
+            <tr><td><kbd>Backspace</kbd></td><td data-i18n-html="html.746">操作中のスロットを透明に (Settings の Backspace Clear で無効にできる) / <kbd>Shift + Backspace</kbd> Visual 固有の操作</td></tr>
+            <tr><td data-i18n-html="html.747"><kbd>Shift</kbd> 単押し</td><td data-i18n-html="html.748">Visual 固有の操作 (背景切替、組方向など)</td></tr>
+            <tr><td data-i18n-html="html.749">A/B タイル</td><td data-i18n-html="html.750">クリック = そのスロットを操作対象に (合成プレビューのクリックでは変わらない) / ダブルクリック = 表示切替 / もう一方へドラッグ = A ⇄ B 交換</td></tr>
+            <tr><td><kbd>C</kbd></td><td data-i18n-html="html.751">IMAGON / Manga キャンバスとドラッグで置いた吹き出しをクリア + User Pan/Zoom リセット + 初期フレームに戻す</td></tr>
+            <tr><td data-i18n-html="html.752">左ドラッグ</td><td data-i18n-html="html.753">S128 Uni Flash のスロットがアクティブのとき、押している間カーソル位置へ吹き出しを連射 (MANGA のマシンガンと同じ)</td></tr>
           </table>
         </div>
         <div class="section">
           <h3>ショートカット: 色</h3>
           <table class="help-table">
-            <tr><td><kbd>1</kbd>〜<kbd>9</kbd></td><td>Grad Preset 切替 / <kbd>0</kbd> 通常色</td></tr>
-            <tr><td><kbd>-</kbd></td><td>Grad Map の反転 (+ ↔ −)</td></tr>
-            <tr><td><kbd>U</kbd></td><td>色相反転 (+180°。押すたびに半周、2回で元へ)</td></tr>
-            <tr><td><kbd>I</kbd></td><td>Invert トグル (明度だけ反転、色相は保つ)</td></tr>
-            <tr><td><kbd>A</kbd></td><td>Auto Map トグル (操作中のスロットへ適用 — A なら A ← B / B なら B ← A)</td></tr>
-            <tr><td><kbd>Option</kbd></td><td>短押し = カラーサークル / 長押し = スポイト (押している間プレビュー、クリックで確定。押したまま動かすと追従し離した位置で確定。確定せずに離すと元の色へ)</td></tr>
-            <tr><td><kbd>Option</kbd>+クリック</td><td>Visual タブのタイル: その絵から Grad Map を生成して適用</td></tr>
+            <tr><td><kbd>1</kbd>〜<kbd>9</kbd></td><td data-i18n-html="html.754">Grad Preset 切替 / <kbd>0</kbd> 通常色</td></tr>
+            <tr><td><kbd>-</kbd></td><td data-i18n-html="html.755">Grad Map の反転 (+ ↔ −)</td></tr>
+            <tr><td><kbd>U</kbd></td><td data-i18n-html="html.756">色相反転 (+180°。押すたびに半周、2回で元へ)</td></tr>
+            <tr><td><kbd>I</kbd></td><td data-i18n-html="html.757">Invert トグル (明度だけ反転、色相は保つ)</td></tr>
+            <tr><td><kbd>A</kbd></td><td data-i18n-html="html.758">Auto Map トグル (操作中のスロットへ適用 — A なら A ← B / B なら B ← A)</td></tr>
+            <tr><td><kbd>Option</kbd></td><td data-i18n-html="html.759">短押し = カラーサークル / 長押し = スポイト (押している間プレビュー、クリックで確定。押したまま動かすと追従し離した位置で確定。確定せずに離すと元の色へ)</td></tr>
+            <tr><td data-i18n-html="html.760"><kbd>Option</kbd>+クリック</td><td data-i18n-html="html.761">Visual タブのタイル: その絵から Grad Map を生成して適用</td></tr>
           </table>
         </div>
         <div class="section">
           <h3>ショートカット: テンポ・動き</h3>
           <table class="help-table">
             <tr><td><kbd>T</kbd></td><td>Tap tempo</td></tr>
-            <tr><td><kbd>L</kbd></td><td>代理モード (離席): 安全なプリセットを 30〜60 秒ごとにフェードで切り替え、fps が落ちたら軽いものへ逃がす。何かキー・クリック・ホイール・MIDI を触ると即停止 (上部の Away ボタン・画面左下のバッジのクリックでも切替/停止)</td></tr>
-            <tr><td><kbd>D</kbd></td><td>beat / drone 切替</td></tr>
-            <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td>beat scale (×倍率) 上げ/下げ</td></tr>
-            <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td>visual 逆再生 / 順再生 (Type Deformer は → で次の Look)</td></tr>
-            <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td>ズーム (iZoom 経由)</td></tr>
-            <tr><td><kbd>F</kbd></td><td>Audio Direction 切替 (Flip → Flip Charge → Off)</td></tr>
-            <tr><td><kbd>M</kbd></td><td>iMouse 取得 ON/OFF (起動時の値は Settings の iMouse)</td></tr>
+            <tr><td><kbd>L</kbd></td><td data-i18n-html="html.762">代理モード (離席): 安全なプリセットを 30〜60 秒ごとにフェードで切り替え、fps が落ちたら軽いものへ逃がす。何かキー・クリック・ホイール・MIDI を触ると即停止 (上部の Away ボタン・画面左下のバッジのクリックでも切替/停止)</td></tr>
+            <tr><td><kbd>D</kbd></td><td data-i18n-html="html.763">beat / drone 切替</td></tr>
+            <tr><td><kbd>↑</kbd> / <kbd>↓</kbd></td><td data-i18n-html="html.764">beat scale (×倍率) 上げ/下げ</td></tr>
+            <tr><td><kbd>←</kbd> / <kbd>→</kbd></td><td data-i18n-html="html.765">visual 逆再生 / 順再生 (Type Deformer は → で次の Look)</td></tr>
+            <tr><td><kbd>,</kbd> / <kbd>.</kbd></td><td data-i18n-html="html.766">ズーム (iZoom 経由)</td></tr>
+            <tr><td><kbd>F</kbd></td><td data-i18n-html="html.767">Audio Direction 切替 (Flip → Flip Charge → Off)</td></tr>
+            <tr><td><kbd>M</kbd></td><td data-i18n-html="html.768">iMouse 取得 ON/OFF (起動時の値は Settings の iMouse)</td></tr>
           </table>
         </div>
         <div class="section">
           <h3>ショートカット: 表示・出力</h3>
           <table class="help-table">
-            <tr><td><kbd>Shift + F</kbd></td><td>フルスクリーン</td></tr>
-            <tr><td><kbd>P</kbd></td><td>Grad / Blend プレビューバーの表示トグル (負荷対策)</td></tr>
-            <tr><td><kbd>O</kbd></td><td>IMAGON トグル</td></tr>
+            <tr><td><kbd>Shift + F</kbd></td><td data-i18n-html="html.769">フルスクリーン</td></tr>
+            <tr><td><kbd>P</kbd></td><td data-i18n-html="html.770">Grad / Blend プレビューバーの表示トグル (負荷対策)</td></tr>
+            <tr><td><kbd>O</kbd></td><td data-i18n-html="html.771">IMAGON トグル</td></tr>
             <tr><td><kbd>Cmd/Ctrl + R</kbd></td><td>Record ON / OFF</td></tr>
-            <tr><td><kbd>Cmd/Ctrl + S</kbd></td><td>スクリーンショットを PNG 保存 / <kbd>Cmd/Ctrl + Shift + S</kbd> 状態の手動保存</td></tr>
-            <tr><td><kbd>Cmd/Ctrl + Enter</kbd></td><td>エディタのシェーダをコンパイル</td></tr>
+            <tr><td><kbd>Cmd/Ctrl + S</kbd></td><td data-i18n-html="html.772">スクリーンショットを PNG 保存 / <kbd>Cmd/Ctrl + Shift + S</kbd> 状態の手動保存</td></tr>
+            <tr><td><kbd>Cmd/Ctrl + Enter</kbd></td><td data-i18n-html="html.773">エディタのシェーダをコンパイル</td></tr>
           </table>
         </div>
         <div class="section">
           <h3>Q &amp; A</h3>
           <dl class="help-qa">
-            <dt>何も映らない・真っ黒になった</dt>
-            <dd><kbd>Esc</kbd> を押すと全スロットが透明 (なし) に戻ります。Visual のサムネをクリックして読み込み直してください。下段の A/B タイルが暗いときは表示 OFF なので、<kbd>[</kbd> / <kbd>]</kbd> かタイルのダブルクリックで戻します。Slot B は Mix の Opacity が 0 だと見えません。</dd>
-            <dt>どのスロットを操作しているのか分からない</dt>
-            <dd>マゼンタの枠が付いている方です (上の Slot A / B ボタンと下段のタイル)。<kbd>X</kbd> か、ボタン・タイルのクリックで切り替えます。読み込みやパラメータ操作は、このスロットに対して行われます。</dd>
-            <dt>自分の画像や動画を使いたい</dt>
-            <dd>Visual タブへファイルをドラッグ&amp;ドロップするか、Visual の Image 欄・Movie 欄の先頭にある「＋」タイルから読み込みます。アプリ版・ローカル起動では images/drop/ と movies/ に保存されて次回も残ります。ウェブ版ではリロードすると消えます。</dd>
-            <dt>音に反応させたい</dt>
-            <dd>Timing の Audio Input で Mic か System を選びます。System は、ピッカーで「Chrome タブ」を選び「タブの音声を共有」にチェックしてください。反応の強さは Audio Detect で調整します。</dd>
-            <dt>テンポを曲に合わせたい</dt>
-            <dd>拍に合わせて <kbd>T</kbd> を数回叩きます (Timing の Tap と同じ)。BPM の大きな数字をクリックすると直接入力でき、Reset Φ で拍の頭を合わせられます。</dd>
-            <dt>値を元に戻したい</dt>
-            <dd>スライダーはダブルクリックでデフォルト値に戻ります。各欄の Reset はその欄を保存したデフォルトへ、<kbd>R</kbd> は FX / Params / Transition などをまとめて戻します (スロットは残ります)。直前の操作は <kbd>Cmd/Ctrl + Z</kbd> で取り消せます。</dd>
-            <dt>今の状態を残したい</dt>
-            <dd>Preset タブの「+ Save Current」で、全体の状態をプリセットにします。各欄の Save は、その欄の起動時のデフォルトを保存します。Settings の Restore を ON にすると、次回の起動で前回の状態に戻ります。</dd>
-            <dt>MIDI コントローラで動かしたい</dt>
-            <dd>スライダーかチェックボックスを右クリックしてから、つまみやボタンを動かすと割り当てられます。もう一度右クリックで解除します。Shader Params は各行右の MIDI ボタンでも割り当てられます。</dd>
-            <dt>外部ディスプレイに出したい</dt>
-            <dd>トップバーの Projector で出力専用のウィンドウを開き、外部ディスプレイへ移します。出力の解像度は Settings の Resolution で変えます。</dd>
-            <dt>重い・カクつく</dt>
-            <dd><kbd>P</kbd> で Grad / Blend のプレビューバーを隠す、Settings の Output (FPS Cap・Resolution) を下げる、FX を減らす、の順で試してください。</dd>
-            <dt>録画したい</dt>
-            <dd>Record (<kbd>Cmd/Ctrl + R</kbd>) で開始・停止します。画面音声を ON にしていれば音声も入ります。静止画は Shot (<kbd>Cmd/Ctrl + S</kbd>) で PNG 保存です。</dd>
+            <dt data-i18n-html="html.774">何も映らない・真っ黒になった</dt>
+            <dd data-i18n-html="html.775"><kbd>Esc</kbd> を押すと全スロットが透明 (なし) に戻ります。Visual のサムネをクリックして読み込み直してください。下段の A/B タイルが暗いときは表示 OFF なので、<kbd>[</kbd> / <kbd>]</kbd> かタイルのダブルクリックで戻します。Slot B は Mix の Opacity が 0 だと見えません。</dd>
+            <dt data-i18n-html="html.776">どのスロットを操作しているのか分からない</dt>
+            <dd data-i18n-html="html.777">マゼンタの枠が付いている方です (上の Slot A / B ボタンと下段のタイル)。<kbd>X</kbd> か、ボタン・タイルのクリックで切り替えます。読み込みやパラメータ操作は、このスロットに対して行われます。</dd>
+            <dt data-i18n-html="html.778">自分の画像や動画を使いたい</dt>
+            <dd data-i18n-html="html.779">Visual タブへファイルをドラッグ&amp;ドロップするか、Visual の Image 欄・Movie 欄の先頭にある「＋」タイルから読み込みます。アプリ版・ローカル起動では images/drop/ と movies/ に保存されて次回も残ります。ウェブ版ではリロードすると消えます。</dd>
+            <dt data-i18n-html="html.780">音に反応させたい</dt>
+            <dd data-i18n-html="html.781">Timing の Audio Input で Mic か System を選びます。System は、ピッカーで「Chrome タブ」を選び「タブの音声を共有」にチェックしてください。反応の強さは Audio Detect で調整します。</dd>
+            <dt data-i18n-html="html.782">テンポを曲に合わせたい</dt>
+            <dd data-i18n-html="html.783">拍に合わせて <kbd>T</kbd> を数回叩きます (Timing の Tap と同じ)。BPM の大きな数字をクリックすると直接入力でき、Reset Φ で拍の頭を合わせられます。</dd>
+            <dt data-i18n-html="html.784">値を元に戻したい</dt>
+            <dd data-i18n-html="html.785">スライダーはダブルクリックでデフォルト値に戻ります。各欄の Reset はその欄を保存したデフォルトへ、<kbd>R</kbd> は FX / Params / Transition などをまとめて戻します (スロットは残ります)。直前の操作は <kbd>Cmd/Ctrl + Z</kbd> で取り消せます。</dd>
+            <dt data-i18n-html="html.786">今の状態を残したい</dt>
+            <dd data-i18n-html="html.787">Preset タブの「+ Save Current」で、全体の状態をプリセットにします。各欄の Save は、その欄の起動時のデフォルトを保存します。Settings の Restore を ON にすると、次回の起動で前回の状態に戻ります。</dd>
+            <dt data-i18n-html="html.788">MIDI コントローラで動かしたい</dt>
+            <dd data-i18n-html="html.789">スライダーかチェックボックスを右クリックしてから、つまみやボタンを動かすと割り当てられます。もう一度右クリックで解除します。Shader Params は各行右の MIDI ボタンでも割り当てられます。</dd>
+            <dt data-i18n-html="html.790">外部ディスプレイに出したい</dt>
+            <dd data-i18n-html="html.791">トップバーの Projector で出力専用のウィンドウを開き、外部ディスプレイへ移します。出力の解像度は Settings の Resolution で変えます。</dd>
+            <dt data-i18n-html="html.792">重い・カクつく</dt>
+            <dd data-i18n-html="html.793"><kbd>P</kbd> で Grad / Blend のプレビューバーを隠す、Settings の Output (FPS Cap・Resolution) を下げる、FX を減らす、の順で試してください。</dd>
+            <dt data-i18n-html="html.794">録画したい</dt>
+            <dd data-i18n-html="html.795">Record (<kbd>Cmd/Ctrl + R</kbd>) で開始・停止します。画面音声を ON にしていれば音声も入ります。静止画は Shot (<kbd>Cmd/Ctrl + S</kbd>) で PNG 保存です。</dd>
           </dl>
         </div>
       </div>
@@ -2440,66 +2509,74 @@ try{ if(localStorage.getItem('vj.restore') !== '0'){ var __o=document.getElement
 
 <div class="toast" id="toast"></div>
 
-<script src="presets.js?v=1795581078"></script>
-<script src="mode/layer.js?v=1795581078"></script>
-<script src="vendor/iro.min.js?v=1795581078"></script>
-<script src="vendor/mediabunny.min.js?v=1795581078"></script>
-<script src="mode/textdeform.js?v=1795581078"></script>
-<script src="mode/textdeform-texts.js?v=1795581078"></script>
-<script src="mode/textdeform-upstream.js?v=1795581078"></script>
-<script src="mode/textdeform-comp.js?v=1795581078"></script>
-<script src="mode/textdeform-surface.js?v=1795581078"></script>
-<script src="mode/textdeform-looks.js?v=1795581078"></script>
-<script src="mode/textdeform-vector.js?v=1795581078"></script>
-<script src="mode/textdeform-canvas.js?v=1795581078"></script>
-<script src="mode/ugomeki.js?v=1795581078"></script>
-<script src="mode/slicer.js?v=1795581078"></script>
-<script src="mode/video.js?v=1795581078"></script>
-<script src="mode/aratanagara.js?v=1795581078"></script>
-<script src="vendor/p5.min.js?v=1795581078"></script>
-<script src="mode/cyberui.js?v=1795581078"></script>
-<script src="mode/novel.js?v=1795581078"></script>
-<script src="shaders/inkelly.js?v=1795581078"></script>
-<script src="sketchfx.js?v=1795581078"></script>
-<script src="pixelsortfx.js?v=1795581078"></script>
-<script src="shaders/boltzmann.js?v=1795581078"></script>
-<script src="mode/pen.js?v=1795581078"></script>
-<script src="shaders/caverns.js?v=1795581078"></script>
-<script src="mode/shelf.js?v=1795581078"></script>
-<script src="shaders/ribbon.js?v=1795581078"></script>
-<script src="mode/photoplane.js?v=1795581078"></script>
-<script src="mode/shredder.js?v=1795581078"></script>
-<script src="mode/transflock.js?v=1795581078"></script>
-<script src="mode/liquidpeel.js?v=1795581078"></script>
-<script src="mode/windflock.js?v=1795581078"></script>
-<script src="mode/rhizome.js?v=1795581078"></script>
-<script src="mode/surrealfloat.js?v=1795581078"></script>
-<script src="mode/chrometype.js?v=1795581078"></script>
-<script src="mode/glitchtype.js?v=1795581078"></script>
-<script src="mode/tower4149.js?v=1795581078"></script>
-<script src="mode/fude.js?v=1795581078"></script>
-<script src="mode/image.js?v=1795581078"></script>
-<script src="mode/spacetype.js?v=1795581078"></script>
-<script src="fx3d.js?v=1795581078"></script>
-<script src="fx3d-layers.js?v=1795581078"></script>
-<script src="fx3d-cubes.js?v=1795581078"></script>
-<script src="fx3d-blinds.js?v=1795581078"></script>
-<script src="fx3d-diorama.js?v=1795581078"></script>
-<script src="fx3d-points.js?v=1795581078"></script>
-<script src="fx3d-gravity.js?v=1795581078"></script>
-<script src="fx3d-globe.js?v=1795581078"></script>
-<script src="fx3d-tunnel.js?v=1795581078"></script>
-<script src="fx3d-extrude.js?v=1795581078"></script>
-<script src="pollockfx.js?v=1795581078"></script>
-<script src="overlay.js?v=1795581078"></script>
-<script src="gif.js?v=1795581078"></script>
-  <script src="ui-icons.js?v=1795581078"></script>
-  <script src="app.js?v=1795581078"></script>
-  <script src="autopilot.js?v=1795581078"></script>
-  <script src="crash-guard.js?v=1795581078"></script>
-  <script src="ui-scrollbar.js?v=1795581078"></script>
-  <script src="ui-settings.js?v=1795581078"></script>
-<script src="camroll.js?v=1795581078" defer></script>
-<script src="dbltap.js?v=1795581078" defer></script>
+<script src="presetid.js?v=1795660965"></script>
+<script>I18n.init();</script>
+<script src="presets.js?v=1795660965"></script>
+<script src="mode/layer.js?v=1795660965"></script>
+<script src="vendor/iro.min.js?v=1795660965"></script>
+<script src="vendor/mediabunny.min.js?v=1795660965"></script>
+<script src="mode/textdeform-budget.js?v=1795660965"></script>
+<script src="mode/textdeform.js?v=1795660965"></script>
+<script src="mode/textdeform-texts.js?v=1795660965"></script>
+<script src="mode/textdeform-upstream.js?v=1795660965"></script>
+<script src="mode/textdeform-comp.js?v=1795660965"></script>
+<script src="mode/textdeform-surface.js?v=1795660965"></script>
+<script src="mode/textdeform-looks.js?v=1795660965"></script>
+<script src="mode/textdeform-vector.js?v=1795660965"></script>
+<script src="mode/textdeform-canvas.js?v=1795660965"></script>
+<script src="mode/ugomeki.js?v=1795660965"></script>
+<script src="mode/slicer.js?v=1795660965"></script>
+<script src="mode/video.js?v=1795660965"></script>
+<script src="mode/aratanagara.js?v=1795660965"></script>
+<script src="vendor/p5.min.js?v=1795660965"></script>
+<script src="mode/cyberui.js?v=1795660965"></script>
+<script src="mode/novel.js?v=1795660965"></script>
+<script src="shaders/inkelly.js?v=1795660965"></script>
+<script src="sketchfx.js?v=1795660965"></script>
+<script src="pixelsortfx.js?v=1795660965"></script>
+<script src="shaders/boltzmann.js?v=1795660965"></script>
+<script src="mode/pen.js?v=1795660965"></script>
+<script src="shaders/caverns.js?v=1795660965"></script>
+<script src="mode/shelf.js?v=1795660965"></script>
+<script src="shaders/ribbon.js?v=1795660965"></script>
+<script src="mode/photoplane.js?v=1795660965"></script>
+<script src="mode/shredder.js?v=1795660965"></script>
+<script src="mode/transflock.js?v=1795660965"></script>
+<script src="mode/liquidpeel.js?v=1795660965"></script>
+<script src="mode/windflock.js?v=1795660965"></script>
+<script src="mode/rhizome.js?v=1795660965"></script>
+<script src="mode/surrealfloat.js?v=1795660965"></script>
+<script src="mode/chrometype.js?v=1795660965"></script>
+<script src="mode/glitchtype.js?v=1795660965"></script>
+<script src="mode/tower4149.js?v=1795660965"></script>
+<script src="mode/construct-layout.js?v=1795660965"></script>
+<script src="mode/fude.js?v=1795660965"></script>
+<script src="mode/image.js?v=1795660965"></script>
+<script src="mode/imgconstruct.js?v=1795660965"></script>
+<script src="mode/spacetype.js?v=1795660965"></script>
+<script src="fx3d.js?v=1795660965"></script>
+<script src="fx3d-layers.js?v=1795660965"></script>
+<script src="fx3d-cubes.js?v=1795660965"></script>
+<script src="fx3d-blinds.js?v=1795660965"></script>
+<script src="fx3d-diorama.js?v=1795660965"></script>
+<script src="fx3d-points.js?v=1795660965"></script>
+<script src="fx3d-gravity.js?v=1795660965"></script>
+<script src="fx3d-globe.js?v=1795660965"></script>
+<script src="fx3d-tunnel.js?v=1795660965"></script>
+<script src="fx3d-extrude.js?v=1795660965"></script>
+<script src="fx3d-rock.js?v=1795660965"></script>
+<script src="fx3d-bands.js?v=1795660965"></script>
+<script src="pollockfx.js?v=1795660965"></script>
+<script src="overlay.js?v=1795660965"></script>
+<script src="gif.js?v=1795660965"></script>
+  <script src="ui-icons.js?v=1795660965"></script>
+<script src="mode/beatshift.js?v=1795660965"></script>
+  <script src="app.js?v=1795660965"></script>
+  <script src="autopilot.js?v=1795660965"></script>
+  <script src="crash-guard.js?v=1795660965"></script>
+  <script src="ui-scrollbar.js?v=1795660965"></script>
+  <script src="ui-settings.js?v=1795660965"></script>
+<script src="camroll.js?v=1795660965" defer></script>
+<script src="dbltap.js?v=1795660965" defer></script>
 </body>
 </html>

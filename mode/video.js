@@ -24,6 +24,11 @@ const Movie = {
   // スロット毎の状態 (tex / videoEl / src / fileName / loaded / P / _lastSubBeat)
   // 旧コードからの互換のため、デフォルトのアクセサは現アクティブスロットへ転送
   _slots:{},
+  LAYOUT_DEFAULTS:Object.freeze({
+    columns:1, rows:1, gapX:0, gapY:0, offsetX:0, offsetY:0,
+    cellSize:100, rowShift:0, colShift:0, cellRotate:0, flipAlt:0,
+    scrollX:0, scrollY:0, timeOffset:0,
+  }),
   _newSlotState(){
     return {
       tex:null, videoEl:null, src:null, fileName:'', loaded:false,
@@ -33,6 +38,7 @@ const Movie = {
         rotate:0,             // 画面の回転 (deg)
         mirror:0,             // 折り返し: 0=なし / 1=左右 / 2=上下 / 3=両方
         tile:100,             // 敷き詰め数 (%。200 = 2×2)
+        ...this.LAYOUT_DEFAULTS,
         aspect:100,           // 横の伸縮 (%)
         wave:0,               // 波打ち (%)
         waveFreq:6,           // 波の本数 (画面あたり)
@@ -40,6 +46,7 @@ const Movie = {
         bars:0,               // 上下の黒帯 (%)
       },
       // 再生方向は矢印キー (App.timeDir) で制御。beat モードの拍ジャンプは常時 ON (1 beat)。
+      _bShiftBeats:0, _bShiftSec:0,
       _lastSubBeat:-1,
       _lastFrameT:0,          // dt 計算用
       // フレームバッファ (逆再生用)
@@ -110,6 +117,10 @@ uniform float u_fx;      // 0 = 効果なし (従来の経路)
 uniform vec4  u_fx1;     // x=回転(rad) y=折り返し z=敷き詰め数 w=横の伸縮
 uniform vec4  u_fx2;     // x=波の振れ幅 y=波の本数 z=周辺の暗さ w=黒帯
 uniform float u_time;
+uniform float u_layout;      // 既定値では格子の計算を一切通らない
+uniform highp vec4 u_grid;   // columns, rows, gapX, gapY (Tile 適用後の座標)
+uniform highp vec4 u_cell;   // offsetX, offsetY, cellSize, cellRotate(rad)
+uniform highp vec4 u_stagger; // rowShift, colShift, flipAlt, timeOffset (UV 代用)
 varying vec2 v_uv;
 void main(){
   vec2 uv = v_uv;
@@ -130,8 +141,45 @@ void main(){
     if(u_fx1.z > 1.0) p = fract(p * u_fx1.z + 0.5) - 0.5;
     uv = p + 0.5;
   }
+  vec2 cellView = u_viewSize;
+  vec2 cellUVShift = vec2(0.0);
+  if(u_layout > 0.5){
+    highp vec2 count = u_grid.xy;
+    highp vec2 frame = 1.0 / count - u_grid.zw;
+    if(frame.x <= 0.0 || frame.y <= 0.0){ gl_FragColor = vec4(0.0); return; }
+    highp vec2 q = (uv - u_cell.xy) * count;
+    highp vec2 size = frame * u_cell.z;
+    highp float asp = u_viewSize.x / max(u_viewSize.y, 1.0);
+    highp float c = cos(u_cell.w), s = sin(u_cell.w);
+    bool found = false;
+    // 偶奇 4 組を独立に探す。Row / Col を同時にずらしてもセルを途中で分断しない。
+    // 枠でクリップするので、大きさ 100% 超・回転でも隣の Gap を塗りつぶさない。
+    for(int row = 0; row < 2; row++){
+      for(int col = 0; col < 2; col++){
+        highp vec2 parity = vec2(float(col), float(row));
+        highp vec2 shift = vec2(float(row) * u_stagger.x, float(col) * u_stagger.y);
+        highp vec2 id = 2.0 * floor((q - shift - 0.5 - parity) * 0.5 + 0.5) + parity;
+        highp vec2 p = (q - id - 0.5 - shift) / count;
+        if(any(greaterThan(abs(p), frame * 0.5))) continue;
+        p.x *= asp;
+        p = vec2(c*p.x - s*p.y, s*p.x + c*p.y);
+        p.x /= asp;
+        p /= size;
+        if(any(greaterThan(abs(p), vec2(0.5)))) continue;
+        if(u_stagger.z > 0.5 && mod(id.x + id.y, 2.0) > 0.5) p.x = -p.x;
+        uv = p + 0.5;
+        // 同じフレームをセルごとに違う UV で読む。再生時刻・デコーダは増やさない。
+        highp float cellId = mod(id.x, count.x) + mod(id.y, count.y) * count.x;
+        cellUVShift = fract(cellId * vec2(0.618034, 0.381966)) * u_stagger.w;
+        found = true;
+      }
+    }
+    if(!found){ gl_FragColor = vec4(0.0); return; }
+    cellView *= size;
+  }
   if(u_fit != 2 && u_vidSize.x > 0.5 && u_vidSize.y > 0.5){
     float va = u_viewSize.x / max(u_viewSize.y, 1.0);
+    if(u_layout > 0.5) va = cellView.x / max(cellView.y, 0.001);
     float ta = u_vidSize.x  / max(u_vidSize.y,  1.0);
     vec2 s = vec2(1.0);
     if(u_fit == 0){
@@ -155,6 +203,7 @@ void main(){
   } else {
     uv = fract(uv);
   }
+  if(u_layout > 0.5 && u_stagger.w > 0.0) uv = fract(uv + cellUVShift);
   // 低速時のフレーム補間: 前フレームと現フレームの線形クロスフェード (軽量な frame mix)
   vec4 col = (u_mixT >= 0.999) ? texture2D(u_tex, uv)
                : mix(texture2D(u_texPrev, uv), texture2D(u_tex, uv), clamp(u_mixT, 0.0, 1.0));
@@ -195,6 +244,10 @@ void main(){
       fx1:      gl.getUniformLocation(this.prog, 'u_fx1'),
       fx2:      gl.getUniformLocation(this.prog, 'u_fx2'),
       time:     gl.getUniformLocation(this.prog, 'u_time'),
+      layout:   gl.getUniformLocation(this.prog, 'u_layout'),
+      grid:     gl.getUniformLocation(this.prog, 'u_grid'),
+      cell:     gl.getUniformLocation(this.prog, 'u_cell'),
+      stagger:  gl.getUniformLocation(this.prog, 'u_stagger'),
     };
     this.vbo = gl.createBuffer();
     gl.bindBuffer(gl.ARRAY_BUFFER, this.vbo);
@@ -216,7 +269,7 @@ void main(){
     v.preload = 'auto';
     return v;
   },
-  _resetPlaybackState(s, keepFrames=false){
+  _resetPlaybackState(s, keepFrames=false, resetShift=true){
     const hadComplete = !!s._bufferComplete;
     if(!keepFrames) this._clearFrames(s);
     s._bufferComplete = keepFrames ? hadComplete : false;
@@ -227,6 +280,7 @@ void main(){
     s._lastFrameT = 0;
     s._lastUploadT = undefined;
     s._lastSeekAt = 0;
+    if(resetShift){ s._bShiftBeats = 0; s._bShiftSec = 0; }
   },
   _setNativePlayback(s, rate){
     if(!s.videoEl) return;
@@ -594,6 +648,7 @@ void main(){
       this._elCache[key] = v; this._elCacheKeys.push(key);
       this._trimElCache(s);
     }
+    s._bShiftBeats = 0; s._bShiftSec = 0;   // 新しい動画へ切替済み。非同期のバッファ復元を待たない。
     // 捕獲バッファ。RAMになければIndexedDBへ永続保存した全区間バッファを復元する。
     let cached = this._cache[url];
     if(!cached || !cached.frames){
@@ -606,7 +661,7 @@ void main(){
     this._freeFrames(s._frames);
     if(cached && cached.complete && cached.frames && cached.frames.length){ s._frames = cached.frames; s._bufferComplete = true; }
     else { s._frames = []; s._bufferComplete = false; }
-    this._resetPlaybackState(s, !!(cached && cached.complete && cached.frames && cached.frames.length));
+    this._resetPlaybackState(s, !!(cached && cached.complete && cached.frames && cached.frames.length), false);
   },
 
   // 読み込み失敗 (会場の弱い Wi-Fi など) で黒のまま沈黙しないよう、間を置いて読み直す。
@@ -738,7 +793,32 @@ void main(){
     else s.videoEl.pause();
   },
 
-  render({fbo, w, h, slotKey}){
+  // UI と旧プリセットの両方を扱う。deadParam は % / 度を単位変換する前に適用する。
+  _layoutUniforms(P, beat=0, clock=0, beatMode='drone'){
+    const dz = v => (typeof App !== 'undefined' && App.deadParam) ? App.deadParam(v) : (Math.abs(v) < 0.1 ? 0 : v);
+    const value = (k, lo, hi) => Math.max(lo, Math.min(hi, dz(Number.isFinite(P[k]) ? P[k] : this.LAYOUT_DEFAULTS[k])));
+    const columns = Math.round(value('columns', 1, 16)), rows = Math.round(value('rows', 1, 16));
+    const gapX = value('gapX', 0, 50) / 100, gapY = value('gapY', 0, 50) / 100;
+    const offsetX = value('offsetX', -100, 100) / 100, offsetY = value('offsetY', -100, 100) / 100;
+    const size = value('cellSize', 10, 200) / 100, rotate = value('cellRotate', -180, 180);
+    const rowShift = value('rowShift', -100, 100) / 100, colShift = value('colShift', -100, 100) / 100;
+    const flipAlt = Math.round(value('flipAlt', 0, 1));
+    const scrollX = value('scrollX', -1, 1), scrollY = value('scrollY', -1, 1), timeOffset = value('timeOffset', 0, 1);
+    const enabled = columns !== 1 || rows !== 1 || gapX !== 0 || gapY !== 0 || offsetX !== 0 || offsetY !== 0
+      || size !== 1 || rotate !== 0 || rowShift !== 0 || colShift !== 0 || flipAlt !== 0 || scrollX !== 0 || scrollY !== 0 || timeOffset !== 0;
+    const t = beatMode === 'beat' ? Math.floor(beat) : clock;
+    const tile = Math.max(1, (Number.isFinite(P.tile) ? dz(P.tile) : 100) / 100);
+    // 偶奇と UV ずらしの両方が同じになる周期へ収め、長時間再生の精度を保つ。
+    const wrap = (v, n) => v % (n % 2 ? 2 : 1);
+    return {
+      enabled:enabled ? 1 : 0,
+      grid:[columns, rows, gapX * tile, gapY * tile],
+      cell:[wrap((offsetX + scrollX * t) * tile, columns), wrap((offsetY + scrollY * t) * tile, rows), size, rotate * Math.PI / 180],
+      stagger:[rowShift, colShift, flipAlt, timeOffset],
+    };
+  },
+
+  render({fbo, w, h, slotKey, clock}){
     if(!this.initialized) return;
     const gl = this.gl;
     const s = this._slot(slotKey);
@@ -868,9 +948,17 @@ void main(){
       const rot = dz(P.rotate), mir = Math.round(dz(P.mirror)), tile = Math.max(1, dz(P.tile) / 100), asp = dz(P.aspect) / 100;
       const wave = dz(P.wave) / 100, vig = dz(P.vignette) / 100, bars = dz(P.bars) / 100;
       const on = (rot !== 0 || mir !== 0 || tile !== 1 || asp !== 1 || wave !== 0 || vig !== 0 || bars !== 0) ? 1 : 0;
+      const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[slotKey] : null;
+      const layout = this._layoutUniforms(P, s._layoutBeat || 0,
+        Number.isFinite(clock) ? clock : ((sl && sl._clock) || 0), s._layoutBeatMode);
+      gl.uniform1f(this.locs.layout, layout.enabled);
+      if(layout.enabled){
+        gl.uniform4f(this.locs.grid, ...layout.grid);
+        gl.uniform4f(this.locs.cell, ...layout.cell);
+        gl.uniform4f(this.locs.stagger, ...layout.stagger);
+      }
       gl.uniform1f(this.locs.fx, on);
       if(on){
-        const sl = (typeof GL !== 'undefined' && GL.slots) ? GL.slots[slotKey] : null;
         gl.uniform4f(this.locs.fx1, rot * Math.PI / 180, mir, tile, asp);
         gl.uniform4f(this.locs.fx2, wave, dz(P.waveFreq), vig, bars);
         gl.uniform1f(this.locs.time, (sl && typeof sl._clock === 'number') ? sl._clock : 0);
@@ -888,8 +976,28 @@ void main(){
   // 毎フレーム呼ぶ:
   //   - 矢印キー (App.timeDir) で再生方向制御 (→=forward / ←=reverse)
   //   - beat モードのとき、拍に合わせてランダム位置へ seek (常時 ON, 1 beat)
-  update(beatCount, beatMode, slotKey){
+  // Keep the applied offset with this movie, in beats AND actual seconds. A BPM
+  // change alone must never seek. Turning OFF removes exactly the applied seconds.
+  _applyBeatShift(s, beats, beatMode){
+    if(beatMode === 'beat'){ s._bShiftBeats = 0; s._bShiftSec = 0; return; }
+    const dur = s.videoEl && s.videoEl.duration;
+    if(!s.loaded || !Number.isFinite(dur) || dur <= 0.1) return;
+    const had = s._bShiftBeats || 0;
+    if(beats === had) return;
+    const sec = s._bShiftSec || 0;
+    const delta = beats === 0 ? -sec : (beats - had) * 60 / Math.max(20, BPM.bpm);
+    const wrap = t => ((t % dur) + dur) % dur;
+    try{
+      if(s._modePhase === 'reverse') s._revT = wrap(s._revT + delta);
+      else s.videoEl.currentTime = wrap(s.videoEl.currentTime + delta);
+      s._bShiftBeats = beats;
+      s._bShiftSec = sec + delta;
+    }catch(e){}
+  },
+  update(beatCount, beatMode, slotKey, shiftBeats=0){
     const s = this._slot(slotKey);
+    s._layoutBeat = beatCount;
+    s._layoutBeatMode = beatMode;
     if(!s.videoEl || !s.loaded) return;
     const now = performance.now();
     const dt = s._lastFrameT ? Math.min(0.1, (now - s._lastFrameT) / 1000) : 1/60;
@@ -960,6 +1068,7 @@ void main(){
         if(s._revT <= 0.02){ s._revT = loopEnd; }
       }
     }
+    this._applyBeatShift(s, shiftBeats, beatMode);
     // ソース時刻 _revT に最も近いフレームを cursor として選ぶ(バッファ内のときのみ)。
     // バッファ外(未取り込みの区間)は render 側で動画をネイティブ seek して補完する。
     if(s._modePhase === 'reverse' && s._frames.length > 0){
@@ -1339,6 +1448,20 @@ Movie.PARAM_HELP = {
   rotate:'画面の回転 (度)',
   mirror:'折り返し: 左右 / 上下 / 両方',
   tile:'敷き詰め数 (%。200 で 2×2)',
+  columns:'格子の列数 (1〜16)。Tile は格子全体の繰り返し倍率',
+  rows:'格子の行数 (1〜16)。Tile は格子全体の繰り返し倍率',
+  gapX:'横の間隔 (画面幅の %)。隙間は透明。セル幅以上で非表示',
+  gapY:'縦の間隔 (画面高さの %)。隙間は透明。セル高さ以上で非表示',
+  offsetX:'格子全体の横位置 (画面幅の %、正で右へ、繰り返し)',
+  offsetY:'格子全体の縦位置 (画面高さの %、正で上へ、繰り返し)',
+  cellSize:'1 枚の大きさ (%)。100 を超える部分はセル枠で切り取る',
+  rowShift:'奇数行の横ずらし (セル幅の %)。レンガ積み',
+  colShift:'奇数列の縦ずらし (セル高さの %)。レンガ積み',
+  cellRotate:'セル枠内で 1 枚ずつ回転 (度)。枠外は切り取る',
+  flipAlt:'1 枚おきに左右反転 (0=なし / 1=反転)',
+  scrollX:'格子の横移動速度 (画面幅 / 拍、Drone は画面幅 / 秒)。Beat は拍ごとに移動',
+  scrollY:'格子の縦移動速度 (画面高さ / 拍、Drone は画面高さ / 秒)。Beat は拍ごとに移動',
+  timeOffset:'タイルごとの UV ずらし (0〜1)。再生時刻は変えず、同じ絵の横・縦位置をずらす',
   aspect:'画面の横の伸縮 (%)',
   wave:'画面の波打ちの振れ幅',
   waveFreq:'波の本数 (画面あたり)',

@@ -920,6 +920,18 @@ Shredder.PDefaults = JSON.parse(JSON.stringify(Shredder.P));
 // aratanagara.com など単体ページから参照できるように明示エクスポート (const は window に載らない)
 if (typeof window !== 'undefined') window.Shredder = Shredder;
 
+// Params を欄ごとのブロックに分ける (UI.bindEngineHints → UI.engineBlocks。欄に無い行は元のブロックに残る)
+Shredder.PARAM_GROUPS = [
+  ['Shape', ['grid', 'scale', 'spike', 'blades', 'twist', 'shapeRand', 'bend', 'bendTurn', 'shape', 'bladeW', 'tipSkew', 'tail', 'sizeVar', 'lenVar', 'radialSize', 'pop', 'seed']],
+  ['Flow', ['speed', 'evolution', 'turbulence', 'radius', 'outflow', 'flock', 'cohesion', 'speedVar', 'inertia', 'aim', 'emitter', 'life', 'swirl', 'swirlTilt', 'beatKick', 'spinRate', 'spinVar']],
+  ['Path', ['path', 'pathSize', 'pathRate', 'pathPull']],
+  ['Camera', ['camPath', 'fov', 'fisheye', 'dist', 'camEl', 'autorot', 'camFollow', 'orbitTilt', 'orbitTiltRate', 'orbitEllip', 'camRoll', 'camShake']],
+  ['Color', ['colorMode', 'hue', 'sat', 'bgColor', 'chromeHue', 'chromeSat']],
+  ['Chrome', ['chrome', 'chromeLight', 'chromeCon', 'chromeFloor', 'blueLight']],
+  ['Stripe', ['stripeFreq', 'stripeScale', 'stripeAmt', 'stripeW', 'glintAmt', 'glintSharp']],
+  ['Light', ['lightAng', 'ambient', 'rim', 'tipLight', 'specAmt']],
+  ['Depth', ['nearMode', 'nearFade', 'nearCull', 'fog', 'fogNear', 'fogFar']],
+];
 Shredder.PARAM_HELP = {
   grid:'粒の数。1 辺の個数で、総数はその 2 乗',
   scale:'破片全体の大きさ',

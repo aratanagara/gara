@@ -916,6 +916,17 @@ void main(){
 };
 
 // パネルのホバー説明とグレー表示 (UI.bindEngineHints)
+// Params パネルの欄 (UI.bindEngineHints が欄ごとの .section に分ける。行は data-pkey で探す)
+Layer.PARAM_GROUPS = [
+    ['Layout', ['count', 'size', 'sizeVar', 'spread', 'seed', 'layoutX', 'layoutY', 'layoutZ', 'sizeGrad']],
+    ['Card', ['curvature', 'aspect', 'corner', 'frame', 'texZoom', 'opacity', 'shadeVar', 'backDim', 'bend2', 'hollow', 'pngAlpha', 'frameColor']],
+    ['Motion', ['spin', 'float', 'pulse', 'drift', 'swirl', 'axisLock', 'tilt', 'faceCam']],
+    ['Camera', ['autorot', 'dist', 'fov', 'camEl', 'camRoll', 'camAzOff']],
+    ['Light', ['ambient', 'rim', 'fog', 'lightAz', 'gloss', 'glossPow', 'lightH', 'rimColor']],
+    ['Shadow', ['shadowStr', 'shadowSoft', 'groundMult', 'groundBrt', 'shadowOn', 'showGround']],
+    ['Background', ['bg', 'bgColor', 'tintColor']],
+];
+
 Layer.PARAM_HELP = {
   count:'プレーンの枚数。0 で画像数と 8 の大きい方',
   bg:'背景の明るさ。下げると Grad Map や陰影が効きやすい',

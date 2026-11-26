@@ -10,7 +10,8 @@ uniform mat4 uView, uProj;
 uniform float uAsp, uN, uGap, uDist, uMargin;
 out vec2 vUv;
 flat out int vLayer;
-const int G = 12;   // 層を G×G に分割 (折りの線が層の中で曲がるように)
+uniform int uGrid;
+#define G uGrid   // 層を G×G に分割 (折りの線が層の中で曲がるように)
 void main(){
   int layer = gl_VertexID / (G * G * 6);
   int r = gl_VertexID - layer * G * G * 6;
@@ -22,8 +23,9 @@ void main(){
   vec2 q = (u - 0.5) * 2.0 * vec2(uAsp, 1.0);                 // 紙座標 (uv 0..1 が画面)
   float sc = (uDist - z) / 1.35 * uMargin;                    // 層ごとに画面を満たす大きさへ (正面から見たら全層が同じ大きさ)
   vUv = 0.5 + (u - 0.5) * uMargin;                            // 余白ぶんは uv が 0..1 の外へ出る (FS でミラー)
+  z += fx3dHeight(vUv);
   vLayer = layer;
-  gl_Position = fx3dApply(uProj * uView * vec4(q * sc * fx3dPop(float(layer)), z, 1.0));   // ポップ: 層ごとに中心から
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(q * sc * fx3dPop(float(layer)), z, 1.0), vUv));   // ポップ: 層ごとに中心から
 }`;
   const FS = `#version 300 es
 precision highp float;
@@ -52,7 +54,7 @@ void main(){
     float sh = smoothstep(t1 - 0.015, t1 + 0.015, l2) * (1.0 - smoothstep(t1 - 0.015, t1 + 0.015, l));
     c *= 1.0 - 0.35 * uK * sh;
   }
-  frag = vec4(fx3dFoldShade(c) * a, a);
+  frag = vec4(fx3dFoldShade(fx3dShapeShade(c, c)) * a, a);
 }`;
 
   // Needle (最後に掛かる): 各層を GL.needleCellGLSL の針の面で覆い、層の法線 (手前 +z) へ突起 / 凹み。元の層の代わりに描く。
@@ -77,8 +79,9 @@ void main(){
   float pp = fx3dPop(float(layer));
   vec3 P = vec3((u - 0.5) * 2.0 * vec2(uAsp, 1.0) * sc * pp, z + w * fx3dNeedleH(key, vUv * vec2(uAsp, 1.0) * 3.2) * cl * pp);
   vLayer = layer;
+  P.z += fx3dHeight(vUv);
   vW = P;
-  gl_Position = fx3dApply(uProj * uView * vec4(P, 1.0));
+  gl_Position = fx3dApply(fx3dShape(uProj * uView * vec4(P, 1.0), vUv));
 }`;
   const NV_FS = `#version 300 es
 precision highp float;
@@ -93,7 +96,7 @@ void main(){
   vec4 t0 = texture(uTex, fx3dSrc(vUv));
   if(t0.a < 0.5) discard;
   if(vLayer > 0 && dot(t0.rgb, vec3(0.299, 0.587, 0.114)) < float(vLayer) / uN) discard;
-  frag = vec4(fx3dFoldShade(fx3dLit(t0.rgb, vW, uEye, 1.0)), 1.0);
+  frag = vec4(fx3dFoldShade(fx3dShapeShade(fx3dLit(t0.rgb, vW, uEye, 1.0), t0.rgb)), 1.0);
 }`;
 
   const hash = (n)=>{ const s = Math.sin(n * 127.1 + 311.7) * 43758.5453; return s - Math.floor(s); };
@@ -135,7 +138,8 @@ void main(){
       gl.viewport(0, 0, o.w, o.h);
       gl.clearColor(0, 0, 0, 0);
       gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT);
-      gl.disable(gl.DEPTH_TEST);
+      if(Fx3d.shapeFrame){ gl.enable(gl.DEPTH_TEST); gl.depthFunc(gl.LEQUAL); gl.depthMask(true); }
+      else gl.disable(gl.DEPTH_TEST);
       gl.disable(gl.CULL_FACE);
       gl.enable(gl.BLEND);
       gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
@@ -158,8 +162,11 @@ void main(){
       gl.uniform1i(u('uTex'), 0);
       Fx3d.popUniforms(gl, p, 'diorama');
       Fx3d.ovUniforms(gl, p, o);
-      Fx3d.fold(gl, p, cam.proj, 1.35);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
-      gl.drawArrays(gl.TRIANGLES, 0, N * 12 * 12 * 6);
+      Fx3d.fold(gl, p, cam.proj, 1.35, cam.view);   // 最後の段なら折りを物体へ (それ以外は uFx3dOn = 0)
+      const grid = Fx3d.shapeFrame || (GL._fx3dHeight?.valid && App.post.fx3dStack !== 'chain') ? 48 : 12;
+      gl.uniform1i(u('uGrid'), grid);
+      GL._fx3dHeightBind(p, [1 / grid, 1 / grid]);
+      gl.drawArrays(gl.TRIANGLES, 0, N * grid * grid * 6);
       gl.disable(gl.BLEND);
       if(wasCull) gl.enable(gl.CULL_FACE);
       return true;
@@ -197,7 +204,8 @@ void main(){
       Fx3d.popUniforms(gl, p, 'diorama');
       Fx3d.ovUniforms(gl, p, o);
       Fx3d.spikeUniforms(gl, p);
-      Fx3d.fold(gl, p, cam.proj, 1.35);
+      GL._fx3dHeightBind(p, [1 / gx, 1 / gy]);
+      Fx3d.fold(gl, p, cam.proj, 1.35, cam.view);
       gl.drawArrays(gl.TRIANGLES, 0, N * GL.needleCellVerts(gx, gy, sub));
       gl.bindVertexArray(null);
       Fx3d.resolve(gl, o.fbo, o.w, o.h);

@@ -37,7 +37,7 @@
       set: (on) => {
         try { localStorage.setItem('vj.restore', on ? '1' : '0'); } catch (_) {}
         if(typeof App !== 'undefined') App._restoreOn = on;
-        if(typeof toast === 'function') toast(on ? '復元 ON (次回起動から前回状態を復元)' : '復元 OFF (次回起動はクリーン)');
+        if(typeof toast === 'function') toast(on ? I18n.t("復元 ON (次回起動から前回状態を復元)") : I18n.t("復元 OFF (次回起動はクリーン)"));
       }
     },
     mixPrev: {
@@ -53,8 +53,8 @@
   // data-pref 設定を変えた直後に、動いている機能へ反映する (起動時にだけ読むものは載せない)
   const PREF_HOOKS = {
     fpsCap: (v) => { App._fpsCap = +v; App._fpsCapLast = 0; },
-    syncTimeout: () => toast('サーバー同期の設定は次回起動から効きます'),
-    shareDefaults: () => toast('デフォルト共有の設定は次回起動から効きます'),
+    syncTimeout: () => toast(I18n.t("サーバー同期の設定は次回起動から効きます")),
+    shareDefaults: () => toast(I18n.t("デフォルト共有の設定は次回起動から効きます")),
     hideCursor: () => App.applyHideCursor(),
     wakeLock: () => App.applyWakeLock(),
     videoPreload: (v) => { if(v === '1' && typeof Movie !== 'undefined' && Movie.startPreload) Movie.startPreload(); },
@@ -79,9 +79,9 @@
     try { list = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'audioinput' && d.deviceId !== 'default' && d.deviceId !== 'communications'); } catch (_) { return; }
     const want = Prefs.get('micDevice', '');
     sel.textContent = '';
-    sel.add(new Option('OS default (OS の既定)', ''));
+    sel.add(I18n.bind(new Option('', ''), 'OS default (OS の既定)'));
     list.forEach((d, i) => sel.add(new Option(d.label || ('Mic ' + (i + 1)), d.deviceId)));
-    if(want && !list.some(d => d.deviceId === want)) sel.add(new Option('(未接続の保存デバイス)', want));
+    if(want && !list.some(d => d.deviceId === want)) sel.add(I18n.bind(new Option('', want), '(未接続の保存デバイス)'));
     sel.value = want;
   }
 
@@ -194,7 +194,7 @@
       h.addEventListener('blur', render);
     });
     pane.querySelectorAll('[data-auto]').forEach(b => b.addEventListener('click', () => change({ [b.dataset.auto]: '' })));
-    VJUI.jpFonts.forEach(f => jpSel.add(new Option(f.label, f.id)));
+    VJUI.jpFonts.forEach(f => jpSel.add(I18n.bind(new Option(f.label, f.id), f.label)));
     jpSel.addEventListener('change', () => change({ jpFont: jpSel.value }));
     pane.querySelectorAll('#setStats button').forEach(b => b.addEventListener('click', () => {
       const hidden = cur.hideStats.split(' ').filter(Boolean);
@@ -222,7 +222,7 @@
     // 保存形式: このブラウザで書けない形式をグレーにする。保存値が書けない形式なら既定へ戻す
     const markFormats = (sel, ok) => {
       if(!sel) return;
-      [...sel.options].forEach(o => { o.disabled = !ok[o.value]; o.textContent = o.textContent.replace(/ \(非対応\)$/, '') + (ok[o.value] ? '' : ' (非対応)'); });
+      [...sel.options].forEach(o => { o.disabled = !ok[o.value]; if(o.disabled) I18n.bind(o, 'format.unsupported', 'textContent', { name: o.textContent }); });
       if(!ok[sel.value]){ sel.value = sel.dataset.def; Prefs.set(sel.dataset.pref, sel.dataset.def); }
     };
     if(typeof GL !== 'undefined' && GL.shotFormatSupport) markFormats($('#setShotFmt'), GL.shotFormatSupport());

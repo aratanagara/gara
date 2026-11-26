@@ -4,9 +4,10 @@
    平面 → 球を直接混ぜると面が交差するので、まず曲げ (交差しない) で筒にし、そこから球へ混ぜる。 */
 (function(){
 // 球 (筒 → 球) の形: 絵の座標 uv (0..1) → 位置。N = 外向きの法線
-const SURF = `
+const SHAPE = `
 uniform mat4 uView, uProj;
 uniform float uAsp, uCols, uRows, uK, uSpin, uHit;
+uniform float uSeam;
 float ss(float a, float b, float x){ float t = clamp((x - a) / (b - a), 0.0, 1.0); return t * t * (3.0 - 2.0 * t); }
 vec3 gSurf(vec2 uv, out vec3 N){
   vec2 q = (uv - 0.5) * 2.0 * vec2(uAsp, 1.0);
@@ -27,6 +28,29 @@ vec3 gSurf(vec2 uv, out vec3 N){
   return P * mix(1.0, 1.6, m2) * (1.0 + 0.08 * uHit * uK);
 }
 `;
+const SURF = `${SHAPE}
+float gRelief(vec2 uv){
+  float h = fx3dRelief(uv);
+  if(uFx3dHeightOn > 0.5 && uSeam > 0.0){
+    float w = 0.5 * (1.0 - smoothstep(0.0, uSeam, min(uv.x, 1.0 - uv.x)));
+    h = mix(h, fx3dRelief(vec2(1.0 - uv.x, uv.y)), w);   // 色と同じ左右の継ぎ目
+  }
+  return h;
+}
+vec3 gLift(vec2 uv){
+  if(uK >= 0.55) uv.x = fract(uv.x);   // 閉じた筒 / 球は左右を周回
+  uv.y = clamp(uv.y, 0.0, 1.0);
+  vec3 N; vec3 P = gSurf(uv, N);
+  return P + N * gRelief(uv);
+}
+vec3 gHeightNormal(vec2 uv, vec3 N){
+  vec2 d = 0.5 / vec2(uCols, uRows);
+  uv.y = clamp(uv.y, d.y, 1.0 - d.y);   // 極の縮退三角形を避ける
+  vec3 n = cross(gLift(uv + vec2(d.x, 0.0)) - gLift(uv - vec2(d.x, 0.0)),
+                 gLift(uv + vec2(0.0, d.y)) - gLift(uv - vec2(0.0, d.y)));
+  return dot(n, n) > 1e-12 ? normalize(dot(n, N) < 0.0 ? -n : n) : N;
+}
+`;
 const VS = `#version 300 es
 precision highp float;
 ${SURF}
@@ -39,7 +63,8 @@ void main(){
   vec2 uv = (vec2(float(ix), float(iy)) + ab) / vec2(uCols, uRows);
   vec3 N;
   vec3 P = gSurf(uv, N);
-  P += N * fx3dRelief(uv);   // 立体シェーダの深度で球の面を持ち上げる
+  P += N * gRelief(uv);
+  if(uFx3dHeightOn > 0.5) N = gHeightNormal(uv, N);
   vUv = uv; vW = P; vN = N;
   gl_Position = fx3dApply(uProj * uView * vec4(P * fx3dPop(0.0), 1.0));   // ポップ: 球ごと中心から
 }`;
@@ -58,7 +83,8 @@ void main(){
   vec3 P0 = gSurf(uv, N);
   float lT = length(gSurf(uv + vec2(E, 0.0), Nd) - P0) / E, lB = length(gSurf(uv + vec2(0.0, E), Nd) - P0) / E;
   float cell = 0.5 * (lT / uNvGrid.x + lB / uNvGrid.y);
-  P0 += N * fx3dRelief(uv);
+  P0 += N * gRelief(uv);
+  if(uFx3dHeightOn > 0.5) N = gHeightNormal(uv, N);
   vec3 P = P0 + N * (w * fx3dNeedleH(key, (uv - 0.5) * vec2(uAsp, 1.0) * 3.2) * cell);
   vUv = uv; vW = P; vN = N;
   gl_Position = fx3dApply(uProj * uView * vec4(P * fx3dPop(0.0), 1.0));
@@ -102,6 +128,20 @@ function uloc(gl, p, n){ const m = U[n] || (U[n] = new WeakMap()); let l = m.get
 const ss = (a, b, x)=>{ const y = Math.max(0, Math.min(1, (x - a) / (b - a))); return y * y * (3 - 2 * y); };
 
 Fx3d.EXTRA.globe = {
+  // 同じ gSurf と uniform を単体描画 / Build の頂点変形で共有。
+  shapeGLSL(){ return SHAPE.replace(/\b(u[A-Z]\w*|ss|gSurf)\b/g, 'f3g_$1'); },
+  shapeState(o){
+    const asp = o.asp, k = o.k, t = o.clock || 0;
+    const cam = Fx3d.camera(asp, 0, 0.25 * k * Math.sin(0.2 * t), 1.35 + 0.85 * k);
+    let spin;
+    if(o.beatMode){ const b = o.beat || 0, f = b - Math.floor(b), y = 1 - f; spin = (Math.floor(b) + 1 - y * y * y) * Math.PI / 2; }
+    else spin = 0.4 * t;
+    return {asp, k, m2:ss(0.35, 1.0, k), cam, spin, hit:o.hit || 0};
+  },
+  shapeUniforms(gl, pr, s, prefix = ''){
+    for(const [n,v] of Object.entries({uAsp:s.asp, uK:s.k, uSpin:s.spin, uHit:s.hit}))
+      gl.uniform1f(uloc(gl, pr, prefix + n), v);
+  },
   foldHook: true,
   spikes: true,
   render(gl, o){
@@ -110,12 +150,7 @@ Fx3d.EXTRA.globe = {
     const post = o.post || {};
     const detail = Math.max(6, Math.min(96, Math.round(+post.fx3dGlobeDetail || 64)));
     const rows = detail, cols = detail * 2;
-    const asp = o.asp, k = o.k, t = o.clock || 0;
-    const m2 = ss(0.35, 1.0, k);
-    const cam = Fx3d.camera(asp, 0, 0.25 * k * Math.sin(0.2 * t), 1.35 + 0.85 * k);
-    let spin;
-    if(o.beatMode){ const b = o.beat || 0, f = b - Math.floor(b), y = 1 - f; spin = (Math.floor(b) + 1 - y * y * y) * Math.PI / 2; }
-    else spin = 0.4 * t;
+    const state = this.shapeState(o), {asp, k, m2, cam} = state;
     const M = Fx3d.msaa(gl, o.w, o.h);
     gl.bindFramebuffer(gl.FRAMEBUFFER, M.fbo);
     gl.viewport(0, 0, o.w, o.h);
@@ -133,12 +168,9 @@ Fx3d.EXTRA.globe = {
       gl.uniformMatrix4fv(uloc(gl, pr, 'uView'), false, cam.view);
       gl.uniformMatrix4fv(uloc(gl, pr, 'uProj'), false, cam.proj);
       gl.uniform3fv(uloc(gl, pr, 'uEye'), cam.eye);
-      gl.uniform1f(uloc(gl, pr, 'uAsp'), asp);
+      this.shapeUniforms(gl, pr, state);
       gl.uniform1f(uloc(gl, pr, 'uCols'), cols);
       gl.uniform1f(uloc(gl, pr, 'uRows'), rows);
-      gl.uniform1f(uloc(gl, pr, 'uK'), k);
-      gl.uniform1f(uloc(gl, pr, 'uSpin'), spin);
-      gl.uniform1f(uloc(gl, pr, 'uHit'), o.hit || 0);
       gl.uniform1f(uloc(gl, pr, 'uShade'), Fx3d.shade(k));
       gl.uniform1f(uloc(gl, pr, 'uSeam'), 0.1 * ss(0.4, 0.8, k));
       gl.uniform1f(uloc(gl, pr, 'uFacet'), 1 - ss(16, 56, detail));

@@ -22,6 +22,7 @@
 //   uKdScale で構成ごと拡大・縮小、uKdZoomMove で焦点へゆっくり寄っては引く。bgZoom・bgCamPx でズーム/パン。ヘルパは kd_ で名前空間化。
 // =====================================================
 
+// @param uKdStyle   0..5     = 0.0 @desc 構成。0 = Original / 1 = Composition VIII / 2 = Yellow-Red-Blue / 3 = Several Circles / 4 = Composition X / 5 = On White II
 // @param uKdCount   6..80    = 30.0 @desc 要素の数 (枠の数)。多いほど賑やかで重くなる。先頭 4 枠は主役 (大円・大きな楔・軸線 2 本)
 // @param uKdLife    2..32    = 8.0 @desc 要素の寿命 (拍)。骨格が向きを変える周期も兼ねる。主役は 3 倍
 // @param uKdPlanes  0..100   = 50.0 @desc 面 (円・楔・四角など) の出やすさの重み。線・点との比で決まる
@@ -65,6 +66,7 @@
 // @param uKdPink    color = #dc93a0 @desc 桃の絵具の色。地のにじみにも使う
 // @param uKdSky     color = #86b5cc @desc 水色の絵具の色。地のにじみにも使う
 // @param uKdGreen   color = #4d8a66 @desc 緑の絵具の色
+uniform float uKdStyle;
 uniform float uKdCount;   // 要素の数 (枠の数)。枠 0〜3 は主役 (大円・大きな楔・主軸線・対軸線)。負荷はほぼこの数に比例する
 uniform float uKdLife;    // 要素の寿命 (拍)。要素ごとに 0.6〜1.4 倍にばらつく。主役は 3 倍
 uniform float uKdPlanes;  // 面の割合 (重み)
@@ -212,7 +214,8 @@ void kd_paint(inout vec3 col, inout float pl, vec3 c, float a){
   pl = max(pl, a);
 }
 
-vec3 bg_kandinsky(vec2 fc){
+// Style 0: 本体と既存ヘルパを変更しない。作品別の処理は末尾で分岐する。
+vec3 kd_original(vec2 fc){
   float bt = getBeat();
   float spd = uKdSpeed * 0.01;
   float kk = uKdKick * 0.01;
@@ -699,4 +702,289 @@ vec3 bg_kandinsky(vec2 fc){
   float al = 1.0 - (1.0 - painted) * uKdClear * 0.01;
   bgAlpha = al;
   return col * al;
+}
+
+// ── 作品別の構成 (Style 1〜5) ──
+// 色 param は工場出荷色に対する倍率。どの Style でも全色を調整できる。
+// 形番号: 0 円 / 1 同心円 / 2 楔 / 3 四角 / 4 市松 / 5 三日月 /
+//         6 弧の束 / 7 直線 / 8 円弧 / 9 平行線 / 10 点列 / 11 小円 / 12 曲線 / 13 有機面
+vec3 kd_styleColor(int st, int id){
+  vec3 c;
+  if(id == 0){
+    c = st == 1 ? vec3(239,232,211) : st == 2 ? vec3(228,217,174) : st == 3 ? vec3(15,20,22) : st == 4 ? vec3(29,27,28) : vec3(242,240,224);
+    return clamp(c / 255.0 * uKdPaper / (vec3(236,226,203) / 255.0), 0.0, 1.0);
+  }
+  if(id == 1) return uKdInk;
+  if(id == 2){
+    c = st == 4 ? vec3(170,57,48) : st == 2 ? vec3(195,42,54) : vec3(201,58,44);
+    return clamp(c / 255.0 * uKdRed / (vec3(197,54,43) / 255.0), 0.0, 1.0);
+  }
+  if(id == 3){
+    c = st == 3 ? vec3(46,48,139) : st == 4 ? vec3(70,153,166) : st == 2 ? vec3(34,55,125) : vec3(54,106,153);
+    return clamp(c / 255.0 * uKdBlue / (vec3(39,70,143) / 255.0), 0.0, 1.0);
+  }
+  if(id == 4){
+    c = st == 4 ? vec3(245,211,129) : st == 3 ? vec3(239,205,91) : vec3(235,190,45);
+    return clamp(c / 255.0 * uKdYellow / (vec3(236,193,50) / 255.0), 0.0, 1.0);
+  }
+  if(id == 5){
+    c = st == 4 ? vec3(166,148,181) : vec3(111,76,145);
+    return clamp(c / 255.0 * uKdViolet / (vec3(100,64,127) / 255.0), 0.0, 1.0);
+  }
+  if(id == 6) return clamp(uKdPink * (st == 4 ? vec3(1.03,0.90,1.02) : vec3(1.0)), 0.0, 1.0);
+  if(id == 7) return clamp(uKdSky * (st == 3 ? vec3(1.35,1.18,1.08) : vec3(1.0)), 0.0, 1.0);
+  return clamp(uKdGreen * (st == 4 ? vec3(0.55,1.18,1.22) : vec3(1.0)), 0.0, 1.0);
+}
+vec2 kd_srot(vec2 p, float a){ float c = cos(a), s = sin(a); return vec2(c*p.x-s*p.y, s*p.x+c*p.y); }
+float kd_cover(float d, float aa){ return 1.0 - smoothstep(-aa, aa, d); }
+void kd_glaze(inout vec3 col, inout float pl, vec3 c, float a, vec3 paper, float overlap, bool dark){
+  vec3 lens = dark ? mix(col * c, (col + c) * 0.5, 0.6)
+                   : sqrt(clamp(col * c / max(paper, vec3(0.1)), 0.0, 1.0));
+  col = mix(col, mix(c, lens, overlap * pl), a);
+  pl = max(pl, a);
+}
+
+vec3 kd_styled(vec2 fc, int st){
+  bool dark = st == 3 || st == 4;
+  bool fre = isFree();
+  float bt = getBeat(), speed = uKdSpeed * 0.01, kk = uKdKick * 0.01;
+  float bq = (fre ? time * 2.0 : bt) * speed;
+  float B = fre ? bq : floor(bq) + mix(fract(bq), 1.0-pow(1.0-fract(bq),3.0), clamp(kk,0.0,1.0));
+  float seed = uKdSeed * 1.37;
+  float reseed = floor(uKdReseed + 0.5);
+  if(reseed > 0.5) seed += floor((fre ? time*2.0 : bt) / reseed) * 17.31;
+  vec4 sa = kd_h4(vec3(seed,3,7)), sb = kd_h4(vec3(seed,5,9));
+  float per = max(uKdLife,2.0), rv = uKdReverse * 0.01;
+  float h1 = rv > 0.0 ? max(1.0,floor(mix(12.0,1.0,rv)*(0.6+0.8*sb.y)+0.5)) : 1e5;
+  float h2 = rv > 0.0 ? max(1.0,floor(mix(9.0,1.0,rv)*(0.6+0.8*sb.z)+0.5)) : 1e5;
+  // 作品の骨格が読めるように運動を抑える。既存の運動量は上から倍率で掛かる。
+  float motionGain = st == 3 ? 0.16 : st == 4 ? 0.28 : 0.22;
+  float spin = uKdSpin * 0.01, flock = uKdFlock * 0.01;
+  float rad = radians(uKdTurn) * (sb.x < 0.5 ? -1.0 : 1.0) * motionGain;
+  float phase = sa.z * 6.283185;
+  float rotation = kd_rot(B,per,phase,rad,h1,h2) + 0.045*spin*kd_turn(B,per,phase);
+  float lag = clamp(kd_rot(B-1.2*flock,per,phase,rad,h1,h2)-rotation,-0.2,0.2);
+  float axis = st == 1 ? 0.48 : st == 2 ? 0.08 : st == 3 ? -0.70 : st == 4 ? 0.30 : 0.73;
+  float crossAxis = st == 5 ? -0.73 : axis + 1.32;
+  float sv = uKdSizeVar * 0.01, xs = B/per;
+  float sizeVar = exp2(sv * 0.42 * mix(kd_h(vec3(seed,floor(xs),41))*2.0-1.0,kd_h(vec3(seed,floor(xs)+1.0,41))*2.0-1.0,smoothstep(0.6,1.0,fract(xs))));
+  float sz = uKdSize * 0.01 * sizeVar, great = uKdGreat * 0.01;
+  float thickGain = st == 1 ? 0.72 : st == 2 ? 1.15 : st == 3 ? 0.65 : st == 4 ? 0.85 : 1.35;
+  float th = 0.0018 * uKdThick * 0.01 * thickGain;
+  float mo = uKdMotion * 0.01 * motionGain;
+  float halo = uKdHalo * 0.01 * (st == 3 ? 1.2 : st == 4 ? 0.12 : st == 5 ? 0.16 : 0.65);
+  float wash = uKdWash * 0.01 * (st == 2 ? 1.0 : st == 1 ? 0.38 : st == 3 ? 0.20 : st == 4 ? 0.08 : 0.12);
+  float overlap = uKdOverlap * 0.01 * (st == 3 ? 1.0 : st == 4 ? 0.25 : st == 5 ? 0.55 : 0.85);
+  vec3 weights = vec3(uKdPlanes,uKdLines,uKdPoints);
+  weights *= st == 1 ? vec3(1.15,1.0,0.8) : st == 2 ? vec3(1.5,0.85,0.55) : st == 3 ? vec3(2.8,0.22,0.8) : st == 4 ? vec3(1.8,0.60,0.65) : vec3(1.3,1.25,0.45);
+  vec3 paper = kd_styleColor(st,0), ink = kd_styleColor(st,1);
+  float zm = max(bgZoom,0.001), sc = 100.0/max(uKdScale,1.0);
+  vec2 q0 = ((fc-0.5*resolution)/zm+bgCamPx)/resolution.y;
+  float asp = resolution.x/resolution.y;
+  // 正方形に近い作品は横長画面でも中央に収め、左右を余白にする。
+  float width = st == 3 || st == 5 ? min(asp,1.12) : min(asp,1.65);
+  vec2 focus = st == 1 ? vec2(0.08,-0.06) : st == 3 ? vec2(-0.12,0.08) : vec2(0.0);
+  float zf = 1.0+1.5*uKdZoomMove*0.01*(0.5-0.5*cos(B*0.19635));
+  vec2 q = kd_srot(q0*sc/zf+focus*(1.0-1.0/zf),-rotation);
+  float aa = sc/(zf*resolution.y*zm);
+  vec3 col = paper;
+  if(wash > 0.0){
+    float cloud = kd_vn(q*3.1+seed);
+    float warm = exp(-dot(q-vec2(-0.25,0.08),q-vec2(-0.25,0.08))*3.0);
+    float cool = exp(-dot(q-vec2(0.33,-0.12),q-vec2(0.33,-0.12))*4.0);
+    vec3 wc = dark ? kd_styleColor(st,7)*0.17 : kd_styleColor(st,4);
+    vec3 cc = dark ? kd_styleColor(st,3)*0.15 : kd_styleColor(st,5);
+    col = mix(col,wc,clamp(wash*(0.12+0.28*cloud)*warm,0.0,0.75));
+    col = mix(col,cc,clamp(wash*(0.08+0.28*(1.0-cloud))*cool,0.0,0.70));
+  }
+  float pl = 0.0, pt = 0.0;
+  int N = int(clamp(floor(uKdCount+0.5),6.0,80.0)); // uniform 上限。要素の追加ループなし
+  float total = max(dot(weights,vec3(1)),0.001);
+  float draw = uKdDraw*0.0045, pop = uKdPop*0.01;
+  for(int i=0; i<N; i++){
+    float fi = float(i);
+    bool lead = i<4;
+    vec4 hA = fract(vec4(0.618034,0.7548777,0.5698403,0.8566749)*(fi+1.0)+seed*vec4(0.731,0.377,0.913,0.559));
+    float life = max(2.0,floor(per*(lead ? 3.0 : 1.0)*(0.6+0.8*hA.x)+0.5));
+    float x = (B+floor(hA.y*life))/life, generation = floor(x);
+    vec4 h = kd_h4(vec3(fi,generation,seed+3.0));
+    if(!lead && (h.x<uKdRest*0.01 || total<=0.001)) continue;
+    float tm = fract(x)*life, stepBeat = hA.z<0.4 ? 1.0 : hA.z<0.75 ? 2.0 : 4.0;
+    float tf = tm/stepBeat;
+    float tq = mix(tm,stepBeat*(floor(tf)+1.0-pow(1.0-fract(tf),4.0)),uKdRhythm*0.01);
+    float f = tq/life, dr = max(draw*(lead ? 0.35 : 1.0),0.000001);
+    float ei = clamp(f/dr,0.0,1.0), eo = clamp((1.0-f)/dr,0.0,1.0);
+    float ein = ei*ei*(3.0-2.0*ei), eout = eo*eo*(3.0-2.0*eo);
+    float s = mix(ein,kd_back(ei,1.2+1.8*pop),pop)*mix(eout,kd_back(eo,1.2+1.8*pop),pop);
+    if(s<=0.0001) continue; // 半径ゼロでの除算も避ける
+    vec4 j = fract(h.zwxy*91.3458+h.yxwz*47.853+0.37);
+    float u = (fi-3.5)/max(float(N)-4.0,1.0);
+    int cat = u<weights.x/total ? 0 : u<(weights.x+weights.y)/total ? 1 : 2;
+    int ty = cat==0 ? int(min(floor(h.w*7.0),6.0)) : cat==1 ? (h.w<0.35 ? 7 : h.w<0.65 ? 8 : h.w<0.85 ? 9 : 12) : (h.w<0.5 ? 10 : 11);
+    if(st==3) ty = cat==1 ? 8 : cat==2 ? 11 : h.w<0.85 ? 0 : 1;
+    if(st==4 && cat==0) ty = h.w<0.40 ? 13 : h.w<0.58 ? 5 : h.w<0.80 ? 4 : 6;
+    if(st==5 && cat==0) ty = h.w<0.40 ? 2 : h.w<0.70 ? 4 : h.w<0.85 ? 3 : 5;
+    float angle = j.z<0.65 ? axis : crossAxis;
+    vec2 P = kd_srot(vec2((j.x-0.5)*width*0.83,(j.y-0.5)*0.48),angle*0.35);
+    if(st==1) P += vec2(0.11,-0.10); // 大円の周囲は空け、右と下に細部を集める
+    if(st==2) P.x = mix(-0.24,0.25,j.x<0.45 ? 0.0 : 1.0)+(j.x-0.5)*0.35;
+    if(st==3) P = vec2(-0.10,0.07)+kd_srot(vec2(0.15+0.19*j.y,0),j.x*6.283185);
+    if(st==4) P = vec2((j.x-0.5)*width*0.91,(j.y-0.5)*0.72);
+    if(st==5) P *= 0.73;
+    float r = sz*(cat==0 ? 0.035+0.10*h.z*h.z : cat==1 ? 0.12+0.23*h.z : 0.006+0.014*h.z);
+    if(st==3 && cat==1) r *= 0.35;
+    if(st==4 && cat==0) r *= 1.3;
+    r *= exp2(uKdJump*0.0158*(j.w*2.0-1.0));
+    int colorId = 2+int(min(floor(j.w*7.0),6.0));
+    if(h.y<uKdAccord*0.01) colorId = ty<2 || ty==11 ? 3 : ty==2 || ty==4 ? 4 : ty==3 ? 2 : ty==13 ? 8 : ty==5 ? 5 : ty==6 ? 6 : colorId;
+    if(cat>0 && j.y>=uKdColor*0.01+(cat==2 ? 0.25 : 0.0)) colorId=1;
+    float lineScale = 1.0;
+    if(lead){
+      cat=0;
+      if(st==1){
+        if(i==0){ P=vec2(-0.32*width,0.23); r=0.16; ty=0; colorId=1; }
+        if(i==1){ P=vec2(0.12,-0.10); r=0.36; ty=2; angle=0.22; colorId=4; }
+        if(i==2){ P=vec2(0.05,-0.13); r=0.63; ty=7; angle=axis; cat=1; }
+        if(i==3){ P=vec2(0.18,0.0); r=0.48; ty=7; angle=crossAxis; cat=1; }
+      } else if(st==2){
+        if(i==0){ P=vec2(0.23*width,0.08); r=0.22; ty=0; colorId=3; }
+        if(i==1){ P=vec2(-0.22*width,0.02); r=0.24; ty=3; angle=0.0; colorId=4; }
+        if(i==2){ P=vec2(0.03,-0.06); r=0.23; ty=3; angle=-0.22; colorId=2; }
+        if(i==3){ P=vec2(0.23*width,0.12); r=0.25; ty=8; angle=0.20; cat=1; lineScale=6.0; }
+      } else if(st==3){
+        if(i==0){ P=vec2(-0.11,0.10); r=0.235; ty=0; colorId=3; }
+        if(i==1){ P=vec2(-0.15,0.145); r=0.164; ty=0; colorId=1; }
+        if(i==2){ P=vec2(0.28,-0.23); r=0.105; ty=0; colorId=7; }
+        if(i==3){ P=vec2(0.20,0.16); r=0.078; ty=1; colorId=8; }
+      } else if(st==4){
+        if(i==0){ P=vec2(-0.28*width,0.20); r=0.235; ty=13; angle=0.15; colorId=2; }
+        if(i==1){ P=vec2(0.20*width,0.11); r=0.30; ty=13; angle=-0.30; colorId=8; }
+        if(i==2){ P=vec2(0.08,-0.21); r=0.25; ty=6; angle=0.18; colorId=6; }
+        if(i==3){ P=vec2(0.29,0.24); r=0.12; ty=5; angle=-0.40; colorId=4; }
+      } else {
+        if(i==0){ P=vec2(-0.15,0.13); r=0.41; ty=2; angle=2.22; colorId=4; }
+        if(i==1){ P=vec2(-0.16,0.0); r=0.29; ty=2; angle=2.95; colorId=2; }
+        if(i==2){ P=vec2(0.0,-0.02); r=0.64; ty=2; angle=axis; colorId=1; }
+        if(i==3){ P=vec2(0.05,-0.04); r=0.53; ty=2; angle=crossAxis; colorId=1; }
+      }
+      // 大面と骨格の操作。円だけの Style でも Axis は輪の太さとして効く。
+      bool axisSlot = (st==1 || st==5) ? i>=2 : st==2 ? i==3 : st==4 ? i>=2 : false;
+      if(axisSlot && uKdAxis<=0.0) continue;
+      if(!axisSlot && great<=0.0) continue;
+      r *= sz*(axisSlot ? 1.0 : great);
+      lineScale *= axisSlot ? uKdAxis*0.01 : 1.0;
+      if(cat==1) colorId=1;
+    } else {
+      if(j.z>=uKdOrder*0.01) { P=vec2((j.x-0.5)*asp,(j.y-0.5)*0.92); angle=j.w*6.283185; }
+      P += (vec2(sa.x,sb.y)-0.5)*0.07;
+    }
+    P = kd_srot(P,lag*length(P)*flock);
+    P *= 1.0+0.035*flock*sin(B*0.131);
+    P += kd_srot(vec2(mo*(0.24*((1.0-eout)*(1.0-eout)-(1.0-ein)*(1.0-ein))+0.009*sin(B*0.21+j.x*6.28)),0.008*flock*sin(B*0.42+P.x*7.0)),axis);
+    angle += 0.035*spin*sin(B*0.17+j.z*6.28);
+    vec2 lp = kd_srot(q-P,-angle);
+    float pulse = fre ? 0.25+0.25*sin(B*0.785+hA.w*6.28) : exp(-3.0*fract((bq+floor(hA.w*4.0))/stepBeat)*stepBeat)*kk;
+    r *= s*(1.0+(ty<2 || ty==11 ? 0.035*pulse : 0.0));
+    float pen = th*lineScale*(h.z<0.72 ? 0.7 : 2.0);
+    if(st==5 && lead && i>=2) pen = 0.014*uKdThick*0.01*uKdAxis*0.01;
+    // 大円の光輪も含む保守的な境界。範囲外では色・距離を評価しない。
+    float reach = r*(ty==0 ? 2.6 : 1.65)+pen*4.0+aa*2.0;
+    if(max(abs(lp.x),abs(lp.y))>reach) continue;
+    vec3 c = kd_styleColor(st,colorId);
+    float d=1e3, a=0.0, op=ein*eout;
+    float rr=length(lp);
+    if(ty==0 || ty==1 || ty==11){
+      d=rr-r;
+      if((ty==0 || ty==11) && (lead || ty==11 || h.y<0.35) && !(st==3 && lead && i==1) && halo>0.0){
+        float glow=exp(-max(d,0.0)/max(r*0.17,aa))*step(0.0,d)*min(halo,2.0)*0.55*op;
+        vec3 hc=kd_styleColor(st,st==3 ? 7 : 6);
+        col=mix(col,hc,glow); pt=max(pt,glow);
+      }
+      if(ty==1){
+        float band=floor(rr/max(r,aa)*3.0);
+        c=band<1.0 ? ink : band<2.0 ? c : kd_styleColor(st,4);
+      }
+      if(st==1 && lead && i==0 && rr<r*0.46) c=kd_styleColor(st,5);
+      a=kd_cover(d,aa)*op;
+      kd_glaze(col,pl,c,a,paper,overlap,dark);
+      // Several Circles の黒い内円は遮光。重なりで青くならない。
+      if(st==3 && lead && i==1) col=mix(col,ink,a);
+      float rim=kd_cover(abs(d)-pen*(st==3 ? uKdAxis*0.01 : 1.0),aa)*op;
+      if(st==3 && uKdAxis<=0.0) rim=0.0;
+      if(h.w<0.6 || ty==1){ col=mix(col,ink,rim); pt=max(pt,rim); }
+    } else if(ty==2){
+      float halfWidth = st==5 && lead && i>=2 ? max(pen,aa*0.25) : r*(lead ? 0.35 : 0.28);
+      d=kd_tri(lp,vec2(r,0),vec2(-r*0.65,halfWidth),vec2(-r*0.65,-halfWidth));
+      a=kd_cover(d,aa)*op;
+      if(st==1 && !lead && h.y<0.45) { a=kd_cover(abs(d)-pen,aa)*op; c=ink; }
+      kd_glaze(col,pl,c,a,paper,overlap,dark);
+    } else if(ty==3 || ty==4 || ty==13){
+      vec2 p=lp;
+      vec2 boxSize=r*vec2(0.85,0.65);
+      if(st==2 && lead) boxSize=r*vec2(i==1 ? 0.48 : 0.67,0.85);
+      if(ty==13){
+        p.x += 0.20*r*sin(lp.y/max(r,aa)*2.4);
+        d=length(p/vec2(1.05,0.90))-r*(0.92+0.09*sin(atan(p.y,p.x)*3.0));
+      } else d=kd_box(p,boxSize);
+      a=kd_cover(d,aa)*op;
+      if(ty==4){
+        vec2 cell=floor((p/max(r,aa)+1.0)*3.0);
+        float chk=mod(cell.x+cell.y,2.0);
+        c=chk<0.5 ? (dark ? kd_styleColor(st,4) : paper) : st==4 ? kd_styleColor(st,5) : ink;
+      }
+      kd_glaze(col,pl,c,a,paper,overlap,dark);
+      if(ty==13){
+        // 同じ面の内側に色帯と升目を入れる。追加要素・ループを使わない。
+        vec2 t=p/max(r,aa);
+        float band=step(abs(t.y+0.16*sin(t.x*3.0)),0.18);
+        float checker=mod(floor((t.x+1.0)*4.0)+floor((t.y+1.0)*4.0),2.0);
+        col=mix(col,kd_styleColor(st,checker<0.5 ? 4 : 6),a*band*0.85);
+        float stripe=kd_cover(abs(mod(t.y+0.12*t.x,0.22)-0.11)*r-pen,aa);
+        col=mix(col,kd_styleColor(st,7),a*stripe*0.38);
+      }
+    } else if(ty==5){
+      d=max(rr-r,-(length(lp-vec2(r*0.42,r*0.23))-r*0.87));
+      kd_glaze(col,pl,c,kd_cover(d,aa)*op,paper,overlap,dark);
+    } else if(ty==6 || ty==8){
+      float an=mod(atan(lp.y,lp.x)+6.283185,6.283185);
+      float sweep=st==3 ? 6.283185 : 3.5+0.8*h.y;
+      float arc=ty==6 ? clamp(floor((rr/r-0.55)/0.16+0.5),0.0,3.0) : 0.0;
+      float radius=ty==6 ? r*(0.55+arc*0.16) : r;
+      float stroke=ty==6 ? max(pen,r*0.035*uKdThick*0.01*lineScale) : pen;
+      d=abs(rr-radius)-stroke;
+      d=max(d,max((1.0-eout)*sweep-an,an-ein*sweep)*r);
+      a=kd_cover(d,aa)*op;
+      if(ty==6) c=kd_styleColor(st,2+int(mod(float(colorId)+arc,7.0)));
+      col=mix(col,c,a); pt=max(pt,a);
+    } else {
+      float sx=lp.x+r, yy=lp.y;
+      if(ty==9){
+        float spacing=max(r*0.075,aa*2.0);
+        yy-=clamp(floor(yy/spacing+0.5),-2.0,2.0)*spacing;
+      }
+      if(ty==12) yy-=r*0.18*sin(lp.x/max(r,aa)*5.0+B*0.08*mo);
+      d=max(abs(yy)-pen,max(2.0*r*(1.0-eout)-sx,sx-2.0*r*ein));
+      if(ty==10){
+        float spacing=max(r*0.5,aa*3.0);
+        float k=clamp(floor(sx/spacing+0.5),0.0,4.0);
+        d=length(vec2(sx-k*spacing,lp.y))-r*0.13;
+        d=max(d,max(2.0*r*(1.0-eout)-k*spacing,k*spacing-2.0*r*ein));
+      }
+      a=kd_cover(d,aa)*op; col=mix(col,c,a); pt=max(pt,a);
+    }
+  }
+  if(uKdGrain>0.0){
+    float grain=kd_vn(q0*70.0)*0.5+kd_vn(q0*600.0)*0.3+kd_vn(q0*6.0)*0.2;
+    col *= 1.0+(grain-0.5)*uKdGrain*0.0014*(dark ? 1.4 : 0.8);
+  }
+  float painted=max(pl,pt);
+  vjDepth=clamp(max(pl*0.45,pt*0.95),0.0,1.0);
+  bgAlpha=1.0-(1.0-painted)*uKdClear*0.01;
+  return col*bgAlpha;
+}
+
+vec3 bg_kandinsky(vec2 fc){
+  int style=int(clamp(floor(uKdStyle+0.5),0.0,5.0));
+  if(style==0) return kd_original(fc);
+  return kd_styled(fc,style);
 }
